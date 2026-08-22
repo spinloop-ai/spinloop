@@ -33,6 +33,8 @@ type fakeDashNode struct {
 	starts     int
 	stops      int
 	hold       <-chan struct{}
+	startErr   error                  // Start refuses with this
+	startReply *daemon.StatusResponse // Start answers with this instead of running
 }
 
 func newFakeDashNode(state string) *fakeDashNode { return &fakeDashNode{state: state} }
@@ -71,8 +73,43 @@ func (f *fakeDashNode) Start(ctx context.Context) (daemon.StatusResponse, error)
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.starts++
+	if f.startErr != nil {
+		return daemon.StatusResponse{}, f.startErr
+	}
 	f.state = "running"
+	if f.startReply != nil {
+		return *f.startReply, nil
+	}
 	return daemon.StatusResponse{State: "running"}, nil
+}
+
+// plainDashNode wraps the fake without its progress capability: a node whose
+// start is one POST and one reply, so the dashboard's type assertion finds no
+// ProgressStarter and falls back to the plain Start.
+type plainDashNode struct{ f *fakeDashNode }
+
+func (n plainDashNode) Name() string { return n.f.Name() }
+
+func (n plainDashNode) Status(ctx context.Context) (daemon.StatusResponse, error) {
+	return n.f.Status(ctx)
+}
+
+func (n plainDashNode) Metrics(ctx context.Context) (metrics.Stats, error) { return n.f.Metrics(ctx) }
+
+func (n plainDashNode) Start(ctx context.Context) (daemon.StatusResponse, error) {
+	return n.f.Start(ctx)
+}
+
+func (n plainDashNode) StartWith(ctx context.Context, dc *remote.DeployConfig, engineKey string) (daemon.StatusResponse, error) {
+	return n.f.StartWith(ctx, dc, engineKey)
+}
+
+func (n plainDashNode) Stop(ctx context.Context) (daemon.StatusResponse, error) {
+	return n.f.Stop(ctx)
+}
+
+func (n plainDashNode) Logs(ctx context.Context, offset int64, limit int) (daemon.LogsResponse, error) {
+	return n.f.Logs(ctx, offset, limit)
 }
 
 // The fake also reports one progress line on the way, so the dashboard's
@@ -304,6 +341,47 @@ func TestDashTileClipsLongLines(t *testing.T) {
 		if w := lipgloss.Width(rows[i]); w != dashTileW+2 {
 			t.Errorf("row %d is %d columns, want %d", i, w, dashTileW+2)
 		}
+	}
+}
+
+// More GPUs than the tile holds: the content is cut to the tile height, not
+// wrapped — a one-GPU node fills the tile exactly, four GPUs may not.
+func TestDashTileTruncatesTallContent(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.Ascii)
+	gpus := make([]metrics.GpuStat, 4)
+	for i := range gpus {
+		gpus[i] = metrics.GpuStat{Index: i, Name: "H100", Utilization: 10 * (i + 1), MemoryUsed: 1, MemoryTotal: 10}
+	}
+	r := fleet.NodeResult{
+		Name: "many", Outcome: fleet.OutcomeOK,
+		Metrics: metrics.Stats{
+			State: "running", Runner: "llamacpp", ModelID: "org/qwen",
+			UptimeSeconds: 60,
+			CPU:           &metrics.CpuStat{Utilization: 42},
+			Memory:        &metrics.MemoryStat{Total: 1000, Used: 300},
+			GPUs:          gpus,
+			Tokens:        &metrics.TokenStats{Running: 1, PromptTokens: 100, GenerationTokens: 50, Requests: 3},
+		},
+	}
+	lines := strings.Split(dashTile("many", r, false, dashAction{}), "\n")
+	if len(lines) != dashTileH+2 {
+		t.Errorf("a tall node broke the tile geometry: %d lines (want %d)", len(lines), dashTileH+2)
+	}
+}
+
+// The scroll row never scrolls past an end: a small fleet in a big terminal
+// cannot scroll at all, and a deep scroll clamps to the last row.
+func TestDashClampScrollBounds(t *testing.T) {
+	if got := dashClampScroll(5, 2, 120, 40); got != 0 {
+		t.Errorf("a two-node fleet scrolls: %d (want 0)", got)
+	}
+	if got := dashClampScroll(0, 100, 120, 40); got != 0 {
+		t.Errorf("fresh scroll rows move: %d (want 0)", got)
+	}
+	// 100 nodes in four columns of two is fifty rows; the last visible window
+	// starts at row forty-eight.
+	if got := dashClampScroll(99, 100, 120, 40); got != 48 {
+		t.Errorf("deep scroll: %d (want 48)", got)
 	}
 }
 
@@ -784,6 +862,271 @@ func TestDashModelConcurrentStarts(t *testing.T) {
 	}
 }
 
+// Up holds at the top, k backtracks to it without going negative, pgdown
+// holds at the bottom, and a stale scroll row past the grid is bounded when
+// the frame is drawn.
+func TestDashModelUpNavigationClamps(t *testing.T) {
+	entries := make([]dashEntry, 7)
+	for i := range entries {
+		entries[i] = dashEntry{name: fmt.Sprintf("n%d", i), kind: fleet.KindDaemon, node: newFakeDashNode("running")}
+	}
+	m := &dashModel{
+		entries: entries,
+		results: make([]fleet.NodeResult, 7),
+		actions: make([]dashAction, 7),
+		width:   120, height: 40,
+	}
+	step := func(key string) *dashModel {
+		next, _ := m.Update(dashKey(key))
+		m = next.(*dashModel)
+		return m
+	}
+	if step("up").cursor != 0 {
+		t.Fatal("up at the top moved the selection")
+	}
+	for i := 0; i < len(entries)-1; i++ {
+		step("j")
+	}
+	if m.cursor != 6 {
+		t.Fatalf("selection not on the last node: %d", m.cursor)
+	}
+	for i := 0; i < len(entries); i++ { // one more k than there are nodes
+		step("k")
+	}
+	if m.cursor != 0 {
+		t.Fatalf("k past the top: %d", m.cursor)
+	}
+	m.cursor = len(entries) - 1
+	m.keepVisible()
+	before := m.scrollRow
+	if step("pgdown").scrollRow != before {
+		t.Errorf("pgdown past the bottom moved the scroll row: %d", m.scrollRow)
+	}
+	// A stale scroll row past the grid is bounded: the frame still draws
+	// rather than panicking, and stays put until the next move re-scrolls.
+	m.scrollRow = 99
+	v := m.View()
+	if !strings.Contains(v, "fleet dashboard") || strings.Contains(v, "n0") {
+		t.Errorf("a stale scroll row broke the frame:\n%s", v)
+	}
+}
+
+// q in the middle of a stop confirmation sends nothing and leaves.
+func TestDashModelQuitDuringConfirmation(t *testing.T) {
+	node := newFakeDashNode("running")
+	m := &dashModel{
+		entries: []dashEntry{{name: "a", kind: fleet.KindDaemon, node: node}},
+		results: []fleet.NodeResult{{Name: "a"}},
+		actions: make([]dashAction, 1),
+		width:   120, height: 40,
+	}
+	next, _ := m.Update(dashKey("x"))
+	m = next.(*dashModel)
+	if !m.confirm {
+		t.Fatal("x did not open the confirmation")
+	}
+	next, cmd := m.Update(dashKey("q"))
+	m = next.(*dashModel)
+	if cmd == nil {
+		t.Fatal("q during the confirmation did not quit")
+	}
+	if quit, ok := cmd().(tea.QuitMsg); !ok {
+		t.Errorf("q during the confirmation did not quit: %T", quit)
+	}
+	if node.stops != 0 {
+		t.Errorf("the abandoned confirmation sent a stop: %d", node.stops)
+	}
+	if m.confirm {
+		t.Fatal("the confirmation is still open")
+	}
+}
+
+// A slow-group answer from a superseded round is discarded, not painted —
+// the generation guard works for the cloud group, not only the local one.
+func TestDashModelSlowStaleRoundDiscarded(t *testing.T) {
+	node := newFakeDashNode("stopped")
+	m := &dashModel{
+		entries: []dashEntry{{name: "a", kind: fleet.KindRemote, node: node}},
+		results: make([]fleet.NodeResult, 1),
+		actions: make([]dashAction, 1),
+		width:   120, height: 40,
+	}
+	m.slowBusy = true
+	m.slowGen = 3
+	before := m.results[0]
+	stale := dashRefreshMsg{
+		remote:  true,
+		gen:     2, // superseded: the model is on generation 3
+		idx:     []int{0},
+		results: []fleet.NodeResult{{Name: "a", Outcome: fleet.OutcomeOK, Status: daemon.StatusResponse{State: "running"}}},
+	}
+	next, _ := m.Update(stale)
+	m = next.(*dashModel)
+	if m.results[0].Name != before.Name || m.results[0].Outcome != before.Outcome || m.results[0].Err != before.Err {
+		t.Errorf("a superseded slow round was painted: %+v", m.results[0])
+	}
+	if !m.slowBusy {
+		t.Error("a stale slow round cleared the in-flight flag")
+	}
+}
+
+// A slow round already in flight is not started again when its deadline
+// comes due: the guard is the busy flag, not the deadline.
+func TestDashModelSlowRoundInFlightGuard(t *testing.T) {
+	node := newFakeDashNode("running")
+	m := &dashModel{
+		entries: []dashEntry{{name: "a", kind: fleet.KindRemote, node: node}},
+		results: make([]fleet.NodeResult, 1),
+		actions: make([]dashAction, 1),
+		width:   120, height: 40,
+	}
+	m.slowBusy = true
+	m.nextSlowAt = time.Time{} // the deadline is due
+	if cmd := m.refreshRemoteGroup(true); cmd != nil {
+		t.Fatal("started a second slow round over one in flight")
+	}
+}
+
+// A refused start lands on the status line in the one-shot wording, and a
+// success that reports no state says done.
+func TestDashModelStartOutcomeWordings(t *testing.T) {
+	fail := newFakeDashNode("stopped")
+	fail.startErr = errors.New("boot exploded")
+	empty := newFakeDashNode("stopped")
+	empty.startReply = &daemon.StatusResponse{}
+	m := &dashModel{
+		entries: []dashEntry{
+			{name: "a", kind: fleet.KindDaemon, node: fail},
+			{name: "b", kind: fleet.KindDaemon, node: empty},
+		},
+		results: make([]fleet.NodeResult, 2),
+		actions: make([]dashAction, 2),
+		width:   120, height: 40,
+	}
+	_, cmd := m.Update(dashKey("s"))
+	msgA, _ := cmd().(dashActionMsg)
+	next, _ := m.Update(msgA)
+	m = next.(*dashModel)
+	if m.statusLine != "a: start failed — boot exploded" {
+		t.Errorf("failure wording: %q", m.statusLine)
+	}
+	if m.actions[0].verb != "" {
+		t.Errorf("the failed action was not cleared: %+v", m.actions[0])
+	}
+	if fail.starts != 1 {
+		t.Fatal("the failing start was not made")
+	}
+	next, _ = m.Update(dashKey("j"))
+	m = next.(*dashModel)
+	_, cmd = m.Update(dashKey("s"))
+	msgB, _ := cmd().(dashActionMsg)
+	next, _ = m.Update(msgB)
+	m = next.(*dashModel)
+	if m.statusLine != "b: start — done" {
+		t.Errorf("no-state success wording: %q", m.statusLine)
+	}
+}
+
+// A node without the progress capability starts through the plain verb, and
+// says nothing on the way — the tile shows the verb alone.
+func TestDashModelStartOnPlainNode(t *testing.T) {
+	f := newFakeDashNode("stopped")
+	var caught []tea.Msg
+	m := &dashModel{
+		entries: []dashEntry{{name: "a", kind: fleet.KindDaemon, node: plainDashNode{f}}},
+		results: []fleet.NodeResult{{Name: "a"}},
+		actions: make([]dashAction, 1),
+		send:    func(msg tea.Msg) { caught = append(caught, msg) },
+		width:   120, height: 40,
+	}
+	next, cmd := m.Update(dashKey("s"))
+	m = next.(*dashModel)
+	if cmd == nil {
+		t.Fatal("s did not start the plain node")
+	}
+	if m.actions[0].verb != "start" {
+		t.Fatalf("no action recorded: %+v", m.actions[0])
+	}
+	if v := m.View(); !strings.Contains(v, "a  starting") {
+		t.Errorf("the in-flight tile does not carry the verb:\n%s", v)
+	}
+	msg, _ := cmd().(dashActionMsg)
+	next, _ = m.Update(msg)
+	m = next.(*dashModel)
+	if f.starts != 1 {
+		t.Fatal("the plain start was not made")
+	}
+	if len(caught) != 0 {
+		t.Errorf("a plain start reported progress: %v", caught)
+	}
+	if m.statusLine != "a: start — running" {
+		t.Errorf("status line: %q", m.statusLine)
+	}
+}
+
+// beginAction itself refuses a node that already carries an action, in its
+// own words — the keys gate first, so this is the guard behind them.
+func TestDashModelBeginActionRefusesANodeStillWorking(t *testing.T) {
+	node := newFakeDashNode("running")
+	m := &dashModel{
+		entries: []dashEntry{{name: "a", kind: fleet.KindDaemon, node: node}},
+		results: []fleet.NodeResult{{Name: "a"}},
+		actions: make([]dashAction, 1),
+		width:   120, height: 40,
+	}
+	m.actions[0] = dashAction{verb: "start"}
+	if cmd := m.beginAction("start"); cmd != nil {
+		t.Fatal("started a node still starting")
+	}
+	if m.statusLine != "a: still starting" {
+		t.Errorf("status line: %q", m.statusLine)
+	}
+}
+
+// A line for a node the board does not know is dropped, and a final for one
+// still leaves its line on the footer without touching a real node.
+func TestDashModelUnknownNodeMessagesIgnored(t *testing.T) {
+	node := newFakeDashNode("running")
+	m := &dashModel{
+		entries: []dashEntry{{name: "a", kind: fleet.KindDaemon, node: node}},
+		results: []fleet.NodeResult{{Name: "a"}},
+		actions: make([]dashAction, 1),
+		width:   120, height: 40,
+	}
+	next, _ := m.Update(dashActionProgressMsg{node: "ghost", line: "a line"})
+	m = next.(*dashModel)
+	if m.actions[0].line != "" {
+		t.Errorf("a stranger's line landed on the wrong tile: %+v", m.actions[0])
+	}
+	next, _ = m.Update(dashActionMsg{node: "ghost", verb: "start", status: daemon.StatusResponse{State: "running"}})
+	m = next.(*dashModel)
+	if m.actions[0].verb != "" {
+		t.Errorf("a stranger's final cleared this node: %+v", m.actions[0])
+	}
+	if m.statusLine != "ghost: start — running" {
+		t.Errorf("footer: %q", m.statusLine)
+	}
+}
+
+// A board with no entries answers its keys and draws without panicking.
+func TestDashModelEmptyFleet(t *testing.T) {
+	m := &dashModel{width: 120, height: 40}
+	m.keepVisible()
+	if m.scrollRow != 0 {
+		t.Fatalf("keepVisible on nothing: %d", m.scrollRow)
+	}
+	for _, key := range []string{"j", "k", "up", "down", "r", "s", "x", "pgup", "pgdown"} {
+		next, _ := m.Update(dashKey(key))
+		m = next.(*dashModel)
+	}
+	if m.confirm {
+		t.Error("x opened a confirmation on a board with no nodes")
+	}
+	if v := m.View(); v == "" {
+		t.Error("an empty board drew nothing")
+	}
+}
+
 // The end-to-end path: the real program against in-memory nodes — a tile
 // turns on with s, the stop confirmation names the node, and y turns it
 // off. q leaves with the terminal restored, so WaitFinished sees a clean
@@ -861,17 +1204,23 @@ func TestDashModelForFleetFile(t *testing.T) {
 	if _, err := dashModelFor(""); err == nil {
 		t.Fatal("missing fleet file did not fail")
 	}
-	writeFleetFile(t, "nodes:\n  - name: broken\n    host: 127.0.0.1\n    port: 1\n    tokenEnv: NO_SUCH_OUTFIT_VAR\n")
+	writeFleetFile(t, "nodes:\n  - name: ok\n    host: 127.0.0.1\n    port: 4242\n  - name: broken\n    host: 127.0.0.1\n    port: 1\n    tokenEnv: NO_SUCH_OUTFIT_VAR\n")
 	m, err := dashModelFor("")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(m.entries) != 1 || m.entries[0].node != nil {
-		t.Fatalf("entries: %+v", m.entries)
+	if len(m.entries) != 2 || m.entries[0].node == nil {
+		t.Fatalf("a healthy entry did not become a node: %+v", m.entries)
 	}
-	if m.entries[0].standing.Outcome != fleet.OutcomeConfigError {
-		t.Fatalf("standing outcome: %v", m.entries[0].standing.Outcome)
+	if m.entries[1].node != nil {
+		t.Fatalf("the broken entry became a node: %+v", m.entries[1])
 	}
+	if m.entries[1].standing.Outcome != fleet.OutcomeConfigError {
+		t.Fatalf("standing outcome: %v", m.entries[1].standing.Outcome)
+	}
+	// A frame tall enough to show both rows: the model carries no size until
+	// the window reports one, and the default is short enough to scroll.
+	m.width, m.height = 120, 40
 	view := m.View()
 	if !strings.Contains(view, "broken") || !strings.Contains(view, "config-error") {
 		t.Errorf("board does not show the broken node:\n%s", view)

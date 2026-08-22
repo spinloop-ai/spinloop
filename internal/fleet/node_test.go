@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/lucinate-ai/outfit/internal/daemon"
 )
 
 // stubDaemon serves the control API endpoints a node exposes. token is the
@@ -253,5 +255,41 @@ func TestFanOutFailedCarriesTheDaemonsMessage(t *testing.T) {
 	}
 	if !strings.Contains(r.Detail(), "collector exploded") {
 		t.Errorf("detail = %q, want the daemon's message", r.Detail())
+	}
+}
+
+// Result is the seam a caller outside the package (the fleet command's
+// start/stop) uses to turn one node call into a rendered row: the error is
+// classified the same way as fan-out's, and the reply rides along.
+func TestResultCarriesTheStatusAndTheVerdict(t *testing.T) {
+	good := Result("a", nil, daemon.StatusResponse{State: "ready"})
+	if !good.OK() || good.Status.State != "ready" || good.Detail() != "" {
+		t.Errorf("Result on success = %+v", good)
+	}
+	bad := Result("a", fmt.Errorf("boot exploded"), daemon.StatusResponse{})
+	if bad.OK() || bad.Detail() != "boot exploded" || bad.Outcome != OutcomeUnreachable {
+		t.Errorf("Result on error = %+v", bad)
+	}
+}
+
+// NewNode for a remote entry loads the registered environment's config, and
+// whatever is missing is a per-node error the way every other missing thing
+// is: no config directory to find it in, or the environment never registered.
+func TestNewNodeForAUnregisteredRemoteEnvironment(t *testing.T) {
+	cfg := &Config{}
+	t.Setenv("OUTFIT_CONFIG_DIR", "")
+	t.Setenv("XDG_CONFIG_HOME", "")
+	t.Setenv("HOME", "")
+	if _, err := cfg.NewNode(NodeConfig{Name: "env", Kind: KindRemote}); err == nil {
+		t.Error("a remote entry with no config directory should fail")
+	}
+	// With a registry to look in, an unregistered environment fails the node,
+	// not the fleet: the name never has to be env-shaped for that, a path-like
+	// one simply finds nothing.
+	t.Setenv("OUTFIT_CONFIG_DIR", t.TempDir())
+	for _, name := range []string{"env", "a/b"} {
+		if _, err := cfg.NewNode(NodeConfig{Name: name, Kind: KindRemote}); err == nil {
+			t.Errorf("unregistered environment %q built a node", name)
+		}
 	}
 }
