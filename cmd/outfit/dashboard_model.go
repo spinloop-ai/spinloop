@@ -339,12 +339,12 @@ func (m *dashModel) beginAction(verb string) tea.Cmd {
 			send(dashActionProgressMsg{node: e.name, line: line})
 		}
 	}
+	starter, isStarter := e.node.(fleet.ProgressStarter)
 	var act func(context.Context) (daemon.StatusResponse, error)
 	switch {
 	case verb == "stop":
 		act = e.node.Stop
-	case e.node.(fleet.ProgressStarter) != nil:
-		starter := e.node.(fleet.ProgressStarter)
+	case isStarter:
 		act = func(ctx context.Context) (daemon.StatusResponse, error) {
 			return starter.StartWithProgress(ctx, progress)
 		}
