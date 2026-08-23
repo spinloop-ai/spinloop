@@ -107,8 +107,11 @@ llama-server \
   --jinja --ctx-size 524288 --parallel 4 -ngl 99 \
   --chat-template-kwargs '{"reasoning_strength":"high"}' \
   --temp 1.0 --top-p 0.95 --top-k 64 \
-  --host 127.0.0.1 --port 8080
+  --host 127.0.0.1 --port 8080 --alias muse-glimmer-30b
 ```
+
+(`outfit serve --dry-run` prints the same command, built from
+[`preset.ini`](preset.ini); this is what it produces.)
 
 `--no-mmproj` is what makes this text-only: the repo publishes
 `mmproj-kquant.gguf` beside the weights, and `--hf-repo` fetches and loads it
@@ -326,7 +329,11 @@ doesn't resolve. Keep separate Outfits if you want both.
 ```sh
 outfit remote deploy --dry-run
 outfit remote deploy
-eval "$(outfit remote start)"
+eval "$(outfit remote start --env)"   # -e/--env is what prints the
+                                       # OPENAI_BASE_URL/OPENAI_API_KEY export
+                                       # lines; without it, start's output is
+                                       # progress text on stderr and there is
+                                       # nothing on stdout for eval to run
 outfit remote stop
 ```
 
