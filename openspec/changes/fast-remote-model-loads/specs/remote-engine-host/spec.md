@@ -11,21 +11,23 @@ daemon's service unit SHALL run the daemon with the pre-warm option enabled.
 The boot sequence SHALL derive the daemon's deploy config from the
 environment's stored deploy config — with the cloud-owned settings (bind
 address and port, API-key delivery, the synced local weights path) resolved
-into it — write it under that pinned config directory, and enable the daemon,
-after which it SHALL signal that boot is complete. The boot SHALL NOT request
-the engine's start: the control plane's start request is what starts the
-engine, on a fresh boot and a re-wake alike, so every start is the same
-explicit API start any client performs. The engine command the daemon runs
-SHALL be equivalent to the one the boot script previously installed for that
-runner.
+into it — write it under that pinned config directory, and enable the daemon.
+The boot writes the deploy config before it enables the daemon, so the
+daemon's first answer to its control API is the boot's signal that the config
+is stored; the control plane waits for that answer before issuing a start.
+The boot SHALL NOT request the engine's start: the control plane's start
+request is what starts the engine, on a fresh boot and a re-wake alike, so
+every start is the same explicit API start any client performs. The engine
+command the daemon runs SHALL be equivalent to the one the boot script
+previously installed for that runner.
 
 #### Scenario: Boot leaves the engine to the control plane
 
 - **WHEN** an instance boots for an environment whose deploy config names a
   runner and model
-- **THEN** the boot has written the deploy config, enabled the daemon with
-  the pre-warm option, and signalled boot complete, and the engine starts
-  only when the control plane's start request arrives
+- **THEN** the boot has written the deploy config and enabled the daemon with
+  the pre-warm option, and the engine starts only when the control plane's
+  start request arrives
 
 #### Scenario: Boot starts the engine through the daemon
 

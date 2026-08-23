@@ -126,13 +126,67 @@ func TestStartEngineWithoutAStoredModelPrewarmsNothing(t *testing.T) {
 	}
 }
 
-// Guard against a regression that makes the warm path block the start: the
-// default prewarmModel must return immediately no matter what it is given.
+// Guard against a regression that makes the warm path block the start:
+// PrewarmModel must return immediately no matter what it is given.
 func TestPrewarmModelNeverBlocks(t *testing.T) {
 	start := time.Now()
-	prewarmModel(filepath.Join(t.TempDir(), "absent"))
-	prewarmModel(t.TempDir())
+	PrewarmModel(filepath.Join(t.TempDir(), "absent"))
+	PrewarmModel(t.TempDir())
 	if elapsed := time.Since(start); elapsed > time.Second {
-		t.Fatalf("prewarmModel took %s; it must not delay a start", elapsed)
+		t.Fatalf("PrewarmModel took %s; it must not delay a start", elapsed)
 	}
 }
+
+// The ceiling: a start's own choice may disable a pre-warm, but it can never
+// enable one on a daemon that was not launched with the option — that is what
+// keeps a fleet node or a laptop daemon pre-warm-free even if a pushed config
+// asks for it.
+func TestStartEngineWithoutTheOptionNeverPrewarms(t *testing.T) {
+	var warmed []string
+	d := testDaemon(t, "exit 0")
+	// No Prewarm wired: the daemon was not launched with the option.
+
+	on := true
+	model := filepath.Join(t.TempDir(), "model.gguf")
+	if err := d.Push(remote.DeployConfig{Runner: "llamacpp", ModelID: model, Prewarm: &on}); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.StartEngine(); err != nil {
+		t.Fatal(err)
+	}
+	if len(warmed) != 0 {
+		t.Fatalf("prewarm calls = %v, want none: the option is off", warmed)
+	}
+}
+
+func TestStartEngineHonoursTheStartsPrewarmChoice(t *testing.T) {
+	model := filepath.Join(t.TempDir(), "model.gguf")
+	off := false
+	cases := []struct {
+		name   string
+		choice *bool
+		want   int
+	}{
+		{"absent keeps the daemon default, which is on", nil, 1},
+		{"an explicit on pre-warms", ptrBool(true), 1},
+		{"an explicit off skips it", &off, 0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var warmed []string
+			d := testDaemon(t, "exit 0")
+			d.Prewarm = func(modelPath string) { warmed = append(warmed, modelPath) }
+			if err := d.Push(remote.DeployConfig{Runner: "llamacpp", ModelID: model, Prewarm: tc.choice}); err != nil {
+				t.Fatal(err)
+			}
+			if err := d.StartEngine(); err != nil {
+				t.Fatal(err)
+			}
+			if len(warmed) != tc.want {
+				t.Fatalf("prewarm calls = %d, want %d", len(warmed), tc.want)
+			}
+		})
+	}
+}
+
+func ptrBool(v bool) *bool { return &v }

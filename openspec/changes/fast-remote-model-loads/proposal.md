@@ -72,11 +72,11 @@ None.
   the start request's choice); `cmd/outfit` (the daemon option, the remote
   start/restart flags); the daemon's OpenAPI description and its contract
   test for the new field.
-- **remote/**: the start Lambda (the block device mapping, the wait for boot
-  to signal complete, the start request's body, the pre-warm parameter);
-  `runners/daemon-boot.ts` (the daemon unit's option, the boot-complete
-  marker in place of the start loop); `shared/daemon.ts` (the start command
-  with its body); the shared deploy-config type.
+- **remote/**: the start Lambda (the block device mapping, the wait for the
+  daemon to answer, the start request's body, the pre-warm parameter);
+  `runners/daemon-boot.ts` (the daemon unit's option, the dropped start
+  loop); `shared/daemon.ts` (the start command with its body); the daemon
+  deploy-config JSON with its pre-warm property.
 - **Cost**: provisioned throughput adds roughly $4.40/month, pro-rated to
   time up (875 MiB/s over the baseline at $0.005/MiB-month).
 - **Release coupling**: the pre-warm and the boot change live in the baked

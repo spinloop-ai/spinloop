@@ -57,9 +57,10 @@ func (n *remoteNode) Metrics(ctx context.Context) (metrics.Stats, error) {
 }
 
 func (n *remoteNode) Start(ctx context.Context) (daemon.StatusResponse, error) {
-	// progress is called on every retry and needs a value; onState/retainUntil
-	// are unset — a fleet-driven start reports nothing and holds nothing.
-	resp, err := remote.Start(ctx, n.cfg, func(string) {}, nil, nil)
+	// progress is called on every retry and needs a value; prewarm, onState
+	// and retainUntil are unset — a fleet-driven start reports nothing, holds
+	// nothing, and takes the cloud's pre-warm default.
+	resp, err := remote.Start(ctx, n.cfg, nil, func(string) {}, nil, nil)
 	if err != nil {
 		return daemon.StatusResponse{}, err
 	}

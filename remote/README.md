@@ -34,8 +34,11 @@ The instance is **stateless**, and responsibilities are split cleanly:
   progress and outcome to CloudWatch, and terminates itself on success and on
   failure alike. A prefix is complete when it holds a `_seed.json` manifest,
   which also records the exact revision the weights came from.
-- At boot the instance **syncs the weights from S3** onto its disk (~2–4 min)
-  and starts the engine pointed at them.
+ - At boot the instance **syncs the weights from S3** onto its disk (~2–4 min)
+   and starts its outfit daemon pointed at them. The daemon starts no engine
+   itself: the start Lambda issues the engine's start (with the deploy config
+   as its body) once the daemon answers, on a fresh launch and a re-wake
+   alike.
 
 Because the AMI is a regional artifact, the start Lambda can launch in **any**
 availability zone — it tries each g6e zone in turn until one has capacity.
@@ -45,6 +48,13 @@ deploying it never runs (or fails on) a bake. You trigger bakes out-of-band
 with `pnpm bake <runner>`; each successful bake **tags** its AMI with its
 engine, and the start Lambda launches the **newest AMI matching the engine it
 was told to run**. A failed bake produces no new AMI and changes nothing.
+
+The control plane **renders** the boot script and the daemon's service unit,
+while the AMI **pins** the outfit binary that runs them. Keep that coupling
+honest: ship a new outfit release, bake the runtime AMIs with it, and only
+then `pnpm deploy` a control plane that renders units or scripts the new
+binary understands — the other order launches instances whose daemon never
+starts.
 
 ```
 outfit remote bootstrap ─▶ control-plane stack (Lambdas, S3, VPC, roles) + bake pipelines
@@ -250,10 +260,13 @@ A wake is an instance launch, an **S3 sync of the weights**, then loading
 them into VRAM and warm-up. Two things keep that fast: the launch provisions
 the root volume's gp3 throughput to its ceiling (an unprovisioned gp3 caps at
 125 MiB/s, which used to throttle both the sync and the load), and the daemon
-pre-warms the page cache as the engine starts, so the ~26 GB of weights stream
-through once at line rate and the engine's copy is mostly cache hits. A cold
-boot is roughly **5–7 minutes** end to end, every time, with no Hugging Face
-dependency. The first request after a cold start also pays a one-off warm-up
+pre-warms the page cache before the engine loads the model, so the ~26 GB of
+weights stream through once at line rate and the engine's copy is mostly cache
+hits. The cloud daemon pre-warms by default — `outfit remote start --prewarm=false`
+(a restart takes the same flag) skips it for one wake — and a plain
+`outfit daemon` on any other machine never pre-warms, since it is an option of
+the daemon, not of the config. A cold boot is roughly **5–7 minutes** end to
+end, every time, with no Hugging Face dependency. The first request after a cold start also pays a one-off warm-up
 (~30 s); steady-state decode is around 28 tokens/s. Watch a wake:
 
 ```sh

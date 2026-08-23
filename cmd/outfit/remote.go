@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -25,6 +26,7 @@ import (
 	"github.com/lucinate-ai/outfit/internal/preset"
 	"github.com/lucinate-ai/outfit/internal/remote"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 // cmdRemote dispatches the remote subcommands, which control the
@@ -396,11 +398,48 @@ func runRemoteEnv(args []string) error {
 	return nil
 }
 
+// prewarmFlag is the start's page-cache pre-warm choice: bare --prewarm
+// enables it, --prewarm=false disables it, and an absent flag sends no choice
+// at all, in which case the cloud default (enabled) applies. A *bool rather
+// than a bool: nil is the "unset" state a plain flag cannot hold.
+type prewarmFlag struct {
+	choice *bool
+}
+
+func (f *prewarmFlag) String() string {
+	if f.choice == nil {
+		return ""
+	}
+	return strconv.FormatBool(*f.choice)
+}
+
+func (f *prewarmFlag) Type() string { return "bool" }
+
+func (f *prewarmFlag) Set(v string) error {
+	b, err := strconv.ParseBool(v)
+	if err != nil {
+		return fmt.Errorf("--prewarm takes a boolean, got %q", v)
+	}
+	f.choice = &b
+	return nil
+}
+
+const prewarmUsage = "pre-warm the model's page cache before the engine loads it: --prewarm to enable, --prewarm=false to disable; unset leaves the cloud default (enabled) in place"
+
+// registerPrewarmChoice binds the start's pre-warm choice to a command's flag
+// set. The caller's variable is what the body reads after parsing. Bare
+// --prewarm arrives as NoOptDefVal, the same way -O does.
+func registerPrewarmChoice(fs *pflag.FlagSet, f *prewarmFlag) {
+	fs.Var(f, "prewarm", prewarmUsage)
+	fs.Lookup("prewarm").NoOptDefVal = "true"
+}
+
 func remoteStartCmd() *cobra.Command {
 	var timeout time.Duration
 	const timeoutUsage = "overall time to wait for the endpoint"
 	var printEnv bool
 	var keepD string
+	var prewarm prewarmFlag
 	c := &cobra.Command{
 		Use:   "start",
 		Short: "boot the instance and print its endpoint",
@@ -412,18 +451,19 @@ agent needs.`,
 		ValidArgsFunction: aliasSlot,
 		RunE: func(c *cobra.Command, args []string) error {
 			resolve(c)
-			return runRemoteStart(args, timeout, printEnv, keepD)
+			return runRemoteStart(args, timeout, printEnv, keepD, prewarm.choice)
 		},
 	}
 	fs := c.Flags()
 	fs.DurationVarP(&timeout, "timeout", "t", 15*time.Minute, timeoutUsage)
 	fs.BoolVarP(&printEnv, "env", "e", false, "print export lines to stdout for eval")
 	fs.StringVar(&keepD, "keep", "", "retain instance until now + DURATION (e.g. 4h, 60m), preventing the idle sweep from stopping it")
+	registerPrewarmChoice(fs, &prewarm)
 	return c
 }
 
 // runRemoteStart is the body of `outfit remote start`.
-func runRemoteStart(args []string, timeout time.Duration, printEnv bool, keepD string) error {
+func runRemoteStart(args []string, timeout time.Duration, printEnv bool, keepD string, prewarm *bool) error {
 	cfg, err := resolveRemoteConfig(outfitArg(args))
 	if err != nil {
 		return err
@@ -449,7 +489,7 @@ func runRemoteStart(args []string, timeout time.Duration, printEnv bool, keepD s
 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	resp, err := remote.Start(ctx, cfg, progress.line, progress.setState, retainUntil)
+	resp, err := remote.Start(ctx, cfg, prewarm, progress.line, progress.setState, retainUntil)
 	if err != nil {
 		return err
 	}
@@ -615,6 +655,7 @@ func remoteRestartCmd() *cobra.Command {
 	var force bool
 	var timeout time.Duration
 	const timeoutUsage = "overall time to wait for the endpoint"
+	var prewarm prewarmFlag
 	c := &cobra.Command{
 		Use:   "restart",
 		Short: "stop the instance and bring it back",
@@ -628,20 +669,22 @@ skipped: for when the engine or its daemon will not answer it.`,
 		ValidArgsFunction: aliasSlot,
 		RunE: func(c *cobra.Command, args []string) error {
 			resolve(c)
-			return runRemoteRestart(args, force, timeout)
+			return runRemoteRestart(args, force, timeout, prewarm.choice)
 		},
 	}
 	fs := c.Flags()
 	fs.BoolVarP(&force, "force", "F", false, "skip the graceful engine stop")
 	fs.DurationVarP(&timeout, "timeout", "t", 15*time.Minute, timeoutUsage)
+	registerPrewarmChoice(fs, &prewarm)
 	return c
 }
 
 // runRemoteRestart is the body of `outfit remote restart`. It stops the
 // instance in the pause manner — without terminating it, so the boot disk and
 // weights survive and the address does not change — and reuses the wake's own
-// deadline and retry handling to block until the model serves again.
-func runRemoteRestart(args []string, force bool, timeout time.Duration) error {
+// deadline and retry handling to block until the model serves again. prewarm
+// rides on the wake's start exactly as a start's would.
+func runRemoteRestart(args []string, force bool, timeout time.Duration, prewarm *bool) error {
 	cfg, err := resolveRemoteConfig(outfitArg(args))
 	if err != nil {
 		return err
@@ -671,7 +714,7 @@ func runRemoteRestart(args []string, force bool, timeout time.Duration) error {
 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	resp, err := remote.Restart(ctx, cfg, force, progress.line, progress.setState)
+	resp, err := remote.Restart(ctx, cfg, force, prewarm, progress.line, progress.setState)
 	if err != nil {
 		return err
 	}

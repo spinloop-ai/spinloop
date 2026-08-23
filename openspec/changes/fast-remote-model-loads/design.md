@@ -32,32 +32,37 @@ the control plane can reach.
 **The option is a ceiling; the start may lower it, never raise it.**
 `outfit daemon` gains `--prewarm` (default off), which installs the pre-warm
 in the daemon; the deploy config a start carries gains a tri-state `prewarm`
-field (`*bool` in Go, `boolean | undefined` in the shared TS type). Effective
-pre-warm = daemon option AND (config field absent → true, else the field).
-The cloud AMI's unit passes `--prewarm`, so the cloud default is on; a
-`--no-prewarm` on `outfit remote start` renders `prewarm: false` into the
-start's config; a local or fleet daemon never carries the flag, so no config
-can light it up. Alternatives: a per-start field defaulting on everywhere
-(would make a laptop or a fleet node read 26 GB on every start — the
-original complaint); a start-call query parameter instead of a config field
-(the deploy config is already the unit that says *what and how* a start runs,
-and the start body is already push-then-start, so a new parameter beside it
-would be a second way to say the same thing).
+field (`*bool` in Go, an optional property of the daemon deploy-config JSON).
+Effective pre-warm = daemon option AND (config field absent → true, else the
+field). The cloud AMI's unit passes `--prewarm`, so the cloud default is on;
+`outfit remote start --prewarm=false` sends the choice to the control plane,
+which renders `prewarm: false` into the start's body; a local or fleet daemon
+never carries the flag, so no config can light it up. Alternatives: a
+per-start field defaulting on everywhere (would make a laptop or a fleet node
+read 26 GB on every start — the original complaint); keeping the choice off
+the config body entirely (the deploy config is already the unit that says
+*what and how* a start runs, and the start body is already push-then-start,
+so a value beside it would be a second way to say the same thing).
 
-**The Lambda owns the start on every path, after boot signals complete.**
+**The Lambda owns the start on every path, once the daemon answers.**
 The boot user data keeps everything except the engine start — it syncs the
-weights, writes the deploy config, enables the daemon (now with `--prewarm`),
-and touches a boot-complete marker under the daemon's pinned config dir, in
-place of today's thirty-try start loop. The start Lambda, after the SSM agent
-is online, waits for boot readiness — the marker present, *or* the daemon
-already reporting a running engine — and then issues the start itself, on a
-fresh launch and a re-wake alike. The "or already running" half matters: an
-instance booted by an older user data (which still starts its own engine)
-must not wedge the new Lambda's wait. Alternatives: keep the boot's start and
-have the Lambda only add its start on re-wake (then the operator's choice
-cannot reach a fresh boot's start — the whole point of moving ownership);
-have the Lambda poll the sync's progress directly (the marker is one SSM
-check, and the boot is the only thing that knows the sync is done).
+weights, writes the deploy config, enables the daemon (now with `--prewarm`) —
+and stops; the thirty-try start loop is gone. The boot writes the deploy
+config *before* it enables the daemon, so the daemon's first answer to its
+control API is the boot's signal that the config is stored: no separate
+marker file to write, lose or interpret. The start Lambda, after the SSM
+agent is online, waits for that first answer (any state — the daemon answers
+before the engine exists, and stays up when it is stopped) and then issues
+the start itself, on a fresh launch and a re-wake alike. The wait also covers
+the in-flight case: an instance booted by an older user data (which still
+runs its own start loop) answers the same way, and the Lambda's start meets
+the engine the old boot started with a 409, which is the idempotent start
+doing its job. Alternatives: keep the boot's start and have the Lambda only
+add its start on re-wake (then the operator's choice cannot reach a fresh
+boot's start — the whole point of moving ownership); a boot-complete marker
+file (one more thing to write, and the daemon's answer already implies it —
+the daemon starts only after the config is written, which is what the marker
+would have said).
 
 **The Lambda's start carries the rendered deploy config as its body, on
 every path.** The Lambda already renders exactly this config for the user
@@ -89,25 +94,26 @@ network-bound, not EBS-bound.
   moving the fresh boot onto it makes the two paths behave the same, which is
   the point. The baked crash-nudge intentionally does not start a *stopped*
   engine (only a crashed one), so readiness stays the control plane's to own.
-- [A fresh boot's sync fails] → the marker never appears; the Lambda hits its
-  deadline and returns the same retryable 503 it does today when a crashing
-  engine never answers health. Remediation is unchanged (redeploy, or
-  terminate and let the next start relaunch).
+- [A fresh boot's sync fails] → the daemon is never enabled, so it never
+  answers; the Lambda hits its deadline and returns the same retryable 503 it
+  does today when a crashing engine never answers health. Remediation is
+  unchanged (redeploy, or terminate and let the next start relaunch).
 - [A new Lambda launches an instance from an older baked AMI] → the unit the
   Lambda renders carries `--prewarm`, which the older outfit binary refuses,
   and that daemon never starts. Mitigation is ordering: bake the runtime AMI
   with the new outfit release before deploying the control plane — the
   established convention for exactly this shape of change (the control plane
-  deploys after the images that carry what it needs). The boot-readiness wait
-  tolerating an already-running engine covers in-flight instances of older
-  user data; it cannot cover the flag, and must not pretend to.
+  deploys after the images that carry what it needs). The daemon-answers wait
+  covers in-flight instances of older user data (they answer, and their own
+  start loop and the Lambda's start meet in a 409); it cannot cover the
+  flag, and must not pretend to.
 - [Rolling the control plane back after a rebake] → a new-AMI instance's boot
   no longer starts its own engine, so the old Lambda would leave it idle; the
   rollback is rebake-then-redeploy, in that order. The window is short and the
   environment reports 503 until it is done, rather than failing silently.
 - [The pre-warm competes with the sync for the volume] → it cannot: the
-  start (and so the pre-warm) is issued only after the marker, which is
-  written after the sync.
+  daemon (and so the start, and so the pre-warm) exists only after the sync —
+  the boot enables the daemon as its last step.
 
 ## Migration Plan
 

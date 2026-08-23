@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { DeployConfig } from '../lambda/shared/deploy-config';
+import { DAEMON_API, daemonStartCmd } from '../lambda/shared/daemon';
 
 // The start Lambda reads its wiring from the environment at import time, so
 // stub every required variable before the module loads.
@@ -51,15 +52,17 @@ describe('buildInferenceUserData', () => {
     for (const cfg of [LLAMACPP, VLLM]) {
       const data = buildInferenceUserData('prod', cfg);
       expect(data).toContain('outfit-daemon.service');
-      expect(data).toContain('outfit daemon --api-addr 127.0.0.1:4242');
       expect(data).toContain('systemctl enable --now outfit-daemon.service');
       expect(data).toContain('outfit-nudge.timer');
       expect(data).not.toContain('llama-server.service');
       expect(data).not.toContain('vllm.service');
-      // The first start is an explicit API call, retried until the daemon
-      // answers; 409 (already running) also counts.
-      expect(data).toContain('-X POST http://127.0.0.1:4242/v1/start');
-      expect(data).toContain('"$code" = "409"');
+      // The cloud daemon pre-warms by default: the unit opts in, and a start
+      // request may still decline it for one start.
+      expect(data).toContain('outfit daemon --api-addr 127.0.0.1:4242 --prewarm');
+      // The boot starts no engine: the control plane's start request issues
+      // the start on every path, and the daemon's first answer is the boot's
+      // signal that its deploy config is stored.
+      expect(data).not.toContain('/v1/start');
     }
   });
 
@@ -88,6 +91,9 @@ describe('buildInferenceUserData', () => {
     }
     // The daemon switches the metrics endpoint on itself.
     expect(data).not.toContain('--metrics');
+    // The boot's stored copy states no pre-warm choice: it is the start's to
+    // make, not the boot's, and the start sends its own config.
+    expect(data).not.toContain('"prewarm"');
   });
 
   it('names a companion drafter at its synced path', () => {
@@ -146,5 +152,22 @@ describe('buildInferenceUserData', () => {
     expect(data).toContain('/var/lib/outfit/daemon/engine.log');
     expect(data).toContain('/test/llamacpp');
     expect(data).not.toContain('/var/log/llm/llama-server.log');
+  });
+
+  it('sends the start its config body, encoded so the shell never parses it', () => {
+    const body = JSON.stringify({
+      runner: 'llamacpp',
+      modelId: '/opt/llm/model/model.gguf',
+      servedModelName: 'friendly',
+      prewarm: false,
+    });
+    const cmd = daemonStartCmd(body);
+    expect(cmd).toContain(`${DAEMON_API}/v1/start`);
+    // The body crosses the shell as base64 alone; decoding the command's
+    // payload back must yield the exact config, quotes and all.
+    const b64 = cmd.match(/echo ([A-Za-z0-9+\/=]+) \| base64 -d/);
+    expect(b64, 'the start must carry its body via base64').not.toBeNull();
+    expect(Buffer.from(b64![1], 'base64').toString('utf8')).toBe(body);
+    expect(cmd).not.toContain(body);
   });
 });

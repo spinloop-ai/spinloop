@@ -1,5 +1,6 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Context, LambdaFunctionURLEvent, LambdaFunctionURLResult } from 'aws-lambda';
+import { DAEMON_STATUS_CMD } from '../lambda/shared/daemon';
 
 // The wake branch of the start Lambda: a previously stopped instance is
 // re-woken (started, not replaced), a dying instance fails retryably, and a
@@ -83,12 +84,29 @@ const HEALTHY = { status: 'Success', stdout: '200' };
 
 beforeEach(() => {
   vi.clearAllMocks();
-  readDeployConfig.mockResolvedValue({ runner: 'llamacpp' });
+  // A parsed config, whole: the start's body renders it, and the render would
+  // name fields a partial mock does not carry.
+  readDeployConfig.mockResolvedValue({
+    runner: 'llamacpp',
+    modelId: 'org/model',
+    quant: 'Q4_K_M',
+    weightsPrefix: 'llamacpp/org/model/Q4_K_M',
+    contextSize: 32768,
+    servedModelName: 'friendly',
+    serveArgs: [],
+    companions: {},
+  });
   findEnvEip.mockResolvedValue({ publicIp: '198.51.100.7', allocationId: 'eipalloc-test' });
   findEnvSecurityGroup.mockResolvedValue('sg-test');
   readEnvApiKey.mockResolvedValue('sk-test');
   isSsmAgentOnline.mockResolvedValue(true);
-  runShellCommand.mockResolvedValue(HEALTHY);
+  // Command-aware: the daemon-ready phase parses the daemon's status reply,
+  // while the health poll reads a bare HTTP code.
+  runShellCommand.mockImplementation((_instanceId: string, command: string) =>
+    command === DAEMON_STATUS_CMD
+      ? Promise.resolve({ status: 'Success', stdout: JSON.stringify({ state: 'stopped' }) })
+      : Promise.resolve(HEALTHY),
+  );
   startEngineDaemon.mockResolvedValue(true);
 });
 
@@ -103,8 +121,13 @@ describe('re-waking a stopped instance', () => {
 
     expect(startInstance).toHaveBeenCalledWith('i-off');
     // The engine start is the control plane's ask, not user data's: a
-    // re-wake must not bet on the boot script re-running.
-    expect(startEngineDaemon).toHaveBeenCalledWith('i-off');
+    // re-wake must not bet on the boot script re-running. The start carries
+    // the deploy config as its body, with the pre-warm resolved to the cloud
+    // default (enabled) when the wake carries no choice.
+    expect(startEngineDaemon).toHaveBeenCalledWith(
+      'i-off',
+      expect.stringContaining('"prewarm": true'),
+    );
     // The session start is recorded, so the max-runtime cap measures this
     // session rather than first boot.
     expect(tagInstance).toHaveBeenCalledWith(

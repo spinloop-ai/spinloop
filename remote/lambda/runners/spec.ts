@@ -39,6 +39,13 @@ export interface RunnerSpec {
    */
   companionArgs(cfg: DeployConfig, modelDir: string): string[];
   /**
+   * The daemon deploy-config JSON this runner's boot stores on the instance —
+   * the same document the control plane's start request carries as its body,
+   * so a start always names the exact config the daemon runs. `prewarm` is
+   * the start's page-cache pre-warm choice; the boot's stored copy omits it.
+   */
+  daemonDeployConfigJson(cfg: DeployConfig, modelDir: string, port: number, prewarm?: boolean): string;
+  /**
    * Inference boot-script fragment: the runner's key delivery (env file or
    * key file), then the shared daemon boot that hands the engine to
    * `outfit daemon`.

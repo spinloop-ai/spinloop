@@ -10,7 +10,7 @@ import (
 // kernel's read-ahead engaged the way a small read would not.
 const prewarmChunk = 1 << 20
 
-// prewarmModel reads the model's files straight through, in the background,
+// PrewarmModel reads the model's files straight through, in the background,
 // filling the page cache ahead of the engine that is about to read them.
 //
 // The engine maps its weights and faults pages in as it copies them to the
@@ -23,11 +23,11 @@ const prewarmChunk = 1 << 20
 //
 // Best effort throughout: a missing or unreadable model just means the engine
 // faults as before, and nothing here ever blocks a start.
-func prewarmModel(path string) {
+func PrewarmModel(path string) {
 	go prewarmPath(path)
 }
 
-// prewarmPath is the synchronous half of prewarmModel: read every file under
+// prewarmPath is the synchronous half of PrewarmModel: read every file under
 // path (or path itself when it is not a directory) to EOF, skipping whatever
 // cannot be opened. Split out so a test can drive it without a goroutine.
 func prewarmPath(path string) {

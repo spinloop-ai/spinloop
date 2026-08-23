@@ -1,5 +1,6 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Context, LambdaFunctionURLEvent, LambdaFunctionURLResult } from 'aws-lambda';
+import { DAEMON_STATUS_CMD } from '../lambda/shared/daemon';
 
 // The fresh-launch branch of the start Lambda: with no existing instance it
 // launches from the newest baked AMI, provisioning the root volume's gp3
@@ -80,14 +81,29 @@ const HEALTHY = { status: 'Success', stdout: '200' };
 
 beforeEach(() => {
   vi.clearAllMocks();
-  // serveArgs is iterated when the boot script is built — a minimal config
-  // would only survive the re-wake paths, which never build it.
-  readDeployConfig.mockResolvedValue({ runner: 'llamacpp', serveArgs: [] });
+  // A parsed config, whole: the boot script iterates it, and the start's body
+  // renders it — a minimal mock would survive neither.
+  readDeployConfig.mockResolvedValue({
+    runner: 'llamacpp',
+    modelId: 'org/model',
+    quant: 'Q4_K_M',
+    weightsPrefix: 'llamacpp/org/model/Q4_K_M',
+    contextSize: 32768,
+    servedModelName: 'friendly',
+    serveArgs: [],
+    companions: {},
+  });
   findEnvEip.mockResolvedValue({ publicIp: '198.51.100.7', allocationId: 'eipalloc-test' });
   findEnvSecurityGroup.mockResolvedValue('sg-test');
   readEnvApiKey.mockResolvedValue('sk-test');
   isSsmAgentOnline.mockResolvedValue(true);
-  runShellCommand.mockResolvedValue(HEALTHY);
+  // Command-aware: the daemon-ready phase parses the daemon's status reply,
+  // while the health poll reads a bare HTTP code.
+  runShellCommand.mockImplementation((_instanceId: string, command: string) =>
+    command === DAEMON_STATUS_CMD
+      ? Promise.resolve({ status: 'Success', stdout: JSON.stringify({ state: 'stopped' }) })
+      : Promise.resolve(HEALTHY),
+  );
   startEngineDaemon.mockResolvedValue(true);
   findManagedInstance.mockResolvedValue(null);
   getInstance.mockResolvedValue({ instanceId: 'i-new', state: 'running', launchTime: new Date() });
@@ -126,5 +142,50 @@ describe('fresh launch', () => {
     expect(structured(result).statusCode).toBe(503);
     expect(JSON.parse(structured(result).body).state).toBe('no-ami');
     expect(runInstance).not.toHaveBeenCalled();
+  });
+
+  it('issues the engine start itself, with the deploy config as its body', async () => {
+    findLatestAmi.mockResolvedValue({ imageId: 'ami-test1', rootVolumeSizeGb: 80 });
+
+    const result = await handler(wakeEvent, context);
+    expect(structured(result).statusCode).toBe(200);
+
+    // The control plane owns the start on a fresh boot — the boot's user data
+    // starts no engine — and the start carries the config it will run, with
+    // the pre-warm resolved to the cloud default (enabled) when no choice
+    // was sent.
+    expect(startEngineDaemon).toHaveBeenCalledWith(
+      'i-new',
+      expect.stringContaining('"runner": "llamacpp"'),
+    );
+    const body = startEngineDaemon.mock.calls[0][1] as string;
+    expect(body).toContain('"prewarm": true');
+    expect(body).toContain('"modelId": "/opt/llm/model/model.gguf"');
+  });
+
+  it('carries an explicit pre-warm choice to the start', async () => {
+    findLatestAmi.mockResolvedValue({ imageId: 'ami-test1', rootVolumeSizeGb: 80 });
+    const event = {
+      queryStringParameters: { env: 'dev', prewarm: 'false' },
+      requestContext: { http: { method: 'POST' } },
+    } as unknown as LambdaFunctionURLEvent;
+
+    const result = await handler(event, context);
+    expect(structured(result).statusCode).toBe(200);
+
+    const body = startEngineDaemon.mock.calls[0][1] as string;
+    expect(body).toContain('"prewarm": false');
+  });
+
+  it('rejects a pre-warm that is not a choice', async () => {
+    const event = {
+      queryStringParameters: { env: 'dev', prewarm: 'maybe' },
+      requestContext: { http: { method: 'POST' } },
+    } as unknown as LambdaFunctionURLEvent;
+
+    const result = await handler(event, context);
+    expect(structured(result).statusCode).toBe(400);
+    expect(runInstance).not.toHaveBeenCalled();
+    expect(startEngineDaemon).not.toHaveBeenCalled();
   });
 });

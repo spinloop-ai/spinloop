@@ -19,9 +19,12 @@ fatal. One shared set of lifecycle Lambdas SHALL serve every environment in
 the account, selecting the instance by the environment identifier.
 
 The control plane SHALL request the engine's start on every path — a fresh
-launch and a re-wake alike — once the instance's boot has signalled complete;
-the boot's own user data SHALL NOT start the engine. A start request MAY carry
-a pre-warm choice for the engine's start; absent one, the cloud default (the
+launch and a re-wake alike — once the instance's daemon answers its control
+API, which on a fresh boot is the signal that the boot has stored the deploy
+config; the boot's own user data SHALL NOT start the engine. The start SHALL
+carry the deploy config as its body, so it always names the exact config the
+daemon runs. A start request MAY carry a pre-warm choice for the engine's
+start, which SHALL ride in that body; absent one, the cloud default (the
 pre-warm enabled) SHALL apply.
 
 #### Scenario: A zone without capacity is not the end of it
@@ -58,9 +61,10 @@ pre-warm enabled) SHALL apply.
 
 #### Scenario: The control plane starts the engine on a fresh boot
 
-- **WHEN** a fresh instance's boot has signalled complete
-- **THEN** the start request itself issues the engine's start, and reports
-  ready only once the model answers — the boot started no engine
+- **WHEN** a fresh instance's daemon first answers its control API
+- **THEN** the start request itself issues the engine's start, with the
+  deploy config as its body, and reports ready only once the model answers —
+  the boot started no engine
 
 #### Scenario: A start may carry the pre-warm choice
 

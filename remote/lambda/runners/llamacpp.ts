@@ -4,7 +4,7 @@
  * never appears in `ps`).
  */
 
-import { companionFileName, type CompanionRole } from '../shared/deploy-config';
+import { companionFileName, type CompanionRole, type DeployConfig } from '../shared/deploy-config';
 import { daemonBoot, daemonDeployConfig } from './daemon-boot';
 import type { RunnerSpec } from './spec';
 
@@ -40,6 +40,18 @@ const companionArgs = (
     `${modelDir}/${companionFileName(role)}`,
   ]);
 
+const daemonDeployConfigJson = (
+  cfg: DeployConfig,
+  modelDir: string,
+  port: number,
+  prewarm?: boolean,
+): string =>
+  daemonDeployConfig(cfg, syncedModelPath(modelDir), port, [
+    '--api-key-file',
+    '/etc/llm/api-key',
+    ...companionArgs(cfg.companions, modelDir),
+  ], prewarm);
+
 export const llamacpp: RunnerSpec = {
   // llama-server is pointed at the single synced GGUF.
   syncedModelPath,
@@ -62,16 +74,11 @@ export const llamacpp: RunnerSpec = {
 
   companionArgs: (cfg, modelDir) => companionArgs(cfg.companions, modelDir),
 
+  daemonDeployConfigJson,
+
   daemonBoot: (cfg, modelDir, port) => `mkdir -p /etc/llm
 printf '%s' "$API_KEY" >/etc/llm/api-key
 chmod 600 /etc/llm/api-key
 
-${daemonBoot(
-  daemonDeployConfig(cfg, syncedModelPath(modelDir), port, [
-    '--api-key-file',
-    '/etc/llm/api-key',
-    ...companionArgs(cfg.companions, modelDir),
-  ]),
-  '',
-)}`,
+${daemonBoot(daemonDeployConfigJson(cfg, modelDir, port), '')}`,
 };
