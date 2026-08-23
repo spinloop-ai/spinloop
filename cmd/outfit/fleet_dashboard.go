@@ -29,7 +29,7 @@ resource bars, the token counters — repainted on an interval.
 The view is read-only apart from three keys: s starts the selected node, a
 abandons a start or stop still in flight on it (the wait ends, the node is
 free again — a wake the cloud is carrying goes on), x stops it after a
-confirmation. j/k or the arrows move the selection, r forces a refresh, q or
+confirmation. The arrow keys move the selection, r forces a refresh, q or
 Ctrl+C leaves.
 
 A node that cannot be reached is still a tile, showing why, and a node whose
