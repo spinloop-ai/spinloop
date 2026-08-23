@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/lucinate-ai/outfit/internal/daemon"
@@ -280,4 +281,128 @@ func (n *failingNode) Stop(context.Context) (daemon.StatusResponse, error) {
 }
 func (n *failingNode) Logs(context.Context, int64, int) (daemon.LogsResponse, error) {
 	return daemon.LogsResponse{}, nil
+}
+
+// StartWithProgress carries the control plane's own lines up to the caller:
+// the retry during a boot, then the final verdict.
+func TestRemoteNodeStartWithProgressReportsTheBoot(t *testing.T) {
+	stubAWSCreds(t)
+	var (
+		mu       sync.Mutex
+		lines    []string
+		attempts int
+	)
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /start", func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		attempts++
+		first := attempts == 1
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		if first { // the boot needs a moment; the endpoint says so
+			w.WriteHeader(http.StatusServiceUnavailable)
+			w.Write([]byte(`{"state":"starting","retryAfterSeconds":1}`))
+			return
+		}
+		w.Write([]byte(`{"state":"ready","healthy":true}`))
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	cfg := remote.Config{StartURL: srv.URL + "/start", StopURL: srv.URL + "/start", Region: "us-east-1"}
+	node, err := NewRemoteNode("env", cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	starter, ok := node.(ProgressStarter)
+	if !ok {
+		t.Fatal("the remote node does not carry progress")
+	}
+	resp, err := starter.StartWithProgress(context.Background(), func(line string) {
+		mu.Lock()
+		lines = append(lines, line)
+		mu.Unlock()
+	})
+	if err != nil {
+		t.Fatalf("StartWithProgress: %v", err)
+	}
+	if resp.State != "ready" {
+		t.Errorf("state = %q", resp.State)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if attempts != 2 {
+		t.Errorf("start attempts = %d (want 2)", attempts)
+	}
+	if len(lines) < 1 || !strings.Contains(lines[0], "instance starting; retrying in 1s") {
+		t.Errorf("progress lines = %q (want the boot's retry line)", lines)
+	}
+}
+
+// A start the control plane refuses, and a stop it refuses, both surface as
+// errors the node's caller can show on its row.
+func TestRemoteNodeRejectedOperationsSurfaceAsErrors(t *testing.T) {
+	stubAWSCreds(t)
+	srv := remoteControlServer(t, `{"error":"boom"}`, http.StatusInternalServerError)
+	cfg := remote.Config{StartURL: srv.URL, StopURL: srv.URL, Region: "us-east-1"}
+	node, err := NewRemoteNode("env", cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	starter, ok := node.(ProgressStarter)
+	if !ok {
+		t.Fatal("the remote node does not carry progress")
+	}
+	if _, err := starter.StartWithProgress(ctx, nil); err == nil {
+		t.Error("a rejected start did not fail")
+	}
+	if _, err := node.Stop(ctx); err == nil {
+		t.Error("a rejected stop did not fail")
+	}
+}
+
+// A failing log read surfaces as an error, not as an empty tail: the caller
+// renders the detail rather than reporting "no logs" when the read itself
+// went wrong.
+func TestRemoteNodeLogsErrorsSurface(t *testing.T) {
+	stubAWSCreds(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest) // a client error: the SDK will not retry it
+		w.Write([]byte(`{"message":"boom"}`))
+	}))
+	t.Cleanup(srv.Close)
+	t.Setenv("AWS_ENDPOINT_URL_CLOUDWATCH_LOGS", srv.URL)
+	cfg := remote.Config{StartURL: "http://x", StopURL: "http://x", Environment: "env-1", Region: "us-east-1"}
+	node, err := NewRemoteNode("env", cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := node.Logs(context.Background(), 0, 100); err == nil {
+		t.Error("a failing log read surfaced as success")
+	}
+}
+
+// A log store that answers with an empty tail is a readable state — the
+// engine has not logged here — so the node reports missing, not an error.
+func TestRemoteNodeLogsEmptyTailIsMissingNotFailure(t *testing.T) {
+	stubAWSCreds(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/x-amz-json-1.1")
+		w.Write([]byte(`{"events":[]}`))
+	}))
+	t.Cleanup(srv.Close)
+	t.Setenv("AWS_ENDPOINT_URL_CLOUDWATCH_LOGS", srv.URL)
+	cfg := remote.Config{StartURL: "http://x", StopURL: "http://x", Environment: "env-1", Region: "us-east-1"}
+	node, err := NewRemoteNode("env", cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := node.Logs(context.Background(), 0, 100)
+	if err != nil {
+		t.Fatalf("an empty tail is not a failure: %v", err)
+	}
+	if !got.Missing {
+		t.Errorf("an empty tail should be reported missing: %+v", got)
+	}
 }
