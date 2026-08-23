@@ -23,8 +23,18 @@ export const DAEMON_STATUS_CMD = `curl -s --max-time 10 ${DAEMON_API}/v1/status 
 /** The SSM command that asks the daemon to stop its engine. */
 export const DAEMON_STOP_CMD = `curl -s --max-time 10 -X POST ${DAEMON_API}/v1/stop || echo ${DAEMON_UNREACHABLE}`;
 
-/** The SSM command that asks the daemon to start its engine. A 409 (already running) is fine: /v1/start is idempotent in the only way that matters here. */
-export const DAEMON_START_CMD = `curl -s --max-time 10 -X POST ${DAEMON_API}/v1/start || echo ${DAEMON_UNREACHABLE}`;
+/**
+ * The SSM command that asks the daemon to start its engine with the given
+ * deploy config as the start's body — push-then-start in one call, so the
+ * start always names the exact config the daemon runs, and the config's own
+ * pre-warm choice rides with it. The body is base64 because its JSON quotes
+ * are not ours to defend through the shell; a 409 (already running) is fine:
+ * /v1/start is idempotent in the only way that matters here.
+ */
+export function daemonStartCmd(body: string): string {
+  const b64 = Buffer.from(body, 'utf8').toString('base64');
+  return `curl -s --max-time 10 -X POST -H 'Content-Type: application/json' -d "$(echo ${b64} | base64 -d)" ${DAEMON_API}/v1/start || echo ${DAEMON_UNREACHABLE}`;
+}
 
 /**
  * The daemon's /v1/metrics reply — the same stats dialect the Go formatters

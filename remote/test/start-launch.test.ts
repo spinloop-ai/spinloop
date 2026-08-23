@@ -2,9 +2,10 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Context, LambdaFunctionURLEvent, LambdaFunctionURLResult } from 'aws-lambda';
 import { DAEMON_STATUS_CMD } from '../lambda/shared/daemon';
 
-// The wake branch of the start Lambda: a previously stopped instance is
-// re-woken (started, not replaced), a dying instance fails retryably, and a
-// running one is left alone. All AWS calls are stubbed.
+// The fresh-launch branch of the start Lambda: with no existing instance it
+// launches from the newest baked AMI, provisioning the root volume's gp3
+// throughput so the weights sync and the daemon's page-cache prewarm run at
+// the volume's real ceiling. All AWS calls are stubbed.
 
 const LAMBDA_ENV = {
   TAG_KEY: 'cloud-vm-llm:managed',
@@ -26,7 +27,6 @@ const LAMBDA_ENV = {
 const findManagedInstance = vi.fn();
 const getInstance = vi.fn();
 const startEngineDaemon = vi.fn();
-const startInstance = vi.fn();
 const runInstance = vi.fn();
 const findLatestAmi = vi.fn();
 const tagInstance = vi.fn();
@@ -43,7 +43,6 @@ vi.mock('../lambda/shared/aws', async (importOriginal) => ({
   findManagedInstance: (...args: unknown[]) => findManagedInstance(...args),
   getInstance: (...args: unknown[]) => getInstance(...args),
   startEngineDaemon: (...args: unknown[]) => startEngineDaemon(...args),
-  startInstance: (...args: unknown[]) => startInstance(...args),
   runInstance: (...args: unknown[]) => runInstance(...args),
   findLatestAmi: (...args: unknown[]) => findLatestAmi(...args),
   tagInstance: (...args: unknown[]) => tagInstance(...args),
@@ -72,8 +71,6 @@ const wakeEvent = {
   requestContext: { http: { method: 'POST' } },
 } as unknown as LambdaFunctionURLEvent;
 
-// The start Lambda blocks until the model serves; give it a wide-enough
-// remaining time that the happy path never meets the deadline.
 const context = { getRemainingTimeInMillis: () => 600_000 } as unknown as Context;
 
 function structured(result: LambdaFunctionURLResult): { statusCode: number; body: string } {
@@ -84,8 +81,8 @@ const HEALTHY = { status: 'Success', stdout: '200' };
 
 beforeEach(() => {
   vi.clearAllMocks();
-  // A parsed config, whole: the start's body renders it, and the render would
-  // name fields a partial mock does not carry.
+  // A parsed config, whole: the boot script iterates it, and the start's body
+  // renders it — a minimal mock would survive neither.
   readDeployConfig.mockResolvedValue({
     runner: 'llamacpp',
     modelId: 'org/model',
@@ -108,62 +105,87 @@ beforeEach(() => {
       : Promise.resolve(HEALTHY),
   );
   startEngineDaemon.mockResolvedValue(true);
+  findManagedInstance.mockResolvedValue(null);
+  getInstance.mockResolvedValue({ instanceId: 'i-new', state: 'running', launchTime: new Date() });
+  runInstance.mockResolvedValue('i-new');
 });
 
-describe('re-waking a stopped instance', () => {
-  it('starts the existing instance instead of launching a new one', async () => {
-    findManagedInstance.mockResolvedValue({ instanceId: 'i-off', state: 'stopped' });
-    getInstance.mockResolvedValue({ instanceId: 'i-off', state: 'running', launchTime: new Date() });
+describe('fresh launch', () => {
+  it('provisions the root volume throughput, at the AMI root size', async () => {
+    findLatestAmi.mockResolvedValue({ imageId: 'ami-test1', rootVolumeSizeGb: 80 });
 
     const result = await handler(wakeEvent, context);
     expect(structured(result).statusCode).toBe(200);
-    expect(JSON.parse(structured(result).body).state).toBe('ready');
 
-    expect(startInstance).toHaveBeenCalledWith('i-off');
-    // The engine start is the control plane's ask, not user data's: a
-    // re-wake must not bet on the boot script re-running. The start carries
-    // the deploy config as its body, with the pre-warm resolved to the cloud
-    // default (enabled) when the wake carries no choice.
+    expect(runInstance).toHaveBeenCalledWith(
+      expect.objectContaining({
+        imageId: 'ami-test1',
+        rootVolume: { volumeSize: 80, throughput: 1000 },
+      }),
+    );
+  });
+
+  it('launches the AMI root as-is when its size is unreadable', async () => {
+    findLatestAmi.mockResolvedValue({ imageId: 'ami-test1', rootVolumeSizeGb: 0 });
+
+    const result = await handler(wakeEvent, context);
+    expect(structured(result).statusCode).toBe(200);
+
+    const spec = runInstance.mock.calls[0][0] as { rootVolume?: unknown };
+    expect(spec.rootVolume).toBeUndefined();
+  });
+
+  it('fails retryably when no AMI has been baked', async () => {
+    findLatestAmi.mockResolvedValue(null);
+
+    const result = await handler(wakeEvent, context);
+    expect(structured(result).statusCode).toBe(503);
+    expect(JSON.parse(structured(result).body).state).toBe('no-ami');
+    expect(runInstance).not.toHaveBeenCalled();
+  });
+
+  it('issues the engine start itself, with the deploy config as its body', async () => {
+    findLatestAmi.mockResolvedValue({ imageId: 'ami-test1', rootVolumeSizeGb: 80 });
+
+    const result = await handler(wakeEvent, context);
+    expect(structured(result).statusCode).toBe(200);
+
+    // The control plane owns the start on a fresh boot — the boot's user data
+    // starts no engine — and the start carries the config it will run, with
+    // the pre-warm resolved to the cloud default (enabled) when no choice
+    // was sent.
     expect(startEngineDaemon).toHaveBeenCalledWith(
-      'i-off',
-      expect.stringContaining('"prewarm": true'),
+      'i-new',
+      expect.stringContaining('"runner": "llamacpp"'),
     );
-    // The session start is recorded, so the max-runtime cap measures this
-    // session rather than first boot.
-    expect(tagInstance).toHaveBeenCalledWith(
-      'i-off',
-      'Started-At',
-      expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
-    );
-    expect(findLatestAmi).not.toHaveBeenCalled();
-    expect(runInstance).not.toHaveBeenCalled();
+    const body = startEngineDaemon.mock.calls[0][1] as string;
+    expect(body).toContain('"prewarm": true');
+    expect(body).toContain('"modelId": "/opt/llm/model/model.gguf"');
   });
 
-  it('leaves a running instance alone', async () => {
-    findManagedInstance.mockResolvedValue({ instanceId: 'i-run', state: 'running' });
-    getInstance.mockResolvedValue({ instanceId: 'i-run', state: 'running', launchTime: new Date() });
+  it('carries an explicit pre-warm choice to the start', async () => {
+    findLatestAmi.mockResolvedValue({ imageId: 'ami-test1', rootVolumeSizeGb: 80 });
+    const event = {
+      queryStringParameters: { env: 'dev', prewarm: 'false' },
+      requestContext: { http: { method: 'POST' } },
+    } as unknown as LambdaFunctionURLEvent;
 
-    const result = await handler(wakeEvent, context);
+    const result = await handler(event, context);
     expect(structured(result).statusCode).toBe(200);
-    expect(startInstance).not.toHaveBeenCalled();
-    expect(tagInstance).not.toHaveBeenCalled();
-    expect(runInstance).not.toHaveBeenCalled();
+
+    const body = startEngineDaemon.mock.calls[0][1] as string;
+    expect(body).toContain('"prewarm": false');
   });
-});
 
-describe('a dying instance is not adopted', () => {
-  it.each(['shutting-down', 'terminated'] as const)(
-    'fails retryably when it is %s',
-    async (state) => {
-      findManagedInstance.mockResolvedValue({ instanceId: 'i-dying', state });
-      getInstance.mockResolvedValue({ instanceId: 'i-dying', state, launchTime: new Date() });
+  it('rejects a pre-warm that is not a choice', async () => {
+    const event = {
+      queryStringParameters: { env: 'dev', prewarm: 'maybe' },
+      requestContext: { http: { method: 'POST' } },
+    } as unknown as LambdaFunctionURLEvent;
 
-      const result = await handler(wakeEvent, context);
-      expect(structured(result).statusCode).toBe(503);
-      const body = JSON.parse(structured(result).body);
-      expect(body.state).toBe(state);
-      expect(body.retry_after_seconds).toBeGreaterThan(0);
-      expect(startInstance).not.toHaveBeenCalled();
-    },
-  );
+    const result = await handler(event, context);
+    expect(structured(result).statusCode).toBe(400);
+    expect(runInstance).not.toHaveBeenCalled();
+    expect(startEngineDaemon).not.toHaveBeenCalled();
+  });
 });

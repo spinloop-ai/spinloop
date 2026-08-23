@@ -52,6 +52,11 @@ const ENGINE_LOG_GROUP = Object.fromEntries(
 // a fixed system path that does not depend on $HOME.
 const ENGINE_LOG_FILE = `${DAEMON_CONFIG_DIR}/daemon/engine.log`;
 
+// Where the boot's user data syncs the weights from S3. The start Lambda
+// names the same path in the start's body, so the two can never point the
+// engine at different model directories.
+const MODEL_DIR = '/opt/llm/model';
+
 const DEADLINE_MARGIN_MS = 20_000;
 const POLL_MS = 5_000;
 const HEALTH_POLL_MS = 10_000;
@@ -62,6 +67,17 @@ const TERMINAL_STATES = new Set(['shutting-down', 'terminated']);
 
 const HEALTH_COMMAND =
   `curl -s -o /dev/null -w "%{http_code}" --max-time 5 http://localhost:${ENGINE_PORT}/health || true`;
+
+// gp3's unprovisioned baseline is 3,000 IOPS and 125 MiB/s of throughput —
+// whatever the "fast" reputation says, a default root volume streams at
+// ~125 MB/s. That ceiling is paid twice on a cold boot: the S3 sync writes the
+// weights through it, and the engine's model load reads them back through it
+// (the daemon prewarms the page cache, so that read is sequential and this is
+// its whole limit). Provisioning the top-end throughput cuts both; the IOPS
+// stay at the baseline because sequential work is throughput-bound. The cost
+// is a few dollars a month against a $1.86/hour GPU, billed only while the
+// volume exists.
+const ROOT_VOLUME_THROUGHPUT_MIBS = 1000;
 
 /** Narrow instance discovery to one environment's instance. */
 function envFilter(env: string) {
@@ -80,13 +96,30 @@ function parseRetainUntil(raw: string | undefined): string | null {
   return d.toISOString();
 }
 
+/**
+ * Parse and validate the optional prewarm query parameter — the start's
+ * page-cache pre-warm choice. Absent sends no choice at all, in which case
+ * the cloud default (enabled) applies; present, it must say so explicitly.
+ */
+function parsePrewarm(raw: string | undefined): boolean | null {
+  if (raw === undefined) {
+    return null;
+  }
+  if (raw === 'true' || raw === 'false') {
+    return raw === 'true';
+  }
+  throw new Error(`prewarm must be true or false, got ${JSON.stringify(raw)}`);
+}
+
 export async function handler(
   event: LambdaFunctionURLEvent,
   context: Context,
 ): Promise<LambdaFunctionURLResult> {
   let env: string;
+  let prewarm: boolean | null;
   try {
     env = environmentFrom(event.queryStringParameters);
+    prewarm = parsePrewarm(event.queryStringParameters?.prewarm);
   } catch (err) {
     return jsonResponse(400, { error: (err as Error).message });
   }
@@ -96,7 +129,7 @@ export async function handler(
   }
   const rawRetainUntil = event.queryStringParameters?.retainUntil;
   const retainUntil = parseRetainUntil(rawRetainUntil);
-  return wake(env, context, retainUntil);
+  return wake(env, context, retainUntil, prewarm);
 }
 
 /** GET — report one environment's state without side effects. */
@@ -171,11 +204,12 @@ async function readDaemonActivity(
   }
 }
 
-/** POST — launch the environment's instance if needed and block until serving. */
+/** POST — launch the environment's instance if needed and block until serving. prewarm is the start's pre-warm choice; null sends none. */
 async function wake(
   env: string,
   context: Context,
   retainUntil: string | null,
+  prewarm: boolean | null,
 ): Promise<LambdaFunctionURLResult> {
   const deadline = Date.now() + context.getRemainingTimeInMillis() - DEADLINE_MARGIN_MS;
 
@@ -303,13 +337,27 @@ async function wake(
     await sleep(POLL_MS);
   }
 
-  // Make sure the engine is actually asked to start. A fresh launch's boot
-  // script requests a start, but a re-wake must not bet on user data
-  // re-running — if it does not, the daemon is up and idle and nothing else
-  // ever starts the engine. The daemon's /v1/start is idempotent (it refuses
-  // with 409 when one already runs), so this is harmless on every path; an
-  // unreachable daemon only matters when user data still covers the start.
-  if (!(await startEngineDaemon(instanceId))) {
+  // Phase 2b: the daemon answers. The boot's user data syncs the weights
+  // before it enables the daemon, so on a fresh launch the daemon's first
+  // answer is the boot's signal that the deploy config is stored; on a
+  // re-wake the daemon comes back with the instance. Until it answers there
+  // is no one to take a start, so this wait converts a lost start (and a
+  // full-deadline health timeout) into a short pause.
+  while (Date.now() < deadline) {
+    if (await daemonAnswers(instanceId)) {
+      break;
+    }
+    await sleep(POLL_MS);
+  }
+
+  // The control plane owns the engine's start on every path — a fresh boot
+  // and a re-wake alike; the boot's own user data starts nothing. The start
+  // carries the deploy config as its body, so it always names the exact
+  // config the daemon runs, and the pre-warm resolved to the operator's
+  // explicit choice, else the cloud default (enabled). The daemon's
+  // /v1/start is idempotent (it refuses with 409 when one already runs), so
+  // this is harmless wherever an engine is already up.
+  if (!(await startEngineDaemon(instanceId, startBody(deployConfig, prewarm ?? true)))) {
     console.log(
       JSON.stringify({ phase: 'engine-start', environment: env, instanceId, warning: 'daemon did not answer a start request' }),
     );
@@ -368,12 +416,12 @@ async function launchAcrossAzs(
   securityGroupId: string,
 ): Promise<{ instanceId: string } | { error: LambdaFunctionURLResult }> {
   // Pick the newest AMI baked for THIS runner (role + runner tags).
-  const amiId = await findLatestAmi([
+  const ami = await findLatestAmi([
     { Name: `tag:${AMI_ROLE_TAG_KEY}`, Values: [AMI_ROLE_TAG_VALUE] },
     { Name: `tag:${AMI_RUNNER_TAG_KEY}`, Values: [deployConfig.runner] },
     { Name: 'state', Values: ['available'] },
   ]);
-  if (!amiId) {
+  if (!ami) {
     return {
       error: jsonResponse(503, {
         state: 'no-ami',
@@ -387,13 +435,22 @@ async function launchAcrossAzs(
   for (const subnetId of SUBNET_IDS) {
     try {
       const instanceId = await runInstance({
-        imageId: amiId,
+        imageId: ami.imageId,
         instanceType: INSTANCE_TYPE,
         subnetId,
         securityGroupId,
         instanceProfileArn: INSTANCE_PROFILE_ARN,
         userData,
         tags: { Name: `cloud-vm-llm-${env}`, [TAG_KEY]: TAG_VALUE, [ENV_TAG_KEY]: env },
+        // A 0 means the AMI declared no readable root mapping — launching the
+        // AMI's root as-is is then the only safe choice.
+        rootVolume:
+          ami.rootVolumeSizeGb > 0
+            ? {
+                volumeSize: ami.rootVolumeSizeGb,
+                throughput: ROOT_VOLUME_THROUGHPUT_MIBS,
+              }
+            : undefined,
       });
       console.log(JSON.stringify({ phase: 'launched', environment: env, instanceId, subnetId }));
       return { instanceId };
@@ -477,7 +534,7 @@ function cloudwatchAgentConfig(env: string, runner: Runner): string {
 
 /** Exported for tests: the boot script is pure string-building. The seed twin is shared/seed.ts's buildSeedUserData. */
 export function buildInferenceUserData(env: string, cfg: DeployConfig): string {
-  const modelDir = '/opt/llm/model';
+  const modelDir = MODEL_DIR;
   const runnerUnit = runnerSpec(cfg.runner).daemonBoot(cfg, modelDir, Number(ENGINE_PORT));
   const cwAgentConfig = cloudwatchAgentConfig(env, cfg.runner);
   // Common boot: log the GPU, add swap for the load spike, start the log
@@ -526,6 +583,30 @@ umask 077
 
 ${runnerUnit}
 `;
+}
+
+/**
+ * Whether the instance's daemon answers its control API. Every failure — SSM
+ * error, an unreachable daemon, an unparseable reply — is "not yet": the
+ * caller keeps polling to its deadline.
+ */
+async function daemonAnswers(instanceId: string): Promise<boolean> {
+  try {
+    const result = await runShellCommand(instanceId, DAEMON_STATUS_CMD, 10);
+    return result.status === 'Success' && parseDaemonStatus(result.stdout) !== null;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The start request's body: the deploy config the boot would have stored,
+ * with the pre-warm resolved to this start's choice. The same document the
+ * boot's user data writes (modulo that choice), built by the same runner
+ * code, so a start and a boot cannot name different configs.
+ */
+function startBody(cfg: DeployConfig, prewarm: boolean): string {
+  return runnerSpec(cfg.runner).daemonDeployConfigJson(cfg, MODEL_DIR, Number(ENGINE_PORT), prewarm);
 }
 
 async function checkHealth(instanceId: string): Promise<boolean> {

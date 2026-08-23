@@ -1,6 +1,7 @@
 package remote
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -177,7 +178,7 @@ func TestStart_RetriesUntilReady(t *testing.T) {
 
 	cfg := Config{StartURL: server.URL, StopURL: server.URL, Region: "eu-west-1"}
 	var progress []string
-	resp, err := Start(context.Background(), cfg, func(msg string) { progress = append(progress, msg) }, nil, nil)
+	resp, err := Start(context.Background(), cfg, nil, func(msg string) { progress = append(progress, msg) }, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -212,7 +213,7 @@ func TestStart_ReportsEachPollState(t *testing.T) {
 
 	cfg := Config{StartURL: server.URL, StopURL: server.URL, Region: "eu-west-1"}
 	var states []string
-	if _, err := Start(context.Background(), cfg, func(string) {}, func(s string) { states = append(states, s) }, nil); err != nil {
+	if _, err := Start(context.Background(), cfg, nil, func(string) {}, func(s string) { states = append(states, s) }, nil); err != nil {
 		t.Fatal(err)
 	}
 	want := StateInFlight + ",no-capacity," + StateInFlight + ",ready"
@@ -245,7 +246,7 @@ func TestStart_ReportsInFlightAfterACapacityWait(t *testing.T) {
 
 	cfg := Config{StartURL: server.URL, StopURL: server.URL, Region: "eu-west-1"}
 	var states []string
-	if _, err := Start(context.Background(), cfg, func(string) {}, func(s string) { states = append(states, s) }, nil); err != nil {
+	if _, err := Start(context.Background(), cfg, nil, func(string) {}, func(s string) { states = append(states, s) }, nil); err != nil {
 		t.Fatal(err)
 	}
 	lastNoCapacity, inFlightAfter, readyAfter := -1, false, false
@@ -301,7 +302,7 @@ func TestStart_RetriesADroppedConnection(t *testing.T) {
 
 	cfg := Config{StartURL: server.URL, StopURL: server.URL, Region: "eu-west-1"}
 	var progress []string
-	resp, err := Start(context.Background(), cfg, func(msg string) { progress = append(progress, msg) }, nil, nil)
+	resp, err := Start(context.Background(), cfg, nil, func(msg string) { progress = append(progress, msg) }, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -336,7 +337,7 @@ func TestStart_DoesNotRetryPastTheDeadline(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 	defer cancel()
 	cfg := Config{StartURL: server.URL, StopURL: server.URL, Region: "eu-west-1"}
-	_, err := Start(ctx, cfg, func(string) {}, nil, nil)
+	_, err := Start(ctx, cfg, nil, func(string) {}, nil, nil)
 	if err == nil {
 		t.Fatal("expected an error once the deadline passed")
 	}
@@ -351,7 +352,7 @@ func TestStart_Failure(t *testing.T) {
 	defer server.Close()
 
 	cfg := Config{StartURL: server.URL, StopURL: server.URL, Region: "eu-west-1"}
-	_, err := Start(context.Background(), cfg, func(string) {}, nil, nil)
+	_, err := Start(context.Background(), cfg, nil, func(string) {}, nil, nil)
 	if err == nil || !strings.Contains(err.Error(), "cannot start") {
 		t.Errorf("expected the server's message in the error, got %v", err)
 	}
@@ -368,7 +369,7 @@ func TestStart_ContextDeadline(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 	cfg := Config{StartURL: server.URL, StopURL: server.URL, Region: "eu-west-1"}
-	_, err := Start(ctx, cfg, func(string) {}, nil, nil)
+	_, err := Start(ctx, cfg, nil, func(string) {}, nil, nil)
 	if err == nil || !strings.Contains(err.Error(), "gave up") {
 		t.Errorf("expected a gave-up error, got %v", err)
 	}
@@ -505,7 +506,7 @@ func TestRestart_StopsThenWakes(t *testing.T) {
 
 	cfg := Config{StartURL: server.URL, StopURL: server.URL, Region: "eu-west-1"}
 	var progress []string
-	resp, err := Restart(context.Background(), cfg, false, func(msg string) { progress = append(progress, msg) }, nil)
+	resp, err := Restart(context.Background(), cfg, false, nil, func(msg string) { progress = append(progress, msg) }, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -543,7 +544,7 @@ func TestRestart_ForceMarksTheStop(t *testing.T) {
 	defer server.Close()
 
 	cfg := Config{StartURL: server.URL, StopURL: server.URL, Region: "eu-west-1"}
-	if _, err := Restart(context.Background(), cfg, true, func(string) {}, nil); err != nil {
+	if _, err := Restart(context.Background(), cfg, true, nil, func(string) {}, nil); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(stopQuery, "action=pause") || !strings.Contains(stopQuery, "force=true") {
@@ -569,7 +570,7 @@ func TestRestart_StopFailureNeverWakes(t *testing.T) {
 	defer server.Close()
 
 	cfg := Config{StartURL: server.URL, StopURL: server.URL, Region: "eu-west-1"}
-	_, err := Restart(context.Background(), cfg, false, func(string) {}, nil)
+	_, err := Restart(context.Background(), cfg, false, nil, func(string) {}, nil)
 	if err == nil || !strings.Contains(err.Error(), "cannot stop") {
 		t.Errorf("expected the stop's error, got %v", err)
 	}
@@ -597,7 +598,7 @@ func TestRestart_WakeFailureNamesRecovery(t *testing.T) {
 	defer server.Close()
 
 	cfg := Config{StartURL: server.URL, StopURL: server.URL, Region: "eu-west-1"}
-	_, err := Restart(context.Background(), cfg, false, func(string) {}, nil)
+	_, err := Restart(context.Background(), cfg, false, nil, func(string) {}, nil)
 	if err == nil {
 		t.Fatal("expected a wake failure")
 	}
@@ -822,7 +823,7 @@ func TestStart_ExpiredCredentials(t *testing.T) {
 	defer server.Close()
 
 	cfg := Config{StartURL: server.URL, Region: "eu-west-1"}
-	if _, err := Start(context.Background(), cfg, func(string) {}, nil, nil); err == nil ||
+	if _, err := Start(context.Background(), cfg, nil, func(string) {}, nil, nil); err == nil ||
 		!strings.Contains(err.Error(), "expired or invalid") {
 		t.Errorf("expected start to fail with an expired-credentials error, got %v", err)
 	}
@@ -1148,7 +1149,7 @@ func TestStart_RetainUntil(t *testing.T) {
 
 	retainUntil := time.Date(2025, 1, 1, 4, 0, 0, 0, time.UTC)
 	cfg := Config{StartURL: server.URL, StopURL: server.URL, Region: "eu-west-1"}
-	resp, err := Start(context.Background(), cfg, func(string) {}, nil, &retainUntil)
+	resp, err := Start(context.Background(), cfg, nil, func(string) {}, nil, &retainUntil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1171,11 +1172,97 @@ func TestStart_NoRetainUntil(t *testing.T) {
 	defer server.Close()
 
 	cfg := Config{StartURL: server.URL, StopURL: server.URL, Region: "eu-west-1"}
-	_, err := Start(context.Background(), cfg, func(string) {}, nil, nil)
+	_, err := Start(context.Background(), cfg, nil, func(string) {}, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if gotRetainUntil != "" {
 		t.Errorf("start without retainUntil should not send the parameter, got %q", gotRetainUntil)
+	}
+}
+
+func TestStart_PrewarmChoice(t *testing.T) {
+	stubAWSEnv(t)
+	var gotPrewarm string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPrewarm = r.URL.Query().Get("prewarm")
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"state":"ready"}`))
+	}))
+	defer server.Close()
+
+	cfg := Config{StartURL: server.URL, StopURL: server.URL, Region: "eu-west-1"}
+
+	// No choice: the parameter is absent, and the cloud default applies.
+	if _, err := Start(context.Background(), cfg, nil, func(string) {}, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if gotPrewarm != "" {
+		t.Errorf("start without a choice should send no prewarm parameter, got %q", gotPrewarm)
+	}
+
+	// A choice rides on the wire, both ways.
+	on, off := true, false
+	if _, err := Start(context.Background(), cfg, &on, func(string) {}, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if gotPrewarm != "true" {
+		t.Errorf("an explicit enable should send prewarm=true, got %q", gotPrewarm)
+	}
+	if _, err := Start(context.Background(), cfg, &off, func(string) {}, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if gotPrewarm != "false" {
+		t.Errorf("an explicit disable should send prewarm=false, got %q", gotPrewarm)
+	}
+}
+
+func TestRestart_PrewarmChoice(t *testing.T) {
+	stubAWSEnv(t)
+	var gotPrewarm string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPrewarm = r.URL.Query().Get("prewarm")
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"state":"ready"}`))
+	}))
+	defer server.Close()
+
+	cfg := Config{StartURL: server.URL, StopURL: server.URL, Region: "eu-west-1"}
+	off := false
+	if _, err := Restart(context.Background(), cfg, false, &off, func(string) {}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if gotPrewarm != "false" {
+		t.Errorf("a restart's start should carry the prewarm choice, got %q", gotPrewarm)
+	}
+}
+
+// TestDeployConfigPrewarmTriStateJSON pins the omitempty-pointer contract the
+// cloud relies on: absent means "no choice", false is sent and must survive
+// the round trip.
+func TestDeployConfigPrewarmTriStateJSON(t *testing.T) {
+	absent, err := json.Marshal(DeployConfig{Runner: "llamacpp"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(absent, []byte("prewarm")) {
+		t.Errorf("an unset choice must not appear in the config, got %s", absent)
+	}
+
+	off := false
+	disabled, err := json.Marshal(DeployConfig{Runner: "llamacpp", Prewarm: &off})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(disabled, []byte(`"prewarm":false`)) {
+		t.Errorf("an explicit false must be sent, got %s", disabled)
+	}
+
+	var back DeployConfig
+	if err := json.Unmarshal(disabled, &back); err != nil {
+		t.Fatal(err)
+	}
+	if back.Prewarm == nil || *back.Prewarm {
+		t.Errorf("false must survive the round trip, got %v", back.Prewarm)
 	}
 }

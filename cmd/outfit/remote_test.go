@@ -1372,6 +1372,48 @@ func TestRemoteKeep_InvalidDuration(t *testing.T) {
 	}
 }
 
+// TestRemoteStart_PrewarmChoice sends the start's pre-warm choice.
+func TestRemoteStart_PrewarmChoice(t *testing.T) {
+	for _, tc := range []struct {
+		args      []string
+		wantParam string
+		wantErr   string
+	}{
+		{nil, "", ""},
+		{[]string{"--prewarm"}, "true", ""},
+		{[]string{"--prewarm=false"}, "false", ""},
+		{[]string{"--prewarm=true"}, "true", ""},
+		{[]string{"--prewarm=maybe"}, "", "takes a boolean"},
+	} {
+		isolateConfig(t)
+		stubAWSEnv(t)
+		var got string
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			got = r.URL.Query().Get("prewarm")
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"state":"ready","base_url":"http://198.51.100.1:8000/v1","api_key":"sk-test"}`))
+		}))
+		if tc.wantErr != "" {
+			defer server.Close()
+			err := cmdRemoteStart(tc.args)
+			if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+				t.Fatalf("args %v: expected %q error, got %v", tc.args, tc.wantErr, err)
+			}
+			continue
+		}
+		defer server.Close()
+		writeRemoteConfig(t, server.URL)
+		captureStdout(t, func() {
+			if err := cmdRemoteStart(tc.args); err != nil {
+				t.Fatalf("args %v: %v", tc.args, err)
+			}
+		})
+		if got != tc.wantParam {
+			t.Errorf("args %v: prewarm query param = %q, want %q", tc.args, got, tc.wantParam)
+		}
+	}
+}
+
 // TestRemoteStart_KeepFlag passes the retainUntil parameter.
 func TestRemoteStart_KeepFlag(t *testing.T) {
 	isolateConfig(t)

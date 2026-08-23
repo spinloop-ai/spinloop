@@ -34,8 +34,11 @@ The instance is **stateless**, and responsibilities are split cleanly:
   progress and outcome to CloudWatch, and terminates itself on success and on
   failure alike. A prefix is complete when it holds a `_seed.json` manifest,
   which also records the exact revision the weights came from.
-- At boot the instance **syncs the weights from S3** onto its disk (~2–4 min)
-  and starts the engine pointed at them.
+ - At boot the instance **syncs the weights from S3** onto its disk (~2–4 min)
+   and starts its outfit daemon pointed at them. The daemon starts no engine
+   itself: the start Lambda issues the engine's start (with the deploy config
+   as its body) once the daemon answers, on a fresh launch and a re-wake
+   alike.
 
 Because the AMI is a regional artifact, the start Lambda can launch in **any**
 availability zone — it tries each g6e zone in turn until one has capacity.
@@ -45,6 +48,13 @@ deploying it never runs (or fails on) a bake. You trigger bakes out-of-band
 with `pnpm bake <runner>`; each successful bake **tags** its AMI with its
 engine, and the start Lambda launches the **newest AMI matching the engine it
 was told to run**. A failed bake produces no new AMI and changes nothing.
+
+The control plane **renders** the boot script and the daemon's service unit,
+while the AMI **pins** the outfit binary that runs them. Keep that coupling
+honest: ship a new outfit release, bake the runtime AMIs with it, and only
+then `pnpm deploy` a control plane that renders units or scripts the new
+binary understands — the other order launches instances whose daemon never
+starts.
 
 ```
 outfit remote bootstrap ─▶ control-plane stack (Lambdas, S3, VPC, roles) + bake pipelines
@@ -246,11 +256,18 @@ companion that was never synced.
 
 ### First boot
 
-A wake is an instance launch, an **S3 sync of the weights** (~2–4 min,
-EBS-write-bound), then loading them into VRAM and warm-up — so roughly
-**8–10 minutes**, every time, with no Hugging Face dependency. The first
-request after a cold start also pays a one-off warm-up (~30 s); steady-state
-decode is around 28 tokens/s. Watch a wake:
+A wake is an instance launch, an **S3 sync of the weights**, then loading
+them into VRAM and warm-up. Two things keep that fast: the launch provisions
+the root volume's gp3 throughput to its ceiling (an unprovisioned gp3 caps at
+125 MiB/s, which used to throttle both the sync and the load), and the daemon
+pre-warms the page cache before the engine loads the model, so the ~26 GB of
+weights stream through once at line rate and the engine's copy is mostly cache
+hits. The cloud daemon pre-warms by default — `outfit remote start --prewarm=false`
+(a restart takes the same flag) skips it for one wake — and a plain
+`outfit daemon` on any other machine never pre-warms, since it is an option of
+the daemon, not of the config. A cold boot is roughly **5–7 minutes** end to
+end, every time, with no Hugging Face dependency. The first request after a cold start also pays a one-off warm-up
+(~30 s); steady-state decode is around 28 tokens/s. Watch a wake:
 
 ```sh
 pnpm console                                 # SSM shell onto the running instance
@@ -305,10 +322,13 @@ the stop Lambda asks for that (via SSM) and **stops** the instance once
 Stopping (rather than terminating) keeps the boot disk and the weights the
 boot synced onto it, so the next `outfit remote start` **re-wakes** the
 instance — a boot without a fresh launch and a no-op S3 sync — instead of
-launching one from the AMI. The stopped instance is billed for its volume only,
-not compute, and the sweep **terminates** it once it has been stopped longer
-than `stopRetentionMinutes` (default 1 h): after that, the next start is a
-fresh launch again. `outfit remote pause` does the same stop on purpose.
+launching one from the AMI. The stop clears the page cache, but the daemon's
+pre-warm re-covers it on the engine start, so a re-wake loads the model in
+the same few minutes a cold boot does, minus the sync. The stopped instance
+is billed for its volume only, not compute, and the sweep **terminates** it
+once it has been stopped longer than `stopRetentionMinutes` (default 1 h):
+after that, the next start is a fresh launch again. `outfit remote pause`
+does the same stop on purpose.
 
 Sampling on the box is what makes this reliable: a busy endpoint that happens
 to have nothing in flight at the moment a 5-minute sweep lands used to read as

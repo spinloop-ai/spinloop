@@ -4,10 +4,18 @@
  * via EnvironmentFile).
  */
 
+import type { DeployConfig } from '../shared/deploy-config';
 import { daemonBoot, daemonDeployConfig } from './daemon-boot';
 import type { RunnerSpec } from './spec';
 
 const syncedModelPath = (modelDir: string): string => modelDir;
+
+const daemonDeployConfigJson = (
+  cfg: DeployConfig,
+  modelDir: string,
+  port: number,
+  prewarm?: boolean,
+): string => daemonDeployConfig(cfg, syncedModelPath(modelDir), port, ['--gpu-memory-utilization', '0.92'], prewarm);
 
 export const vllm: RunnerSpec = {
   // vLLM serves the whole synced checkpoint directory.
@@ -21,6 +29,8 @@ export const vllm: RunnerSpec = {
   // so a companion named for a vLLM deployment is seeded but unused rather
   // than rejected — see the companionArgs contract in spec.ts.
   companionArgs: () => [],
+
+  daemonDeployConfigJson,
 
   daemonBoot: (cfg, modelDir, port) => `# Python dev headers: Triton JIT-compiles a CUDA stub against Python.h on the
 # first model load (Qwen3.6's linear-attention path); baked into recipe 2.0.3+,
@@ -37,5 +47,5 @@ HF_HUB_OFFLINE=1
 VLLM_USE_FLASHINFER_SAMPLER=0
 ENVFILE
 
-${daemonBoot(daemonDeployConfig(cfg, syncedModelPath(modelDir), port, ['--gpu-memory-utilization', '0.92']), 'EnvironmentFile=/etc/vllm.env\n')}`,
+${daemonBoot(daemonDeployConfigJson(cfg, modelDir, port), 'EnvironmentFile=/etc/vllm.env\n')}`,
 };

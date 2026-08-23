@@ -62,9 +62,10 @@ func (n *remoteNode) Start(ctx context.Context) (daemon.StatusResponse, error) {
 
 // StartWithProgress is Start carrying the control plane's own status lines up
 // as the boot proceeds — the environment's state and the wait to the next
-// poll, one line per retry. The caller shows or drops them.
+// poll, one line per retry. The caller shows or drops them. The pre-warm
+// choice is unset: a fleet-driven start takes the cloud's default.
 func (n *remoteNode) StartWithProgress(ctx context.Context, progress func(string)) (daemon.StatusResponse, error) {
-	resp, err := remote.Start(ctx, n.cfg, progress, nil, nil)
+	resp, err := remote.Start(ctx, n.cfg, nil, progress, nil, nil)
 	if err != nil {
 		return daemon.StatusResponse{}, err
 	}
