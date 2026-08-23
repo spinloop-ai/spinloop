@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [1.26.0] - 2026-08-23
+### Added
+- feat(fleet): add interactive fleet dashboard
+
+### Other
+- perf: prewarm model loads and provision gp3 throughput (#121)
+
 ## [1.25.0] - 2026-08-22
 ### Added
 - feat(fleet): drive a remote environment as a fleet node
