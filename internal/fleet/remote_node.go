@@ -57,10 +57,15 @@ func (n *remoteNode) Metrics(ctx context.Context) (metrics.Stats, error) {
 }
 
 func (n *remoteNode) Start(ctx context.Context) (daemon.StatusResponse, error) {
-	// progress is called on every retry and needs a value; prewarm, onState
-	// and retainUntil are unset — a fleet-driven start reports nothing, holds
-	// nothing, and takes the cloud's pre-warm default.
-	resp, err := remote.Start(ctx, n.cfg, nil, func(string) {}, nil, nil)
+	return n.StartWithProgress(ctx, func(string) {})
+}
+
+// StartWithProgress is Start carrying the control plane's own status lines up
+// as the boot proceeds — the environment's state and the wait to the next
+// poll, one line per retry. The caller shows or drops them. The pre-warm
+// choice is unset: a fleet-driven start takes the cloud's default.
+func (n *remoteNode) StartWithProgress(ctx context.Context, progress func(string)) (daemon.StatusResponse, error) {
+	resp, err := remote.Start(ctx, n.cfg, nil, progress, nil, nil)
 	if err != nil {
 		return daemon.StatusResponse{}, err
 	}

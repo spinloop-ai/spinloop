@@ -7,7 +7,8 @@ Observe and drive every engine you run, from one place. Each machine runs
 ```sh
 outfit fleet status          # one row per node: state and what it serves
 outfit fleet metrics         # each node's engine + system metrics
-outfit fleet metrics -w      # a live dashboard, redrawn in place
+outfit fleet metrics -w      # the same, redrawn in place until interrupted
+outfit fleet dashboard       # the interactive tiled view — watch it, drive it
 outfit fleet route my-outfit # which node a harness launch would pick
 outfit fleet start gpu-box   # start one node's engine
 outfit fleet stop gpu-box    # stop it
@@ -209,6 +210,57 @@ silently missing whatever was down:
   { "node": "offline", "outcome": "unreachable", "error": "dial tcp …: connection refused" }
 ]
 ```
+
+## The dashboard
+
+`outfit fleet dashboard` is that same board as a live view: one tile per
+node, repainted in place, each drawing exactly what `fleet metrics`' bar
+format prints for the node — state and uptime, what it serves, the CPU/GPU/RAM
+bars, the token counters — so the view and the one-shot command never word a
+number differently. A node that is down is a tile that says why, and a node
+whose token reference resolves to nothing holds that reason for the life of
+the view:
+
+```sh
+outfit fleet dashboard                # ./fleet.yaml
+outfit fleet dashboard --fleet f.yaml # another fleet file
+```
+
+| Key | Does |
+| --- | ---- |
+| `j`/`k` or the arrows | Move the selection, in file order (no wrap) |
+| `PgUp`/`PgDn` | Page the grid when there are more nodes than fit |
+| `r` | Force a refresh of every node, now |
+| `s` | Start the selected node — without confirmation |
+| `a` | Abandon a start or stop in flight on the selected node — the wait ends, the node is free again |
+| `x` | Stop the selected node — it asks first (`y` sends, `n` or `esc` cancel) |
+| `q` or `Ctrl+C` | Leave |
+
+The board keeps its own cadence: local machines are read every two seconds,
+and a [`kind: remote`](#remote-environments) environment every 60 — one
+status call a minute, because its status is a signed control-plane call, not a
+local socket, and a cold instance changes state on the scale of minutes. `r`
+is due for every node whatever those deadlines say.
+
+`start` runs the same node operation `fleet start` does, without
+confirmation, and carries no deadline, because a cloud wake takes minutes and
+the call holds for the lot. While it runs, the node's tile carries the start —
+the verb and the control plane's own status lines, in place of the node's last
+report — because that is the truth until the report returns. An action is one
+per node, not one per board: while one node is waking, select another and
+start it, and the two wakes run side by side, each reported on its own tile.
+When an action finishes, its tile goes back to the node's next report and its
+outcome lands on the status line at the foot of the view. A wait can be
+abandoned: `a` ends the dashboard's wait on the node's in-flight action, and
+the tile is free to start or stop again. The abort ends the wait, not the
+work — a cancelled client cannot take a wake the cloud is carrying back — so
+the line says the wait was *abandoned*, not that the node failed, and a wake
+that was in fact completing shows up as a running node on the next refresh.
+
+Everything else in the view is `fleet status`/`metrics`/`logs` in place — it
+is read-only apart from those three action keys. It needs a real terminal: a
+piped run is refused, and it says so by way of `fleet metrics --watch`, which
+is the streamable surface.
 
 ## Logs
 
