@@ -44,7 +44,7 @@
 ## 3. Verification
 
 - [x] 3.1 `go vet ./...`, `go test ./...` (coverage stays >= 80%), `gofmt`
-- [ ] 3.2 Manually run `outfit fleet dashboard` against a fleet file with
+- [x] 3.2 Manually run `outfit fleet dashboard` against a fleet file with
       enough nodes to wrap to a second row, and confirm all four arrow keys
       move the selection the way it looks like they should, at more than one
       terminal width, and that `j`/`k` no longer do anything
