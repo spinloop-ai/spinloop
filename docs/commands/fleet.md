@@ -230,9 +230,10 @@ outfit fleet dashboard --fleet f.yaml # another fleet file
 | --- | ---- |
 | `j`/`k` or the arrows | Move the selection, in file order (no wrap) |
 | `PgUp`/`PgDn` | Page the grid when there are more nodes than fit |
+| `Enter` | Open a full-screen view of the selected node |
 | `r` | Force a refresh of every node, now |
 | `s` | Start the selected node — without confirmation |
-| `a` | Abandon a start or stop in flight on the selected node — the wait ends, the node is free again |
+| `a` | Abandon a start in flight on the selected node — the wait ends, the node is free again (a stop in flight is not abortable) |
 | `x` | Stop the selected node — it asks first (`y` sends, `n` or `esc` cancel) |
 | `q` or `Ctrl+C` | Leave |
 
@@ -250,17 +251,48 @@ report — because that is the truth until the report returns. An action is one
 per node, not one per board: while one node is waking, select another and
 start it, and the two wakes run side by side, each reported on its own tile.
 When an action finishes, its tile goes back to the node's next report and its
-outcome lands on the status line at the foot of the view. A wait can be
-abandoned: `a` ends the dashboard's wait on the node's in-flight action, and
-the tile is free to start or stop again. The abort ends the wait, not the
-work — a cancelled client cannot take a wake the cloud is carrying back — so
-the line says the wait was *abandoned*, not that the node failed, and a wake
-that was in fact completing shows up as a running node on the next refresh.
+outcome lands on the status line at the foot of the view. A start's wait can
+be abandoned: `a` ends the dashboard's wait on the node's in-flight start,
+and the tile is free to start or stop again. The abort ends the wait, not
+the work — a cancelled client cannot take a wake the cloud is carrying back
+— so the line says the wait was *abandoned*, not that the node failed, and a
+wake that was in fact completing shows up as a running node on the next
+refresh. A stop in flight is not abortable: it targets an engine already
+running rather than a cold wake with no deadline of its own, and `a` drives
+nothing while one is in progress.
 
 Everything else in the view is `fleet status`/`metrics`/`logs` in place — it
 is read-only apart from those three action keys. It needs a real terminal: a
 piped run is refused, and it says so by way of `fleet metrics --watch`, which
 is the streamable surface.
+
+### The node detail view
+
+`Enter` on a tile opens a full-screen view of that node in place of the grid:
+its metrics, unclipped to the tile's 42 columns, its engine log tailed and
+followed the way `fleet logs -f` follows one node, and a footer naming the
+keys the view answers to. `Esc` closes it and returns to the grid with the
+same node still selected.
+
+```sh
+outfit fleet dashboard
+# select a node, press Enter for its full metrics and log, Esc to go back
+```
+
+`s`, `x` and `a` drive the node shown exactly as they drive the selected node
+on the grid — the same no-confirmation start, the same stop confirmation, the
+same abandon. `q`/`Ctrl+C` are grid keys only and do nothing here — `Esc` back
+to the grid first, then quit from there — so a stray quit keystroke while
+looking at a node can't end the session out from under you. The rest of the
+fleet keeps refreshing behind the view, and any action already in flight on
+another node keeps running. A node whose engine has never run shows the same
+explanation `fleet logs` gives for it, not an empty pane.
+
+`f` pauses and resumes the log's follow, independently of everything else in
+the view — the metrics section keeps refreshing either way. The header names
+the state (`log: following` / `log: paused`). Pausing does not lose anything:
+resuming fetches whatever the engine wrote in the meantime, the same as a
+poll that simply ran late.
 
 ## Logs
 

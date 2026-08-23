@@ -78,6 +78,18 @@ type dashModel struct {
 	nextSlowAt         time.Time // when the cloud group is next due; zero means due now
 
 	width, height int
+
+	// detail is the full-screen view of the node under the cursor, opened by
+	// enter and closed by escape. The cursor never moves while it is open, so
+	// the node in view is always entries[cursor]; detail carries only whether
+	// the view is open and the state of its own log tail.
+	detail           bool
+	detailLogGen     int    // bumped on every open, so a reply from a closed or superseded view is discarded
+	detailLogBusy    bool   // a log round is in flight for the node in view
+	detailLogFollow  bool   // whether the tick is allowed to start a round; f toggles it
+	detailLogOffset  int64  // where the next log round resumes from
+	detailLogContent string // the tailed content, trimmed to what the pane can show
+	detailLogNote    string // why the pane has no content — empty once it does
 }
 
 // dashTickMsg fires on the fast interval.
@@ -170,6 +182,28 @@ func (m *dashModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.actions[i] = dashAction{}
 		}
 		m.statusLine = dashActionLine(msg, aborted)
+	case detailLogTickMsg:
+		// The tick reschedules itself only while the view is open on a node
+		// that could ever answer; closing it, or a switch to a standing node
+		// that opened without ever scheduling this chain, is the shutdown
+		// path — the next tick simply stops rather than resurrecting it.
+		if !m.detail || m.entries[m.cursor].node == nil {
+			return m, nil
+		}
+		// The chain keeps ticking whether or not follow is on — pausing
+		// only skips the round it would have started, so unpausing with f
+		// needs nothing more than flipping the flag back.
+		var cmd tea.Cmd
+		if m.detailLogFollow {
+			cmd = m.startDetailLogRound()
+		}
+		return m, tea.Batch(detailLogTickCmd(), cmd)
+	case dashDetailLogMsg:
+		m.detailLogBusy = false
+		if !m.detail || msg.gen != m.detailLogGen {
+			return m, nil
+		}
+		m.applyDetailLog(msg.result)
 	case tea.KeyMsg:
 		if m.confirm {
 			switch msg.String() {
@@ -183,10 +217,17 @@ func (m *dashModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
+		if m.detail {
+			return m, m.updateDetailKey(msg)
+		}
 		var cmd tea.Cmd
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
+		case "enter":
+			if len(m.entries) > 0 {
+				cmd = m.openDetail()
+			}
 		case "down", "j":
 			if m.cursor < len(m.entries)-1 {
 				m.cursor++
@@ -381,22 +422,38 @@ func (m *dashModel) beginAction(verb string) tea.Cmd {
 	}
 }
 
-// abortAction ends the wait on the selected node's in-flight action. The
-// abort ends the wait, not the work: the call's own loop returns on the done
-// context — at the retry wait or mid-request, on the path it already has for
-// a given-up wait — and its final message lands as for any finished action:
-// the tile clears, the node may be started or stopped again, and the line
-// says the wait was abandoned, never that a wake the cloud is carrying was
-// cancelled. What the wake goes on to do comes back on the next refresh.
+// abortAction ends the wait on the selected node's in-flight start. Only a
+// start is abortable: it is the one action with no deadline of its own — a
+// cold cloud wake takes minutes, so a wait the operator no longer wants to
+// watch is a wait only the operator can end. A stop is not: it targets a
+// node that is already running, its own call carries no comparable open-
+// ended wait, and abandoning the wait on it would leave the operator unsure
+// whether the stop still went ahead — so a stop in flight, or no action at
+// all, drives nothing here. The abort ends the wait, not the work: the
+// call's own loop returns on the done context — at the retry wait or mid-
+// request, on the path it already has for a given-up wait — and its final
+// message lands as for any finished action: the tile clears, the node may
+// be started or stopped again, and the line says the wait was abandoned,
+// never that a wake the cloud is carrying was cancelled. What the wake goes
+// on to do comes back on the next refresh.
 func (m *dashModel) abortAction() {
 	i := m.cursor
-	if m.actions[i].verb == "" {
+	if m.actions[i].verb != "start" {
 		return
 	}
 	m.actions[i].aborted = true
 	if cancel := m.actions[i].cancel; cancel != nil {
 		cancel()
 	}
+}
+
+// canAbort reports whether the abort key would do anything for the node
+// under the cursor: only a start in flight is abortable, so an idle,
+// running, or already-stopping node has nothing to abort. The footer uses
+// this to drop the abort hint rather than advertise a key that changes
+// nothing for the node it describes.
+func (m dashModel) canAbort() bool {
+	return len(m.entries) > 0 && m.actions[m.cursor].verb == "start"
 }
 
 // indexOf finds an entry by name. Fleet-file names are unique — the fleet
@@ -443,6 +500,9 @@ func (m dashModel) effHeight() int {
 
 // View draws the frame: the header, the visible grid rows, the footer.
 func (m dashModel) View() string {
+	if m.detail {
+		return m.detailView()
+	}
 	w, h := m.effWidth(), m.effHeight()
 	tiles := make([]string, len(m.entries))
 	for i := range m.entries {
@@ -461,7 +521,7 @@ func (m dashModel) View() string {
 	if hi > lo {
 		parts = append(parts, strings.Join(rows[lo:hi], "\n"))
 	}
-	parts = append(parts, m.footerLine(w))
+	parts = append(parts, m.footerLine(w, dashFooterHints(dashGridKeys, m.canAbort())))
 	return strings.Join(parts, "\n")
 }
 
@@ -473,8 +533,16 @@ func (m dashModel) headerLine(w int) string {
 	return dashClip(fmt.Sprintf("fleet dashboard  %s  (%d %s)", m.fleetPath, len(m.entries), word), w)
 }
 
-func (m dashModel) footerLine(w int) string {
-	line := "j/k move   s start   a abort   x stop   r refresh   q quit"
+// dashGridKeys is the grid's own key help; the detail view's footer shares
+// footerLine but names its own keys instead (see dashDetailKeys).
+const dashGridKeys = "j/k move   s start   a abort   x stop   r refresh   q quit"
+
+// footerLine is the frame's bottom line: the given key help, replaced by the
+// stop confirmation prompt while one is pending, with the status line and a
+// "refreshing" marker appended — shared by the grid and the detail view so
+// the two cannot word the confirmation or a status outcome differently.
+func (m dashModel) footerLine(w int, keys string) string {
+	line := keys
 	if m.confirm && len(m.entries) > 0 {
 		line = "stop " + m.entries[m.cursor].name + "?   y yes   n no"
 	}
