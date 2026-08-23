@@ -230,6 +230,7 @@ outfit fleet dashboard --fleet f.yaml # another fleet file
 | --- | ---- |
 | `j`/`k` or the arrows | Move the selection, in file order (no wrap) |
 | `PgUp`/`PgDn` | Page the grid when there are more nodes than fit |
+| `Enter` | Open a full-screen view of the selected node |
 | `r` | Force a refresh of every node, now |
 | `s` | Start the selected node — without confirmation |
 | `a` | Abandon a start or stop in flight on the selected node — the wait ends, the node is free again |
@@ -261,6 +262,27 @@ Everything else in the view is `fleet status`/`metrics`/`logs` in place — it
 is read-only apart from those three action keys. It needs a real terminal: a
 piped run is refused, and it says so by way of `fleet metrics --watch`, which
 is the streamable surface.
+
+### The node detail view
+
+`Enter` on a tile opens a full-screen view of that node in place of the grid:
+its metrics, unclipped to the tile's 42 columns, its engine log tailed and
+followed the way `fleet logs -f` follows one node, and a footer naming the
+keys the view answers to. `Esc` closes it and returns to the grid with the
+same node still selected.
+
+```sh
+outfit fleet dashboard
+# select a node, press Enter for its full metrics and log, Esc to go back
+```
+
+`s`, `x` and `a` drive the node shown exactly as they drive the selected node
+on the grid — the same no-confirmation start, the same stop confirmation, the
+same abandon — and `q`/`Ctrl+C` still leave the dashboard from inside the
+view. The rest of the fleet keeps refreshing behind it, and any action
+already in flight on another node keeps running. A node whose engine has
+never run shows the same explanation `fleet logs` gives for it, not an empty
+pane.
 
 ## Logs
 

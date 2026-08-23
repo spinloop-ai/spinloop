@@ -423,6 +423,8 @@ outfit fleet start gpu-box   # start one node's engine
 in place, each drawing what `fleet metrics` prints — start a node with `s`,
 stop one with `x`, and a waking cloud machine reports its own progress on its
 tile; `a` ends the wait on one in flight (the wake goes on in the cloud).
+Press `<enter>` on a tile for a full-screen view of that node — metrics, its
+engine log tailed live, and the keys that work there — `<esc>` to go back.
 `fleet metrics --watch` is the same board as a stream, for pipes.
 
 ```

@@ -78,6 +78,17 @@ type dashModel struct {
 	nextSlowAt         time.Time // when the cloud group is next due; zero means due now
 
 	width, height int
+
+	// detail is the full-screen view of the node under the cursor, opened by
+	// enter and closed by escape. The cursor never moves while it is open, so
+	// the node in view is always entries[cursor]; detail carries only whether
+	// the view is open and the state of its own log tail.
+	detail           bool
+	detailLogGen     int    // bumped on every open, so a reply from a closed or superseded view is discarded
+	detailLogBusy    bool   // a log round is in flight for the node in view
+	detailLogOffset  int64  // where the next log round resumes from
+	detailLogContent string // the tailed content, trimmed to what the pane can show
+	detailLogNote    string // why the pane has no content — empty once it does
 }
 
 // dashTickMsg fires on the fast interval.
@@ -170,6 +181,21 @@ func (m *dashModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.actions[i] = dashAction{}
 		}
 		m.statusLine = dashActionLine(msg, aborted)
+	case detailLogTickMsg:
+		// The tick reschedules itself only while the view is open on a node
+		// that could ever answer; closing it, or a switch to a standing node
+		// that opened without ever scheduling this chain, is the shutdown
+		// path — the next tick simply stops rather than resurrecting it.
+		if !m.detail || m.entries[m.cursor].node == nil {
+			return m, nil
+		}
+		return m, tea.Batch(detailLogTickCmd(), m.startDetailLogRound())
+	case dashDetailLogMsg:
+		m.detailLogBusy = false
+		if !m.detail || msg.gen != m.detailLogGen {
+			return m, nil
+		}
+		m.applyDetailLog(msg.result)
 	case tea.KeyMsg:
 		if m.confirm {
 			switch msg.String() {
@@ -183,10 +209,17 @@ func (m *dashModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
+		if m.detail {
+			return m, m.updateDetailKey(msg)
+		}
 		var cmd tea.Cmd
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
+		case "enter":
+			if len(m.entries) > 0 {
+				cmd = m.openDetail()
+			}
 		case "down", "j":
 			if m.cursor < len(m.entries)-1 {
 				m.cursor++
@@ -443,6 +476,9 @@ func (m dashModel) effHeight() int {
 
 // View draws the frame: the header, the visible grid rows, the footer.
 func (m dashModel) View() string {
+	if m.detail {
+		return m.detailView()
+	}
 	w, h := m.effWidth(), m.effHeight()
 	tiles := make([]string, len(m.entries))
 	for i := range m.entries {
@@ -461,7 +497,7 @@ func (m dashModel) View() string {
 	if hi > lo {
 		parts = append(parts, strings.Join(rows[lo:hi], "\n"))
 	}
-	parts = append(parts, m.footerLine(w))
+	parts = append(parts, m.footerLine(w, dashGridKeys))
 	return strings.Join(parts, "\n")
 }
 
@@ -473,8 +509,16 @@ func (m dashModel) headerLine(w int) string {
 	return dashClip(fmt.Sprintf("fleet dashboard  %s  (%d %s)", m.fleetPath, len(m.entries), word), w)
 }
 
-func (m dashModel) footerLine(w int) string {
-	line := "j/k move   s start   a abort   x stop   r refresh   q quit"
+// dashGridKeys is the grid's own key help; the detail view's footer shares
+// footerLine but names its own keys instead (see dashDetailKeys).
+const dashGridKeys = "j/k move   s start   a abort   x stop   r refresh   q quit"
+
+// footerLine is the frame's bottom line: the given key help, replaced by the
+// stop confirmation prompt while one is pending, with the status line and a
+// "refreshing" marker appended — shared by the grid and the detail view so
+// the two cannot word the confirmation or a status outcome differently.
+func (m dashModel) footerLine(w int, keys string) string {
+	line := keys
 	if m.confirm && len(m.entries) > 0 {
 		line = "stop " + m.entries[m.cursor].name + "?   y yes   n no"
 	}

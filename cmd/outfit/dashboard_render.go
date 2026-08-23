@@ -90,8 +90,10 @@ func dashClip(line string, width int) string {
 	return ansi.CutWc(line, 0, width)
 }
 
-// dashTileContent is one panel's inside: the node's name and the facts the
-// bar format prints for it. The shapes are the state of the node's business
+// dashNodeContentLines is the facts the bar format prints for one node, as
+// plain lines with no width clipping or height padding — the tile and the
+// detail view's metrics section both draw from this, so the two can never
+// word a number differently. The shapes are the state of the node's business
 // — a start or stop in flight (the call's own status lines beside the node's
 // last report: the call says what the operator asked for, the report says
 // what the node is doing — a boot half done already carries a state and
@@ -99,7 +101,7 @@ func dashClip(line string, width int) string {
 // answered yet (an empty panel naming the node), answered and working (the
 // full bar block), or answered and not working (outcome plus reason, which
 // is what every one-shot surface shows).
-func dashTileContent(name string, r fleet.NodeResult, a dashAction) string {
+func dashNodeContentLines(name string, r fleet.NodeResult, a dashAction) []string {
 	var b strings.Builder
 	switch {
 	case a.verb != "":
@@ -125,7 +127,13 @@ func dashTileContent(name string, r fleet.NodeResult, a dashAction) string {
 		dashTileReportBody(&b, r.Metrics, r.Metrics.State == "running")
 	}
 	lines := strings.Split(b.String(), "\n")
-	lines = lines[:len(lines)-1] // the trailing newline splits an extra empty piece
+	return lines[:len(lines)-1] // the trailing newline splits an extra empty piece
+}
+
+// dashTileContent is one tile's inside: dashNodeContentLines padded to the
+// tile's fixed height and clipped to its fixed width.
+func dashTileContent(name string, r fleet.NodeResult, a dashAction) string {
+	lines := dashNodeContentLines(name, r, a)
 	for len(lines) < dashTileH {
 		lines = append(lines, "")
 	}
