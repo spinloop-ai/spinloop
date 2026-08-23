@@ -112,6 +112,16 @@ unreachable action SHALL NOT close the dashboard. What an action changes in stat
 — an engine coming up after a start, coming down after a stop — SHALL appear
 through the normal refresh, without the operator asking for it.
 
+An action in flight SHALL be abortable from the keyboard, on the node under the
+cursor. A start carries no deadline — a cold cloud wake takes minutes, and a
+deadline would report a failure to a slow success — so the operator's abort is
+its exit: an abort SHALL end the dashboard's wait on the action, return the
+node's tile to the node's report, free the node to be started or stopped again,
+and show its outcome on the status line, without closing the dashboard. An abort
+ends the wait, not the work it set in motion: the dashboard SHALL NOT present it
+as a cancellation of the wake, and what the wake goes on to do — the node's
+state — SHALL appear through the normal refresh.
+
 #### Scenario: Starting a cold node
 
 - **WHEN** the operator selects a node with no engine running and issues the
@@ -152,6 +162,25 @@ through the normal refresh, without the operator asking for it.
 
 - **WHEN** the operator presses start on a node whose start is in flight
 - **THEN** the dashboard drives nothing and says the node is still starting
+
+#### Scenario: An in-flight start can be abandoned
+
+- **WHEN** the operator's start on a node is still in flight — the cloud waiting
+  for capacity, the boot slow, or the connection behind it dropping and
+  retrying — and the operator issues the abort on that node
+- **THEN** the dashboard stops waiting on the start, the node's tile returns to
+  the node's report, and the outcome is shown on the status line
+- **AND** the node may be started or stopped again, and the dashboard keeps
+  running with its refreshes
+
+#### Scenario: An abort is not a cancellation of the wake
+
+- **WHEN** the operator aborts a start whose wake the cloud is already carrying
+  on
+- **THEN** the dashboard reports that it stopped waiting, not that the wake was
+  cancelled
+- **AND** the node's state, whatever the wake goes on to do, appears through the
+  normal refresh
 
 #### Scenario: An action that fails keeps the dashboard open
 

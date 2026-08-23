@@ -232,6 +232,7 @@ outfit fleet dashboard --fleet f.yaml # another fleet file
 | `PgUp`/`PgDn` | Page the grid when there are more nodes than fit |
 | `r` | Force a refresh of every node, now |
 | `s` | Start the selected node — without confirmation |
+| `a` | Abandon a start or stop in flight on the selected node — the wait ends, the node is free again |
 | `x` | Stop the selected node — it asks first (`y` sends, `n` or `esc` cancel) |
 | `q` or `Ctrl+C` | Leave |
 
@@ -249,10 +250,15 @@ report — because that is the truth until the report returns. An action is one
 per node, not one per board: while one node is waking, select another and
 start it, and the two wakes run side by side, each reported on its own tile.
 When an action finishes, its tile goes back to the node's next report and its
-outcome lands on the status line at the foot of the view.
+outcome lands on the status line at the foot of the view. A wait can be
+abandoned: `a` ends the dashboard's wait on the node's in-flight action, and
+the tile is free to start or stop again. The abort ends the wait, not the
+work — a cancelled client cannot take a wake the cloud is carrying back — so
+the line says the wait was *abandoned*, not that the node failed, and a wake
+that was in fact completing shows up as a running node on the next refresh.
 
 Everything else in the view is `fleet status`/`metrics`/`logs` in place — it
-is read-only apart from those two action keys. It needs a real terminal: a
+is read-only apart from those three action keys. It needs a real terminal: a
 piped run is refused, and it says so by way of `fleet metrics --watch`, which
 is the streamable surface.
 

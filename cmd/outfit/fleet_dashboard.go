@@ -26,9 +26,11 @@ func fleetDashboardCmd() *cobra.Command {
 what the bar format of fleet metrics prints — state, what it serves, the
 resource bars, the token counters — repainted on an interval.
 
-The view is read-only apart from two keys: s starts the selected node, x
-stops it after a confirmation. j/k or the arrows move the selection, r forces
-a refresh, q or Ctrl+C leaves.
+The view is read-only apart from three keys: s starts the selected node, a
+abandons a start or stop still in flight on it (the wait ends, the node is
+free again — a wake the cloud is carrying goes on), x stops it after a
+confirmation. j/k or the arrows move the selection, r forces a refresh, q or
+Ctrl+C leaves.
 
 A node that cannot be reached is still a tile, showing why, and a node whose
 token reference is unresolvable holds its reason for the life of the view.

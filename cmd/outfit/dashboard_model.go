@@ -41,11 +41,14 @@ type dashEntry struct {
 }
 
 // dashAction is the board's account of a start or stop in flight on one
-// node: the verb and the last line the call has reported. A node with nothing
-// in flight carries the zero value.
+// node: the verb, the last line the call has reported, and the call's own
+// context — the abort's door. A node with nothing in flight carries the zero
+// value.
 type dashAction struct {
-	verb string // "start" or "stop"
-	line string // the call's latest status line; empty until it reports one
+	verb    string             // "start" or "stop"
+	line    string             // the call's latest status line; empty until it reports one
+	cancel  context.CancelFunc // end the wait on the call; nil where the zero value sits
+	aborted bool               // the operator ended the wait, so the line says so
 }
 
 // dashModel is the program's state: the board, the selection, and the in-
@@ -161,10 +164,12 @@ func (m *dashModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.actions[i].line = msg.line
 		}
 	case dashActionMsg:
+		aborted := false
 		if i := m.indexOf(msg.node); i >= 0 {
+			aborted = m.actions[i].aborted
 			m.actions[i] = dashAction{}
 		}
-		m.statusLine = dashActionLine(msg)
+		m.statusLine = dashActionLine(msg, aborted)
 	case tea.KeyMsg:
 		if m.confirm {
 			switch msg.String() {
@@ -195,6 +200,13 @@ func (m *dashModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "s":
 			if len(m.entries) > 0 && m.actions[m.cursor].verb == "" {
 				cmd = m.beginAction("start")
+			}
+		case "a":
+			// End the wait on the node's in-flight action — the one-shot
+			// equivalent of Ctrl+C. A node with nothing in flight is driven
+			// by nothing.
+			if len(m.entries) > 0 {
+				m.abortAction()
 			}
 		case "x":
 			if len(m.entries) > 0 && m.actions[m.cursor].verb == "" {
@@ -298,10 +310,17 @@ func (m *dashModel) intervalFor(remote bool) time.Duration {
 
 // dashActionLine is the footer's account of a finished action, on the same
 // result the fleet fan-out gives the one-shot commands, so the board cannot
-// claim a start worked when the row of `fleet start` would not.
-func dashActionLine(msg dashActionMsg) string {
+// claim a start worked when the row of `fleet start` would not. A failure the
+// operator's abort caused is not reported as a failure of the node — the wait
+// was abandoned, and a success that races the abort is still reported as the
+// success, since the line is about what the node did, not what the dashboard
+// did.
+func dashActionLine(msg dashActionMsg, aborted bool) string {
 	r := fleet.Result(msg.node, msg.err, msg.status)
 	if !r.OK() {
+		if aborted {
+			return msg.node + ": " + msg.verb + " abandoned"
+		}
 		return msg.node + ": " + msg.verb + " failed — " + r.Detail()
 	}
 	state := msg.status.State
@@ -319,7 +338,9 @@ func dashActionLine(msg dashActionMsg) string {
 // call reports itself on its own tile through the progress door, so the
 // footer — one line — keeps only the final outcomes. While it flies, the
 // refresh rounds keep coming; the panel turns on the next round, which is
-// also the daemon's own account of the state.
+// also the daemon's own account of the state. The action runs on its own
+// context, held beside it on the board — the operator's abort is that
+// context's cancellation, not a timer.
 func (m *dashModel) beginAction(verb string) tea.Cmd {
 	e := m.entries[m.cursor]
 	m.confirm = false
@@ -331,7 +352,8 @@ func (m *dashModel) beginAction(verb string) tea.Cmd {
 		m.statusLine = e.name + ": still " + dashVerbProgress(m.actions[m.cursor].verb)
 		return nil
 	}
-	m.actions[m.cursor] = dashAction{verb: verb}
+	ctx, cancel := context.WithCancel(context.Background())
+	m.actions[m.cursor] = dashAction{verb: verb, cancel: cancel}
 	m.statusLine = dashVerbProgress(verb) + " " + e.name + "…"
 	send := m.send
 	progress := func(line string) {
@@ -352,8 +374,27 @@ func (m *dashModel) beginAction(verb string) tea.Cmd {
 		act = e.node.Start
 	}
 	return func() tea.Msg {
-		status, err := act(context.Background())
+		status, err := act(ctx)
+		cancel()
 		return dashActionMsg{node: e.name, verb: verb, status: status, err: err}
+	}
+}
+
+// abortAction ends the wait on the selected node's in-flight action. The
+// abort ends the wait, not the work: the call's own loop returns on the done
+// context — at the retry wait or mid-request, on the path it already has for
+// a given-up wait — and its final message lands as for any finished action:
+// the tile clears, the node may be started or stopped again, and the line
+// says the wait was abandoned, never that a wake the cloud is carrying was
+// cancelled. What the wake goes on to do comes back on the next refresh.
+func (m *dashModel) abortAction() {
+	i := m.cursor
+	if m.actions[i].verb == "" {
+		return
+	}
+	m.actions[i].aborted = true
+	if cancel := m.actions[i].cancel; cancel != nil {
+		cancel()
 	}
 }
 
@@ -432,7 +473,7 @@ func (m dashModel) headerLine(w int) string {
 }
 
 func (m dashModel) footerLine(w int) string {
-	line := "j/k move   s start   x stop   r refresh   q quit"
+	line := "j/k move   s start   a abort   x stop   r refresh   q quit"
 	if m.confirm && len(m.entries) > 0 {
 		line = "stop " + m.entries[m.cursor].name + "?   y yes   n no"
 	}

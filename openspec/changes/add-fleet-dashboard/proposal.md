@@ -14,8 +14,10 @@ them (lucinate-ai/outfit#59).
   metrics `fleet metrics` renders — refreshed continuously.
 - Selection (j/k and the arrow keys) and keyboard-driven start/stop of the selected
   node, through the same node operations the one-shot commands use. Start proceeds
-  without confirmation; stop requires an explicit confirmation. Pause is deferred to
-  a follow-up (lucinate-ai/outfit#119).
+  without confirmation; stop requires an explicit confirmation. An in-flight start
+  can be abandoned from the keyboard — the wait ends and the node is free again —
+  without claiming to cancel a wake the cloud is already carrying. Pause is deferred
+  to a follow-up (lucinate-ai/outfit#119).
 - A status line for last-action results, manual refresh, and clean exit on q /
   Ctrl+C with the terminal restored on every exit path.
 - The dashboard is usable from cold: it opens on a fleet where nothing is reachable,

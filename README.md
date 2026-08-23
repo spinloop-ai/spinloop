@@ -422,7 +422,8 @@ outfit fleet start gpu-box   # start one node's engine
 `dashboard` is the fleet you actually look at: one tile per node, repainted
 in place, each drawing what `fleet metrics` prints — start a node with `s`,
 stop one with `x`, and a waking cloud machine reports its own progress on its
-tile. `fleet metrics --watch` is the same board as a stream, for pipes.
+tile; `a` ends the wait on one in flight (the wake goes on in the cloud).
+`fleet metrics --watch` is the same board as a stream, for pipes.
 
 ```
 NODE     STATE         SERVING

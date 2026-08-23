@@ -114,13 +114,16 @@ func (n plainDashNode) Logs(ctx context.Context, offset int64, limit int) (daemo
 
 // The fake also reports one progress line on the way, so the dashboard's
 // progress path is exercised end to end, through the program's Send — and,
-// when told to hold, stays on that line until released.
+// when told to hold, stays on that line until released. A wait that ends on
+// the context — the abort — comes back with the context's error, the way the
+// control plane's own loop does.
 func (f *fakeDashNode) StartWithProgress(ctx context.Context, progress func(string)) (daemon.StatusResponse, error) {
 	progress("instance starting; retrying in 1s")
 	if f.hold != nil {
 		select {
 		case <-f.hold:
 		case <-ctx.Done():
+			return daemon.StatusResponse{}, ctx.Err()
 		}
 	}
 	return f.Start(ctx)
@@ -1080,6 +1083,142 @@ func TestDashModelBeginActionRefusesANodeStillWorking(t *testing.T) {
 	}
 	if m.statusLine != "a: still starting" {
 		t.Errorf("status line: %q", m.statusLine)
+	}
+}
+
+// The abort ends the wait on an in-flight start: the call's own loop comes
+// back on the done context, the tile clears, the line says the wait was
+// abandoned — not the node failed — and the node is free to start again.
+func TestDashModelAbortsAnInFlightStart(t *testing.T) {
+	hold := make(chan struct{})
+	f := newFakeDashNode("stopped")
+	f.hold = hold // the start stays in flight until released or cancelled
+	m := &dashModel{
+		entries: []dashEntry{{name: "a", kind: fleet.KindRemote, node: f}},
+		results: []fleet.NodeResult{{Name: "a"}},
+		actions: make([]dashAction, 1),
+		width:   120, height: 40,
+	}
+	next, cmd := m.Update(dashKey("s"))
+	m = next.(*dashModel)
+	if m.actions[0].verb != "start" {
+		t.Fatalf("no action recorded: %+v", m.actions[0])
+	}
+	// A second start is gated by the key itself: nothing is driven while the
+	// first is in flight.
+	next, cmdRefused := m.Update(dashKey("s"))
+	m = next.(*dashModel)
+	if cmdRefused != nil {
+		t.Fatalf("a second start was sent: %v", cmdRefused)
+	}
+	// The abort marks the action and cancels the call's context.
+	next, _ = m.Update(dashKey("a"))
+	m = next.(*dashModel)
+	if !m.actions[0].aborted {
+		t.Fatal("the abort did not mark the action")
+	}
+	// The call's loop returns on the done context, and its final message lands
+	// as for any finished action.
+	msg, _ := cmd().(dashActionMsg)
+	if msg.err == nil {
+		t.Fatalf("the aborted start came back as a success: %+v", msg)
+	}
+	next, _ = m.Update(msg)
+	m = next.(*dashModel)
+	if m.actions[0].verb != "" || m.actions[0].aborted {
+		t.Fatalf("the action was not cleared: %+v", m.actions[0])
+	}
+	if m.statusLine != "a: start abandoned" {
+		t.Errorf("status line: %q", m.statusLine)
+	}
+	if v := m.View(); strings.Contains(v, "starting") {
+		t.Errorf("the tile still carries the aborted start:\n%s", v)
+	}
+	// The freed node takes a second start, and it succeeds on release.
+	next, cmd2 := m.Update(dashKey("s"))
+	m = next.(*dashModel)
+	if m.actions[0].verb != "start" {
+		t.Fatalf("the freed node did not take a second start: %+v", m.actions[0])
+	}
+	close(hold)
+	msg2, _ := cmd2().(dashActionMsg)
+	next, _ = m.Update(msg2)
+	m = next.(*dashModel)
+	if m.statusLine != "a: start — running" {
+		t.Errorf("second start: %q", m.statusLine)
+	}
+	// The aborted start never reached the call (it was still on its hold
+	// line); only the second did.
+	if f.starts != 1 {
+		t.Errorf("starts = %d (want 1)", f.starts)
+	}
+}
+
+// a on a node with nothing in flight drives nothing: no action, no line, no
+// command.
+func TestDashModelAbortOnAnIdleNodeDrivesNothing(t *testing.T) {
+	node := newFakeDashNode("running")
+	m := &dashModel{
+		entries: []dashEntry{{name: "a", kind: fleet.KindDaemon, node: node}},
+		results: []fleet.NodeResult{{Name: "a"}},
+		actions: make([]dashAction, 1),
+		width:   120, height: 40,
+	}
+	m.statusLine = "an earlier outcome"
+	next, cmd := m.Update(dashKey("a"))
+	m = next.(*dashModel)
+	if cmd != nil {
+		t.Errorf("the idle abort sent a command: %v", cmd)
+	}
+	if m.actions[0].verb != "" || m.actions[0].aborted {
+		t.Errorf("the idle abort touched the action: %+v", m.actions[0])
+	}
+	if m.statusLine != "an earlier outcome" {
+		t.Errorf("status line: %q", m.statusLine)
+	}
+}
+
+// A success that lands with the abort is reported as the success — the node
+// is running, and "abandoned" over a green node would be a lie — so the
+// finished message wins when it carries no error.
+func TestDashModelRacingSuccessIsReportedAsSuccess(t *testing.T) {
+	node := newFakeDashNode("stopped")
+	m := &dashModel{
+		entries: []dashEntry{{name: "a", kind: fleet.KindRemote, node: node}},
+		results: []fleet.NodeResult{{Name: "a"}},
+		actions: make([]dashAction, 1),
+		width:   120, height: 40,
+	}
+	m.actions[0] = dashAction{verb: "start", aborted: true}
+	next, _ := m.Update(dashActionMsg{node: "a", verb: "start", status: daemon.StatusResponse{State: "running"}})
+	m = next.(*dashModel)
+	if m.statusLine != "a: start — running" {
+		t.Errorf("status line: %q", m.statusLine)
+	}
+	if m.actions[0].verb != "" {
+		t.Errorf("the action was not cleared: %+v", m.actions[0])
+	}
+}
+
+// The line's own decision, at its level: an aborted failure is the
+// abandonment, an un-aborted one the failure, a success the success whatever
+// the abort says.
+func TestDashActionLineAbortedWording(t *testing.T) {
+	cases := []struct {
+		aborted bool
+		err     error
+		state   string
+		want    string
+	}{
+		{false, errors.New("boot exploded"), "", "a: start failed — boot exploded"},
+		{true, errors.New("context canceled"), "", "a: start abandoned"},
+		{true, nil, "running", "a: start — running"},
+		{false, nil, "", "a: start — done"},
+	}
+	for i, c := range cases {
+		if got := dashActionLine(dashActionMsg{node: "a", verb: "start", err: c.err, status: daemon.StatusResponse{State: c.state}}, c.aborted); got != c.want {
+			t.Errorf("case %d: %q (want %q)", i, got, c.want)
+		}
 	}
 }
 

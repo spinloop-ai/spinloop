@@ -175,6 +175,15 @@ confirmation belongs to the node under the cursor:
 - node idle → `x` on it: `confirmStop` enters; the footer swaps its key help
   for `stop <name>? y/n`; every key but `y`/`n`/escape is ignored; `y` sends
   the stop (same in-flight handling), `n`/escape return with nothing sent.
+- in flight → `a` on that node: the wait on the action ends. The model keeps
+  the action's context beside its `dashAction` (the cancel function), and
+  `beginAction` runs the call on that context rather than a background one; the
+  abort calls the cancel, the call's own loop returns on the done context — for
+  a `kind: remote` start that is its existing `gave up waiting for the
+  endpoint` path, at the retry wait or mid-request — and the final message
+  lands exactly as for a finished action: the tile clears, the node is free to
+  start or stop again, the line is set. The footer's key help names it (`a
+  abort`). With no action in flight on the node, the key drives nothing.
 - in flight → the call's reply clears the node's `dashAction` (the tile
   returns to the node's next report) and sets the status line.
 
@@ -195,6 +204,20 @@ rather than panicking. The lines land as `dashActionProgressMsg`s, the
 handler stores the latest on the node's `dashAction`, and the tile renders
 it — the verb plus the latest line, in place of the node's last report, for
 the life of the call. A node that reports nothing shows the verb alone.
+
+The abort ends the wait, not the work. A daemon node's start is one POST and
+one reply: a cancelled context only means the dashboard stops waiting for a
+reply the daemon already received. A `kind: remote` wake is on the cloud's
+side — a cancelled client cannot take an instance back, and the dashboard will
+not say it did. The status line therefore says the wait was abandoned, in the
+one-shot wording (`<node>: start abandoned`), and the next refresh is what
+shows whether the wake went ahead. A start keeps no deadline (a cold cloud wake
+takes minutes, and a deadline would report a failure to a slow success); the
+operator's abort is its exit, not a timer's. The one race worth naming: a
+success that lands with the abort is reported as the success — the node is
+running, and `abandoned` over a green node would be a lie — so the finished
+message wins when it carries no error, and the aborted wording is the one for
+the error case.
 
 The status line is a single string the model owns; a refresh does not clear it
 (the operator may have just read it), the next finished action replaces it,

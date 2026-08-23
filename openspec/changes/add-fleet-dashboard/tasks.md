@@ -68,11 +68,27 @@
       optional `fleet.ProgressStarter` so the control plane's retry lines reach
       `remote.Start`'s progress callback, and the model feeds them back through
       the program's `Send` (a `send` field on the model — safe from any
-      goroutine, a no-op after the program has left, so a start that outlives
-      the view reports into nothing). Model tests: the concurrent-start
-      refusal and per-node clears, the progress lines landing on the right
-      nodes, and the held-start program test watching the tile carry the
-      start's line until it finishes
+       goroutine, a no-op after the program has left, so a start that outlives
+       the view reports into nothing). Model tests: the concurrent-start
+       refusal and per-node clears, the progress lines landing on the right
+       nodes, and the held-start program test watching the tile carry the
+       start's line until it finishes
+- [x] 2.10 The abort key (`a`), on the node under the cursor, ends the
+      dashboard's wait on that node's in-flight action: each action runs on its
+      own context held beside its `dashAction` (the cancel function), the abort
+      calls it and the call's own loop returns on the done context (the
+      `kind: remote` start's retry loop already has the `gave up waiting for
+      the endpoint` path, at the retry wait or mid-request), and the final
+      message lands as for any finished action — the tile clears, the node may
+      be started or stopped again, the outcome is on the status line. An abort
+      ends the wait, not the work: the line says the wait was abandoned, never
+      that a cloud wake was cancelled, a success that races the abort is still
+      reported as the success, and the node's state — whatever the wake went on
+      to do — comes back on the next refresh. A node with no action in flight
+      drives nothing; the footer's key help names the key. Model tests: the
+      abort releases the node (the tile clears, a second start is accepted),
+      the abandoned wording, the racing success reported as success, and the
+      refused abort on a node with nothing in flight
 
 ## 3. The renderers
 
