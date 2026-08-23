@@ -72,6 +72,7 @@ type Daemon struct {
 
 	act    activity
 	sample engineSample
+	ready  readiness
 
 	mu       sync.Mutex
 	runner   string
@@ -282,6 +283,7 @@ func (d *Daemon) StartEngine() error {
 	// The previous engine's counters must not be reported against this one,
 	// for the same reason its counter baseline is dropped.
 	d.sample.forget()
+	d.ready.forget()
 	return nil
 }
 
@@ -304,6 +306,14 @@ type StatusResponse struct {
 	// an engine is running: an address for a process that does not exist is
 	// worse than no address.
 	Engine *EngineEndpoint `json:"engine,omitempty"`
+	// Ready is "ready" or "not-ready": whether the running engine has last
+	// answered its own health check, distinct from State reaching "running" —
+	// the process can be alive while still loading weights. Absent, not
+	// "not-ready", when it does not apply: no engine is running, the
+	// running engine's runner has no known health-check convention, or this
+	// daemon predates the check. Mirrored on metrics.Stats.Ready, from the
+	// same record.
+	Ready string `json:"ready,omitempty"`
 	// Version is the outfit binary's build-time version string. Set from the
 	// daemon's Version field, which the CLI passes at construction time.
 	Version string `json:"version"`
@@ -361,8 +371,25 @@ func (d *Daemon) Status() StatusResponse {
 			}
 			resp.Engine = &reported
 		}
+		resp.Ready = d.readinessField()
 	}
 	return resp
+}
+
+// readinessField renders the shared readiness record as the string
+// /v1/status and /v1/metrics both report: "ready", "not-ready", or "" when
+// no reading has landed — before the first check, or for a runner with no
+// known health-check convention. Callers gate this on the engine running;
+// it does not check that itself, since both callers already have.
+func (d *Daemon) readinessField() string {
+	ready, have := d.ready.read()
+	if !have {
+		return ""
+	}
+	if ready {
+		return "ready"
+	}
+	return "not-ready"
 }
 
 // activity renders the activity record as the pair both /v1/status and
@@ -415,6 +442,7 @@ func (d *Daemon) Metrics(ctx context.Context) metrics.Stats {
 				fmt.Sprintf("engine metrics scrape (%s): %v", baseURL, err))
 		}
 		stats.Tokens = tokens
+		stats.Ready = d.readinessField()
 	}
 	// Outside the running branch, so a stopped or crashed engine still reports
 	// when work last happened — the record survives a stop precisely so it can

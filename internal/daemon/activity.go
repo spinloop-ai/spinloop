@@ -92,6 +92,7 @@ func (d *Daemon) SampleActivity(ctx context.Context) {
 	}
 	for {
 		d.sampleOnce(ctx)
+		d.checkReadyOnce(ctx)
 		// Until a reading has landed there is nothing for /v1/metrics to
 		// report, so wait a short interval rather than the full one. That is
 		// the window just after an engine starts, when someone is most likely
@@ -138,6 +139,27 @@ func (d *Daemon) sampleOnce(ctx context.Context) {
 	}
 	d.sample.record(tokens, err, scrape.BaseURL)
 	d.act.observe(tokens, d.now())
+}
+
+// checkReadyOnce takes one reading of whether the running engine can serve
+// requests, for a runner with a known health-check convention. It is a no-op
+// — recording nothing — when the engine is not running, when no scrape
+// target is known, or when the runner is not in readinessCheckedRunners, so
+// an unchecked runner's readiness field stays absent rather than reporting a
+// guess.
+func (d *Daemon) checkReadyOnce(ctx context.Context) {
+	if state, _, _ := d.Sup.Status(); state != StateRunning {
+		return
+	}
+	// Copy the target under the lock and release before the HTTP call, as
+	// sampleOnce does — a health check must never hold the daemon's mutex.
+	d.mu.Lock()
+	scrape := d.scrape
+	d.mu.Unlock()
+	if scrape.BaseURL == "" || !readinessCheckedRunners[scrape.Engine] {
+		return
+	}
+	d.ready.record(metrics.CheckEngineReady(ctx, scrape))
 }
 
 // engineSample holds the most recent reading of the engine's counters, taken

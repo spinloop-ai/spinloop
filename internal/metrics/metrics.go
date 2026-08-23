@@ -36,6 +36,13 @@ type Stats struct {
 	// a stopped engine still reports when it last worked.
 	LastActiveAt string `json:"lastActiveAt,omitempty"`
 	IdleSeconds  int    `json:"idleSeconds,omitempty"`
+	// Ready is "ready" or "not-ready": whether the running engine has last
+	// answered its own health check, mirroring daemon.StatusResponse.Ready
+	// from the same record — a caller cannot get one answer from status and
+	// another from metrics. Absent, not "not-ready", when it does not apply:
+	// no engine is running, its runner has no known health-check convention,
+	// or this daemon predates the check.
+	Ready string `json:"ready,omitempty"`
 }
 
 // TokenStats holds per-engine token/request counters from /metrics.
