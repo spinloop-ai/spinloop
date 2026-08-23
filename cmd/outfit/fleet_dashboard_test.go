@@ -291,9 +291,8 @@ func TestDashTileStoppedByteStable(t *testing.T) {
 	}
 }
 
-// A node with an action in flight shows the verb and the call's own lines
-// instead of its last report: while a cloud wake is working, that is the
-// state the tile should carry.
+// A node with an action in flight and no report yet shows the verb and the
+// call's own lines; a stop conjugates: the p of stop drops before -ing.
 func TestDashTileActionInFlight(t *testing.T) {
 	lipgloss.SetColorProfile(termenv.Ascii)
 	if got := dashTile("dev-2", fleet.NodeResult{Name: "dev-2"}, false,
@@ -311,6 +310,74 @@ func TestDashTileActionInFlight(t *testing.T) {
 		"", "", "", "", "", "", "", "", "", "", "",
 	}) {
 		t.Errorf("bare in-flight tile mismatch:\n%q", got)
+	}
+}
+
+// A report that lands while an action is in flight shows on the tile beside
+// the call's own lines: the call says what the operator asked for, the report
+// says what the node is doing — a boot half done already carries a state and
+// whatever it measures, and that is the truth the tile should keep showing
+// while the start still works.
+func TestDashTileActionInFlightWithReport(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.Ascii)
+	// The instance is up and measuring, the engine not serving yet: the
+	// start still works, and the report carries the state and the bars.
+	r := fleet.NodeResult{
+		Name: "vllm-1", Outcome: fleet.OutcomeOK,
+		Metrics: metrics.Stats{
+			State: "running", Runner: "vllm", ModelID: "org/qwen3:32b",
+			UptimeSeconds: 240,
+			CPU:           &metrics.CpuStat{Utilization: 12},
+			Memory:        &metrics.MemoryStat{Total: 1000, Used: 480},
+			GPUs:          []metrics.GpuStat{{Index: 0, Name: "H100", Utilization: 35, MemoryUsed: 72, MemoryTotal: 160}},
+		},
+	}
+	want := dashTileExpected([]string{
+		"vllm-1  starting",
+		"instance no-capacity; retrying in 120s",
+		"running",
+		"vllm  org/qwen3:32b  (up 4m 0s)",
+		dashBar("CPU", 12),
+		dashBar("RAM", 48),
+		dashBar("GPU util", 35),
+		dashBar("GPU mem", 45),
+		"", "", "", "",
+	})
+	if got := dashTile("vllm-1", r, false,
+		dashAction{verb: "start", line: "instance no-capacity; retrying in 120s"}); got != want {
+		t.Errorf("in-flight tile with report mismatch:\ngot:\n%q\nwant:\n%q", got, want)
+	}
+	// Early in a boot: the report has a state and the serving, nothing
+	// measured yet — the tile carries exactly that.
+	early := fleet.NodeResult{
+		Name: "vllm-1", Outcome: fleet.OutcomeOK,
+		Metrics: metrics.Stats{State: "pending", Runner: "vllm", ModelID: "org/qwen3:32b"},
+	}
+	wantEarly := dashTileExpected([]string{
+		"vllm-1  starting",
+		"instance starting; retrying in 60s",
+		"pending",
+		"vllm  org/qwen3:32b",
+		"", "", "", "", "", "", "", "",
+	})
+	if got := dashTile("vllm-1", early, false,
+		dashAction{verb: "start", line: "instance starting; retrying in 60s"}); got != wantEarly {
+		t.Errorf("early-boot in-flight tile mismatch:\ngot:\n%q\nwant:\n%q", got, wantEarly)
+	}
+	// A round that failed this time says nothing on the tile: the call's own
+	// lines stay the account, and the next round will say more.
+	failed := fleet.NodeResult{
+		Name: "vllm-1", Outcome: fleet.OutcomeUnreachable,
+		Err: errors.New("stats returned HTTP 503: instance is not running"),
+	}
+	wantFailed := dashTileExpected([]string{
+		"vllm-1  starting",
+		"instance starting; retrying in 60s",
+		"", "", "", "", "", "", "", "", "", "",
+	})
+	if got := dashTile("vllm-1", failed, false,
+		dashAction{verb: "start", line: "instance starting; retrying in 60s"}); got != wantFailed {
+		t.Errorf("in-flight tile over a failed round mismatch:\ngot:\n%q\nwant:\n%q", got, wantFailed)
 	}
 }
 
@@ -862,6 +929,43 @@ func TestDashModelConcurrentStarts(t *testing.T) {
 	m = next.(*dashModel)
 	if m.actions[1].verb != "" || !strings.Contains(m.statusLine, "b: start — running") {
 		t.Errorf("node b's final: %+v, line %q", m.actions, m.statusLine)
+	}
+}
+
+// A round that lands while a start is in flight paints on the tile beside
+// the call's own lines: the node's report and the call's account both show,
+// until the call returns and the report stands alone.
+func TestDashModelLandedRoundShowsBesideInFlightAction(t *testing.T) {
+	f := newFakeDashNode("stopped")
+	m := &dashModel{
+		entries: []dashEntry{{name: "a", kind: fleet.KindRemote, node: f}},
+		results: make([]fleet.NodeResult, 1),
+		actions: make([]dashAction, 1),
+		width:   120, height: 40,
+	}
+	next, _ := m.Update(dashKey("s"))
+	m = next.(*dashModel)
+	if m.actions[0].verb != "start" {
+		t.Fatalf("no action recorded: %+v", m.actions[0])
+	}
+	// The call's own line, as its goroutine would send it.
+	next, _ = m.Update(dashActionProgressMsg{node: "a", line: "instance starting; retrying in 1s"})
+	m = next.(*dashModel)
+	// The cloud round lands while the start is in flight.
+	cmd := m.refreshRemoteGroup(true)
+	if cmd == nil {
+		t.Fatal("the cloud round did not start")
+	}
+	msg, _ := cmd().(dashRefreshMsg)
+	next, _ = m.Update(msg)
+	m = next.(*dashModel)
+	v := m.View()
+	for _, want := range []string{
+		"a  starting", "instance starting; retrying in 1s", "stopped", "llamacpp  org/qwen",
+	} {
+		if !strings.Contains(v, want) {
+			t.Errorf("the in-flight tile does not carry %q:\n%s", want, v)
+		}
 	}
 }
 
