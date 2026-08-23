@@ -23,9 +23,19 @@ return to the grid (lucinate-ai/outfit#125).
 - Start, stop and abort on the node under view work the same as on the grid:
   the same confirmation for stop, the same in-flight status on the metrics
   pane in place of the tile, so leaving the view mid-action loses nothing.
-  `q`/Ctrl+C still quits the program from inside the detail view.
-- The grid's own behaviour is unchanged: layout, refresh, selection, actions
-  and exit all work exactly as before when the detail view is not open.
+  `q`/Ctrl+C are grid-level only and do nothing from inside the detail view —
+  escape is the only way out of it, so a stray quit keystroke while
+  inspecting a node cannot end the session out from under the operator.
+- The log's follow can be paused and resumed from the keyboard (`f`),
+  independently of the metrics section's own refresh: pausing stops picking
+  up new output, and resuming fetches whatever the engine wrote in the
+  meantime rather than losing it.
+- **BREAKING (behaviour)**: the abort key now drives nothing on a stop in
+  flight, on the grid as well as in the detail view — only a start, the one
+  action with no deadline of its own, is abortable. Abandoning the wait on a
+  stop would leave the operator unsure whether it still went through, so it
+  is no longer offered.
+- The grid's own layout, refresh, selection and exit are otherwise unchanged.
 
 ## Capabilities
 
@@ -37,8 +47,10 @@ None.
 
 - `fleet-client`: the dashboard gains a full-screen per-node detail view
   reachable from the grid with `<enter>`/`<esc>`, showing that node's
-  unclipped metrics and followed engine log, with the same start/stop/abort
-  behaviour as the grid.
+  unclipped metrics and followed engine log, with the same start/stop
+  behaviour as the grid. The existing "dashboard drives the selected node"
+  requirement is also narrowed: abort now applies to a start in flight only,
+  on both the grid and the detail view — a stop in flight is not abortable.
 
 ## Impact
 
@@ -47,7 +59,8 @@ None.
   `<esc>` transitions; `dashboard_render.go` gains the full-screen renderer.
   No new files are required by the proposal, though the implementation may
   split the detail view into its own file if the existing ones would grow
-  past a comfortable size.
+  past a comfortable size. `abortAction` — the grid's existing abort handler,
+  shared by the detail view — is narrowed to refuse a stop in flight.
 - `internal/fleet`: unchanged — the detail view reads logs through the
   existing `Node.Logs` / `fleet.LogsCall`, the same call `fleet logs` already
   uses, and metrics through the existing `fleet.MetricsCall`.

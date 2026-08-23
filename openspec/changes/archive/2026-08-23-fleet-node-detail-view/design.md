@@ -36,8 +36,9 @@ See proposal.md — Why. The pieces already in place that this builds on:
   `NodeResult` through the same helpers.
 - Add exactly one new kind of polling (the log tail) and one new screen mode,
   both scoped to the dashboard model already in place.
-- Leaving and re-entering the detail view, and quitting from inside it, must
-  behave exactly as the grid's existing exit and navigation paths.
+- Leaving and re-entering the detail view must behave exactly as the grid's
+  existing exit and navigation paths; quitting is a grid-only action, so the
+  detail view has no quit key of its own — escape is the only way out of it.
 
 **Non-Goals:**
 
@@ -77,11 +78,18 @@ clears it. The cursor itself does not move — leaving the detail view returns
 to the same selection. While in detail mode, the key table is replaced: `s`/
 `x`/`a` act on `entries[detailIdx]` exactly as they act on `entries[cursor]`
 in grid mode (the two are the same node, since entering never changes the
-cursor), `q`/Ctrl+C still quit, and `j`/`k`/navigation and `r` are not read
-in this mode — the log pane's own scrolling, if any is needed, is future
-scope, not this change (see log pane sizing below). The stop confirmation
-overlay already keyed off `m.confirm` works unchanged in either mode: it
-reads `m.cursor`, which is still the node the detail view is showing.
+cursor), `f` toggles the log's follow (see below), and `j`/`k`/navigation and
+`r` are not read in this mode — the log pane's own scrolling, if any is
+needed, is future scope, not this change (see log pane sizing below). `q`/
+Ctrl+C are not read either: quitting stays a grid-level action, so the only
+way out of the detail view is escape — a deliberate choice, not an oversight,
+so a stray quit keystroke while inspecting a node cannot end the whole
+session out from under the operator. The stop confirmation overlay already
+keyed off `m.confirm` works unchanged in either mode: it reads `m.cursor`,
+which is still the node the detail view is showing, and its own `q`/Ctrl+C
+handling (an existing grid-level safety net for quitting mid-confirmation) is
+untouched by this — the detail view's own key table simply never sees the
+keypress while a confirmation is up.
 
 ### The log pane is fetched by the same fan-out, on its own tick
 
@@ -116,7 +124,7 @@ the metrics section and the footer (a fixed metrics-section height, computed
 the same way the tile's 12-line content is sized today, so the log pane's
 height is `terminal height - header - metrics height - footer`, floored at a
 minimum of a few lines). The footer names the keys live in this mode (`esc
-back`, `s start`, `x stop`, `a abort`, `q quit`), replacing the grid's footer
+back`, `s start`, `x stop`, `a abort`, `f follow`), replacing the grid's footer
 while the detail view is open, following the same pattern the stop-confirm
 overlay already uses to replace the footer text.
 
@@ -129,6 +137,49 @@ same trimming `lastLines` already does for the one-shot and follow modes of
 `fleet logs`. A full pager is left for a future change if the need shows up
 in use; today's ask is "see the log without leaving the dashboard," not "browse
 history."
+
+### The follow toggle is a flag the tick reads, not a second chain
+
+`f` flips a `detailLogFollow` bool; the tick chain started on open keeps
+ticking for the life of the view regardless of the flag, and only consults it
+to decide whether to actually start a round that tick. Pausing therefore
+needs no teardown and resuming needs no restart — the next tick simply picks
+the flag back up — which keeps the "one shutdown path" property (the chain
+still lives and dies with `m.detail`/node-liveness alone) rather than adding
+a second lifecycle for follow on top of it. The offset is left untouched
+while paused, so resuming is an ordinary poll from where the log already was
+— the engine's backlog since pausing is fetched and shown in one go, the same
+as any poll that was simply late, rather than the view jumping to "now" and
+silently dropping what happened in between.
+
+### Abort is narrowed to a start in flight, on the grid too
+
+`abortAction` (the one function both the grid's `a` and the detail view's `a`
+already called) now checks `m.actions[i].verb == "start"` instead of merely
+`!= ""`. A stop has no comparable open-ended wait to abandon — it is not a
+cold cloud wake with no deadline, it is a call against an engine already
+running — and "abandoning" the dashboard's wait on it would leave the
+operator unsure whether the stop still went ahead, which is worse than
+either waiting for the reply or not offering the key at all. This lands as a
+single-line change in the one shared function, so the grid and the detail
+view narrow together automatically; nothing in either key table needed
+touching; the existing abort scenarios (an in-flight start, an abort that is
+not a cancellation) were already written about starts specifically, so only
+the requirement's blanket "an action in flight" wording needed correcting to
+match what the scenarios always meant.
+
+The key help follows the same narrowing: the static `dashGridKeys`/
+`dashDetailKeys` constants stay the single source of truth for wording, and a
+small filter (`dashFooterHints`) drops the `"a abort"` entry from whichever
+one the frame is about to render when `canAbort()` — a start in flight on the
+node under the cursor (grid) or in view (detail) — is false. Advertising a
+key that would silently do nothing (an idle node, a running one, or a stop in
+flight) is worse than not advertising it: `s`/`x` always attempt something
+even when refused (a status line explains why), but abort with nothing to
+abort is a pure no-op, and a static hint cannot tell the operator that.
+Filtering a string rather than keeping two hand-written constants per screen
+keeps the wording itself in one place per screen; only the abort clause's
+presence varies.
 
 ## Risks / Trade-offs
 

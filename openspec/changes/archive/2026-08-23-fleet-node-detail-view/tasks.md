@@ -6,15 +6,19 @@
       unchanged) and `<esc>` in detail mode (clears it, returns to the grid)
 - [x] 1.2 Replace the key table while in detail mode: `s`/`x`/`a` act on the
       node the detail view is showing (the same node the cursor points at,
-      since entering never moves it), `q`/Ctrl+C quit exactly as in grid mode,
-      navigation and manual refresh (`j`/`k`/arrows/`r`/pgup/pgdown) are not
-      read in this mode
+      since entering never moves it); navigation, manual refresh
+      (`j`/`k`/arrows/`r`/pgup/pgdown) and quit (`q`/Ctrl+C) are grid-level
+      keys and are not read in this mode — escape is the only way out
 - [x] 1.3 Confirm the existing stop-confirmation flow (`m.confirm`) works
-      unchanged from inside detail mode — it already keys off `m.cursor`
+      unchanged from inside detail mode — it already keys off `m.cursor`,
+      and its own `q`/Ctrl+C safety net for quitting mid-confirmation is
+      untouched, since the detail view's key table never sees the keypress
+      while a confirmation is up
 - [x] 1.4 Model tests: enter opens the detail view on the selected node,
       escape returns to the grid with the same selection, start/stop/abort
-      from detail mode dispatch to the same node as grid mode would, quit
-      exits from detail mode
+      from detail mode dispatch to the same node as grid mode would, and
+      quit (`q`/Ctrl+C) does nothing and leaves the view open — it is a
+      grid-only action
 
 ## 2. Log tailing for the node in view
 
@@ -58,6 +62,34 @@
       with an action in flight, and the footer's key hints
 - [x] 3.5 `View` dispatches on the model's mode: grid rendering is unchanged
       when detail mode is not active
+- [x] 3.6 A follow toggle (`f`) pauses and resumes the log poll: the tick
+      chain keeps running for the life of the view and only starts a round
+      when following, so pausing/resuming is a flag flip with no teardown or
+      restart; the offset is untouched while paused, so resuming fetches
+      the backlog written in the meantime rather than dropping it. The
+      header names the state (`following`/`paused`) for a node that can
+      poll at all, and says nothing for a standing node, which never polls
+      regardless of the flag. Model tests: the toggle pauses and resumes
+      dispatch, a tick while paused reschedules but starts no round; a
+      `teatest` run confirming paused output is actually withheld and
+      resuming delivers it
+- [x] 3.7 Narrow `abortAction` to a start in flight (`verb == "start"`
+      instead of `!= ""`), on the grid and the detail view — both call the
+      same shared function, so this is a single-line change. A stop in
+      flight is not abortable: abandoning the dashboard's wait on it would
+      leave the operator unsure whether the stop still went through. Model
+      tests: `abortAction` itself refuses on a stop in flight (leaves it
+      running, does not mark it aborted, does not call its cancel), and the
+      refusal holds through both the grid's `a` key and the detail view's
+- [x] 3.8 The footer's key help names the abort key only while a start is
+      actually in flight on the node it describes (`canAbort`), dropping it
+      (`dashFooterHints`) for an idle node, a running one with nothing in
+      flight, or one whose in-flight action is a stop — advertising a key
+      that would silently do nothing is worse than not advertising it, since
+      unlike `s`/`x` an abort with nothing to abort gives no status line
+      explaining the no-op. Tests: `canAbort` over idle/start/stop, the
+      filter itself, and the grid's and detail view's footers each showing
+      the hint only while a start is in flight
 
 ## 4. Verification
 
