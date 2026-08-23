@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -1645,8 +1646,151 @@ func TestDashModelDetailAbort(t *testing.T) {
 	}
 }
 
-// Quit works from inside the detail view exactly as it does from the grid.
-func TestDashModelDetailQuit(t *testing.T) {
+// Abort only ends the wait on a start — the one action with no deadline of
+// its own. A stop in flight targets an engine already running and is not
+// abortable: abandoning the wait would leave the operator unsure whether the
+// stop still went ahead, so the abort key from either surface drives nothing
+// on it.
+func TestDashModelAbortRefusesOnAStopInFlight(t *testing.T) {
+	m := &dashModel{
+		entries: []dashEntry{{name: "a", kind: fleet.KindDaemon, node: newFakeDashNode("running")}},
+		results: []fleet.NodeResult{{Name: "a"}},
+		actions: make([]dashAction, 1),
+		width:   80, height: 24,
+	}
+	cancelled := false
+	m.actions[0] = dashAction{verb: "stop", cancel: func() { cancelled = true }}
+	m.abortAction()
+	if cancelled {
+		t.Fatal("abort cancelled a stop in flight")
+	}
+	if m.actions[0].aborted {
+		t.Fatal("a stop in flight was marked aborted")
+	}
+	if m.actions[0].verb != "stop" {
+		t.Fatalf("the stop's action state changed: %+v", m.actions[0])
+	}
+}
+
+// The refusal holds through the grid's own key.
+func TestDashModelGridAbortKeyRefusesOnAStopInFlight(t *testing.T) {
+	m := &dashModel{
+		entries: []dashEntry{{name: "a", kind: fleet.KindDaemon, node: newFakeDashNode("running")}},
+		results: []fleet.NodeResult{{Name: "a"}},
+		actions: []dashAction{{verb: "stop"}},
+		width:   80, height: 24,
+	}
+	m2, _ := m.Update(dashKey("a"))
+	mm := m2.(*dashModel)
+	if mm.actions[0].aborted {
+		t.Fatal("a on the grid aborted a stop in flight")
+	}
+}
+
+// And through the detail view's own key.
+func TestDashModelDetailAbortRefusesOnAStopInFlight(t *testing.T) {
+	m := &dashModel{
+		entries: []dashEntry{{name: "a", kind: fleet.KindDaemon, node: newFakeDashNode("running")}},
+		results: []fleet.NodeResult{{Name: "a"}},
+		actions: []dashAction{{verb: "stop"}},
+		detail:  true,
+		width:   80, height: 24,
+	}
+	m2, _ := m.Update(dashKey("a"))
+	mm := m2.(*dashModel)
+	if mm.actions[0].aborted {
+		t.Fatal("a from the detail view aborted a stop in flight")
+	}
+}
+
+func TestDashCanAbort(t *testing.T) {
+	cases := []struct {
+		name string
+		verb string
+		want bool
+	}{
+		{"idle, nothing in flight", "", false},
+		{"a start in flight", "start", true},
+		{"a stop in flight", "stop", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := dashModel{
+				entries: []dashEntry{{name: "a", kind: fleet.KindDaemon}},
+				actions: []dashAction{{verb: tc.verb}},
+			}
+			if got := m.canAbort(); got != tc.want {
+				t.Errorf("canAbort() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+	if (dashModel{}).canAbort() {
+		t.Error("canAbort() on an empty fleet")
+	}
+}
+
+func TestDashFooterHints(t *testing.T) {
+	const hints = "j/k move   s start   a abort   x stop   r refresh   q quit"
+	if got := dashFooterHints(hints, true); got != hints {
+		t.Errorf("abortable dropped or changed hints: %q", got)
+	}
+	want := "j/k move   s start   x stop   r refresh   q quit"
+	if got := dashFooterHints(hints, false); got != want {
+		t.Errorf("dashFooterHints(false) = %q, want %q", got, want)
+	}
+}
+
+// The footer only advertises abort while a start is actually in flight on
+// the node it describes — not for an idle or running node, and not for one
+// whose in-flight action is a stop, both of which would make the key a
+// no-op if pressed.
+func TestDashGridFooterOmitsAbortWhenNothingIsAbortable(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.Ascii)
+	m := dashModel{
+		entries: []dashEntry{{name: "a", kind: fleet.KindDaemon}},
+		results: []fleet.NodeResult{{Name: "a", Outcome: fleet.OutcomeOK, Metrics: metrics.Stats{State: "running"}}},
+		actions: make([]dashAction, 1),
+		width:   80, height: 24,
+	}
+	if v := m.View(); strings.Contains(v, "a abort") {
+		t.Errorf("grid footer offers abort for a running node with nothing in flight:\n%s", v)
+	}
+	m.actions[0] = dashAction{verb: "stop"}
+	if v := m.View(); strings.Contains(v, "a abort") {
+		t.Errorf("grid footer offers abort while a stop is in flight:\n%s", v)
+	}
+	m.actions[0] = dashAction{verb: "start"}
+	if v := m.View(); !strings.Contains(v, "a abort") {
+		t.Errorf("grid footer hides abort while a start is in flight:\n%s", v)
+	}
+}
+
+// Same rule from the detail view.
+func TestDashDetailFooterOmitsAbortWhenNothingIsAbortable(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.Ascii)
+	m := dashModel{
+		entries: []dashEntry{{name: "a", kind: fleet.KindDaemon}},
+		results: []fleet.NodeResult{{Name: "a", Outcome: fleet.OutcomeOK, Metrics: metrics.Stats{State: "running"}}},
+		actions: make([]dashAction, 1),
+		detail:  true,
+		width:   80, height: 24,
+	}
+	if v := m.detailView(); strings.Contains(v, "a abort") {
+		t.Errorf("detail footer offers abort for a running node with nothing in flight:\n%s", v)
+	}
+	m.actions[0] = dashAction{verb: "stop"}
+	if v := m.detailView(); strings.Contains(v, "a abort") {
+		t.Errorf("detail footer offers abort while a stop is in flight:\n%s", v)
+	}
+	m.actions[0] = dashAction{verb: "start"}
+	if v := m.detailView(); !strings.Contains(v, "a abort") {
+		t.Errorf("detail footer hides abort while a start is in flight:\n%s", v)
+	}
+}
+
+// Quit lives on the grid only: q and ctrl+c inside the detail view drive
+// nothing, and the view stays open — the operator escapes back first.
+func TestDashModelDetailQuitIsGridOnly(t *testing.T) {
 	m := &dashModel{
 		entries: []dashEntry{{name: "a", kind: fleet.KindDaemon, node: newFakeDashNode("stopped")}},
 		results: []fleet.NodeResult{{Name: "a"}},
@@ -1654,12 +1798,15 @@ func TestDashModelDetailQuit(t *testing.T) {
 		detail:  true,
 		width:   80, height: 24,
 	}
-	_, cmd := m.Update(dashKey("q"))
-	if cmd == nil {
-		t.Fatal("q from the detail view did not quit")
-	}
-	if _, ok := cmd().(tea.QuitMsg); !ok {
-		t.Fatalf("q did not return tea.Quit: %T", cmd())
+	for _, key := range []string{"q", "ctrl+c"} {
+		next, cmd := m.Update(dashKey(key))
+		mm := next.(*dashModel)
+		if cmd != nil {
+			t.Fatalf("%s from the detail view returned a command: %T", key, cmd())
+		}
+		if !mm.detail {
+			t.Fatalf("%s closed the detail view", key)
+		}
 	}
 }
 
@@ -1791,6 +1938,122 @@ func TestDashDetailLogTickStopsOnClose(t *testing.T) {
 
 // A tick scheduled while viewing a live node must not resurrect a poll loop
 // if it lands after the operator has switched to (or reopened on) an entry
+// f pauses the log poll and resumes it: while paused the tick chain keeps
+// ticking (so a later resume needs nothing but the flag) but starts no
+// round; f again picks the round straight back up on the next tick.
+func TestDashModelDetailFollowToggle(t *testing.T) {
+	m := &dashModel{
+		entries: []dashEntry{{name: "a", kind: fleet.KindDaemon, node: newFakeDashNode("running")}},
+		results: []fleet.NodeResult{{Name: "a"}},
+		actions: make([]dashAction, 1),
+		width:   80, height: 24,
+	}
+	m2, _ := m.Update(dashKey("enter"))
+	mm := m2.(*dashModel)
+	if !mm.detailLogFollow {
+		t.Fatal("the log does not follow by default when the view opens")
+	}
+	mm.detailLogBusy = false // opening already started its own round; not what this test is about
+
+	m3, _ := mm.Update(dashKey("f"))
+	mm = m3.(*dashModel)
+	if mm.detailLogFollow {
+		t.Fatal("f did not pause the follow")
+	}
+
+	m4, cmd := mm.Update(detailLogTickMsg{})
+	mm = m4.(*dashModel)
+	if cmd == nil {
+		t.Fatal("the tick chain died while paused instead of just skipping the round")
+	}
+	if mm.detailLogBusy {
+		t.Fatal("a round started while paused")
+	}
+
+	m5, _ := mm.Update(dashKey("f"))
+	mm = m5.(*dashModel)
+	if !mm.detailLogFollow {
+		t.Fatal("f did not resume the follow")
+	}
+	if _, cmd2 := mm.Update(detailLogTickMsg{}); cmd2 == nil {
+		t.Fatal("no round started on the tick after resuming")
+	}
+}
+
+// The header names the log's follow state for a node that can actually poll
+// one, and says nothing about a state a standing node can never have.
+func TestDashDetailViewHeaderShowsFollowState(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.Ascii)
+	m := dashModel{
+		entries:         []dashEntry{{name: "n", kind: fleet.KindDaemon, node: newFakeDashNode("stopped")}},
+		results:         []fleet.NodeResult{{Name: "n"}},
+		actions:         make([]dashAction, 1),
+		detail:          true,
+		detailLogFollow: true,
+		width:           80, height: 24,
+	}
+	if v := m.detailView(); !strings.Contains(v, "log: following") {
+		t.Errorf("header does not show following:\n%s", v)
+	}
+	m.detailLogFollow = false
+	if v := m.detailView(); !strings.Contains(v, "log: paused") {
+		t.Errorf("header does not show paused:\n%s", v)
+	}
+}
+
+func TestDashDetailViewHeaderOmitsFollowStateForStandingNode(t *testing.T) {
+	m := dashModel{
+		entries: []dashEntry{{name: "broken", kind: fleet.KindDaemon}},
+		results: []fleet.NodeResult{{Name: "broken", Outcome: fleet.OutcomeConfigError}},
+		actions: make([]dashAction, 1),
+		detail:  true,
+		width:   80, height: 24,
+	}
+	if v := m.detailView(); strings.Contains(v, "log:") {
+		t.Errorf("a standing node's header claims a log state it can never have:\n%s", v)
+	}
+}
+
+// End to end: f actually stops new log content from appearing, and f again
+// lets it through.
+func TestDashProgramDetailFollowToggle(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.Ascii)
+	logInterval := detailLogInterval
+	detailLogInterval = 15 * time.Millisecond
+	defer func() { detailLogInterval = logInterval }()
+
+	node := newFakeDashNode("stopped")
+	m := &dashModel{
+		fleetPath: "fleet.yaml",
+		entries:   []dashEntry{{name: "alpha", kind: fleet.KindDaemon, node: node}},
+		results:   []fleet.NodeResult{{Name: "alpha"}},
+		actions:   make([]dashAction, 1),
+	}
+	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(120, 40))
+	out := tm.Output()
+	seen := func(what string, d time.Duration) {
+		teatest.WaitFor(t, out, func(b []byte) bool { return bytes.Contains(b, []byte(what)) }, teatest.WithDuration(d))
+	}
+	tm.Send(tea.KeyMsg{Type: tea.KeyEnter})
+	seen("log: following", 5*time.Second)
+	tm.Type("f")
+	seen("log: paused", 5*time.Second)
+
+	node.appendLog("should not appear yet\n")
+	time.Sleep(100 * time.Millisecond) // several paused-interval ticks' worth
+	if drained, err := io.ReadAll(out); err != nil {
+		t.Fatal(err)
+	} else if bytes.Contains(drained, []byte("should not appear yet")) {
+		t.Fatal("the log kept polling while paused")
+	}
+
+	tm.Type("f")
+	seen("should not appear yet", 5*time.Second)
+	tm.Send(tea.KeyMsg{Type: tea.KeyEsc})
+	tm.Type("q")
+	tm.WaitFinished(t)
+}
+
 // with no live node — that entry's view never schedules a tick of its own,
 // and a stray one from before must not start doing so on its behalf.
 func TestDashDetailLogTickDoesNotResurrectOnANodelessView(t *testing.T) {
@@ -1957,7 +2220,7 @@ func TestDashDetailViewRendersMetricsLogAndFooter(t *testing.T) {
 	if !strings.Contains(view, "line one") || !strings.Contains(view, "line two") {
 		t.Errorf("log section missing the tailed lines:\n%s", view)
 	}
-	if !strings.Contains(view, dashDetailKeys) {
+	if !strings.Contains(view, dashFooterHints(dashDetailKeys, false)) {
 		t.Errorf("footer does not name the detail view's keys:\n%s", view)
 	}
 }

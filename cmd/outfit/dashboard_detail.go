@@ -28,7 +28,7 @@ var detailLogInterval = 3 * time.Second
 // dashDetailKeys is the detail view's footer key help, sharing footerLine
 // with the grid's own (dashGridKeys) so a status outcome or the stop
 // confirmation cannot be worded differently between the two.
-const dashDetailKeys = "esc back   s start   x stop   a abort   q quit"
+const dashDetailKeys = "esc back   s start   x stop   a abort   f follow"
 
 // detailLogTickMsg fires on detailLogInterval while the detail view is open.
 type detailLogTickMsg time.Time
@@ -56,6 +56,7 @@ func (m *dashModel) openDetail() tea.Cmd {
 	m.detail = true
 	m.detailLogGen++
 	m.detailLogBusy = false
+	m.detailLogFollow = true
 	m.detailLogOffset = daemon.TailLog
 	m.detailLogContent = ""
 	m.detailLogNote = ""
@@ -73,14 +74,20 @@ func (m *dashModel) openDetail() tea.Cmd {
 // updateDetailKey answers the keys the detail view reads: the same
 // start/stop/abort the grid applies to the node under the cursor — which is
 // the node in view, since the cursor never moves while the view is open —
-// escape to close it, and quit exactly as the grid quits. Navigation and the
-// manual refresh are the grid's own keys and are not read here.
+// escape to close it, and f to pause or resume the log tail. Quit lives on
+// the grid only: leaving the dashboard from inside the detail view means
+// escaping back to it first, the same as any other nested screen. Navigation
+// and the manual refresh are the grid's own keys and are not read here
+// either.
 func (m *dashModel) updateDetailKey(msg tea.KeyMsg) tea.Cmd {
 	switch msg.String() {
-	case "q", "ctrl+c":
-		return tea.Quit
 	case "esc":
 		m.detail = false
+	case "f":
+		// The polling chain is already running (or already stopped, for a
+		// standing node) for the life of the view; flipping the flag is all
+		// a resume needs — the next tick picks it straight back up.
+		m.detailLogFollow = !m.detailLogFollow
 	case "s":
 		if len(m.entries) > 0 && m.actions[m.cursor].verb == "" {
 			return m.beginAction("start")
@@ -196,7 +203,17 @@ func (m dashModel) detailView() string {
 	e := m.entries[m.cursor]
 	metricsLines, avail := m.detailSectionHeights()
 
-	header := dashClip(fmt.Sprintf("fleet dashboard  %s  node: %s", m.fleetPath, e.name), w)
+	title := fmt.Sprintf("fleet dashboard  %s  node: %s", m.fleetPath, e.name)
+	if e.node != nil {
+		// A standing node never polls at all, follow flag or not, so its
+		// header says nothing about a log state that can never change.
+		logState := "following"
+		if !m.detailLogFollow {
+			logState = "paused"
+		}
+		title += "  log: " + logState
+	}
+	header := dashClip(title, w)
 	divider := strings.Repeat("─", w)
 
 	content := dashNodeContentLines(e.name, m.results[m.cursor], m.actions[m.cursor])
@@ -218,6 +235,6 @@ func (m dashModel) detailView() string {
 		parts = append(parts, dashClip(line, w))
 	}
 	parts = append(parts, divider)
-	parts = append(parts, m.footerLine(w, dashDetailKeys))
+	parts = append(parts, m.footerLine(w, dashFooterHints(dashDetailKeys, m.canAbort())))
 	return strings.Join(parts, "\n")
 }

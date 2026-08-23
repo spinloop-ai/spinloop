@@ -90,6 +90,23 @@ func dashClip(line string, width int) string {
 	return ansi.CutWc(line, 0, width)
 }
 
+// dashFooterHints drops the "a abort" entry from a key-help line when
+// nothing is currently abortable, so the footer never advertises a key that
+// would do nothing for the node it describes.
+func dashFooterHints(hints string, abortable bool) string {
+	if abortable {
+		return hints
+	}
+	parts := strings.Split(hints, "   ")
+	kept := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p != "a abort" {
+			kept = append(kept, p)
+		}
+	}
+	return strings.Join(kept, "   ")
+}
+
 // dashNodeContentLines is the facts the bar format prints for one node, as
 // plain lines with no width clipping or height padding — the tile and the
 // detail view's metrics section both draw from this, so the two can never
