@@ -382,11 +382,18 @@ confirmation before it is sent, because it ends an engine that may be serving
 work: a declined or abandoned confirmation SHALL send nothing.
 
 While an action is in flight, the node's own tile SHALL carry it: the verb
-and the action's status lines as the call reports them, in place of the node's
-last report — a boot's progress is the node's truth until the report returns.
-A node whose call reports nothing SHALL show the verb alone. Each finished
-action SHALL clear its node's tile back to the node's next report and leave
-its outcome on the status line, the one-shot wording.
+and the action's status lines as the call reports them, beside the node's last
+report rather than in place of it — the call's lines say what the operator
+asked for, the report says what the node is doing. For a node whose last
+completed refresh answered, the tile SHALL show that answer's state, what it
+serves, its last-active record, and its resource usage and token and request
+counters whenever the answer carries them, whatever the node's state — a boot
+half done is already measuring, and that is the truth the tile keeps showing
+while the call works. A node whose call reports nothing and whose refresh has
+not yet answered SHALL show the verb alone, and a latest refresh that failed
+SHALL change nothing on the tile. Each finished action SHALL clear the action
+from its node's tile, which is then the node's report alone, and leave its
+outcome on the status line, the one-shot wording.
 
 The outcome of an action SHALL be shown inside the dashboard (a status line the
 operator can read before the next refresh replaces attention), and a refused or
@@ -430,8 +437,16 @@ state — SHALL appear through the normal refresh.
 - **WHEN** the operator starts a node whose start reports progress as it works
 - **THEN** the node's tile shows the verb and the start's status lines while
   the start is in flight
-- **AND** when the start finishes, the tile returns to the node's report and
-  the outcome is on the status line
+- **AND** a refresh that answers while the start is in flight shows its state
+  and whatever it measures on the same tile, beneath the start's lines
+- **AND** when the start finishes, the tile is the node's report alone and the
+  outcome is on the status line
+
+#### Scenario: An in-flight start before any report
+
+- **WHEN** the operator starts a node before any refresh of it has answered
+- **THEN** its tile shows the verb and the start's status lines alone
+- **AND** the first answered refresh appears on the tile beside them
 
 #### Scenario: Two nodes wake at once
 
