@@ -693,15 +693,22 @@ func TestDashModelSelectionScroll(t *testing.T) {
 		results[i] = fleet.NodeResult{Name: entries[i].name}
 	}
 	m := &dashModel{entries: entries, results: results, actions: make([]dashAction, len(entries)), width: 120, height: 40}
-	// Two columns, two visible rows: nodes 0-3 need no scrolling, node 4
-	// (grid row 2) does.
-	for i := 0; i < 4; i++ {
-		next, cmd := m.Update(dashKey("j"))
-		if cmd != nil {
-			t.Fatalf("cursor move %d returned a cmd", i)
-		}
-		m = next.(*dashModel)
+	// Two columns, two visible rows: down moves by a full grid row (±2), not
+	// by one flat index, so a single press already skips to the next row.
+	next, cmd := m.Update(dashKey("down"))
+	if cmd != nil {
+		t.Fatalf("cursor move returned a cmd")
 	}
+	m = next.(*dashModel)
+	if got := m.cursor; got != 2 {
+		t.Fatalf("cursor after one down = %d, want 2 (a row move, not +1)", got)
+	}
+	// A second row-down lands on node 4 (grid row 2), which needs scrolling.
+	next, cmd = m.Update(dashKey("down"))
+	if cmd != nil {
+		t.Fatalf("cursor move returned a cmd")
+	}
+	m = next.(*dashModel)
 	if got := m.cursor; got != 4 {
 		t.Fatalf("cursor = %d, want 4", got)
 	}
@@ -721,6 +728,231 @@ func TestDashModelSelectionScroll(t *testing.T) {
 	}
 	if _, cmd := m.Update(tea.KeyMsg{Type: tea.KeyPgUp}); cmd != nil {
 		t.Errorf("page up at the top returned a cmd")
+	}
+}
+
+// Left and right move within a row only, and clamp rather than wrap at
+// either end of it.
+func TestDashModelLeftRightNavigation(t *testing.T) {
+	entries := make([]dashEntry, 6)
+	results := make([]fleet.NodeResult, 6)
+	for i := range entries {
+		entries[i] = dashEntry{name: fmt.Sprintf("n%d", i)}
+		results[i] = fleet.NodeResult{Name: entries[i].name}
+	}
+	// Two columns: row 0 is nodes 0-1.
+	m := &dashModel{entries: entries, results: results, actions: make([]dashAction, len(entries)), width: 120, height: 40}
+
+	next, cmd := m.Update(dashKey("right"))
+	if cmd != nil {
+		t.Fatalf("cursor move returned a cmd")
+	}
+	m = next.(*dashModel)
+	if got := m.cursor; got != 1 {
+		t.Fatalf("cursor after right = %d, want 1", got)
+	}
+
+	next, _ = m.Update(dashKey("right"))
+	m = next.(*dashModel)
+	if got := m.cursor; got != 1 {
+		t.Fatalf("right at the row's last column moved the selection: %d", got)
+	}
+
+	next, _ = m.Update(dashKey("left"))
+	m = next.(*dashModel)
+	if got := m.cursor; got != 0 {
+		t.Fatalf("cursor after left = %d, want 0", got)
+	}
+
+	next, _ = m.Update(dashKey("left"))
+	m = next.(*dashModel)
+	if got := m.cursor; got != 0 {
+		t.Fatalf("left at the row's first column moved the selection: %d", got)
+	}
+}
+
+// A short last row (fewer tiles than the column count) clamps down to the
+// last entry that exists, rather than moving past the end of the fleet.
+func TestDashModelDownClampsShortLastRow(t *testing.T) {
+	entries := make([]dashEntry, 5)
+	results := make([]fleet.NodeResult, 5)
+	for i := range entries {
+		entries[i] = dashEntry{name: fmt.Sprintf("n%d", i)}
+		results[i] = fleet.NodeResult{Name: entries[i].name}
+	}
+	// Two columns, five nodes: row 0 = [0,1], row 1 = [2,3], row 2 = [4] alone.
+	m := &dashModel{entries: entries, results: results, actions: make([]dashAction, len(entries)), width: 120, height: 40, cursor: 3}
+
+	next, _ := m.Update(dashKey("down"))
+	m = next.(*dashModel)
+	if got := m.cursor; got != 4 {
+		t.Fatalf("cursor after down from a short-row column = %d, want 4", got)
+	}
+
+	// Already on the last entry: another down is a no-op, not a move past it.
+	next, _ = m.Update(dashKey("down"))
+	m = next.(*dashModel)
+	if got := m.cursor; got != 4 {
+		t.Fatalf("down past the last entry moved the selection: %d", got)
+	}
+}
+
+// Right on a short last row must not step into a column that fits the grid
+// width but has no tile in it — the "column exists, tile doesn't" case,
+// distinct from the row-clamping down already covers.
+func TestDashModelRightClampsShortLastRow(t *testing.T) {
+	entries := make([]dashEntry, 5)
+	results := make([]fleet.NodeResult, 5)
+	for i := range entries {
+		entries[i] = dashEntry{name: fmt.Sprintf("n%d", i)}
+		results[i] = fleet.NodeResult{Name: entries[i].name}
+	}
+	// Two columns, five nodes: row 2 holds only node 4, at column 0 — column
+	// 1 of that row fits the grid's width but has nothing in it.
+	m := &dashModel{entries: entries, results: results, actions: make([]dashAction, len(entries)), width: 120, height: 40, cursor: 4}
+
+	next, _ := m.Update(dashKey("right"))
+	m = next.(*dashModel)
+	if got := m.cursor; got != 4 {
+		t.Fatalf("right into an empty grid cell moved the selection: %d", got)
+	}
+}
+
+// A single-column layout (a narrow terminal) has no adjacent column at all:
+// left and right must be no-ops everywhere, not just at the row's ends.
+func TestDashModelLeftRightNoOpInSingleColumn(t *testing.T) {
+	entries := make([]dashEntry, 3)
+	results := make([]fleet.NodeResult, 3)
+	for i := range entries {
+		entries[i] = dashEntry{name: fmt.Sprintf("n%d", i)}
+		results[i] = fleet.NodeResult{Name: entries[i].name}
+	}
+	// 80 columns wide fits one tile per row (dashCols(80) == 1).
+	m := &dashModel{entries: entries, results: results, actions: make([]dashAction, len(entries)), width: 80, height: 40, cursor: 1}
+	if got := dashCols(m.effWidth()); got != 1 {
+		t.Fatalf("fixture assumption wrong: dashCols(80) = %d, want 1", got)
+	}
+
+	next, _ := m.Update(dashKey("right"))
+	m = next.(*dashModel)
+	if got := m.cursor; got != 1 {
+		t.Fatalf("right in a single-column grid moved the selection: %d", got)
+	}
+
+	next, _ = m.Update(dashKey("left"))
+	m = next.(*dashModel)
+	if got := m.cursor; got != 1 {
+		t.Fatalf("left in a single-column grid moved the selection: %d", got)
+	}
+}
+
+// Pressing the up key itself — not pgup — must scroll the view back into
+// place when the move lands above what is currently visible.
+func TestDashModelUpScrollsView(t *testing.T) {
+	entries := make([]dashEntry, 6)
+	results := make([]fleet.NodeResult, 6)
+	for i := range entries {
+		entries[i] = dashEntry{name: fmt.Sprintf("n%d", i)}
+		results[i] = fleet.NodeResult{Name: entries[i].name}
+	}
+	// Two columns, two visible rows: start on the bottom row (scrolled down),
+	// then move up twice back to the top row.
+	m := &dashModel{entries: entries, results: results, actions: make([]dashAction, len(entries)), width: 120, height: 40, cursor: 4}
+	m.keepVisible()
+	if got := m.scrollRow; got != 1 {
+		t.Fatalf("fixture assumption wrong: scrollRow = %d, want 1", got)
+	}
+
+	next, _ := m.Update(dashKey("up"))
+	m = next.(*dashModel)
+	if got := m.cursor; got != 2 {
+		t.Fatalf("cursor after up = %d, want 2", got)
+	}
+
+	next, _ = m.Update(dashKey("up"))
+	m = next.(*dashModel)
+	if got := m.cursor; got != 0 {
+		t.Fatalf("cursor after second up = %d, want 0", got)
+	}
+	if got := m.scrollRow; got != 0 {
+		t.Errorf("up did not scroll the view back to the top row: scrollRow = %d, want 0", got)
+	}
+}
+
+// Up on the top row must never move the selection sideways: with no row
+// above to land on, it is a no-op, whatever column the cursor is in — not a
+// jump to index 0, which would drag a non-leftmost column back to column 0.
+func TestDashModelUpNoOpOnTopRow(t *testing.T) {
+	entries := make([]dashEntry, 4)
+	results := make([]fleet.NodeResult, 4)
+	for i := range entries {
+		entries[i] = dashEntry{name: fmt.Sprintf("n%d", i)}
+		results[i] = fleet.NodeResult{Name: entries[i].name}
+	}
+	// Two columns: node 1 is the top row's second (rightmost) column.
+	m := &dashModel{entries: entries, results: results, actions: make([]dashAction, len(entries)), width: 120, height: 40, cursor: 1}
+
+	next, _ := m.Update(dashKey("up"))
+	m = next.(*dashModel)
+	if got := m.cursor; got != 1 {
+		t.Fatalf("up on the top row moved the selection sideways to %d, want 1", got)
+	}
+}
+
+// Down while already on the grid's last row must never move the selection
+// sideways: with no row below to land on, it is a no-op, whatever column
+// the cursor is in — not a jump to the last entry, which would drag the
+// leftmost column of a short last row over to its rightmost one.
+func TestDashModelDownNoOpOnLastRow(t *testing.T) {
+	entries := make([]dashEntry, 5)
+	results := make([]fleet.NodeResult, 5)
+	for i := range entries {
+		entries[i] = dashEntry{name: fmt.Sprintf("n%d", i)}
+		results[i] = fleet.NodeResult{Name: entries[i].name}
+	}
+	// Three columns, five nodes: row 0 = [0,1,2], row 1 = [3,4] — a short
+	// last row. Node 3 is already on that last row, at its first column.
+	m := &dashModel{entries: entries, results: results, actions: make([]dashAction, len(entries)), width: 150, height: 40, cursor: 3}
+	if got := dashCols(m.effWidth()); got != 3 {
+		t.Fatalf("fixture assumption wrong: dashCols(150) = %d, want 3", got)
+	}
+
+	next, _ := m.Update(dashKey("down"))
+	m = next.(*dashModel)
+	if got := m.cursor; got != 3 {
+		t.Fatalf("down on the last row moved the selection sideways to %d, want 3", got)
+	}
+}
+
+// A resize that changes the column count is picked up by the very next
+// move — selection follows the grid currently drawn, not a stale one.
+func TestDashModelResizeChangesGrid(t *testing.T) {
+	entries := make([]dashEntry, 6)
+	results := make([]fleet.NodeResult, 6)
+	for i := range entries {
+		entries[i] = dashEntry{name: fmt.Sprintf("n%d", i)}
+		results[i] = fleet.NodeResult{Name: entries[i].name}
+	}
+	// Starts at 120 columns wide (2 tiles per row).
+	m := &dashModel{entries: entries, results: results, actions: make([]dashAction, len(entries)), width: 120, height: 40}
+
+	next, _ := m.Update(dashKey("right"))
+	m = next.(*dashModel)
+	if got := m.cursor; got != 1 {
+		t.Fatalf("cursor after right = %d, want 1", got)
+	}
+
+	// Widen to 150 columns (3 tiles per row) before the next move.
+	next, _ = m.Update(tea.WindowSizeMsg{Width: 150, Height: 40})
+	m = next.(*dashModel)
+	if got := dashCols(m.effWidth()); got != 3 {
+		t.Fatalf("fixture assumption wrong: dashCols(150) = %d, want 3", got)
+	}
+
+	next, _ = m.Update(dashKey("down"))
+	m = next.(*dashModel)
+	if got := m.cursor; got != 4 {
+		t.Fatalf("cursor after down post-resize = %d, want 4 (3-column grid, not the old 2-column one)", got)
 	}
 }
 
@@ -977,8 +1209,9 @@ func TestDashModelConcurrentStarts(t *testing.T) {
 	if _, cmd2 := m.Update(dashKey("s")); cmd2 != nil {
 		t.Fatal("node a started again while its start was in flight")
 	}
-	// …but node b starts too.
-	next, _ = m.Update(dashKey("j"))
+	// …but node b starts too. Two columns, two nodes: b sits beside a in the
+	// same row, so right (not down) reaches it.
+	next, _ = m.Update(dashKey("right"))
 	m = next.(*dashModel)
 	next, cmdB := m.Update(dashKey("s"))
 	if cmdB == nil {
@@ -1083,14 +1316,18 @@ func TestDashModelUpNavigationClamps(t *testing.T) {
 	if step("up").cursor != 0 {
 		t.Fatal("up at the top moved the selection")
 	}
-	for i := 0; i < len(entries)-1; i++ {
-		step("j")
+	// Two columns: each down moves by a row (±2), not a flat +1.
+	if got := step("down").cursor; got != 2 {
+		t.Fatalf("cursor after one down = %d, want 2", got)
+	}
+	for i := 1; i < len(entries)-1; i++ {
+		step("down")
 	}
 	if m.cursor != 6 {
 		t.Fatalf("selection not on the last node: %d", m.cursor)
 	}
 	for i := 0; i < len(entries); i++ { // one more k than there are nodes
-		step("k")
+		step("up")
 	}
 	if m.cursor != 0 {
 		t.Fatalf("k past the top: %d", m.cursor)
@@ -1215,7 +1452,8 @@ func TestDashModelStartOutcomeWordings(t *testing.T) {
 	if fail.starts != 1 {
 		t.Fatal("the failing start was not made")
 	}
-	next, _ = m.Update(dashKey("j"))
+	// Two columns, two nodes: b sits beside a in the same row.
+	next, _ = m.Update(dashKey("right"))
 	m = next.(*dashModel)
 	_, cmd = m.Update(dashKey("s"))
 	msgB, _ := cmd().(dashActionMsg)
@@ -1450,7 +1688,7 @@ func TestDashModelEmptyFleet(t *testing.T) {
 	if m.scrollRow != 0 {
 		t.Fatalf("keepVisible on nothing: %d", m.scrollRow)
 	}
-	for _, key := range []string{"j", "k", "up", "down", "r", "s", "x", "a", "enter", "pgup", "pgdown"} {
+	for _, key := range []string{"up", "down", "left", "right", "r", "s", "x", "a", "enter", "pgup", "pgdown"} {
 		next, _ := m.Update(dashKey(key))
 		m = next.(*dashModel)
 	}
@@ -1614,7 +1852,7 @@ func TestDashModelEnterOpensDetailEscapeReturns(t *testing.T) {
 	if mm2.cursor != 1 {
 		t.Fatalf("escape moved the selection: %d", mm2.cursor)
 	}
-	if !strings.Contains(mm2.View(), "j/k move") {
+	if !strings.Contains(mm2.View(), "↑↓←→ move") {
 		t.Errorf("escape did not return to the grid:\n%s", mm2.View())
 	}
 }
@@ -2355,7 +2593,7 @@ func TestDashProgramDetailViewLogAndBack(t *testing.T) {
 	tm.Type("s")
 	seen("alpha  running", 5*time.Second)
 	tm.Send(tea.KeyMsg{Type: tea.KeyEsc})
-	seen("j/k move", 5*time.Second)
+	seen("↑↓←→ move", 5*time.Second)
 	tm.Type("q")
 	tm.WaitFinished(t)
 	if node.starts != 1 {

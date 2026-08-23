@@ -228,13 +228,42 @@ func (m *dashModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if len(m.entries) > 0 {
 				cmd = m.openDetail()
 			}
-		case "down", "j":
-			if m.cursor < len(m.entries)-1 {
-				m.cursor++
+		case "down":
+			cols := dashCols(m.effWidth())
+			if len(m.entries) > 0 {
+				if next := m.cursor + cols; next < len(m.entries) {
+					m.cursor = next
+				} else if curRow, lastRow := m.cursor/cols, (len(m.entries)-1)/cols; curRow < lastRow {
+					// The row below exists but is shorter than the grid's
+					// width and does not reach this column: land on the
+					// last tile that row has, rather than the row itself
+					// having nothing to move onto.
+					m.cursor = len(m.entries) - 1
+				}
+				// Otherwise the current row is already the last one: no
+				// row below to move onto, so the selection stays put
+				// rather than jumping sideways to a different column.
 			}
 			m.keepVisible()
-		case "up", "k":
-			if m.cursor > 0 {
+		case "up":
+			cols := dashCols(m.effWidth())
+			// Every row above the last is fully populated, so a row above
+			// always has a tile in the same column; where there is no row
+			// above, the selection stays put rather than jumping to column
+			// 0.
+			if next := m.cursor - cols; next >= 0 {
+				m.cursor = next
+			}
+			m.keepVisible()
+		case "right":
+			cols := dashCols(m.effWidth())
+			if next := m.cursor + 1; m.cursor%cols+1 < cols && next < len(m.entries) {
+				m.cursor = next
+			}
+			m.keepVisible()
+		case "left":
+			cols := dashCols(m.effWidth())
+			if m.cursor%cols != 0 {
 				m.cursor--
 			}
 			m.keepVisible()
@@ -535,7 +564,7 @@ func (m dashModel) headerLine(w int) string {
 
 // dashGridKeys is the grid's own key help; the detail view's footer shares
 // footerLine but names its own keys instead (see dashDetailKeys).
-const dashGridKeys = "j/k move   s start   a abort   x stop   r refresh   q quit"
+const dashGridKeys = "↑↓←→ move   s start   a abort   x stop   r refresh   q quit"
 
 // footerLine is the frame's bottom line: the given key help, replaced by the
 // stop confirmation prompt while one is pending, with the status line and a
