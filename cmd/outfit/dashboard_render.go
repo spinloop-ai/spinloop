@@ -13,11 +13,13 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 	ansi "github.com/charmbracelet/x/ansi"
 	"github.com/lucinate-ai/outfit/internal/fleet"
+	"github.com/lucinate-ai/outfit/internal/metrics"
 )
 
 // Tile geometry. Content is dashTileW by dashTileH; the frame adds one
@@ -90,8 +92,10 @@ func dashClip(line string, width int) string {
 
 // dashTileContent is one panel's inside: the node's name and the facts the
 // bar format prints for it. The shapes are the state of the node's business
-// — a start or stop in flight (the call's own status lines, which replace
-// the last report, because while a call is working that is the truth), not
+// — a start or stop in flight (the call's own status lines beside the node's
+// last report: the call says what the operator asked for, the report says
+// what the node is doing — a boot half done already carries a state and
+// whatever it measures, and that is worth seeing while the call works), not
 // answered yet (an empty panel naming the node), answered and working (the
 // full bar block), or answered and not working (outcome plus reason, which
 // is what every one-shot surface shows).
@@ -103,6 +107,12 @@ func dashTileContent(name string, r fleet.NodeResult, a dashAction) string {
 		if a.line != "" {
 			fmt.Fprintln(&b, a.line)
 		}
+		if r.OK() {
+			if s := r.Metrics.State; s != "" {
+				fmt.Fprintln(&b, s)
+			}
+			dashTileReportBody(&b, r.Metrics, true)
+		}
 	case r.Outcome == "":
 		fmt.Fprintf(&b, "%s\nwaiting for first refresh…\n", name)
 	case !r.OK():
@@ -112,27 +122,7 @@ func dashTileContent(name string, r fleet.NodeResult, a dashAction) string {
 		}
 	default:
 		fmt.Fprintf(&b, "%s  %s\n", name, r.Metrics.State)
-		serving := r.Metrics.Runner
-		if r.Metrics.ModelID != "" {
-			if serving != "" {
-				serving += "  "
-			}
-			serving += r.Metrics.ModelID
-		}
-		if r.Metrics.UptimeSeconds > 0 {
-			if serving != "" {
-				serving += "  "
-			}
-			serving += "(up " + formatDuration(r.Metrics.UptimeSeconds) + ")"
-		}
-		if serving != "" {
-			fmt.Fprintln(&b, serving)
-		}
-		renderLastActiveIndented(&b, r.Metrics.LastActiveAt, r.Metrics.IdleSeconds)
-		if r.Metrics.State == "running" {
-			renderStatBars(&b, r.Metrics.CPU, r.Metrics.Memory, r.Metrics.GPUs)
-			renderTokenLines(&b, r.Metrics.Tokens)
-		}
+		dashTileReportBody(&b, r.Metrics, r.Metrics.State == "running")
 	}
 	lines := strings.Split(b.String(), "\n")
 	lines = lines[:len(lines)-1] // the trailing newline splits an extra empty piece
@@ -146,6 +136,42 @@ func dashTileContent(name string, r fleet.NodeResult, a dashAction) string {
 		lines[i] = dashClip(line, dashTileW)
 	}
 	return strings.Join(lines, "\n")
+}
+
+// dashTileServingLine is a report's "what it serves" line: the runner and
+// the model, then the uptime — or "" when the answer carries none of them.
+func dashTileServingLine(m metrics.Stats) string {
+	line := m.Runner
+	if m.ModelID != "" {
+		if line != "" {
+			line += "  "
+		}
+		line += m.ModelID
+	}
+	if m.UptimeSeconds > 0 {
+		if line != "" {
+			line += "  "
+		}
+		line += "(up " + formatDuration(m.UptimeSeconds) + ")"
+	}
+	return line
+}
+
+// dashTileReportBody appends what a node's last answer carries beneath its
+// name line: the serving line, the last-active line, and — when resources is
+// set — the resource bars and token counters. Each part prints only when the
+// answer has it. A settled tile gates the resources block on the node being
+// running; the in-flight tile draws whatever there is, because a boot half
+// done has some of the facts and not the rest.
+func dashTileReportBody(w io.Writer, m metrics.Stats, resources bool) {
+	if line := dashTileServingLine(m); line != "" {
+		fmt.Fprintln(w, line)
+	}
+	renderLastActiveIndented(w, m.LastActiveAt, m.IdleSeconds)
+	if resources {
+		renderStatBars(w, m.CPU, m.Memory, m.GPUs)
+		renderTokenLines(w, m.Tokens)
+	}
 }
 
 // dashTile frames one panel; the selected one carries a lit border.

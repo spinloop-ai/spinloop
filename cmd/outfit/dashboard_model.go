@@ -337,10 +337,11 @@ func dashActionLine(msg dashActionMsg, aborted bool) string {
 // another node starts the same instant this one is still waking, and each
 // call reports itself on its own tile through the progress door, so the
 // footer — one line — keeps only the final outcomes. While it flies, the
-// refresh rounds keep coming; the panel turns on the next round, which is
-// also the daemon's own account of the state. The action runs on its own
-// context, held beside it on the board — the operator's abort is that
-// context's cancellation, not a timer.
+// refresh rounds keep coming and the panel carries their answers beside the
+// call's own lines — the node's report is the node's account of the state;
+// when the call returns, the panel is that report alone. The action runs on
+// its own context, held beside it on the board — the operator's abort is
+// that context's cancellation, not a timer.
 func (m *dashModel) beginAction(verb string) tea.Cmd {
 	e := m.entries[m.cursor]
 	m.confirm = false
