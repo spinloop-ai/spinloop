@@ -283,8 +283,8 @@ func TestDashTileRunningByteStable(t *testing.T) {
 		},
 	}
 	want := dashTileExpected([]string{
-		"up  running",
-		"llamacpp  org/qwen:q4  (up 2h 0m 0s)",
+		"up  running  (up 2h 0m 0s)",
+		"llamacpp  org/qwen:q4",
 		"  last active 12s ago",
 		dashBar("CPU", 42),
 		dashBar("RAM", 30),
@@ -382,8 +382,8 @@ func TestDashTileActionInFlightWithReport(t *testing.T) {
 	want := dashTileExpected([]string{
 		"vllm-1  starting",
 		"instance no-capacity; retrying in 120s",
-		"running",
-		"vllm  org/qwen3:32b  (up 4m 0s)",
+		"running  (up 4m 0s)",
+		"vllm  org/qwen3:32b",
 		dashBar("CPU", 12),
 		dashBar("RAM", 48),
 		dashBar("GPU util", 35),
@@ -458,6 +458,51 @@ func TestDashTileClipsLongLines(t *testing.T) {
 		if w := lipgloss.Width(rows[i]); w != dashTileW+2 {
 			t.Errorf("row %d is %d columns, want %d", i, w, dashTileW+2)
 		}
+	}
+}
+
+// A long runner/model would once push uptime past dashClip's cutoff on the
+// shared serving line; uptime now rides the state line instead, so it stays
+// visible regardless of how long the serving line runs.
+func TestDashTileUptimeSurvivesLongServingLine(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.Ascii)
+	r := fleet.NodeResult{
+		Name: "n", Outcome: fleet.OutcomeOK,
+		Metrics: metrics.Stats{
+			State: "running", Runner: "vllm", ModelID: strings.Repeat("m", 40),
+			UptimeSeconds: 125,
+		},
+	}
+	lines := strings.Split(dashTile("n", r, false, dashAction{}), "\n")
+	if got, want := lines[1], "│n  running  (up 2m 5s)"; !strings.HasPrefix(got, want) {
+		t.Errorf("state line = %q, want prefix %q", got, want)
+	}
+	if strings.Contains(lines[2], "(up ") {
+		t.Errorf("uptime leaked onto the serving line: %q", lines[2])
+	}
+}
+
+func TestDashStateLine(t *testing.T) {
+	cases := []struct {
+		name  string
+		state string
+		up    int
+		want  string
+	}{
+		{"no uptime keeps state alone", "running", 0, "running"},
+		{"uptime pairs with state", "running", 125, "running  (up 2m 5s)"},
+		// State is empty in practice only for a node with no report at all,
+		// which also carries no uptime — but the helper still has to make a
+		// sane choice rather than lead with a stray double space.
+		{"uptime with no state has no leading gap", "", 125, "(up 2m 5s)"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := dashStateLine(c.state, metrics.Stats{UptimeSeconds: c.up})
+			if got != c.want {
+				t.Errorf("dashStateLine(%q, uptime=%d) = %q, want %q", c.state, c.up, got, c.want)
+			}
+		})
 	}
 }
 

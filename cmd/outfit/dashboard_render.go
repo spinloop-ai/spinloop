@@ -128,7 +128,7 @@ func dashNodeContentLines(name string, r fleet.NodeResult, a dashAction) []strin
 		}
 		if r.OK() {
 			if s := r.Metrics.State; s != "" {
-				fmt.Fprintln(&b, s)
+				fmt.Fprintln(&b, dashStateLine(s, r.Metrics))
 			}
 			dashTileReportBody(&b, r.Metrics, true)
 		}
@@ -140,7 +140,7 @@ func dashNodeContentLines(name string, r fleet.NodeResult, a dashAction) []strin
 			fmt.Fprintln(&b, d)
 		}
 	default:
-		fmt.Fprintf(&b, "%s  %s\n", name, r.Metrics.State)
+		fmt.Fprintf(&b, "%s  %s\n", name, dashStateLine(r.Metrics.State, r.Metrics))
 		dashTileReportBody(&b, r.Metrics, r.Metrics.State == "running")
 	}
 	lines := strings.Split(b.String(), "\n")
@@ -164,7 +164,9 @@ func dashTileContent(name string, r fleet.NodeResult, a dashAction) string {
 }
 
 // dashTileServingLine is a report's "what it serves" line: the runner and
-// the model, then the uptime — or "" when the answer carries none of them.
+// the model — or "" when the answer carries neither. Uptime rides on the
+// tile's state line instead (dashStateLine), where a long runner or model ID
+// cannot clip it off.
 func dashTileServingLine(m metrics.Stats) string {
 	line := m.Runner
 	if m.ModelID != "" {
@@ -173,13 +175,21 @@ func dashTileServingLine(m metrics.Stats) string {
 		}
 		line += m.ModelID
 	}
-	if m.UptimeSeconds > 0 {
-		if line != "" {
-			line += "  "
-		}
-		line += "(up " + formatDuration(m.UptimeSeconds) + ")"
-	}
 	return line
+}
+
+// dashStateLine pairs a node's state with its uptime, when it has one, so
+// uptime stays visible on the tile's state line rather than risking the
+// clip on the (potentially long) serving line below it.
+func dashStateLine(state string, m metrics.Stats) string {
+	if m.UptimeSeconds <= 0 {
+		return state
+	}
+	uptime := "(up " + formatDuration(m.UptimeSeconds) + ")"
+	if state == "" {
+		return uptime
+	}
+	return state + "  " + uptime
 }
 
 // dashTileReportBody appends what a node's last answer carries beneath its
