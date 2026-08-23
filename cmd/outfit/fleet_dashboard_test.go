@@ -1852,7 +1852,7 @@ func TestDashModelEnterOpensDetailEscapeReturns(t *testing.T) {
 	if mm2.cursor != 1 {
 		t.Fatalf("escape moved the selection: %d", mm2.cursor)
 	}
-	if !strings.Contains(mm2.View(), "j/k move") {
+	if !strings.Contains(mm2.View(), "↑↓←→ move") {
 		t.Errorf("escape did not return to the grid:\n%s", mm2.View())
 	}
 }
@@ -2593,7 +2593,7 @@ func TestDashProgramDetailViewLogAndBack(t *testing.T) {
 	tm.Type("s")
 	seen("alpha  running", 5*time.Second)
 	tm.Send(tea.KeyMsg{Type: tea.KeyEsc})
-	seen("j/k move", 5*time.Second)
+	seen("↑↓←→ move", 5*time.Second)
 	tm.Type("q")
 	tm.WaitFinished(t)
 	if node.starts != 1 {
