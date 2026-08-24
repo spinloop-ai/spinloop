@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [1.28.0] - 2026-08-24
+### Added
+- feat(daemon): log the outfit version at startup
+- feat(remote): install outfit at boot instead of baking it into the AMI
+
+### Fixed
+- fix(remote): zero-byte seed files and vLLM attention backend
+
 ## [1.27.0] - 2026-08-24
 ### Added
 - feat(fleet): add a full-screen node detail view to the dashboard
