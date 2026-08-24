@@ -145,6 +145,12 @@ describe('buildInferenceUserData', () => {
     for (const arg of ['"--gpu-memory-utilization"', '"0.92"', '"--kv-cache-dtype"', '"fp8"']) {
       expect(data).toContain(arg);
     }
+    // The slim AMI ships no CUDA toolkit, so FlashInfer's request-time JIT is
+    // unusable; the runner pins the Triton attention backend for every vLLM
+    // deployment.
+    for (const arg of ['"--attention-backend"', '"TRITON_ATTN"']) {
+      expect(data).toContain(arg);
+    }
   });
 
   it('tails the daemon engine log into the runner log group', () => {
