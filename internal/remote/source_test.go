@@ -32,7 +32,6 @@ func TestResolveRef(t *testing.T) {
 	}
 }
 
-
 // makeTarGz builds a gzipped tar with the given name->content entries.
 func makeTarGz(t *testing.T, files map[string]string) []byte {
 	t.Helper()
