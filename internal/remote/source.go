@@ -49,20 +49,6 @@ func ResolveRef(version, override string) string {
 	return version
 }
 
-// ReleaseVersion reports the CDK project's outfitVersion for a running binary
-// at version, its "v" prefix stripped — empty for a dev, dirty, or
-// mid-history build. The downloaded sources are a codeload tarball with no
-// .git directory, so the CDK project's own git-describe fallback (see
-// remote/lib/config.ts) always comes back empty; bootstrap passes this value
-// as -c outfitVersion so a real release still bakes its own version without
-// the caller needing to pass it by hand.
-func ReleaseVersion(version string) string {
-	if !isCleanReleaseVersion(version) {
-		return ""
-	}
-	return strings.TrimPrefix(version, "v")
-}
-
 // SourceRoot is the parent of the ref-keyed CDK source caches,
 // <configHome>/cdk. It is named cdk/ to avoid confusion with the remotes/
 // environment registry.
