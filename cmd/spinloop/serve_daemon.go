@@ -64,7 +64,7 @@ func commandLogger(logLevel string) (*slog.Logger, error) {
 // from a previous ask.
 func daemonCmd() *cobra.Command {
 	var apiAddr, apiToken, apiTokenFile, logLevel string
-	var loopback, prewarm bool
+	var loopback bool
 	c := &cobra.Command{
 		Use:   "daemon",
 		Short: "supervise an engine via the control API",
@@ -78,7 +78,7 @@ stored one. spinloop serve --api runs the same API in the foreground.`,
 		SilenceUsage:  true,
 		RunE: func(c *cobra.Command, args []string) error {
 			resolve(c)
-			return runDaemonCommand(args, apiAddr, apiToken, apiTokenFile, logLevel, loopback, prewarm, c.Flags())
+			return runDaemonCommand(args, apiAddr, apiToken, apiTokenFile, logLevel, loopback, c.Flags())
 		},
 	}
 	fs := c.Flags()
@@ -87,14 +87,13 @@ stored one. spinloop serve --api runs the same API in the foreground.`,
 	fs.StringVar(&apiTokenFile, "api-token-file", "", "read the control API's bearer token from this file")
 	fs.StringVar(&apiToken, "api-token", "", "the control API's bearer token")
 	fs.StringVar(&logLevel, "log-level", "", logLevelUsage)
-	fs.BoolVar(&prewarm, "prewarm", false, "pre-warm the pushed model into the page cache before starting it; a start request may still disable it")
 	c.ValidArgsFunction = aliasSlot
 	compRegister(c, "log-level", compLogLevel)
 	return c
 }
 
 // runDaemonCommand is the body of `spinloop daemon`.
-func runDaemonCommand(args []string, apiAddr, apiToken, apiTokenFile, logLevel string, loopback, prewarm bool, flags *pflag.FlagSet) error {
+func runDaemonCommand(args []string, apiAddr, apiToken, apiTokenFile, logLevel string, loopback bool, flags *pflag.FlagSet) error {
 	if len(args) > 0 {
 		return fmt.Errorf(
 			"spinloop daemon takes no Spinloop (got %q): it runs what a start request tells it to.\n"+
@@ -144,12 +143,6 @@ func runDaemonCommand(args []string, apiAddr, apiToken, apiTokenFile, logLevel s
 		ValidateConfig: validateDeployConfig,
 		Logger:         logger,
 		Version:        version,
-	}
-	// Pre-warming is an opt-in of the daemon, not of the config: only a host
-	// whose operator chose it (the cloud AMI's unit passes the flag) ever
-	// warms, and a start request may still decline it for one start.
-	if prewarm {
-		d.Prewarm = daemon.PrewarmModel
 	}
 	d.BuildArgv = func(dc *remote.DeployConfig) ([]string, error) {
 		if dc == nil {

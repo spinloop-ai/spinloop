@@ -28,12 +28,13 @@ Lambdas live outside the VPC and reach the instance via SSM instead).
 There is **no persistent EBS volume**: the weights live in S3, and the running
 instance's root volume is created from the engine's AMI and deleted on
 termination. While running you pay for that ~80 GB gp3 root (~$0.25/day
-pro-rated while up), plus the provisioned throughput the launch requests: an
-unprovisioned gp3 caps at 125 MiB/s, which used to throttle the weights sync
-and the model load (the daemon pre-warms the page cache, and that read is
-sequential, so throughput — not IOPS — is its whole limit); the top-end
-1,000 MiB/s adds (1,000 − 125) × $0.005 ≈ **$4.40/month**, pro-rated to time
-up. While the instance is merely **stopped** (the first stage of idle
+pro-rated while up), plus the provisioned throughput and IOPS the launch
+requests: an unprovisioned gp3 caps at 125 MiB/s and 3,000 IOPS, which used
+to throttle the weights sync and the model load (the engine faults the
+weights in page by page, so the load is bounded by the volume's IOPS); the
+top-end 1,000 MiB/s adds (1,000 − 125) × $0.005 ≈ **$4.40/month** and the
+IOPS that ceiling requires add (4,000 − 3,000) × $0.005 ≈ **$5.00/month**,
+each pro-rated to time up. While the instance is merely **stopped** (the first stage of idle
 shutdown) it keeps billing at the stopped-volume rate (~$0.10/day on gp3)
 until `stopRetentionMinutes` (default 1 h) passes and the sweep terminates it.
 Moving the weights out of the AMI into S3 also shrank the snapshot from

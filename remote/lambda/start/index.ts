@@ -74,18 +74,16 @@ const TERMINAL_STATES = new Set(['shutting-down', 'terminated']);
 const HEALTH_COMMAND =
   `curl -s -o /dev/null -w "%{http_code}" --max-time 5 http://localhost:${ENGINE_PORT}/health || true`;
 
-// gp3's unprovisioned baseline is 3,000 IOPS and 125 MiB/s of throughput —
-// whatever the "fast" reputation says, a default root volume streams at
-// ~125 MB/s. That ceiling is paid twice on a cold boot: the S3 sync writes the
-// weights through it, and the engine's model load reads them back through it
-// (the daemon prewarms the page cache, so that read is sequential and this is
-// its whole limit). Provisioning throughput cuts both. gp3 caps throughput at
-// a quarter of the provisioned IOPS, so the baseline 3,000 only allows 750
-// MiB/s; 4,000 is the least IOPS the chosen throughput is valid at, and the
-// work is throughput-bound, so no more is bought. The cost is a few dollars a
-// month against a $1.86/hour GPU, billed only while the volume exists.
+// ~125 MB/s. A cold boot pays it twice: the S3 sync writes the weights
+// through it, and the engine's model load reads them back page fault by page
+// fault — an IOPS-bound read, so the load takes its limit from the provisioned
+// IOPS and the sync from the throughput. Provisioning the top end moves both.
+// EC2 caps provisioned throughput at 0.25 MiB/s per provisioned IOP, so the
+// ceiling needs 4,000 IOPS — the 1,000 above baseline are the price of the
+// last 250 MiB/s, and they are billed only while the volume exists, against a
+// $1.86/hour GPU.
 const ROOT_VOLUME_THROUGHPUT_MIBS = 1000;
-const ROOT_VOLUME_IOPS = 4000;
+const ROOT_VOLUME_IOPS = 4 * ROOT_VOLUME_THROUGHPUT_MIBS;
 
 /** Narrow instance discovery to one environment's instance. */
 function envFilter(env: string) {
@@ -104,30 +102,13 @@ function parseRetainUntil(raw: string | undefined): string | null {
   return d.toISOString();
 }
 
-/**
- * Parse and validate the optional prewarm query parameter — the start's
- * page-cache pre-warm choice. Absent sends no choice at all, in which case
- * the cloud default (enabled) applies; present, it must say so explicitly.
- */
-function parsePrewarm(raw: string | undefined): boolean | null {
-  if (raw === undefined) {
-    return null;
-  }
-  if (raw === 'true' || raw === 'false') {
-    return raw === 'true';
-  }
-  throw new Error(`prewarm must be true or false, got ${JSON.stringify(raw)}`);
-}
-
 export async function handler(
   event: LambdaFunctionURLEvent,
   context: Context,
 ): Promise<LambdaFunctionURLResult> {
   let env: string;
-  let prewarm: boolean | null;
   try {
     env = environmentFrom(event.queryStringParameters);
-    prewarm = parsePrewarm(event.queryStringParameters?.prewarm);
   } catch (err) {
     return jsonResponse(400, { error: (err as Error).message });
   }
@@ -137,7 +118,7 @@ export async function handler(
   }
   const rawRetainUntil = event.queryStringParameters?.retainUntil;
   const retainUntil = parseRetainUntil(rawRetainUntil);
-  return wake(env, context, retainUntil, prewarm);
+  return wake(env, context, retainUntil);
 }
 
 /** GET — report one environment's state without side effects. */
@@ -212,12 +193,11 @@ async function readDaemonActivity(
   }
 }
 
-/** POST — launch the environment's instance if needed and block until serving. prewarm is the start's pre-warm choice; null sends none. */
+/** POST — launch the environment's instance if needed and block until serving. */
 async function wake(
   env: string,
   context: Context,
   retainUntil: string | null,
-  prewarm: boolean | null,
 ): Promise<LambdaFunctionURLResult> {
   const deadline = Date.now() + context.getRemainingTimeInMillis() - DEADLINE_MARGIN_MS;
 
@@ -361,11 +341,10 @@ async function wake(
   // The control plane owns the engine's start on every path — a fresh boot
   // and a re-wake alike; the boot's own user data starts nothing. The start
   // carries the deploy config as its body, so it always names the exact
-  // config the daemon runs, and the pre-warm resolved to the operator's
-  // explicit choice, else the cloud default (enabled). The daemon's
-  // /v1/start is idempotent (it refuses with 409 when one already runs), so
-  // this is harmless wherever an engine is already up.
-  if (!(await startEngineDaemon(instanceId, startBody(deployConfig, prewarm ?? true)))) {
+  // config the daemon runs. The daemon's /v1/start is idempotent (it refuses
+  // with 409 when one already runs), so this is harmless wherever an engine
+  // is already up.
+  if (!(await startEngineDaemon(instanceId, startBody(deployConfig)))) {
     console.log(
       JSON.stringify({ phase: 'engine-start', environment: env, instanceId, warning: 'daemon did not answer a start request' }),
     );
@@ -652,13 +631,12 @@ async function daemonAnswers(instanceId: string): Promise<boolean> {
 }
 
 /**
- * The start request's body: the deploy config the boot would have stored,
- * with the pre-warm resolved to this start's choice. The same document the
- * boot's user data writes (modulo that choice), built by the same runner
- * code, so a start and a boot cannot name different configs.
+ * The start request's body: the deploy config the boot would have stored. The
+ * same document the boot's user data writes, built by the same runner code,
+ * so a start and a boot cannot name different configs.
  */
-function startBody(cfg: DeployConfig, prewarm: boolean): string {
-  return runnerSpec(cfg.runner).daemonDeployConfigJson(cfg, MODEL_DIR, Number(ENGINE_PORT), prewarm);
+function startBody(cfg: DeployConfig): string {
+  return runnerSpec(cfg.runner).daemonDeployConfigJson(cfg, MODEL_DIR, Number(ENGINE_PORT));
 }
 
 async function checkHealth(instanceId: string): Promise<boolean> {

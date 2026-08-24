@@ -33,7 +33,7 @@ one the boot script previously installed for that runner.
 #### Scenario: Boot starts the engine through the daemon
 
 - **WHEN** an instance boots for an environment whose deploy config names a
-  runner and model
+  runner and model, and the control plane's start request arrives
 - **THEN** the daemon starts that engine serving the synced weights, and the
   endpoint answers on the instance's serving port as before
 

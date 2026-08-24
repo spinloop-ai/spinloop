@@ -122,11 +122,10 @@ describe('re-waking a stopped instance', () => {
     expect(startInstance).toHaveBeenCalledWith('i-off');
     // The engine start is the control plane's ask, not user data's: a
     // re-wake must not bet on the boot script re-running. The start carries
-    // the deploy config as its body, with the pre-warm resolved to the cloud
-    // default (enabled) when the wake carries no choice.
+    // the deploy config as its body.
     expect(startEngineDaemon).toHaveBeenCalledWith(
       'i-off',
-      expect.stringContaining('"prewarm": true'),
+      expect.stringContaining('"runner": "llamacpp"'),
     );
     // The session start is recorded, so the max-runtime cap measures this
     // session rather than first boot.

@@ -2,9 +2,9 @@ import { describe, expect, it, vi } from 'vitest';
 import type { RunInstancesCommandInput } from '@aws-sdk/client-ec2';
 
 // The runtime instance's root volume: launched as the AMI's root, with the
-// gp3 throughput provisioned so the weights sync and the daemon's page-cache
-// prewarm run at the volume's real ceiling instead of the 125 MiB/s baseline.
-// The EC2 client is stubbed so no call leaves the process.
+// gp3 throughput provisioned so the weights sync and the model load run at
+// the volume's real ceiling instead of the 125 MiB/s baseline. The EC2
+// client is stubbed so no call leaves the process.
 
 const { send } = vi.hoisted(() => ({ send: vi.fn() }));
 

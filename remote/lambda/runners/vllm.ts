@@ -14,7 +14,6 @@ const daemonDeployConfigJson = (
   cfg: DeployConfig,
   modelDir: string,
   port: number,
-  prewarm?: boolean,
 ): string => daemonDeployConfig(cfg, syncedModelPath(modelDir), port, [
     '--gpu-memory-utilization',
     '0.92',
@@ -33,7 +32,7 @@ const daemonDeployConfigJson = (
     // "TRITON_ATTN" inside its speculative-config JSON.
     '--attention-backend',
     'TRITON_ATTN',
-  ], prewarm);
+  ]);
 
 export const vllm: RunnerSpec = {
   // vLLM serves the whole synced checkpoint directory.

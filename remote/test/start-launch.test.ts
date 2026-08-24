@@ -4,8 +4,8 @@ import { DAEMON_STATUS_CMD } from '../lambda/shared/daemon';
 
 // The fresh-launch branch of the start Lambda: with no existing instance it
 // launches from the newest baked AMI, provisioning the root volume's gp3
-// throughput so the weights sync and the daemon's page-cache prewarm run at
-// the volume's real ceiling. All AWS calls are stubbed.
+// throughput so the weights sync and the model load run at the volume's real
+// ceiling. All AWS calls are stubbed.
 
 const LAMBDA_ENV = {
   TAG_KEY: 'cloud-vm-llm:managed',
@@ -117,12 +117,12 @@ describe('fresh launch', () => {
     const result = await handler(wakeEvent, context);
     expect(structured(result).statusCode).toBe(200);
 
+    // EC2 caps gp3 throughput at 0.25 MiB/s per provisioned IOP, so the
+    // ceiling throughput needs 4x it in IOPS — 3,000 baseline IOPS with
+    // 1,000 MiB/s is rejected with InvalidParameterValue.
     expect(runInstance).toHaveBeenCalledWith(
       expect.objectContaining({
         imageId: 'ami-test1',
-        // gp3 caps throughput at a quarter of the provisioned IOPS, so the
-        // 1000 MiB/s is only valid at 4000 IOPS — EC2 rejects the pair
-        // otherwise.
         rootVolume: { volumeSize: 80, iops: 4000, throughput: 1000 },
       }),
     );
@@ -154,41 +154,12 @@ describe('fresh launch', () => {
     expect(structured(result).statusCode).toBe(200);
 
     // The control plane owns the start on a fresh boot — the boot's user data
-    // starts no engine — and the start carries the config it will run, with
-    // the pre-warm resolved to the cloud default (enabled) when no choice
-    // was sent.
+    // starts no engine — and the start carries the config it will run.
     expect(startEngineDaemon).toHaveBeenCalledWith(
       'i-new',
       expect.stringContaining('"runner": "llamacpp"'),
     );
     const body = startEngineDaemon.mock.calls[0][1] as string;
-    expect(body).toContain('"prewarm": true');
     expect(body).toContain('"modelId": "/opt/llm/model/model.gguf"');
-  });
-
-  it('carries an explicit pre-warm choice to the start', async () => {
-    findLatestAmi.mockResolvedValue({ imageId: 'ami-test1', rootVolumeSizeGb: 80 });
-    const event = {
-      queryStringParameters: { env: 'dev', prewarm: 'false' },
-      requestContext: { http: { method: 'POST' } },
-    } as unknown as LambdaFunctionURLEvent;
-
-    const result = await handler(event, context);
-    expect(structured(result).statusCode).toBe(200);
-
-    const body = startEngineDaemon.mock.calls[0][1] as string;
-    expect(body).toContain('"prewarm": false');
-  });
-
-  it('rejects a pre-warm that is not a choice', async () => {
-    const event = {
-      queryStringParameters: { env: 'dev', prewarm: 'maybe' },
-      requestContext: { http: { method: 'POST' } },
-    } as unknown as LambdaFunctionURLEvent;
-
-    const result = await handler(event, context);
-    expect(structured(result).statusCode).toBe(400);
-    expect(runInstance).not.toHaveBeenCalled();
-    expect(startEngineDaemon).not.toHaveBeenCalled();
   });
 });

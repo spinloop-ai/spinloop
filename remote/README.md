@@ -261,15 +261,11 @@ companion that was never synced.
 ### First boot
 
 A wake is an instance launch, an **S3 sync of the weights**, then loading
-them into VRAM and warm-up. Two things keep that fast: the launch provisions
-the root volume's gp3 throughput to its ceiling (an unprovisioned gp3 caps at
-125 MiB/s, which used to throttle both the sync and the load), and the daemon
-pre-warms the page cache before the engine loads the model, so the ~26 GB of
-weights stream through once at line rate and the engine's copy is mostly cache
-hits. The cloud daemon pre-warms by default — `spinloop remote start --prewarm=false`
-(a restart takes the same flag) skips it for one wake — and a plain
-`spinloop daemon` on any other machine never pre-warms, since it is an option of
-the daemon, not of the config. A cold boot is roughly **5–7 minutes** end to
+them into VRAM and warm-up. The launch provisions the root volume's gp3
+throughput and IOPS to their ceiling (an unprovisioned gp3 caps at 125 MiB/s
+and 3,000 IOPS, which used to throttle both the sync and the load — the sync
+runs at the volume's throughput, and the engine's page-faulted load at its
+IOPS). A cold boot is roughly **5–7 minutes** end to
 end, every time, with no Hugging Face dependency. The first request after a cold start also pays a one-off warm-up
 (~30 s); steady-state decode is around 28 tokens/s. Watch a wake:
 
@@ -326,9 +322,9 @@ the stop Lambda asks for that (via SSM) and **stops** the instance once
 Stopping (rather than terminating) keeps the boot disk and the weights the
 boot synced onto it, so the next `spinloop remote start` **re-wakes** the
 instance — a boot without a fresh launch and a no-op S3 sync — instead of
-launching one from the AMI. The stop clears the page cache, but the daemon's
-pre-warm re-covers it on the engine start, so a re-wake loads the model in
-the same few minutes a cold boot does, minus the sync. The stopped instance
+launching one from the AMI. The stop clears the page cache, so the re-wake
+re-pays the model load; it skips only the sync, and lands in the same band as
+a cold boot. The stopped instance
 is billed for its volume only, not compute, and the sweep **terminates** it
 once it has been stopped longer than `stopRetentionMinutes` (default 1 h):
 after that, the next start is a fresh launch again. `spinloop remote pause`

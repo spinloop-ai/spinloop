@@ -53,14 +53,6 @@ type Daemon struct {
 	// time.Now. Injected the same way Collector.Run and BuildArgv are, so a
 	// test can age an engine without waiting.
 	Now func() time.Time
-	// Prewarm reads the model's files into the page cache ahead of the
-	// engine's own read, off the start's critical path. Nil — the default —
-	// means this daemon never pre-warms: a plain `spinloop daemon` on a laptop
-	// or a fleet node does not, and only a daemon launched with the option
-	// (the cloud AMI's unit passes it) wires PrewarmModel. A start's own
-	// choice (DeployConfig.Prewarm) may still disable it; it cannot enable
-	// one here. A test supplies a recorder.
-	Prewarm func(modelPath string)
 	// Logger receives the API request summaries and the engine lifecycle
 	// records. Nil discards, so a daemon constructed in a test is silent
 	// unless it asks not to be; the CLI sets it, and sets Sup.Logger to the
@@ -260,16 +252,6 @@ func (d *Daemon) StartEngine() error {
 		slog.String("source", source),
 		slog.String("runner", runner),
 		slog.String("model", model))
-	// Warm the model's page cache before the engine faults it in, when this
-	// daemon was given the option to and the start did not disable it: the
-	// daemon decides whether pre-warming exists at all, a start may only
-	// lower that, and an absent choice keeps the daemon's default. The warm
-	// must run (or at least be launched) before Start so the sequential read
-	// gets ahead of the copy, and it is a goroutine, so it never delays the
-	// start itself.
-	if dc != nil && dc.ModelID != "" && d.Prewarm != nil && (dc.Prewarm == nil || *dc.Prewarm) {
-		d.Prewarm(dc.ModelID)
-	}
 	if err := d.Sup.Start(argv); err != nil {
 		d.log().Error("engine start failed",
 			slog.String("source", source), slog.String("error", err.Error()))
