@@ -46,9 +46,15 @@ function fakeS3() {
       }
       if (command instanceof PutObjectCommand) {
         calls.push('put');
-        // The staging path streams from disk; read it back for assertions.
+        // The staging path streams from disk; the zero-byte path hands over a
+        // plain buffer. Either way, capture the stored bytes.
+        const body = command.input.Body;
+        if (body instanceof Uint8Array) {
+          putBody = body;
+          return {};
+        }
         const chunks: Buffer[] = [];
-        for await (const chunk of command.input.Body as AsyncIterable<Buffer>) {
+        for await (const chunk of body as AsyncIterable<Buffer>) {
           chunks.push(chunk);
         }
         putBody = new Uint8Array(Buffer.concat(chunks));
@@ -228,6 +234,26 @@ describe('streaming a file', () => {
     expect(s3.aborted).toBe(true);
     expect(s3.completed).toBe(false);
     void content;
+  });
+
+  it('stores a zero-byte file with a plain put, never an empty multipart upload', async () => {
+    // CompleteMultipartUpload with no parts is malformed XML to S3, so an empty
+    // file must not go down the multipart path at all.
+    const s3 = fakeS3();
+    const { impl } = fakeFetch(new Uint8Array(0));
+    const file: RemoteFile = {
+      path: 'safetensors-md5sum.txt',
+      storeAs: 'safetensors-md5sum.txt',
+      size: 0,
+    };
+
+    const result = await transferFile(file, OPTIONS, { s3: s3.client, fetchImpl: impl });
+
+    expect(result.sha256).toBe(sha(new Uint8Array(0)));
+    expect(s3.assembled).toEqual(new Uint8Array(0));
+    expect(s3.calls).toEqual(['put']);
+    expect(s3.completed).toBe(false);
+    expect(s3.aborted).toBe(false);
   });
 
   it('does not fall back to staging for a failure staging cannot fix', async () => {

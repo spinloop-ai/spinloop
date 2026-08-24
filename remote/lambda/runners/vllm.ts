@@ -15,7 +15,25 @@ const daemonDeployConfigJson = (
   modelDir: string,
   port: number,
   prewarm?: boolean,
-): string => daemonDeployConfig(cfg, syncedModelPath(modelDir), port, ['--gpu-memory-utilization', '0.92'], prewarm);
+): string => daemonDeployConfig(cfg, syncedModelPath(modelDir), port, [
+    '--gpu-memory-utilization',
+    '0.92',
+    // Triton attention, not FlashInfer's: FlashInfer's sampler workaround
+    // above only covers sampling — its *attention* kernels are JIT-compiled
+    // on the first prefill, which needs nvcc and kills the engine on the
+    // first real request. The slim AMI ships no toolkit and vllm's wheel
+    // pulls flashinfer-python but not flash-attn, so Triton is the one
+    // attention backend that runs: its kernels compile at engine init
+    // (torch.compile), never at request time. A preset's own
+    // --attention-backend still wins — the preset's args follow the
+    // runner's. This flag covers the target model only: a speculative
+    // drafter never inherits it (vLLM autoselects for the drafter, and
+    // its autoselect lands on FlashInfer here), so a preset that enables
+    // speculative decoding must also carry "attention_backend":
+    // "TRITON_ATTN" inside its speculative-config JSON.
+    '--attention-backend',
+    'TRITON_ATTN',
+  ], prewarm);
 
 export const vllm: RunnerSpec = {
   // vLLM serves the whole synced checkpoint directory.
