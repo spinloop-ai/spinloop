@@ -185,6 +185,23 @@ async function streamFile(
   const partSize = partSizeFor(file.size, options.partSizeBytes);
   const ranges = partRanges(file.size, partSize);
 
+  // A zero-byte file has no parts, and CompleteMultipartUpload with an empty
+  // part list is malformed XML to S3 — it would fail the whole seed after every
+  // other byte was already stored. Store such a file with a plain PutObject
+  // instead. (Qwen's FP8 repos ship an empty safetensors-md5sum.txt, which is
+  // what makes this real rather than theoretical.)
+  if (ranges.length === 0) {
+    await deps.s3.send(
+      new PutObjectCommand({
+        Bucket: options.bucket,
+        Key: key,
+        Body: new Uint8Array(0),
+        ContentLength: 0,
+      }),
+    );
+    return { sha256: createHash('sha256').digest('hex') };
+  }
+
   const created = await deps.s3.send(
     new CreateMultipartUploadCommand({ Bucket: options.bucket, Key: key }),
   );
