@@ -263,6 +263,64 @@ func TestCmdDaemon_LoopbackBindsLoopback(t *testing.T) {
 	}
 }
 
+// TestCmdDaemon_LogsVersionAtStartup pins the version on the daemon's startup
+// record: it is the build-time string the CLI hands the daemon, the same one
+// /v1/status reports, so a log line and a status reply cannot name two builds
+// of the process that started.
+func TestCmdDaemon_LogsVersionAtStartup(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv(daemon.TokenEnvVar, "tok")
+	t.Chdir(t.TempDir())
+
+	path := filepath.Join(t.TempDir(), "stderr")
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := os.Stderr
+	os.Stderr = f
+	t.Cleanup(func() {
+		os.Stderr = old
+		f.Close()
+	})
+
+	done := make(chan error, 1)
+	go func() { done <- cmdDaemon([]string{"--api-addr", "127.0.0.1:0"}) }()
+
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		data, _ := os.ReadFile(path)
+		if startupRecordHasVersion(string(data), version) {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	interruptSelf(t)
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("daemon exited with %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("daemon did not exit on SIGINT")
+	}
+	data, _ := os.ReadFile(path)
+	if !startupRecordHasVersion(string(data), version) {
+		t.Fatalf("startup record never logged its version; stderr so far:\n%s", data)
+	}
+}
+
+// startupRecordHasVersion reports whether the daemon ready record names the
+// version, checked within one line so two records cannot satisfy it together.
+func startupRecordHasVersion(stderr, version string) bool {
+	for _, line := range strings.Split(stderr, "\n") {
+		if strings.Contains(line, "daemon ready") && strings.Contains(line, "version="+version) {
+			return true
+		}
+	}
+	return false
+}
+
 // TestCmdDaemon_LifecycleFromItsAPI covers the daemon as a worker: its token
 // comes from a file rather than an Outfit's .env, an adjacent Outfit is not a
 // source, and everything it runs arrives over the API. What it used to do —

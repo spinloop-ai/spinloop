@@ -181,10 +181,13 @@ func runDaemonCommand(args []string, apiAddr, apiToken, apiTokenFile, logLevel s
 	srv := &http.Server{Handler: d.Handler(token)}
 	// The daemon is a service, so its startup goes to the log rather than to a
 	// terminal nobody is watching. (`outfit serve`'s narration of the command
-	// it is about to run stays on stdout — that is read by a person.)
+	// it is about to run stays on stdout — that is read by a person.) The
+	// version rides the record rather than a line of its own: it is the same
+	// string /v1/status reports, so the log and the API name one build.
 	logger.Info("daemon ready: nothing runs until a start request arrives",
 		slog.String("api", ln.Addr().String()),
-		slog.String("engineLog", sup.LogPath))
+		slog.String("engineLog", sup.LogPath),
+		slog.String("version", d.Version))
 	go srv.Serve(ln)
 
 	// Activity sampling runs for as long as the daemon does, independently of
