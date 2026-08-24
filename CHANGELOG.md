@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [1.27.0] - 2026-08-24
+### Added
+- feat(fleet): add a full-screen node detail view to the dashboard
+
+### Changed
+- docs(examples): add a llama.cpp example for Muse-Glimmer-30B (#79)
+
+### Fixed
+- fix: move dashboard selection by grid row and column
+- fix: move node uptime to dashboard tile's state line (#129)
+
 ## [1.26.1] - 2026-08-23
 ### Fixed
 - fix(fleet): show a node's report beside an in-flight action
