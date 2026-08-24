@@ -1,4 +1,3 @@
-import { execSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import type { App } from 'aws-cdk-lib';
@@ -33,16 +32,8 @@ export interface LlmConfig {
    * tracks upstream llama.cpp; pick a build new enough for every architecture
    * you deploy — MTP (PR #22673) and Muse Glimmer (PR #26841).
    */
-  llamacppRelease: string;
-  /**
-   * Pinned outfit release baked into every runtime AMI (its GitHub release's
-   * linux_amd64 artefact, checksum-verified). The instance's engine runs
-   * under `outfit daemon`, so this must be a release that ships the daemon;
-   * a bake against an unpublished version fails loudly at download rather
-   * than producing a daemon-less AMI.
-   */
-  outfitVersion: string;
-  /**
+   llamacppRelease: string;
+   /**
    * NVIDIA driver package installed in the AMI. The host needs only the driver
    * — vLLM's torch wheels bring CUDA — so this is the "-server-open" headless
    * driver (open kernel modules, required for Ada/L40S), not the CUDA toolkit.
@@ -134,12 +125,8 @@ const DEFAULTS = {
   //     which matters because these endpoints serve coding agents
   // b10435 carries all three. It is not the first that does — b10423 was — but
   // nothing is gained by pinning the older one.
-  llamacppRelease: 'b10435',
-  // outfitVersion is not a constant: it defaults to the latest git release tag
-  // (see latestReleaseVersion), so the release process — which creates the tag —
-  // sets it, and the baked binary can never drift from a real release. Override
-  // with `-c outfitVersion=` to pin or roll back.
-  nvidiaDriverPackage: 'nvidia-driver-570-server-open',
+   llamacppRelease: 'b10435',
+   nvidiaDriverPackage: 'nvidia-driver-570-server-open',
   idleThresholdMinutes: 15,
   // A stopped instance bills its root volume, so the retention balances the
   // re-wake speed (weights and boot disk kept warm) against storage cost: a
@@ -170,24 +157,6 @@ const DEFAULTS = {
   logRetentionDays: 1,
   lambdaLogRetentionDays: 3,
 } as const;
-
-// latestReleaseVersion returns the newest git release tag with any leading
-// "v" stripped (e.g. "1.16.0"), the default for outfitVersion — so the bake
-// pulls whatever the release process last tagged, with no hard-coded version
-// to keep in step. Best-effort: it returns "" when there is no git, no tags,
-// or a shallow checkout without them (as in CI), so config always loads; the
-// bake itself guards against an empty version (see image-stack.ts) rather than
-// failing an unrelated synth or deploy.
-function latestReleaseVersion(): string {
-  try {
-    return execSync('git describe --tags --abbrev=0', { stdio: ['ignore', 'pipe', 'ignore'] })
-      .toString()
-      .trim()
-      .replace(/^v/, '');
-  } catch {
-    return '';
-  }
-}
 
 function contextString(app: App, key: string, fallback: string): string {
   const value = app.node.tryGetContext(key);
@@ -258,7 +227,6 @@ export function loadConfig(
     instanceType: contextString(app, 'instanceType', DEFAULTS.instanceType),
     vllmVersion: contextString(app, 'vllmVersion', DEFAULTS.vllmVersion),
     llamacppRelease: contextString(app, 'llamacppRelease', DEFAULTS.llamacppRelease),
-    outfitVersion: contextString(app, 'outfitVersion', latestReleaseVersion()),
     nvidiaDriverPackage: contextString(app, 'nvidiaDriverPackage', DEFAULTS.nvidiaDriverPackage),
     idleThresholdMinutes: contextNumber(app, 'idleThresholdMinutes', DEFAULTS.idleThresholdMinutes),
     stopRetentionMinutes: contextNumber(app, 'stopRetentionMinutes', DEFAULTS.stopRetentionMinutes),

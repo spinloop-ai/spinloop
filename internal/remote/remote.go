@@ -258,6 +258,10 @@ type DeployConfig struct {
 	// whether a daemon pre-warms at all is the daemon's own, so a client
 	// cannot switch on the behaviour on a host that does not have it.
 	Prewarm *bool `json:"prewarm,omitempty"`
+	// OutfitVersion pins the outfit release the instance's boot installs.
+	// Empty means the boot installs the latest published release. Omitted
+	// when empty, so an unpinned deploy sends exactly what it always did.
+	OutfitVersion string `json:"outfitVersion,omitempty"`
 }
 
 // Deploy creates (or updates) cfg.Environment on the control plane and sets

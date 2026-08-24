@@ -28,7 +28,9 @@ const AMI_ROOT_DEVICE = '/dev/sda1';
 
 // Per-runner recipe/component version. Image Builder treats a version as
 // immutable, so bump a runner's version to force a fresh AMI for just it.
-const RUNNER_VERSION = { vllm: '3.3.5', llamacpp: '3.3.5' } as const;
+// 3.4.0: outfit is no longer baked — each instance's boot installs it (the
+// deploy config's pin, or latest), so the AMI needs no release of it at all.
+const RUNNER_VERSION = { vllm: '3.4.0', llamacpp: '3.4.0' } as const;
 
 /**
  * Bakes a slim, model-agnostic AMI **per runner** — vLLM (a `uv` venv) and
@@ -42,19 +44,6 @@ export class ImageStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: ImageStackProps) {
     super(scope, id, props);
     const cfg = props.config;
-
-    // Fail fast at synth/deploy, not 20 minutes into a bake. outfitVersion
-    // defaults to the latest git release tag (see config.ts); it comes back
-    // empty when this stack is deployed from a checkout that reaches no tag
-    // (e.g. a feature branch, or one without tags fetched). The bake would
-    // then curl a bogus /download/v/ URL — so refuse to build a pipeline that
-    // bakes an empty version. Pass -c outfitVersion=<x.y.z> to override.
-    if (!cfg.outfitVersion) {
-      throw new Error(
-        'outfitVersion is empty: deploy the image stack from a checkout that reaches a release tag, ' +
-          'or pass -c outfitVersion=<x.y.z>',
-      );
-    }
 
     // Minimal public VPC for the transient builder — internet + SSM, no NAT.
     // Pinned to the first configured AZ so it doesn't default to us-east-1a,
@@ -94,18 +83,17 @@ export class ImageStack extends cdk.Stack {
 
     const parentImage = ssm.StringParameter.valueForStringParameter(this, UBUNTU_SSM_PARAMETER);
     const nvidiaParam = { name: 'NvidiaDriverPackage', value: [cfg.nvidiaDriverPackage] };
-    const outfitParam = { name: 'OutfitVersion', value: [cfg.outfitVersion] };
 
     const runnerBuilds = [
       {
         runner: 'vllm',
         data: vllmComponentDoc(),
-        parameters: [{ name: 'VllmVersion', value: [cfg.vllmVersion] }, nvidiaParam, outfitParam],
+        parameters: [{ name: 'VllmVersion', value: [cfg.vllmVersion] }, nvidiaParam],
       },
       {
         runner: 'llamacpp',
         data: llamacppComponentDoc(),
-        parameters: [{ name: 'LlamacppRelease', value: [cfg.llamacppRelease] }, nvidiaParam, outfitParam],
+        parameters: [{ name: 'LlamacppRelease', value: [cfg.llamacppRelease] }, nvidiaParam],
       },
     ];
 
@@ -255,27 +243,13 @@ function commonPreamble(): string {
               [Install]
               WantedBy=timers.target
               UNIT
-              systemctl enable llm-logrotate.timer
+               systemctl enable llm-logrotate.timer
 
-              # outfit itself — the daemon that hosts the engine and answers the
-              # control Lambdas over its loopback API. A pinned release,
-              # checksum-verified against the release's own manifest. The version
-              # defaults to the latest git release tag; if it could not be
-              # resolved (no tags on the build machine) fail here with a clear
-              # message rather than curling a bogus /download/v/ URL.
-              OUTFIT_VERSION='{{ OutfitVersion }}'
-              test -n "$OUTFIT_VERSION" || { echo "outfitVersion unresolved — publish a release (git tag) or bake with -c outfitVersion=<x.y.z>" >&2; exit 1; }
-              OUTFIT_URL="https://github.com/lucinate-ai/outfit/releases/download/v$OUTFIT_VERSION"
-              mkdir -p /tmp/outfit-dl
-              curl -fsSL "$OUTFIT_URL/outfit_linux_amd64.tar.gz" -o /tmp/outfit-dl/outfit_linux_amd64.tar.gz
-              curl -fsSL "$OUTFIT_URL/checksums.txt" -o /tmp/outfit-dl/checksums.txt
-              (cd /tmp/outfit-dl && grep ' outfit_linux_amd64.tar.gz$' checksums.txt | sha256sum -c -)
-              tar -xzf /tmp/outfit-dl/outfit_linux_amd64.tar.gz -C /tmp/outfit-dl
-              install -m 0755 /tmp/outfit-dl/outfit /usr/local/bin/outfit
-              /usr/local/bin/outfit version
-              rm -rf /tmp/outfit-dl
+               # outfit itself is NOT baked: each instance's boot installs the
+               # release its deploy config pins (or the latest), so the AMI
+               # never carries a copy of the daemon.
 
-              # Crash nudge: the daemon reports a crashed engine but never
+               # Crash nudge: the daemon reports a crashed engine but never
               # restarts it (that is outfit's contract), so a baked timer asks
               # for a start when — and only when — status says crashed. A
               # deliberate stop stays stopped. Enabled by the boot script once
@@ -318,8 +292,6 @@ parameters:
   - VllmVersion:
       type: string
   - NvidiaDriverPackage:
-      type: string
-  - OutfitVersion:
       type: string
 phases:
   - name: build
@@ -364,8 +336,6 @@ parameters:
   - LlamacppRelease:
       type: string
   - NvidiaDriverPackage:
-      type: string
-  - OutfitVersion:
       type: string
 phases:
   - name: build

@@ -771,6 +771,46 @@ func TestDeploy_Success(t *testing.T) {
 	}
 }
 
+func TestDeploy_OutfitVersionReachesTheRequest(t *testing.T) {
+	stubAWSEnv(t)
+	var gotBody []byte
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotBody, _ = io.ReadAll(r.Body)
+		w.Write([]byte(`{"state":"deployed","deployed":true}`))
+	}))
+	defer server.Close()
+
+	cfg := Config{DeployURL: server.URL, Region: "eu-west-1"}
+	dc := DeployConfig{Runner: "vllm", ModelID: "org/model", OutfitVersion: "1.26.1"}
+	if _, err := Deploy(context.Background(), cfg, dc, "", false); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(gotBody), `"outfitVersion":"1.26.1"`) {
+		t.Errorf("outfitVersion did not reach the request body: %s", gotBody)
+	}
+}
+
+// An unpinned deploy sends exactly the body a control plane predating the pin
+// expects — the field is absent, not null or "latest".
+func TestDeploy_OutfitVersionOmittedWhenUnpinned(t *testing.T) {
+	stubAWSEnv(t)
+	var gotBody []byte
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotBody, _ = io.ReadAll(r.Body)
+		w.Write([]byte(`{"state":"deployed","deployed":true}`))
+	}))
+	defer server.Close()
+
+	cfg := Config{DeployURL: server.URL, Region: "eu-west-1"}
+	dc := DeployConfig{Runner: "vllm", ModelID: "org/model"}
+	if _, err := Deploy(context.Background(), cfg, dc, "", false); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(gotBody), "outfitVersion") {
+		t.Errorf("outfitVersion should be omitted when empty: %s", gotBody)
+	}
+}
+
 func TestDeploy_ReseedReachesTheRequest(t *testing.T) {
 	stubAWSEnv(t)
 	var gotBody []byte

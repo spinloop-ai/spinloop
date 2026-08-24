@@ -524,6 +524,97 @@ func TestRemoteDeploy_DryRunSendsNothing(t *testing.T) {
 	if !strings.Contains(out, "unsloth/Qwen3.6-27B-MTP-GGUF") || !strings.Contains(out, "environment: testenv") {
 		t.Errorf("--dry-run should print the config and environment, got:\n%s", out)
 	}
+	// No pin means the plan promises latest, so a dry run says what a fresh
+	// boot would install rather than leaving it unstated.
+	if !strings.Contains(out, "outfit:  latest") {
+		t.Errorf("--dry-run should promise the default outfit, got:\n%s", out)
+	}
+}
+
+func TestRemoteDeploy_OutfitVersion(t *testing.T) {
+	t.Run("the pin reaches the deploy body and the plan", func(t *testing.T) {
+		isolateConfig(t)
+		stubAWSEnv(t)
+
+		var got remote.DeployConfig
+		var gotRaw []byte
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			gotRaw, _ = io.ReadAll(r.Body)
+			_ = json.Unmarshal(gotRaw, &got)
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"deployed":true,"environment":"testenv","base_url":"http://198.51.100.9:8000/v1"}`))
+		}))
+		defer server.Close()
+		stubDeploySeams(t, server.URL, "undeployed")
+		writeDeployEnvOutfit(t, "testenv")
+
+		out := captureStdout(t, func() {
+			if err := cmdRemoteDeploy([]string{"--outfit-version", "v1.26.1"}); err != nil {
+				t.Errorf("cmdRemoteDeploy: %v", err)
+			}
+		})
+
+		// The pin is normalised — the v a tag carries is not part of the
+		// version the binary reports — and sent to the control plane.
+		if got.OutfitVersion != "1.26.1" {
+			t.Errorf("posted outfitVersion = %q, want the pin with the v stripped", got.OutfitVersion)
+		}
+		if !strings.Contains(string(gotRaw), `"outfitVersion":"1.26.1"`) {
+			t.Errorf("outfitVersion did not reach the body: %s", gotRaw)
+		}
+		if !strings.Contains(out, "outfit:  1.26.1") {
+			t.Errorf("plan should name the pin, got:\n%s", out)
+		}
+	})
+
+	t.Run("an unpinned deploy omits the field entirely", func(t *testing.T) {
+		isolateConfig(t)
+		stubAWSEnv(t)
+
+		var gotRaw []byte
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			gotRaw, _ = io.ReadAll(r.Body)
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"deployed":true,"environment":"testenv","base_url":"http://198.51.100.9:8000/v1"}`))
+		}))
+		defer server.Close()
+		stubDeploySeams(t, server.URL, "undeployed")
+		writeDeployEnvOutfit(t, "testenv")
+
+		if err := cmdRemoteDeploy(nil); err != nil {
+			t.Errorf("cmdRemoteDeploy: %v", err)
+		}
+		// Absent, not null and not "latest": an unpinned deploy sends exactly
+		// what a control plane predating the pin expects.
+		if strings.Contains(string(gotRaw), "outfitVersion") {
+			t.Errorf("outfitVersion should be omitted when unpinned: %s", gotRaw)
+		}
+	})
+
+	t.Run("latest and a bare v are no pins", func(t *testing.T) {
+		isolateConfig(t)
+		for _, flag := range []string{"latest", "v"} {
+			writeDeployEnvOutfit(t, "testenv")
+			out := captureStdout(t, func() {
+				if err := cmdRemoteDeploy([]string{"--outfit-version", flag, "--dry-run"}); err != nil {
+					t.Errorf("cmdRemoteDeploy --outfit-version %s: %v", flag, err)
+				}
+			})
+			if !strings.Contains(out, "outfit:  latest") {
+				t.Errorf("--outfit-version %s should plan as latest, got:\n%s", flag, out)
+			}
+		}
+	})
+
+	t.Run("a value outside the charset is refused before anything is sent", func(t *testing.T) {
+		isolateConfig(t)
+		stubDeploySeams(t, "https://unused", "undeployed")
+		writeDeployEnvOutfit(t, "testenv")
+		err := cmdRemoteDeploy([]string{"--outfit-version", "1.2.6 beta"})
+		if err == nil || !strings.Contains(err.Error(), "--outfit-version") {
+			t.Errorf("want a --outfit-version validation error, got %v", err)
+		}
+	})
 }
 
 // Guard the assumption deployConfigFor relies on: PROVIDER names the engine.

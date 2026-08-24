@@ -39,6 +39,7 @@ const LLAMACPP: DeployConfig = {
   servedModelName: 'friendly',
   serveArgs: ['--flash-attn'],
   companions: {},
+  outfitVersion: 'latest',
 };
 
 const VLLM: DeployConfig = {
@@ -64,6 +65,42 @@ describe('buildInferenceUserData', () => {
       // signal that its deploy config is stored.
       expect(data).not.toContain('/v1/start');
     }
+  });
+
+  it('installs outfit at boot, before the daemon unit is written and enabled', () => {
+    for (const cfg of [LLAMACPP, VLLM]) {
+      const data = buildInferenceUserData('prod', cfg);
+      // The release's own checksums gate the install, and the binary lands by
+      // rename — an interruption never leaves a partial one in place.
+      expect(data).toContain('sha256sum -c');
+      expect(data).toContain('install -m 0755 /tmp/outfit-dl/outfit /usr/local/bin/outfit');
+      // A re-run against an already-correct install skips the download.
+      expect(data).toContain('already installed');
+      // The binary must be in place before the unit that runs it is enabled.
+      expect(data.indexOf('OUTFIT_VERSION=')).toBeGreaterThanOrEqual(0);
+      expect(data.indexOf('OUTFIT_VERSION=')).toBeLessThan(data.indexOf('outfit-daemon.service'));
+    }
+  });
+
+  it('resolves latest at boot when the deploy config names no pin', () => {
+    const data = buildInferenceUserData('prod', LLAMACPP);
+    expect(data).toContain("OUTFIT_VERSION=''");
+    expect(data).toContain('api.github.com/repos/lucinate-ai/outfit/releases/latest');
+  });
+
+  it('installs the pinned release directly when the deploy config pins one', () => {
+    const data = buildInferenceUserData('prod', { ...LLAMACPP, outfitVersion: '1.26.1' });
+    // A non-empty pin skips the latest lookup at run time; the asset URL is
+    // composed from it, re-adding the v the stamped version omits.
+    expect(data).toContain("OUTFIT_VERSION='1.26.1'");
+    expect(data).toContain('releases/download/v${OUTFIT_VERSION}');
+  });
+
+  it("keeps the pin out of the daemon's stored deploy config", () => {
+    // The pin is a property of the deployment (it drives the boot's install
+    // step), not of the engine the daemon serves.
+    const data = buildInferenceUserData('prod', { ...LLAMACPP, outfitVersion: '1.26.1' });
+    expect(data).not.toContain('"outfitVersion"');
   });
 
   it('pins the daemon config dir so it does not depend on $HOME', () => {

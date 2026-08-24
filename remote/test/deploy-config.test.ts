@@ -15,6 +15,7 @@ const VLLM: DeployConfig = {
   servedModelName: 'Qwen/Qwen3.6-27B-FP8',
   serveArgs: ['--enforce-eager', '--tool-call-parser', 'qwen3_coder'],
   companions: {},
+  outfitVersion: 'latest',
 };
 
 const LLAMACPP: DeployConfig = {
@@ -26,6 +27,7 @@ const LLAMACPP: DeployConfig = {
   servedModelName: 'qwen3.6-27b',
   serveArgs: ['-ngl', '99', '-fa', 'on', '--spec-type', 'mtp', '--jinja'],
   companions: {},
+  outfitVersion: 'latest',
 };
 
 describe('weightsPrefixFor', () => {
@@ -172,5 +174,49 @@ describe('parseDeployConfig companions', () => {
         JSON.stringify({ ...LLAMACPP, companions: { draft: './Muse/dflash-kquant.gguf' } }),
       ),
     ).toThrow(/not a path/);
+  });
+});
+
+describe('parseDeployConfig outfitVersion', () => {
+  it('defaults to latest, so a config written before the pin existed parses unchanged', () => {
+    const { outfitVersion, ...prePin } = LLAMACPP;
+    expect(parseDeployConfig(JSON.stringify(prePin)).outfitVersion).toBe('latest');
+  });
+
+  it('round-trips a pinned version', () => {
+    const withPin = { ...VLLM, outfitVersion: '1.26.1' };
+    expect(parseDeployConfig(JSON.stringify(withPin))).toEqual(withPin);
+  });
+
+  it('stores a v-prefixed pin minus the v, so the binary version output agrees', () => {
+    const cfg = parseDeployConfig(JSON.stringify({ ...VLLM, outfitVersion: 'v1.26.1' }));
+    expect(cfg.outfitVersion).toBe('1.26.1');
+  });
+
+  it('treats an explicit latest, and an empty or whitespace value, as no pin', () => {
+    expect(parseDeployConfig(JSON.stringify({ ...VLLM, outfitVersion: 'latest' })).outfitVersion).toBe(
+      'latest',
+    );
+    expect(parseDeployConfig(JSON.stringify({ ...VLLM, outfitVersion: '' })).outfitVersion).toBe(
+      'latest',
+    );
+    expect(parseDeployConfig(JSON.stringify({ ...VLLM, outfitVersion: '   ' })).outfitVersion).toBe(
+      'latest',
+    );
+  });
+
+  it('rejects a pin with shell metacharacters — it is interpolated into the boot script', () => {
+    expect(() =>
+      parseDeployConfig(JSON.stringify({ ...VLLM, outfitVersion: '1.2.3; rm -rf /' })),
+    ).toThrow(/outfitVersion/);
+    expect(() =>
+      parseDeployConfig(JSON.stringify({ ...VLLM, outfitVersion: '/etc/passwd' })),
+    ).toThrow(/outfitVersion/);
+  });
+
+  it('rejects a non-string value', () => {
+    expect(() => parseDeployConfig(JSON.stringify({ ...VLLM, outfitVersion: 7 }))).toThrow(
+      /outfitVersion/,
+    );
   });
 });

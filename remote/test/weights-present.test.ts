@@ -56,6 +56,7 @@ const BASE: DeployConfig = {
   servedModelName: 'muse-glimmer-30b',
   serveArgs: [],
   companions: {},
+  outfitVersion: 'latest',
 };
 
 /** A manifest listing the given stored names. */
