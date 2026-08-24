@@ -280,6 +280,13 @@ ingress alone unless you pass it again. Deploying over an environment that is
 already registered, or whose instance is live, requires `--overwrite` — a
 redeploy never silently clobbers a running instance.
 
+The environment's instances install outfit — the daemon that hosts the
+engine — at boot, and `--outfit-version` pins the release a fresh boot
+installs. Without it a boot installs the latest published release; with a
+pin (`1.26.1`; a leading `v` is fine) it installs exactly that. The pin is
+environment state, not engine state: it takes effect at the next boot, so a
+running instance keeps the daemon it was deployed with.
+
 Deploying doesn't start anything. If the shared bucket doesn't have those
 weights yet it fetches them (about 15–20 minutes, entirely on its side) and
 says so; wait for that before your first `start`, or the model won't be there.
@@ -310,6 +317,7 @@ something to reach for by habit.
 | `--keep` | `start` only: retain the instance until `now + DURATION`, preventing the idle sweep from stopping it |
 | `-n`, `--dry-run` | `deploy` only: print what would be sent, without sending it |
 | `--reseed` | `deploy` only: re-fetch the weights even if they are already in S3 |
+| `--outfit-version` | `deploy` only: the outfit release fresh boots install (default: the latest published release) |
 
 `logs` has its own set — see [reading the logs](#reading-the-logs).
 

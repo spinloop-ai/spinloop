@@ -50,11 +50,11 @@ engine, and the start Lambda launches the **newest AMI matching the engine it
 was told to run**. A failed bake produces no new AMI and changes nothing.
 
 The control plane **renders** the boot script and the daemon's service unit,
-while the AMI **pins** the outfit binary that runs them. Keep that coupling
-honest: ship a new outfit release, bake the runtime AMIs with it, and only
-then `pnpm deploy` a control plane that renders units or scripts the new
-binary understands — the other order launches instances whose daemon never
-starts.
+and the boot script **installs** the outfit binary that runs them — the
+release its deploy config pins, or the latest release. Keep that coupling
+honest: ship a new outfit release, and only then `pnpm deploy` a control
+plane that renders units or scripts the new binary understands — the other
+order launches instances whose daemon never starts.
 
 ```
 outfit remote bootstrap ─▶ control-plane stack (Lambdas, S3, VPC, roles) + bake pipelines
@@ -203,6 +203,10 @@ What needs what:
   then `outfit remote deploy --overwrite`. No bake, no redeploy.
 - Change an environment's **allowed CIDR** →
   `outfit remote deploy --overwrite --allowed-cidr <ip>/32`.
+- Change the **outfit release** fresh boots install →
+  `outfit remote deploy --overwrite --outfit-version <x.y.z>` (omit the flag
+  for the latest). Takes effect at the next boot — a running instance keeps
+  the daemon it was deployed with.
 - Change **`llamacppRelease`/`vllmVersion`/`nvidiaDriverPackage`** → bump the
   recipe `version` in `lib/image-stack.ts`, then `pnpm deploy:image` +
   `pnpm bake <runner>`.
@@ -445,8 +449,9 @@ prefix in place unused, or to re-seed it deliberately with
 | GPU + driver | `nvidia-smi` |
 | RAM + swap | `free -h` |
 
-(Both runners run under the same `outfit-daemon` unit: the baked `outfit`
-binary supervises the engine and serves its control API on loopback `:4242`.)
+(Both runners run under the same `outfit-daemon` unit: the `outfit` binary
+the boot installed supervises the engine and serves its control API on
+loopback `:4242`.)
 
 From your own machine, no shell needed (the EIP is `<endpoint>`):
 

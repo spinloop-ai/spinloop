@@ -254,9 +254,11 @@ timestamp, because the daemon counts an engine start as activity itself.
 A daemon that cannot be reached, or that answers without a last-active time,
 counts as "no activity", so a wedged box is still stopped at the threshold
 rather than burning GPU-hours. There is deliberately **no fallback** to reading
-counters: an instance whose baked outfit predates this behaviour reports no
-last-active time and is treated as idle, which is why the AMIs are re-baked
-before the stack is deployed. A stopped instance with no `Stopped-At` tag
+counters: an instance whose daemon predates this behaviour (booted before it
+shipped and never re-woken) reports no last-active time and is treated as
+idle. Boot installs the daemon — the deploy config's pin, or the latest
+release — so a fresh boot always reports it. A stopped instance with no
+`Stopped-At` tag
 (stopped outside the control plane, or a crash between the stop and its tag) is
 self-healed: the next sweep records the stop time and gives it the full
 retention. A `Retain-Until` instance tag (UTC ISO-8601) overrides both the idle
@@ -271,7 +273,9 @@ timer and the max-runtime cap (and, on a stopped instance, its termination);
 triggers a build out-of-band; each successful bake tags its AMI (role, and — as
 the second runner lands — runner), and the start Lambda launches the **newest
 AMI matching the tags**. A slim AMI carries only the driver + the runner
-(vLLM as a `uv` venv; llama.cpp as a prebuilt CUDA `llama-server`) — no Docker.
+(vLLM as a `uv` venv; llama.cpp as a prebuilt CUDA `llama-server`) — no
+Docker, and no outfit: each instance's boot installs the daemon (the deploy
+config's pin, or the latest release), so the AMI never carries a release of it.
 
 ## Key files
 

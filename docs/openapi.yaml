@@ -515,6 +515,15 @@ components:
             disables a pre-warm the daemon would otherwise do. It can never
             enable one — whether a daemon pre-warms at all is the daemon's
             own, so a client cannot switch it on a host that lacks it.
+        outfitVersion:
+          type: string
+          description: |
+            The outfit release the environment's instances install at boot.
+            Empty or absent means the boot installs the latest published
+            release. A pin is normalised before it is sent — the leading v
+            of a release tag is not part of the version (1.26.1, not
+            v1.26.1). The environment's control plane reads it when it
+            renders the boot script; the daemon does not act on it.
 
     Message:
       type: object

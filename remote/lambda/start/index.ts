@@ -18,7 +18,13 @@ import {
   startInstance,
   tagInstance,
 } from '../shared/aws';
-import { type DeployConfig, logGroupEnvVar, type Runner, RUNNERS } from '../shared/deploy-config';
+import {
+  LATEST_OUTFIT,
+  type DeployConfig,
+  logGroupEnvVar,
+  type Runner,
+  RUNNERS,
+} from '../shared/deploy-config';
 import {
   baseUrlFor,
   deployConfigParam,
@@ -532,15 +538,57 @@ function cloudwatchAgentConfig(env: string, runner: Runner): string {
   );
 }
 
+/**
+ * The outfit daemon's binary, fetched and installed at boot rather than baked
+ * into the AMI — so an outfit release reaches an environment without a
+ * re-bake. The version comes from the deploy config: a pin is exact, and the
+ * absent pin's default (LATEST_OUTFIT) is resolved from GitHub here at boot,
+ * so "latest" stays the latest published release on every fresh launch.
+ *
+ * Idempotent: a re-run against an already-correct install skips the download,
+ * comparing the installed binary's own version output. Verified against the
+ * release's own checksums before installing, and install(1) lands the binary
+ * by rename in its destination directory, so an interruption at any point
+ * leaves the previous state — no binary, or a previously verified one — never
+ * a partial or unverified binary.
+ */
+export function outfitInstallStep(version: string): string {
+  const pin = version === LATEST_OUTFIT ? '' : version;
+  return `# outfit itself — the daemon that hosts the engine and answers the control
+# Lambdas over its loopback API. A pin is an exact release; an empty pin is
+# the deploy config's default (latest), resolved from GitHub here at boot.
+OUTFIT_VERSION='${pin}'
+if [ -z "$OUTFIT_VERSION" ]; then
+  OUTFIT_TAG=$(curl -fsSL https://api.github.com/repos/lucinate-ai/outfit/releases/latest | grep -o '"tag_name": *"[^"]*"' | head -n1 | cut -d'"' -f4)
+  OUTFIT_VERSION=\${OUTFIT_TAG#v}
+fi
+test -n "$OUTFIT_VERSION" || { echo "outfit version unresolved — check the deploy config's outfitVersion" >&2; exit 1; }
+if [ -x /usr/local/bin/outfit ] && [ "$(/usr/local/bin/outfit version)" = "$OUTFIT_VERSION" ]; then
+  echo "outfit \${OUTFIT_VERSION} already installed"
+else
+  OUTFIT_URL="https://github.com/lucinate-ai/outfit/releases/download/v\${OUTFIT_VERSION}"
+  mkdir -p /tmp/outfit-dl
+  curl -fsSL "$OUTFIT_URL/outfit_linux_amd64.tar.gz" -o /tmp/outfit-dl/outfit_linux_amd64.tar.gz
+  curl -fsSL "$OUTFIT_URL/checksums.txt" -o /tmp/outfit-dl/checksums.txt
+  (cd /tmp/outfit-dl && grep ' outfit_linux_amd64.tar.gz$' checksums.txt | sha256sum -c -)
+  tar -xzf /tmp/outfit-dl/outfit_linux_amd64.tar.gz -C /tmp/outfit-dl
+  install -m 0755 /tmp/outfit-dl/outfit /usr/local/bin/outfit
+  /usr/local/bin/outfit version
+  rm -rf /tmp/outfit-dl
+fi
+`;
+}
+
 /** Exported for tests: the boot script is pure string-building. The seed twin is shared/seed.ts's buildSeedUserData. */
 export function buildInferenceUserData(env: string, cfg: DeployConfig): string {
   const modelDir = MODEL_DIR;
   const runnerUnit = runnerSpec(cfg.runner).daemonBoot(cfg, modelDir, Number(ENGINE_PORT));
   const cwAgentConfig = cloudwatchAgentConfig(env, cfg.runner);
   // Common boot: log the GPU, add swap for the load spike, start the log
-  // shipper, sync the weights from S3, fetch the environment's API key. Then
-  // the daemon takes over: its deploy config is written, its unit enabled,
-  // and the engine's first start requested over the control API.
+  // shipper, install outfit (not baked into the AMI — see outfitInstallStep),
+  // sync the weights from S3, fetch the environment's API key. Then the
+  // daemon takes over: its deploy config is written, its unit enabled, and
+  // the engine's first start requested over the control API.
   return `#!/bin/bash
 set -euxo pipefail
 # Log the GPU state up front so cloud-init-output.log shows whether the driver
@@ -572,6 +620,7 @@ CWCONFIG
 /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -s \\
   -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json || echo "CW_AGENT_START_FAILED"
 
+${outfitInstallStep(cfg.outfitVersion)}
 MODEL_DIR=${modelDir}
 mkdir -p "$MODEL_DIR"
 # --no-progress: without a TTY the sync writes a "Completed … MiB" line per

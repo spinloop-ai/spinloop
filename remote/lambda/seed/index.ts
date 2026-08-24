@@ -16,7 +16,12 @@ import {
   terminateInstance,
   type InstanceInfo,
 } from '../shared/aws';
-import { isRunner, weightsPrefixFor, type DeployConfig } from '../shared/deploy-config';
+import {
+  isRunner,
+  LATEST_OUTFIT,
+  weightsPrefixFor,
+  type DeployConfig,
+} from '../shared/deploy-config';
 import { jsonResponse } from '../shared/http';
 import { weightsPresent } from '../shared/seed';
 import { buildSeedJob, launchSeedInstance, seedInfraFromEnv } from '../shared/seed/launch';
@@ -121,6 +126,9 @@ async function start(event: LambdaFunctionURLEvent): Promise<LambdaFunctionURLRe
     // Seeds name no companions of their own: `deploy --reseed` carries the
     // deployment's, and a bare `seed start` fetches the main weights.
     companions: {},
+    // The seed never boots a daemon, so its outfit version is a placeholder
+    // for the shape, not a choice.
+    outfitVersion: LATEST_OUTFIT,
   };
 
   if (!force && (await weightsPresent(infra.bucket, cfg))) {

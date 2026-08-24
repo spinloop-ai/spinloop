@@ -25,10 +25,7 @@ function sharedTemplate(context: Record<string, unknown> = {}): Template {
 }
 
 function imageTemplate(context: Record<string, unknown> = {}): Template {
-  // Pin outfitVersion so the image assertions do not depend on the build
-  // machine's git tags (its real default is the latest release tag). Callers
-  // can still override via context.
-  const app = new cdk.App({ context: { outfitVersion: '9.9.9', ...context } });
+  const app = new cdk.App({ context });
   const config = loadConfig(app, NO_DOTENV);
   return Template.fromStack(new ImageStack(app, 'test-image', { config, env: { region: config.region } }));
 }
@@ -69,17 +66,6 @@ describe('config', () => {
     expect(loadConfig(app, NO_DOTENV).availabilityZones).toEqual(['us-east-1b', 'us-east-1c']);
   });
 
-  it('takes outfitVersion from context, overriding the git-tag default', () => {
-    const app = new cdk.App({ context: { outfitVersion: '2.3.4' } });
-    expect(loadConfig(app, NO_DOTENV).outfitVersion).toBe('2.3.4');
-  });
-
-  it('defaults outfitVersion to the latest git tag (or "" without one)', () => {
-    // No hard-coded version: it is the latest release tag, or empty on a
-    // checkout without tags — never a stale constant.
-    const version = loadConfig(new cdk.App(), NO_DOTENV).outfitVersion;
-    expect(version === '' || /^\d+\.\d+\.\d+/.test(version)).toBe(true);
-  });
 });
 
 describe('environments (pure helpers)', () => {
@@ -448,12 +434,6 @@ describe('ImageStack', () => {
     template = imageTemplate();
   });
 
-  it('refuses to synth when outfitVersion is empty (no release tag)', () => {
-    // Would otherwise bake a pipeline that curls a bogus /download/v/ URL and
-    // fails 20 minutes in; fail at deploy instead.
-    expect(() => imageTemplate({ outfitVersion: '' })).toThrow(/outfitVersion/);
-  });
-
   it('defines a pipeline per runner and runs no build at deploy time', () => {
     template.resourceCountIs('AWS::ImageBuilder::Component', 2);
     template.resourceCountIs('AWS::ImageBuilder::ImageRecipe', 2);
@@ -481,9 +461,11 @@ describe('ImageStack', () => {
     const llamacpp = params.find((p) => names(p).includes('LlamacppRelease'));
     expect(vllm!.find((p: { Name: string }) => p.Name === 'VllmVersion').Value).toEqual(['0.26.0']);
     expect(llamacpp).toBeDefined();
-    // Both need the driver.
+    // Both need the driver; neither takes an outfit version — the instance's
+    // boot installs outfit, so the AMI carries no release of it to pin.
     for (const p of params) {
       expect(names(p)).toContain('NvidiaDriverPackage');
+      expect(names(p)).not.toContain('OutfitVersion');
     }
   });
 
@@ -527,18 +509,15 @@ describe('ImageStack', () => {
     }
   });
 
-  it('bakes outfit and the crash-nudge timer into every runner', () => {
+  it('bakes the crash-nudge timer, but not outfit, into every runner', () => {
     const components = Object.values(template.findResources('AWS::ImageBuilder::Component'));
     for (const c of components) {
       const data = c.Properties.Data as string;
-      // The pinned release, checksum-verified, installed as /usr/local/bin/outfit.
-      expect(data).toContain('OutfitVersion');
-      expect(data).toContain('outfit_linux_amd64.tar.gz');
-      expect(data).toContain('sha256sum -c');
-      expect(data).toContain('install -m 0755 /tmp/outfit-dl/outfit /usr/local/bin/outfit');
-      // An unresolved version fails the bake with a clear message rather than
-      // curling a bogus /download/v/ URL.
-      expect(data).toContain('test -n "$OUTFIT_VERSION"');
+      // outfit is installed by each instance's boot (the deploy config's pin
+      // or latest), never by the bake: no release download, no install.
+      expect(data).not.toContain('OutfitVersion');
+      expect(data).not.toContain('outfit_linux_amd64.tar.gz');
+      expect(data).not.toContain('install -m 0755 /tmp/outfit-dl/outfit /usr/local/bin/outfit');
       // The nudge acts only on a crashed engine.
       expect(data).toContain('outfit-nudge.timer');
       expect(data).toContain('"state":"crashed"');

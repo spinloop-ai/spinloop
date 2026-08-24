@@ -1394,25 +1394,28 @@ var metricsWatchInterval = 60 * time.Second
 
 func remoteDeployCmd() *cobra.Command {
 	var (
-		dryRun      bool
-		overwrite   bool
-		reseed      bool
-		allowedCidr string
-		region      string
+		dryRun        bool
+		overwrite     bool
+		reseed        bool
+		allowedCidr   string
+		region        string
+		outfitVersion string
 	)
 	c := &cobra.Command{
 		Use:   "deploy",
 		Short: "set what the instance serves, from the Outfit",
 		Long: `creates the environment the Outfit's REMOTE names — its own
 address, API key and allowed CIDR — and says what it serves (PROVIDER picks
-the engine, just as it does for serve).`,
+the engine, just as it does for serve). --outfit-version pins the outfit
+release a fresh boot of the environment installs; without it, a boot
+installs the latest published release.`,
 		Args:              cobra.ArbitraryArgs,
 		SilenceErrors:     true,
 		SilenceUsage:      true,
 		ValidArgsFunction: aliasSlot,
 		RunE: func(c *cobra.Command, args []string) error {
 			resolve(c)
-			return runRemoteDeploy(args, dryRun, overwrite, reseed, allowedCidr, region)
+			return runRemoteDeploy(args, dryRun, overwrite, reseed, allowedCidr, region, outfitVersion)
 		},
 	}
 	fs := c.Flags()
@@ -1421,11 +1424,12 @@ the engine, just as it does for serve).`,
 	fs.BoolVar(&reseed, "reseed", false, "re-fetch the weights even if they are already in S3 (starts a ~20-minute seed)")
 	fs.StringVar(&allowedCidr, "allowed-cidr", "", "who may reach this environment's instance (default: your public IP as a /32, on first deploy)")
 	fs.StringVar(&region, "region", "", "AWS region of the control plane (default: AWS_REGION or us-east-1)")
+	fs.StringVar(&outfitVersion, "outfit-version", "", "outfit release the environment's instances install at boot (default: latest)")
 	return c
 }
 
 // runRemoteDeploy is the body of `outfit remote deploy`.
-func runRemoteDeploy(args []string, dryRun, overwrite, reseed bool, allowedCidr, region string) error {
+func runRemoteDeploy(args []string, dryRun, overwrite, reseed bool, allowedCidr, region, outfitVersion string) error {
 	// deploy reads the Outfit for what to serve, so unlike the other
 	// subcommands it always needs one — the per-user remote config alone is not
 	// enough.
@@ -1456,6 +1460,17 @@ func runRemoteDeploy(args []string, dryRun, overwrite, reseed bool, allowedCidr,
 	if allowedCidr != "" && !cidrPattern.MatchString(allowedCidr) {
 		return fmt.Errorf("--allowed-cidr must be an IPv4 CIDR (e.g. 203.0.113.7/32), got %q", allowedCidr)
 	}
+	// The outfit release a fresh boot installs: empty (or `latest`) means the
+	// boot's own default, a pin means exactly that release. Normalised the way
+	// the control plane is — the v a tag carries is not part of the version —
+	// and checked here, so a typo is named now rather than as a 404 inside a
+	// boot nobody is watching.
+	if pin := strings.TrimPrefix(strings.TrimSpace(outfitVersion), "v"); pin != "" && pin != "latest" {
+		if !outfitVersionPattern.MatchString(pin) {
+			return fmt.Errorf("--outfit-version must be a release version (e.g. 1.26.1) or latest, got %q", outfitVersion)
+		}
+		dc.OutfitVersion = pin
+	}
 
 	fmt.Printf("Deploying from %s\n", outfitPath)
 	fmt.Printf("  environment: %s\n", env)
@@ -1483,6 +1498,13 @@ func runRemoteDeploy(args []string, dryRun, overwrite, reseed bool, allowedCidr,
 	if reseed {
 		fmt.Println("  reseed:  yes — the weights will be re-fetched even if already in S3")
 	}
+	// A fresh boot's outfit: latest is a promise, not an absence, so the plan
+	// always says which release a boot will install.
+	outfitVer := dc.OutfitVersion
+	if outfitVer == "" {
+		outfitVer = "latest"
+	}
+	fmt.Printf("  outfit:  %s\n", outfitVer)
 	if dryRun {
 		return nil
 	}
@@ -1562,6 +1584,10 @@ func runRemoteDeploy(args []string, dryRun, overwrite, reseed bool, allowedCidr,
 
 // cidrPattern matches an IPv4 CIDR, the same shape the deploy Lambda accepts.
 var cidrPattern = regexp.MustCompile(`^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/\d{1,2}$`)
+
+// outfitVersionPattern matches a release version pin, the same charset the
+// deploy Lambda accepts after its leading v is stripped (1.26.1, not v1.26.1).
+var outfitVersionPattern = regexp.MustCompile(`^[0-9A-Za-z.-]+$`)
 
 // detectPublicCIDR returns the caller's public IPv4 address as a /32, the
 // default ingress for a fresh environment.
