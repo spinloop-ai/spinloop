@@ -35,4 +35,4 @@
 
 - [x] 6.1 Go side: `gofmt -l .`, `go vet ./...`, `go test ./... -cover` (total coverage stays >= 80%)
 - [x] 6.2 remote/ side: `pnpm test` and `npx cdk synth -c allowedCidr=203.0.113.7/32 -c runner=llamacpp --quiet` (no `outfitVersion` context) both pass
-- [ ] 6.3 Roll out per design.md's Migration Plan: deploy the control plane (`outfit remote bootstrap`) against the current outfit-baked AMIs, verify a fresh launch per runner (status shows a version; a `--outfit-version`-pinned deploy installs exactly the pin), then `cdk deploy` the image stack and `pnpm bake` both outfit-less runners
+- [x] 6.3 Roll out per design.md's Migration Plan: deploy the control plane (`outfit remote bootstrap`) against the current outfit-baked AMIs, verify a fresh launch per runner (status shows a version; a `--outfit-version`-pinned deploy installs exactly the pin), then `cdk deploy` the image stack and `pnpm bake` both outfit-less runners
