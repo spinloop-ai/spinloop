@@ -25,16 +25,20 @@ polling reaches — that distinguishes the two.
   name, shown in every tile shape (settled, action in flight, not yet
   answered, failed outcome), so health reads at a glance without the border
   colour — which stays reserved for the selection cursor.
-- Three health tiers, reusing the project's existing green/yellow/red
-  convention from the resource bars (`renderBar` in `cmd/outfit/remote.go`):
+- Four health tiers, reusing the project's existing green/yellow/red
+  convention from the resource bars (`renderBar` in `cmd/outfit/remote.go`),
+  plus a grey for when no status can be determined at all:
   - **Healthy (green)**: the node answered, its engine is not crashed, and —
     when the daemon reports readiness at all — the engine confirmed ready.
-  - **Attention (yellow)**: the node has not answered yet, has an action
-    (start/stop) in flight, or is `running` with the daemon explicitly
-    reporting the engine not yet ready (still loading weights).
+  - **Attention (yellow)**: the node has an action (start/stop) in flight, or
+    is `running` with the daemon explicitly reporting the engine not yet
+    ready (still loading weights).
   - **Unhealthy (red)**: the node's engine is `crashed`, or its last outcome
     was a failure (`unreachable`, `unauthorized`, `config-error`, `failed`,
     `unsupported`).
+  - **Unknown (grey, `?`)**: no status can be determined — the node has not
+    yet answered any refresh, or it answered without reporting an engine
+    state.
 - An older daemon, or a runner with no known health-check convention
   (`omlx`, initially), reports no readiness at all; the tile falls back to
   today's behaviour (green whenever `running`) for that node rather than
@@ -49,7 +53,7 @@ polling reaches — that distinguishes the two.
 - `fleet-client`: the dashboard's "Dashboard panels show the node's metrics"
   and related requirements gain a health indicator — every panel SHALL show
   a colour-coded status alongside its existing text, categorized into the
-  three tiers above, using the daemon's readiness signal when available.
+  four tiers above, using the daemon's readiness signal when available.
 
 ## Impact
 

@@ -17,9 +17,9 @@
 
 ## 3. Compute a tile's health tier
 
-- [x] 3.1 Add a `dashHealthTier` type with three values (e.g. `dashHealthy`, `dashAttention`, `dashUnhealthy`) in `cmd/outfit/dashboard_render.go`.
-- [x] 3.2 Add `dashHealthTierFor(r fleet.NodeResult, a dashAction) dashHealthTier`: an in-flight action (`a.verb != ""`) is `dashAttention`; else no refresh yet (`r.Outcome == ""`) is `dashAttention`; else a failed outcome (`!r.OK()`) or `r.Metrics.State == "crashed"` is `dashUnhealthy`; else `r.Metrics.State == "running" && r.Metrics.Ready == "not-ready"` is `dashAttention`; else `dashHealthy`.
-- [x] 3.3 Add `dashHealthGlyph(tier dashHealthTier) string` returning `"●"` wrapped in the matching raw ANSI colour, reusing `renderBar`'s palette (green `\033[92m`, yellow `\033[33m`, red `\033[31m`, reset `\033[0m`).
+- [x] 3.1 Add a `dashHealthTier` type with four values (e.g. `dashHealthy`, `dashAttention`, `dashUnhealthy`, `dashUnknown`) in `cmd/outfit/dashboard_render.go`.
+- [x] 3.2 Add `dashHealthTierFor(r fleet.NodeResult, a dashAction) dashHealthTier`: an in-flight action (`a.verb != ""`) is `dashAttention`; else no refresh yet (`r.Outcome == ""`) is `dashUnknown`; else a failed outcome (`!r.OK()`) or `r.Metrics.State == "crashed"` is `dashUnhealthy`; else `r.Metrics.State == "running" && r.Metrics.Ready == "not-ready"` is `dashAttention`; else an answer carrying no state at all (`r.Metrics.State == ""`) is `dashUnknown`; else `dashHealthy`.
+- [x] 3.3 Add `dashHealthGlyph(tier dashHealthTier) string` returning a glyph wrapped in the matching raw ANSI colour — `"●"` for the known tiers, `?` for unknown — reusing `renderBar`'s palette (green `\033[92m`, yellow `\033[33m`, red `\033[31m`, grey `\033[90m`, reset `\033[0m`).
 
 ## 4. Render the glyph on every tile shape
 
@@ -31,7 +31,7 @@
 - [x] 5.1 Add daemon-level tests in `internal/daemon/*_test.go`: a running engine whose fake health endpoint answers `200` reports `Ready: "ready"` on both `Status()` and `Metrics()`; one answering `503`/refused reports `"not-ready"`; a runner not in `readinessCheckedRunners` reports `Ready: ""`; an idle/stopped/crashed engine reports `Ready: ""`; a fresh `StartEngine` after a previous ready reading clears it until the next check lands.
 - [x] 5.2 Add a test in `internal/metrics` for `CheckEngineReady`: `200` and `401` both return `true`; `503`, connection-refused, and a malformed base URL all return `false`.
 - [x] 5.3 Update `TestDashTileRunningByteStable`, `TestDashTileOutcomeAndEmpty`, `TestDashTileStoppedByteStable`, `TestDashTileActionInFlight`, and `TestDashTileActionInFlightWithReport` in `cmd/outfit/fleet_dashboard_test.go` to expect the glyph and its colour on each fixture's first line.
-- [x] 5.4 Add a test asserting the four-tier-input mapping directly (table-driven over representative `fleet.NodeResult`/`dashAction` combinations): `running`+`Ready: "ready"` → healthy; `running`+`Ready: "not-ready"` → attention; `running`+`Ready: ""` → healthy (degrade gracefully); `crashed` → unhealthy; each of `unreachable`/`unauthorized`/`config-error`/`failed`/`unsupported` outcomes → unhealthy; no outcome yet → attention; action in flight over a healthy report → attention regardless of the report.
+- [x] 5.4 Add a test asserting the four-tier-input mapping directly (table-driven over representative `fleet.NodeResult`/`dashAction` combinations): `running`+`Ready: "ready"` → healthy; `running`+`Ready: "not-ready"` → attention; `running`+`Ready: ""` → healthy (degrade gracefully); `crashed` → unhealthy; each of `unreachable`/`unauthorized`/`config-error`/`failed`/`unsupported` outcomes → unhealthy; no outcome yet → unknown; an answered result carrying no state → unknown; action in flight over a healthy report → attention regardless of the report.
 - [x] 5.5 Add or extend a test confirming the glyph colour is unaffected by `selected` (border colour changes, glyph colour does not) — covers the spec's "glyph is distinct from the selection border" scenario.
 - [x] 5.6 Run `gofmt -l cmd/outfit internal/daemon internal/metrics` and `go test ./cmd/outfit/... -run Dash -v` to confirm formatting and all dashboard tests pass.
 - [x] 5.7 Run `go test ./... -cover` to confirm the full suite still passes and coverage stays >= 80%.

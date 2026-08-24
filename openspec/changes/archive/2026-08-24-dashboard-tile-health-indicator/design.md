@@ -131,15 +131,17 @@ moment it's set, alongside each start (`serve_daemon.go`, `SetScrape`).
   `fmt.Fprintf`/`strings.Builder` and only wrapped in a lipgloss style once,
   at the border — `lipgloss.Color` needs its own `.Render()` call per
   segment, which `dashTileContent` doesn't do elsewhere in the body.
-- **Three tiers, computed once per tile from `(fleet.NodeResult, dashAction)`**,
+- **Four tiers, computed once per tile from `(fleet.NodeResult, dashAction)`**,
   in priority order: an action in flight is always "attention" regardless of
-  the last refresh; then no refresh yet is "attention"; then a failed
-  outcome or a `crashed` engine is "unhealthy"; then `running` with the
-  daemon explicitly reporting `Ready == "not-ready"` is "attention"; else
-  "healthy" — which covers both a confirmed-ready `running` node and a
-  `running` node whose daemon reports no readiness at all (old daemon,
-  unchecked runner), matching this change's degrade-gracefully goal.
-  - Alternative considered: a boolean healthy/unhealthy instead of three
+  the last refresh; then no refresh yet is "unknown" — there is no status to
+  read, so the tile shows a grey "?" rather than claiming a health; then a
+  failed outcome or a `crashed` engine is "unhealthy"; then `running` with
+  the daemon explicitly reporting `Ready == "not-ready"` is "attention";
+  then an answer that carries no state at all is "unknown"; else "healthy" —
+  which covers both a confirmed-ready `running` node and a `running` node
+  whose daemon reports no readiness at all (old daemon, unchecked runner),
+  matching this change's degrade-gracefully goal.
+  - Alternative considered: a boolean healthy/unhealthy instead of four
     tiers. Rejected — the dashboard's existing text already distinguishes
     "no data yet" from "actively failing," and collapsing that into a
     single "not healthy" bucket would report a fleet reachable-but-not-yet-
