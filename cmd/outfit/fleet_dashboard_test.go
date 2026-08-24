@@ -316,7 +316,7 @@ func TestDashTileOutcomeAndEmpty(t *testing.T) {
 	}
 	// A node not answered yet is an empty panel naming the node.
 	if got := dashTile("down", fleet.NodeResult{Name: "down"}, false, dashAction{}); got != dashTileExpected([]string{
-		dashHealthGlyph(dashAttention) + " down", "waiting for first refresh…",
+		dashHealthGlyph(dashUnknown) + " down", "waiting for first refresh…",
 		"", "", "", "", "", "", "", "", "", "",
 	}) {
 		t.Errorf("empty tile mismatch:\n%q", got)
@@ -450,7 +450,8 @@ func TestDashHealthTierFor(t *testing.T) {
 		{"config error is unhealthy", fleet.NodeResult{Outcome: fleet.OutcomeConfigError}, dashAction{}, dashUnhealthy},
 		{"failed is unhealthy", fleet.NodeResult{Outcome: fleet.OutcomeFailed}, dashAction{}, dashUnhealthy},
 		{"unsupported is unhealthy", fleet.NodeResult{Outcome: fleet.OutcomeUnsupported}, dashAction{}, dashUnhealthy},
-		{"no outcome yet is attention", fleet.NodeResult{}, dashAction{}, dashAttention},
+		{"no outcome yet is unknown", fleet.NodeResult{}, dashAction{}, dashUnknown},
+		{"answered with no state is unknown", fleet.NodeResult{Outcome: fleet.OutcomeOK}, dashAction{}, dashUnknown},
 		{"action in flight over a healthy report is attention regardless",
 			fleet.NodeResult{Outcome: fleet.OutcomeOK, Metrics: metrics.Stats{State: "running", Ready: "ready"}},
 			dashAction{verb: "start"}, dashAttention},
@@ -481,7 +482,7 @@ func TestDashTileSelectedBorderLit(t *testing.T) {
 	}
 	// The health glyph is unaffected by selection: same tier, same colour,
 	// whether or not the border is lit.
-	glyph := dashHealthGlyph(dashAttention)
+	glyph := dashHealthGlyph(dashUnknown)
 	if !strings.Contains(sel, glyph) {
 		t.Errorf("selected tile's glyph changed:\n%q", sel)
 	}

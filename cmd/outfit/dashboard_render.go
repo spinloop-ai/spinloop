@@ -116,30 +116,35 @@ const (
 	dashHealthy dashHealthTier = iota
 	dashAttention
 	dashUnhealthy
+	dashUnknown
 )
 
 // dashHealthTierFor derives a panel's health tier from its node result and
 // any action in flight on it. Priority order matches dashNodeContentLines'
 // own shape switch, so the tier and the shape it is rendered into never
 // disagree: an action in flight is always attention, regardless of the last
-// completed refresh; then no refresh yet is attention; then a crashed engine
-// or a failed outcome is unhealthy; then a running engine the daemon has
-// explicitly reported not ready is attention — the case this tier exists
-// for, a cloud node whose process is up but still loading weights; anything
-// else, including a running engine the daemon reports no readiness for at
-// all (an older daemon, or a runner with no known health check), is
-// healthy, so this degrades to the pre-readiness behaviour rather than
-// showing a tier the daemon cannot actually back.
+// completed refresh; then no refresh yet is unknown — there is no status to
+// read, so the tile shows a grey "?"; then a crashed engine or a failed
+// outcome is unhealthy; then a running engine the daemon has explicitly
+// reported not ready is attention — the case this tier exists for, a cloud
+// node whose process is up but still loading weights; then an answer that
+// carries no state at all is unknown; anything else, including a running
+// engine the daemon reports no readiness for at all (an older daemon, or a
+// runner with no known health check), is healthy, so this degrades to the
+// pre-readiness behaviour rather than showing a tier the daemon cannot
+// actually back.
 func dashHealthTierFor(r fleet.NodeResult, a dashAction) dashHealthTier {
 	switch {
 	case a.verb != "":
 		return dashAttention
 	case r.Outcome == "":
-		return dashAttention
+		return dashUnknown
 	case !r.OK() || r.Metrics.State == "crashed":
 		return dashUnhealthy
 	case r.Metrics.State == "running" && r.Metrics.Ready == "not-ready":
 		return dashAttention
+	case r.Metrics.State == "":
+		return dashUnknown
 	default:
 		return dashHealthy
 	}
@@ -156,6 +161,8 @@ func dashHealthGlyph(tier dashHealthTier) string {
 		return "\033[92m●\033[0m"
 	case dashAttention:
 		return "\033[33m●\033[0m"
+	case dashUnknown:
+		return "\033[90m?\033[0m"
 	default:
 		return "\033[31m●\033[0m"
 	}
