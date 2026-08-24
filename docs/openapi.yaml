@@ -320,6 +320,17 @@ components:
           description: |
             Where the running engine answers inference requests. Absent unless
             an engine is running.
+        ready:
+          type: string
+          enum: [ready, not-ready]
+          description: |
+            Whether the running engine last answered its own health check,
+            distinct from `state` reaching `running` — the process can be
+            alive while still loading weights. Absent, not `not-ready`, when
+            it does not apply: no engine is running, the running engine's
+            runner has no known health-check convention, or this daemon
+            predates the check. Mirrored on Stats' `ready`, from the same
+            record.
         version:
           type: string
           description: |
@@ -402,6 +413,15 @@ components:
         idleSeconds:
           type: integer
           description: Seconds since `lastActiveAt`. Absent when that is, and absent at zero.
+        ready:
+          type: string
+          enum: [ready, not-ready]
+          description: |
+            Whether the running engine last answered its own health check.
+            The same value `/v1/status` reports, from the same record.
+            Absent, not `not-ready`, when it does not apply: no engine is
+            running, its runner has no known health-check convention, or
+            this daemon predates the check.
 
     TokenStats:
       type: object

@@ -293,3 +293,43 @@ func TestScrapeTokenStatsErrors(t *testing.T) {
 		t.Error("unreachable scrape did not error")
 	}
 }
+
+func TestCheckEngineReady(t *testing.T) {
+	var gotPath string
+	status := http.StatusOK
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		w.WriteHeader(status)
+	}))
+	defer srv.Close()
+	target := ScrapeTarget{BaseURL: srv.URL + "/v1", Engine: "llamacpp"}
+
+	status = http.StatusOK
+	if !CheckEngineReady(context.Background(), target) {
+		t.Error("200 did not read as ready")
+	}
+	if gotPath != "/health" {
+		t.Errorf("path = %q, want /health (the /v1 suffix stripped)", gotPath)
+	}
+
+	status = http.StatusUnauthorized
+	if !CheckEngineReady(context.Background(), target) {
+		t.Error("401 (a gated engine's expected answer) did not read as ready")
+	}
+
+	status = http.StatusServiceUnavailable
+	if CheckEngineReady(context.Background(), target) {
+		t.Error("503 (still loading) read as ready")
+	}
+}
+
+func TestCheckEngineReadyUnreachable(t *testing.T) {
+	if CheckEngineReady(context.Background(),
+		ScrapeTarget{BaseURL: "http://127.0.0.1:1", Engine: "llamacpp"}) {
+		t.Error("an unreachable engine read as ready")
+	}
+	if CheckEngineReady(context.Background(),
+		ScrapeTarget{BaseURL: "://not a url", Engine: "llamacpp"}) {
+		t.Error("a malformed base URL read as ready")
+	}
+}

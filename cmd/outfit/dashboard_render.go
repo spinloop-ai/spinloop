@@ -107,6 +107,67 @@ func dashFooterHints(hints string, abortable bool) string {
 	return strings.Join(kept, "   ")
 }
 
+// dashHealthTier is a panel's health at a glance, distinct from the state
+// and outcome text already on the tile — a colour a viewer reads without
+// having to read the words.
+type dashHealthTier int
+
+const (
+	dashHealthy dashHealthTier = iota
+	dashAttention
+	dashUnhealthy
+	dashUnknown
+)
+
+// dashHealthTierFor derives a panel's health tier from its node result and
+// any action in flight on it. Priority order matches dashNodeContentLines'
+// own shape switch, so the tier and the shape it is rendered into never
+// disagree: an action in flight is always attention, regardless of the last
+// completed refresh; then no refresh yet is unknown — there is no status to
+// read, so the tile shows a grey "?"; then a crashed engine or a failed
+// outcome is unhealthy; then a running engine the daemon has explicitly
+// reported not ready is attention — the case this tier exists for, a cloud
+// node whose process is up but still loading weights; then an answer that
+// carries no state at all is unknown; anything else, including a running
+// engine the daemon reports no readiness for at all (an older daemon, or a
+// runner with no known health check), is healthy, so this degrades to the
+// pre-readiness behaviour rather than showing a tier the daemon cannot
+// actually back.
+func dashHealthTierFor(r fleet.NodeResult, a dashAction) dashHealthTier {
+	switch {
+	case a.verb != "":
+		return dashAttention
+	case r.Outcome == "":
+		return dashUnknown
+	case !r.OK() || r.Metrics.State == "crashed":
+		return dashUnhealthy
+	case r.Metrics.State == "running" && r.Metrics.Ready == "not-ready":
+		return dashAttention
+	case r.Metrics.State == "":
+		return dashUnknown
+	default:
+		return dashHealthy
+	}
+}
+
+// dashHealthGlyph is the coloured status dot dashTileContent prepends to a
+// panel's name line, in the same raw-ANSI style renderBar already uses for
+// the resource bars inside the tile — the tile body is one plain string
+// wrapped in a single lipgloss style at the border, so per-character colour
+// here has to be ANSI, not lipgloss.Color.
+func dashHealthGlyph(tier dashHealthTier) string {
+	switch tier {
+	case dashHealthy:
+		return "\033[92m●\033[0m"
+	case dashAttention:
+		return "\033[33m●\033[0m"
+	case dashUnknown:
+		return "\033[90m?\033[0m"
+	default:
+		return "\033[31m●\033[0m"
+	}
+}
+
 // dashNodeContentLines is the facts the bar format prints for one node, as
 // plain lines with no width clipping or height padding — the tile and the
 // detail view's metrics section both draw from this, so the two can never
@@ -148,9 +209,14 @@ func dashNodeContentLines(name string, r fleet.NodeResult, a dashAction) []strin
 }
 
 // dashTileContent is one tile's inside: dashNodeContentLines padded to the
-// tile's fixed height and clipped to its fixed width.
+// tile's fixed height and clipped to its fixed width, with the health glyph
+// prepended to the name line — tile-only, not part of dashNodeContentLines,
+// so the detail view (which draws the same lines full-screen) is unaffected.
 func dashTileContent(name string, r fleet.NodeResult, a dashAction) string {
 	lines := dashNodeContentLines(name, r, a)
+	if len(lines) > 0 {
+		lines[0] = dashHealthGlyph(dashHealthTierFor(r, a)) + " " + lines[0]
+	}
 	for len(lines) < dashTileH {
 		lines = append(lines, "")
 	}

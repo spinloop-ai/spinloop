@@ -283,7 +283,7 @@ func TestDashTileRunningByteStable(t *testing.T) {
 		},
 	}
 	want := dashTileExpected([]string{
-		"up  running  (up 2h 0m 0s)",
+		dashHealthGlyph(dashHealthy) + " up  running  (up 2h 0m 0s)",
 		"llamacpp  org/qwen:q4",
 		"  last active 12s ago",
 		dashBar("CPU", 42),
@@ -308,7 +308,7 @@ func TestDashTileOutcomeAndEmpty(t *testing.T) {
 		Err: errors.New("connection refused (127.0.0.1:1)"),
 	}
 	if got := dashTile("down", dead, false, dashAction{}); got != dashTileExpected([]string{
-		"down  unreachable",
+		dashHealthGlyph(dashUnhealthy) + " down  unreachable",
 		"connection refused (127.0.0.1:1)",
 		"", "", "", "", "", "", "", "", "", "",
 	}) {
@@ -316,7 +316,7 @@ func TestDashTileOutcomeAndEmpty(t *testing.T) {
 	}
 	// A node not answered yet is an empty panel naming the node.
 	if got := dashTile("down", fleet.NodeResult{Name: "down"}, false, dashAction{}); got != dashTileExpected([]string{
-		"down", "waiting for first refresh…",
+		dashHealthGlyph(dashUnknown) + " down", "waiting for first refresh…",
 		"", "", "", "", "", "", "", "", "", "",
 	}) {
 		t.Errorf("empty tile mismatch:\n%q", got)
@@ -330,7 +330,7 @@ func TestDashTileStoppedByteStable(t *testing.T) {
 		Metrics: metrics.Stats{State: "idle"},
 	}
 	want := dashTileExpected([]string{
-		"idle  idle",
+		dashHealthGlyph(dashHealthy) + " idle  idle",
 		"", "", "", "", "", "", "", "", "", "", "",
 	})
 	if got := dashTile("idle", r, false, dashAction{}); got != want {
@@ -344,7 +344,7 @@ func TestDashTileActionInFlight(t *testing.T) {
 	lipgloss.SetColorProfile(termenv.Ascii)
 	if got := dashTile("dev-2", fleet.NodeResult{Name: "dev-2"}, false,
 		dashAction{verb: "start", line: "instance starting; retrying in 42s"}); got != dashTileExpected([]string{
-		"dev-2  starting",
+		dashHealthGlyph(dashAttention) + " dev-2  starting",
 		"instance starting; retrying in 42s",
 		"", "", "", "", "", "", "", "", "", "",
 	}) {
@@ -353,7 +353,7 @@ func TestDashTileActionInFlight(t *testing.T) {
 	// A stop conjugates: the p of stop drops before -ing.
 	if got := dashTile("dev-2", fleet.NodeResult{Name: "dev-2"}, false,
 		dashAction{verb: "stop"}); got != dashTileExpected([]string{
-		"dev-2  stopping",
+		dashHealthGlyph(dashAttention) + " dev-2  stopping",
 		"", "", "", "", "", "", "", "", "", "", "",
 	}) {
 		t.Errorf("bare in-flight tile mismatch:\n%q", got)
@@ -380,7 +380,7 @@ func TestDashTileActionInFlightWithReport(t *testing.T) {
 		},
 	}
 	want := dashTileExpected([]string{
-		"vllm-1  starting",
+		dashHealthGlyph(dashAttention) + " vllm-1  starting",
 		"instance no-capacity; retrying in 120s",
 		"running  (up 4m 0s)",
 		"vllm  org/qwen3:32b",
@@ -401,7 +401,7 @@ func TestDashTileActionInFlightWithReport(t *testing.T) {
 		Metrics: metrics.Stats{State: "pending", Runner: "vllm", ModelID: "org/qwen3:32b"},
 	}
 	wantEarly := dashTileExpected([]string{
-		"vllm-1  starting",
+		dashHealthGlyph(dashAttention) + " vllm-1  starting",
 		"instance starting; retrying in 60s",
 		"pending",
 		"vllm  org/qwen3:32b",
@@ -418,13 +418,53 @@ func TestDashTileActionInFlightWithReport(t *testing.T) {
 		Err: errors.New("stats returned HTTP 503: instance is not running"),
 	}
 	wantFailed := dashTileExpected([]string{
-		"vllm-1  starting",
+		dashHealthGlyph(dashAttention) + " vllm-1  starting",
 		"instance starting; retrying in 60s",
 		"", "", "", "", "", "", "", "", "", "",
 	})
 	if got := dashTile("vllm-1", failed, false,
 		dashAction{verb: "start", line: "instance starting; retrying in 60s"}); got != wantFailed {
 		t.Errorf("in-flight tile over a failed round mismatch:\ngot:\n%q\nwant:\n%q", got, wantFailed)
+	}
+}
+
+func TestDashHealthTierFor(t *testing.T) {
+	cases := []struct {
+		name string
+		r    fleet.NodeResult
+		a    dashAction
+		want dashHealthTier
+	}{
+		{"running and ready", fleet.NodeResult{Outcome: fleet.OutcomeOK,
+			Metrics: metrics.Stats{State: "running", Ready: "ready"}}, dashAction{}, dashHealthy},
+		{"running and not ready", fleet.NodeResult{Outcome: fleet.OutcomeOK,
+			Metrics: metrics.Stats{State: "running", Ready: "not-ready"}}, dashAction{}, dashAttention},
+		{"running with no readiness signal degrades to healthy", fleet.NodeResult{Outcome: fleet.OutcomeOK,
+			Metrics: metrics.Stats{State: "running"}}, dashAction{}, dashHealthy},
+		{"idle is healthy", fleet.NodeResult{Outcome: fleet.OutcomeOK,
+			Metrics: metrics.Stats{State: "idle"}}, dashAction{}, dashHealthy},
+		{"crashed is unhealthy", fleet.NodeResult{Outcome: fleet.OutcomeOK,
+			Metrics: metrics.Stats{State: "crashed"}}, dashAction{}, dashUnhealthy},
+		{"unreachable is unhealthy", fleet.NodeResult{Outcome: fleet.OutcomeUnreachable}, dashAction{}, dashUnhealthy},
+		{"unauthorized is unhealthy", fleet.NodeResult{Outcome: fleet.OutcomeUnauthorized}, dashAction{}, dashUnhealthy},
+		{"config error is unhealthy", fleet.NodeResult{Outcome: fleet.OutcomeConfigError}, dashAction{}, dashUnhealthy},
+		{"failed is unhealthy", fleet.NodeResult{Outcome: fleet.OutcomeFailed}, dashAction{}, dashUnhealthy},
+		{"unsupported is unhealthy", fleet.NodeResult{Outcome: fleet.OutcomeUnsupported}, dashAction{}, dashUnhealthy},
+		{"no outcome yet is unknown", fleet.NodeResult{}, dashAction{}, dashUnknown},
+		{"answered with no state is unknown", fleet.NodeResult{Outcome: fleet.OutcomeOK}, dashAction{}, dashUnknown},
+		{"action in flight over a healthy report is attention regardless",
+			fleet.NodeResult{Outcome: fleet.OutcomeOK, Metrics: metrics.Stats{State: "running", Ready: "ready"}},
+			dashAction{verb: "start"}, dashAttention},
+		{"action in flight over a crashed report is attention regardless",
+			fleet.NodeResult{Outcome: fleet.OutcomeOK, Metrics: metrics.Stats{State: "crashed"}},
+			dashAction{verb: "stop"}, dashAttention},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := dashHealthTierFor(c.r, c.a); got != c.want {
+				t.Errorf("dashHealthTierFor() = %v, want %v", got, c.want)
+			}
+		})
 	}
 }
 
@@ -439,6 +479,15 @@ func TestDashTileSelectedBorderLit(t *testing.T) {
 	}
 	if strings.Contains(unsel, "\x1b[38;5;214m") {
 		t.Errorf("unselected tile carries the lit border:\n%q", unsel)
+	}
+	// The health glyph is unaffected by selection: same tier, same colour,
+	// whether or not the border is lit.
+	glyph := dashHealthGlyph(dashUnknown)
+	if !strings.Contains(sel, glyph) {
+		t.Errorf("selected tile's glyph changed:\n%q", sel)
+	}
+	if !strings.Contains(unsel, glyph) {
+		t.Errorf("unselected tile's glyph changed:\n%q", unsel)
 	}
 }
 
@@ -474,7 +523,8 @@ func TestDashTileUptimeSurvivesLongServingLine(t *testing.T) {
 		},
 	}
 	lines := strings.Split(dashTile("n", r, false, dashAction{}), "\n")
-	if got, want := lines[1], "│n  running  (up 2m 5s)"; !strings.HasPrefix(got, want) {
+	want := "│" + dashHealthGlyph(dashHealthy) + " n  running  (up 2m 5s)"
+	if got := lines[1]; !strings.HasPrefix(got, want) {
 		t.Errorf("state line = %q, want prefix %q", got, want)
 	}
 	if strings.Contains(lines[2], "(up ") {

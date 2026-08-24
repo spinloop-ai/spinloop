@@ -60,3 +60,31 @@ func ScrapeTokenStats(ctx context.Context, target ScrapeTarget) (*TokenStats, er
 	}
 	return tokens, nil
 }
+
+// CheckEngineReady asks whether the engine at target can currently serve
+// requests, distinct from ScrapeTokenStats's assumption that it already can:
+// llama.cpp binds its port before it has finished loading weights, and
+// answers /health with a non-200 status until it has. The probe is
+// deliberately unauthenticated — an engine that requires a key correctly
+// answers 401, and that counts as ready: the point is whether the process is
+// up and serving, not whether this caller is authorised. Any other status, a
+// request error (including a still-refused connection while the process
+// binds its port), or a malformed base URL all mean not ready.
+func CheckEngineReady(ctx context.Context, target ScrapeTarget) bool {
+	u, err := url.Parse(strings.TrimSuffix(target.BaseURL, "/"))
+	if err != nil {
+		return false
+	}
+	// BASEURL conventionally ends in /v1; /health is served at the server root.
+	u.Path = strings.TrimSuffix(u.Path, "/v1") + "/health"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		return false
+	}
+	resp, err := scrapeClient.Do(req)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	return resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusUnauthorized
+}
