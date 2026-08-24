@@ -120,7 +120,10 @@ describe('fresh launch', () => {
     expect(runInstance).toHaveBeenCalledWith(
       expect.objectContaining({
         imageId: 'ami-test1',
-        rootVolume: { volumeSize: 80, throughput: 1000 },
+        // gp3 caps throughput at a quarter of the provisioned IOPS, so the
+        // 1000 MiB/s is only valid at 4000 IOPS — EC2 rejects the pair
+        // otherwise.
+        rootVolume: { volumeSize: 80, iops: 4000, throughput: 1000 },
       }),
     );
   });

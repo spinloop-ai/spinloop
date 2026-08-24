@@ -79,11 +79,13 @@ const HEALTH_COMMAND =
 // ~125 MB/s. That ceiling is paid twice on a cold boot: the S3 sync writes the
 // weights through it, and the engine's model load reads them back through it
 // (the daemon prewarms the page cache, so that read is sequential and this is
-// its whole limit). Provisioning the top-end throughput cuts both; the IOPS
-// stay at the baseline because sequential work is throughput-bound. The cost
-// is a few dollars a month against a $1.86/hour GPU, billed only while the
-// volume exists.
+// its whole limit). Provisioning throughput cuts both. gp3 caps throughput at
+// a quarter of the provisioned IOPS, so the baseline 3,000 only allows 750
+// MiB/s; 4,000 is the least IOPS the chosen throughput is valid at, and the
+// work is throughput-bound, so no more is bought. The cost is a few dollars a
+// month against a $1.86/hour GPU, billed only while the volume exists.
 const ROOT_VOLUME_THROUGHPUT_MIBS = 1000;
+const ROOT_VOLUME_IOPS = 4000;
 
 /** Narrow instance discovery to one environment's instance. */
 function envFilter(env: string) {
@@ -454,6 +456,7 @@ async function launchAcrossAzs(
           ami.rootVolumeSizeGb > 0
             ? {
                 volumeSize: ami.rootVolumeSizeGb,
+                iops: ROOT_VOLUME_IOPS,
                 throughput: ROOT_VOLUME_THROUGHPUT_MIBS,
               }
             : undefined,
