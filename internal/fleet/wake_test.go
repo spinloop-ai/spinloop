@@ -379,6 +379,20 @@ func TestWakeWithoutAKeyIsUngated(t *testing.T) {
 	}
 }
 
+// The wake path stays daemon-only: a remote is never woken — what it serves is
+// set by `spinloop remote deploy`, a heavier flow a node start must not conflate.
+// The refusal is the contract Wake relies on to move to its next candidate.
+func TestRemoteRefusesToBeWoken(t *testing.T) {
+	n, err := NewRemoteNode("cloud", remote.Config{StartURL: "https://s", StopURL: "https://x", Region: "us-east-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = n.StartWith(context.Background(), &remote.DeployConfig{Runner: "llamacpp", ModelID: "m"}, "sk-key")
+	if err == nil || !strings.Contains(err.Error(), "not a node to be woken") {
+		t.Errorf("want the remote refusal, got %v", err)
+	}
+}
+
 // A variable that resolves to nothing fails before any engine is started.
 func TestWakeFailsOnAnUnresolvableKey(t *testing.T) {
 	shortWake(t)

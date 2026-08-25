@@ -155,6 +155,20 @@ its engine's key out: it says only that one is required.
     engineTokenEnv: GATED_ENGINE_KEY  # to talk to its engine
 ```
 
+A `kind: remote` environment is always keyed, so it needs an engine key too —
+its `engineTokenEnv` works as above, and a fleet-wide `apiKeyEnv` is the
+default for every remote node that does not name one of its own. Either way the
+launch fails before it starts the agent rather than pointing it at a gate it
+cannot pass:
+
+```yaml
+apiKeyEnv: REMOTE_ENGINE_KEY   # the default for every kind: remote node
+nodes:
+  - name: qwen
+    kind: remote
+    engineTokenEnv: OTHER_KEY  # overrides it for this node
+```
+
 ## A node that is down never blanks the view
 
 Fan-out is for observing, so a node that cannot be reached is a **row**, not a

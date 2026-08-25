@@ -222,6 +222,12 @@ type Response struct {
 	ModelID       string `json:"modelId"`
 	ContextSize   int    `json:"contextSize"`
 	WeightsPrefix string `json:"weightsPrefix"`
+	// APIKeyAction is what the deploy did to the environment's key secret,
+	// present only when the deploy supplied a key: "created" (a new secret)
+	// or "rotated" (an existing secret set to a new value, invalidating the
+	// old key). It carries the action, never the value — a deploy never
+	// returns the key itself.
+	APIKeyAction string `json:"apiKeyAction"`
 	// RetainUntil is the instance's retention deadline, returned when the
 	// Retain-Until tag is present (set-keep or start --keep). camelCase to
 	// match the Lambda's JSON.
@@ -264,10 +270,17 @@ type DeployConfig struct {
 // allowedCidr scopes who may reach this environment's instance; it is required
 // the first time and optional afterwards (empty leaves ingress alone).
 // reseed asks the control plane to fetch the weights even when they are
-// already in S3. It is a property of this request, not of what the environment
-// serves, so it rides beside allowedCidr rather than on DeployConfig — which is
-// persisted verbatim, and would re-seed on every wake that read it back.
-func Deploy(ctx context.Context, cfg Config, dc DeployConfig, allowedCidr string, reseed bool) (*Response, error) {
+// already in S3. Both are properties of this request, not of what the
+// environment serves, so they ride beside each other rather than on
+// DeployConfig — which is persisted verbatim, and would re-seed on every wake
+// that read it back.
+//
+// apiKey is an externally provided key to store as the environment's key,
+// riding the same way: a property of this request, never persisted, and
+// omitted entirely when empty, so a control plane that predates it sees the
+// body it always saw. The reply's APIKeyAction says what happened to the
+// secret — the action, never the value.
+func Deploy(ctx context.Context, cfg Config, dc DeployConfig, allowedCidr string, reseed bool, apiKey string) (*Response, error) {
 	if cfg.DeployURL == "" {
 		return nil, fmt.Errorf(
 			"no deploy_url configured: add the remote/ deployment's DeployUrl output to the remote config (or set SPINLOOP_REMOTE_DEPLOY_URL)")
@@ -276,7 +289,8 @@ func Deploy(ctx context.Context, cfg Config, dc DeployConfig, allowedCidr string
 		DeployConfig
 		AllowedCidr string `json:"allowedCidr,omitempty"`
 		Reseed      bool   `json:"reseed,omitempty"`
-	}{dc, allowedCidr, reseed})
+		APIKey      string `json:"apiKey,omitempty"`
+	}{dc, allowedCidr, reseed, apiKey})
 	if err != nil {
 		return nil, err
 	}

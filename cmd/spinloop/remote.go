@@ -1346,6 +1346,7 @@ func remoteDeployCmd() *cobra.Command {
 		allowedCidr     string
 		region          string
 		spinloopVersion string
+		apiKeyEnv       string
 	)
 	c := &cobra.Command{
 		Use:   "deploy",
@@ -1361,7 +1362,7 @@ installs the latest published release.`,
 		ValidArgsFunction: aliasSlot,
 		RunE: func(c *cobra.Command, args []string) error {
 			resolve(c)
-			return runRemoteDeploy(args, dryRun, overwrite, reseed, allowedCidr, region, spinloopVersion)
+			return runRemoteDeploy(args, dryRun, overwrite, reseed, allowedCidr, region, spinloopVersion, apiKeyEnv)
 		},
 	}
 	fs := c.Flags()
@@ -1371,11 +1372,12 @@ installs the latest published release.`,
 	fs.StringVar(&allowedCidr, "allowed-cidr", "", "who may reach this environment's instance (default: your public IP as a /32, on first deploy)")
 	fs.StringVar(&region, "region", "", "AWS region of the control plane (default: AWS_REGION or us-east-1)")
 	fs.StringVar(&spinloopVersion, "spinloop-version", "", "spinloop release the environment's instances install at boot (default: latest)")
+	fs.StringVar(&apiKeyEnv, "api-key-env", "", "the environment variable holding the API key to store for this environment (a variable name, never the key itself)")
 	return c
 }
 
 // runRemoteDeploy is the body of `spinloop remote deploy`.
-func runRemoteDeploy(args []string, dryRun, overwrite, reseed bool, allowedCidr, region, spinloopVersion string) error {
+func runRemoteDeploy(args []string, dryRun, overwrite, reseed bool, allowedCidr, region, spinloopVersion, apiKeyEnv string) error {
 	// deploy reads the Spinloop for what to serve, so unlike the other
 	// subcommands it always needs one — the per-user remote config alone is not
 	// enough.
@@ -1389,6 +1391,20 @@ func runRemoteDeploy(args []string, dryRun, overwrite, reseed bool, allowedCidr,
 	// never enters dc, so nothing here reaches the deployed instance.
 	if err := applySpinloopEnv(sel, spinloopPath); err != nil {
 		return err
+	}
+	// A supplied key arrives the way every other secret does: as a reference
+	// to an environment variable, never a literal on the command line. The
+	// Spinloop's local environment has just been applied, so the variable is
+	// resolvable from the process environment; one set nowhere fails before
+	// anything is sent.
+	var apiKey string
+	if apiKeyEnv != "" {
+		apiKey = os.Getenv(apiKeyEnv)
+		if apiKey == "" {
+			return fmt.Errorf(
+				"--api-key-env: %s is not set: export it, or put it in the .env beside the Spinloop",
+				apiKeyEnv)
+		}
 	}
 	dc, err := deployConfigFor(sel, spinloopPath)
 	if err != nil {
@@ -1451,6 +1467,11 @@ func runRemoteDeploy(args []string, dryRun, overwrite, reseed bool, allowedCidr,
 		spinloopVer = "latest"
 	}
 	fmt.Printf("  spinloop:  %s\n", spinloopVer)
+	// A key is worth stating too — it rotates — but the value is never
+	// printed, in the dry run or the report.
+	if apiKeyEnv != "" {
+		fmt.Printf("  api key:  stored from %s\n", apiKeyEnv)
+	}
 	if dryRun {
 		return nil
 	}
@@ -1503,7 +1524,7 @@ func runRemoteDeploy(args []string, dryRun, overwrite, reseed bool, allowedCidr,
 		fmt.Printf("  ingress: %s (your public IP; override with --allowed-cidr)\n", allowedCidr)
 	}
 
-	resp, err := remoteDeployFn(ctx, cfg, dc, allowedCidr, reseed)
+	resp, err := remoteDeployFn(ctx, cfg, dc, allowedCidr, reseed, apiKey)
 	if err != nil {
 		return err
 	}
@@ -1518,6 +1539,14 @@ func runRemoteDeploy(args []string, dryRun, overwrite, reseed bool, allowedCidr,
 	fmt.Println()
 	fmt.Printf("deployed: environment %s at %s\n", env, resp.BaseURL)
 	fmt.Printf("registered: %s\n", envConfigPath)
+	// A rotation is worth stating out loud: it invalidates the key a live
+	// agent may still be holding, and the action — never the value — is all
+	// the reply carries.
+	if resp.APIKeyAction == "rotated" {
+		fmt.Println("api key: rotated — the previous key no longer works")
+	} else if resp.APIKeyAction != "" {
+		fmt.Println("api key: created")
+	}
 	if resp.Seeding {
 		fmt.Printf("seeding the weights — follow it with `spinloop remote seed status %s`.\n", resp.SeedID)
 		fmt.Println("Wait for it to finish before `spinloop remote start`, or the instance will")

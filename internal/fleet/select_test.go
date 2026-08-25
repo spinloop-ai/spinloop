@@ -390,6 +390,48 @@ func TestEngineKeyResolution(t *testing.T) {
 	}
 }
 
+// A remote's engine is always gated by its key — the control plane reports the
+// instance, never the gate — so its key is looked up whatever the status says,
+// from the node's own reference or the fleet's, and a remote with no resolvable
+// key fails before a launch depends on it.
+func TestRemoteEngineKeyResolution(t *testing.T) {
+	cfg := &Config{Path: "fleet.yaml", Dir: t.TempDir(), APIKeyEnv: "FLEET_KEY"}
+	t.Setenv("FLEET_KEY", "sk-fleet")
+	t.Setenv("NODE_ENGINE_KEY", "sk-node")
+	// The control plane reports no engine gate at all.
+	empty := daemon.StatusResponse{}
+
+	// The fleet's key, by default.
+	remote := NodeConfig{Name: "cloud", Kind: KindRemote}
+	if key, err := cfg.engineKeyFor(remote, empty); err != nil || key != "sk-fleet" {
+		t.Errorf("key = %q, %v; want sk-fleet", key, err)
+	}
+
+	// The node's own reference overrides it.
+	own := NodeConfig{Name: "cloud", Kind: KindRemote, EngineTokenEnv: "NODE_ENGINE_KEY"}
+	if key, err := cfg.engineKeyFor(own, empty); err != nil || key != "sk-node" {
+		t.Errorf("key = %q, %v; want sk-node", key, err)
+	}
+
+	// No key named anywhere fails, naming the node and both places to fix it.
+	cfg.APIKeyEnv = ""
+	_, err := cfg.engineKeyFor(NodeConfig{Name: "cloud", Kind: KindRemote}, empty)
+	if err == nil {
+		t.Fatal("a remote with no key named should fail")
+	}
+	for _, want := range []string{"cloud", "engineTokenEnv", "apiKeyEnv"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("message should mention %q, got: %v", want, err)
+		}
+	}
+
+	// A daemon is untouched by the fleet's key: an ungated engine needs none.
+	daemonNode := NodeConfig{Name: "box", Kind: KindDaemon, Host: "box.local"}
+	if key, err := cfg.engineKeyFor(daemonNode, daemon.StatusResponse{Engine: &daemon.EngineEndpoint{Port: 8080}}); err != nil || key != "" {
+		t.Errorf("daemon key = %q, %v; want empty and no error", key, err)
+	}
+}
+
 // A node woken from a Spinloop reports the deploy config's model id, which is
 // not the ALIAS the client asked for — a Spinloop may take its model from a
 // preset and state no MODEL at all. Unless that id counts as a match, a second
