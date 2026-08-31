@@ -1,7 +1,7 @@
 # Qwen3.6-35B-A3B on oMLX (Apple Silicon)
 
 Run an MLX build of Qwen3.6-35B-A3B on your Mac with [oMLX](https://omlx.ai),
-then point opencode at it with the [`Outfit`](Outfit) in this directory.
+then point opencode at it with the [`Spinloop`](Spinloop) in this directory.
 
 `A3B` means it's a mixture-of-experts model: ~35B total parameters but only ~3B
 active per token, so it's far lighter to run than its size suggests — which is
@@ -18,7 +18,7 @@ every turn, that is the difference between a usable and an unusable setup.
 
 - An **Apple Silicon** Mac (M1 or later). oMLX is Apple Silicon only — there is
   no Intel or Linux build, and no cloud equivalent, so
-  [`outfit remote`](../../../docs/commands/remote.md) cannot deploy it.
+  [`spinloop remote`](../../../docs/commands/remote.md) cannot deploy it.
 - [oMLX](https://omlx.ai), installed from its DMG or from source.
 - Enough unified memory for the weights. The 4-bit build is roughly 20 GB, so
   plan for a 32 GB machine or better.
@@ -38,7 +38,7 @@ hf download mlx-community/Qwen3.6-35B-A3B-4bit \
 
 The **directory name** is what the model is called over the API —
 `Qwen3.6-35B-A3B-4bit` here — unless you set an alias for it in the admin panel.
-That is the name the `Outfit` uses as its `MODEL`.
+That is the name the `Spinloop` uses as its `MODEL`.
 
 ## 2. Start oMLX
 
@@ -67,13 +67,13 @@ Installed from the DMG and haven't put it on your `PATH`? The binary lives at
 `/Applications/oMLX.app/Contents/MacOS/omlx-cli`.
 
 Rather than remember those flags, this directory keeps them in a
-[`preset.ini`](preset.ini) and lets `outfit` build and run the command (with the
+[`preset.ini`](preset.ini) and lets `spinloop` build and run the command (with the
 paths spelled out in full — preset values reach the server verbatim, so `~` is
 not expanded):
 
 ```sh
-outfit serve              # from this directory; reads ./Outfit and its PRESET
-outfit serve --dry-run    # print the omlx-cli command without running it
+spinloop serve              # from this directory; reads ./Spinloop and its PRESET
+spinloop serve --dry-run    # print the omlx-cli command without running it
 ```
 
 `serve` finds `omlx-cli` on your `PATH`, falling back to the app bundle — so
@@ -95,16 +95,16 @@ lists the names requests must use.
 ## 3. Point opencode at it
 
 oMLX speaks the OpenAI-compatible API, which is what the `omlx` provider targets
-(default base URL `http://localhost:8000/v1`). Apply the [`Outfit`](Outfit) in
+(default base URL `http://localhost:8000/v1`). Apply the [`Spinloop`](Spinloop) in
 this directory:
 
 ```sh
-outfit apply examples/omlx/qwen3.6/Outfit
+spinloop apply examples/omlx/qwen3.6/Spinloop
 # or, from this directory:
-outfit apply
+spinloop apply
 ```
 
-The Outfit is:
+The Spinloop is:
 
 ```dockerfile
 PROVIDER omlx
@@ -116,7 +116,7 @@ PRESET   ./preset.ini
 `MODEL` matters more here than it does for a single-model llama.cpp server:
 oMLX serves everything in its model directory and dispatches on the requested
 name, so it must match a model oMLX actually has — its directory name, or the
-alias you set in the admin panel. This Outfit names the model downloaded above;
+alias you set in the admin panel. This Spinloop names the model downloaded above;
 **if you downloaded something else, change `MODEL` to match.** List what yours
 exposes with:
 
@@ -125,7 +125,7 @@ curl -H "Authorization: Bearer $OPENAI_API_KEY" http://localhost:8000/v1/models
 ```
 
 A name oMLX does not have comes back as `model not found`. And unlike the
-llama.cpp examples — where `outfit serve` can fetch the weights from Hugging
+llama.cpp examples — where `spinloop serve` can fetch the weights from Hugging
 Face — oMLX only serves what you have already downloaded.
 
 `CONTEXT` sets opencode's context window. Unlike llama.cpp there is no
@@ -143,35 +143,35 @@ That sets both what opencode calls and what `serve` binds to.
 
 ## A note on API keys
 
-By default `outfit` writes no key for a localhost oMLX: the `omlx` provider is
+By default `spinloop` writes no key for a localhost oMLX: the `omlx` provider is
 marked `apiKeyOptional`, so a local endpoint with no `OPENAI_API_KEY` set gets no
 `apiKey` field at all.
 
 **But oMLX can require a key even on localhost** — it is a per-install setting in
 the admin panel, and some builds turn it on by default. If yours does, requests
 without a key come back as `API key required`. To use it, set `OPENAI_API_KEY`
-**before** you apply the Outfit:
+**before** you apply the Spinloop:
 
 ```sh
-OPENAI_API_KEY=your-omlx-key outfit apply     # writes an {env:OPENAI_API_KEY} reference
-OPENAI_API_KEY=your-omlx-key opencode         # or `outfit harness`, which forwards it
+OPENAI_API_KEY=your-omlx-key spinloop apply     # writes an {env:OPENAI_API_KEY} reference
+OPENAI_API_KEY=your-omlx-key opencode         # or `spinloop harness`, which forwards it
 ```
 
-The *before* matters: with the key set at apply time, `outfit` writes an
+The *before* matters: with the key set at apply time, `spinloop` writes an
 `{env:OPENAI_API_KEY}` reference into the config (never the secret). With it
-unset, `outfit` omits the `apiKey` field entirely — and exporting the key later
+unset, `spinloop` omits the `apiKey` field entirely — and exporting the key later
 does nothing, because there is no reference in the config to resolve. If you hit
 `API key required` after the fact, set the variable and re-run `apply`.
 
 Reaching an oMLX on another machine works the same way: start it with
 `--api-key`, export `OPENAI_API_KEY`, and point `OMLX_BASE_URL` at the Mac.
 
-`outfit serve` never passes `--api-key`: it prints the command it runs, so a key
+`spinloop serve` never passes `--api-key`: it prints the command it runs, so a key
 there would land on your screen and in the process table. Configure auth in oMLX
 itself.
 
 ## See also
 
-- [`outfit serve`](../../../docs/commands/serve.md) — the full command reference
-- [The `Outfit` file](../../../docs/outfit-file.md) — full syntax
+- [`spinloop serve`](../../../docs/commands/serve.md) — the full command reference
+- [The `Spinloop` file](../../../docs/spinloop-file.md) — full syntax
 - The same model on llama.cpp: [`examples/llamacpp/qwen3.6-35b-a3b`](../../llamacpp/qwen3.6-35b-a3b/README.md)

@@ -1,4 +1,4 @@
-module github.com/lucinate-ai/outfit
+module github.com/spinloop-ai/spinloop
 
 go 1.24.13
 

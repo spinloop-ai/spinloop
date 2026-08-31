@@ -1,12 +1,12 @@
 ## Why
 
-The `serve-daemon` and `remote-on-daemon` changes made `outfit daemon` the one
+The `serve-daemon` and `remote-on-daemon` changes made `spinloop daemon` the one
 way an engine runs and reports its state — locally, on a home-lab box, and on a
 cloud instance. But there is still no way to *see* more than one at a time: each
 daemon is queried one node at a time with `curl`. Fleet management is the point
-of that groundwork — one `outfit` observing every engine you run, wherever it
+of that groundwork — one `spinloop` observing every engine you run, wherever it
 runs. This change adds the client half: a `fleet.yaml` naming the nodes and an
-`outfit fleet` command family that fans out over their control APIs and renders
+`spinloop fleet` command family that fans out over their control APIs and renders
 the cluster at a glance.
 
 ## What Changes
@@ -14,15 +14,15 @@ the cluster at a glance.
 - **`fleet.yaml`**: a file listing nodes — each with a `name`, a `host`, the
   daemon's API address/port, and an optional bearer-token reference (resolved
   from the environment/`.env`, never written inline). Resolved from the working
-  directory (or `--fleet <path>`), the same way `Outfit`/`preset.ini` are.
-- **`outfit fleet status`**: fan out over every node's `GET /v1/status`, render
+  directory (or `--fleet <path>`), the same way `Spinloop`/`preset.ini` are.
+- **`spinloop fleet status`**: fan out over every node's `GET /v1/status`, render
   a one-line-per-node table of engine state, what each is serving, and
   reachability.
-- **`outfit fleet metrics`**: fan out over `GET /v1/metrics`, render each node's
+- **`spinloop fleet metrics`**: fan out over `GET /v1/metrics`, render each node's
   engine + system metrics using the existing bar/table/json formatters, with a
   `--watch` mode reusing the clear-screen redraw already built for
   `remote metrics`.
-- **`outfit fleet start [node]` / `outfit fleet stop [node]`**: drive one named
+- **`spinloop fleet start [node]` / `spinloop fleet stop [node]`**: drive one named
   node's engine (or, with no node, refuse and list the nodes rather than acting
   on all — start/stop are not fan-out operations). These call the daemon's
   `POST /v1/start` / `POST /v1/stop`.
@@ -42,7 +42,7 @@ Web UI is explicitly out of scope (issue #50); this is TUI-first.
 
 - `fleet-config`: the `fleet.yaml` format and its resolution — node list,
   per-node connection details, token references, and how the file is found.
-- `fleet-client`: the `outfit fleet` command family — the fan-out client that
+- `fleet-client`: the `spinloop fleet` command family — the fan-out client that
   polls each node's daemon control API (bearer auth), the per-node
   reachability/error handling, and the status/metrics/start/stop subcommands
   including the metrics watch dashboard.
@@ -58,9 +58,9 @@ a client and does not alter their contracts.
 - New package `internal/fleet` (parse `fleet.yaml`, a `Client` calling the
   daemon API, a `Node` abstraction with a daemon kind and room for a remote
   kind).
-- New `cmd/outfit/fleet.go` (the `fleet` subcommand group), plus dispatch,
+- New `cmd/spinloop/fleet.go` (the `fleet` subcommand group), plus dispatch,
   usage, and completion entries in `main.go`/`complete.go`.
-- The metrics formatters in `cmd/outfit/remote.go` are reused; where a shared
+- The metrics formatters in `cmd/spinloop/remote.go` are reused; where a shared
   renderer needs to serve both `remote metrics` and `fleet metrics`, it moves
   to a shared spot rather than being duplicated.
 - Reuses `internal/daemon`'s status/metrics response shapes and

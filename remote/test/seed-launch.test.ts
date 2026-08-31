@@ -109,7 +109,7 @@ describe('launching, and the idempotency escape', () => {
         servedModelName: 'm',
         serveArgs: [],
         companions: {},
-        outfitVersion: 'latest',
+        spinloopVersion: 'latest',
       },
       infra,
       '',

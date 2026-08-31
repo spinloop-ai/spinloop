@@ -33,7 +33,7 @@ const LLAMACPP: DeployConfig = {
   servedModelName: 'qwen3.6-27b',
   serveArgs: [],
   companions: {},
-  outfitVersion: 'latest',
+  spinloopVersion: 'latest',
 };
 
 const VLLM: DeployConfig = {

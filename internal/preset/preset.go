@@ -157,7 +157,7 @@ func (p Preset) Select(model string) (Section, error) {
 	case len(p.Sections) == 1:
 		return p.Sections[0], nil
 	default:
-		return Section{}, fmt.Errorf("preset defines %d models (%s); set ALIAS in the Outfit to choose one", len(p.Sections), strings.Join(p.SectionNames(), ", "))
+		return Section{}, fmt.Errorf("preset defines %d models (%s); set ALIAS in the Spinloop to choose one", len(p.Sections), strings.Join(p.SectionNames(), ", "))
 	}
 }
 
@@ -167,7 +167,7 @@ func (p Preset) Select(model string) (Section, error) {
 // long-form flags wants.
 //
 // A dialect is never guessed from the preset's contents — it comes from the
-// engine the Outfit's PROVIDER names — because the tables are not
+// engine the Spinloop's PROVIDER names — because the tables are not
 // interchangeable: llama.cpp's would rewrite another engine's `m` to `--model`
 // and `c` to `--ctx-size`.
 type Dialect struct {
@@ -230,7 +230,7 @@ func (p Preset) Args(sec Section) []string {
 }
 
 // Command builds the full argv (binary first) for serving a section in the
-// LlamaCpp dialect. Any override layers (e.g. values an Outfit specifies) win
+// LlamaCpp dialect. Any override layers (e.g. values a Spinloop specifies) win
 // over the preset.
 func (p Preset) Command(binary string, sec Section, overrides ...[]Param) []string {
 	return p.CommandIn(LlamaCpp, binary, nil, sec, overrides...)
@@ -261,7 +261,7 @@ var canonical = map[string]string{
 	"mu": "model-url", "tb": "threads-batch", "to": "timeout",
 	"kvu": "kv-unified",
 	// Speculative decoding. The draft-model spellings matter beyond rendering:
-	// `outfit remote deploy` drops the flags the cloud sets itself by canonical
+	// `spinloop remote deploy` drops the flags the cloud sets itself by canonical
 	// name, and a drafter path written as `md` would otherwise slip past that
 	// check and reach the instance, where the local path does not exist.
 	"md": "spec-draft-model", "model-draft": "spec-draft-model",

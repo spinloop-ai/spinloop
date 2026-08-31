@@ -1,6 +1,6 @@
 ## Why
 
-`outfit harness <remote-outfit>` warned that no API key was set, and then
+`spinloop harness <remote-spinloop>` warned that no API key was set, and then
 launched an agent that had one all along:
 
 ```
@@ -21,9 +21,9 @@ refused by the endpoint, with the misleading warning as the only clue. And the
 `harness-remote-env` spec already said this case SHALL fail before launching;
 the code has never done that.
 
-Separately, `eval "$(outfit remote env <alias>)"` failed in the shell. The
-command's stdout is meant for `eval`, but `readOutfit` printed
-`Using alias "dev-1" (/path/to/Outfit)` there, and a shell asked to evaluate a
+Separately, `eval "$(spinloop remote env <alias>)"` failed in the shell. The
+command's stdout is meant for `eval`, but `readSpinloop` printed
+`Using alias "dev-1" (/path/to/Spinloop)` there, and a shell asked to evaluate a
 prose line reports a syntax error.
 
 ## What Changes
@@ -39,11 +39,11 @@ prose line reports a syntax error.
 - Announce the fetch on stderr, as the spec already required.
 - Bound the fetch with a timeout (it had none), so an unresponsive control plane
   delays a launch rather than blocking it.
-- Move `readOutfit`'s alias line to stderr, so `outfit remote env` prints
+- Move `readSpinloop`'s alias line to stderr, so `spinloop remote env` prints
   nothing but export lines on stdout.
 - Give the lucinate harness the fetched key too: the launch resolved
   `LUCINATE_OPENAI_API_KEY` from a resolver that did not know about the remote,
-  so a remote Outfit under `-H lucinate` got a key lucinate does not read.
+  so a remote Spinloop under `-H lucinate` got a key lucinate does not read.
 
 Non-goal: how the key reaches the agent is unchanged — it is injected into the
 launched process's environment, never written to any harness config.
@@ -51,12 +51,12 @@ launched process's environment, never written to any harness config.
 ## Impact
 
 - Affected specs: `harness-remote-env`, `remote-env`, `alias-registry`
-- Affected code: `cmd/outfit/main.go`, `cmd/outfit/remote.go`
+- Affected code: `cmd/spinloop/main.go`, `cmd/spinloop/remote.go`
 - Behaviour change: a launch that cannot obtain a key now fails instead of
   starting an agent that cannot authenticate. Anyone who worked around the old
   warning by exporting `OPENAI_API_KEY` is unaffected — an exported key still
   wins over the fetched one, and now also downgrades a fetch failure to a
   warning.
-- `outfit remote env` keeps its stdout contract; the alias line it used to break
+- `spinloop remote env` keeps its stdout contract; the alias line it used to break
   `eval` with now goes to stderr, where every other command's alias line also
   goes.

@@ -28,7 +28,7 @@ const AMI_ROOT_DEVICE = '/dev/sda1';
 
 // Per-runner recipe/component version. Image Builder treats a version as
 // immutable, so bump a runner's version to force a fresh AMI for just it.
-// 3.4.0: outfit is no longer baked — each instance's boot installs it (the
+// 3.4.0: spinloop is no longer baked — each instance's boot installs it (the
 // deploy config's pin, or latest), so the AMI needs no release of it at all.
 const RUNNER_VERSION = { vllm: '3.4.0', llamacpp: '3.4.0' } as const;
 
@@ -213,12 +213,12 @@ function commonPreamble(): string {
               # default) so a chatty engine can't outrun it. The boot log is
               # deliberately excluded — it is written once and stays small.
               # The engine log lives under the daemon's pinned config dir
-              # (OUTFIT_CONFIG_DIR=/var/lib/outfit — see lambda/runners/daemon-boot.ts);
+              # (SPINLOOP_CONFIG_DIR=/var/lib/spinloop — see lambda/runners/daemon-boot.ts);
               # keep this path in step with DAEMON_CONFIG_DIR there.
               apt-get install -y logrotate
-              mkdir -p /etc/llm /var/log/llm /var/lib/outfit/daemon
+              mkdir -p /etc/llm /var/log/llm /var/lib/spinloop/daemon
               cat >/etc/llm/logrotate.conf <<'LOGROTATE'
-              /var/lib/outfit/daemon/engine.log {
+              /var/lib/spinloop/daemon/engine.log {
                   size 200M
                   rotate 2
                   compress
@@ -245,30 +245,30 @@ function commonPreamble(): string {
               UNIT
                systemctl enable llm-logrotate.timer
 
-               # outfit itself is NOT baked: each instance's boot installs the
+               # spinloop itself is NOT baked: each instance's boot installs the
                # release its deploy config pins (or the latest), so the AMI
                # never carries a copy of the daemon.
 
                # Crash nudge: the daemon reports a crashed engine but never
-              # restarts it (that is outfit's contract), so a baked timer asks
+              # restarts it (that is spinloop's contract), so a baked timer asks
               # for a start when — and only when — status says crashed. A
               # deliberate stop stays stopped. Enabled by the boot script once
               # the daemon's unit exists.
-              cat >/usr/local/bin/outfit-nudge <<'SCRIPT'
+              cat >/usr/local/bin/spinloop-nudge <<'SCRIPT'
               #!/bin/sh
               # Only a crashed engine is nudged; a deliberate stop stays stopped.
               curl -s --max-time 5 http://127.0.0.1:4242/v1/status | grep -q '"state":"crashed"' || exit 0
               curl -s --max-time 15 -X POST http://127.0.0.1:4242/v1/start
               SCRIPT
-              chmod 0755 /usr/local/bin/outfit-nudge
-              cat >/etc/systemd/system/outfit-nudge.service <<'UNIT'
+              chmod 0755 /usr/local/bin/spinloop-nudge
+              cat >/etc/systemd/system/spinloop-nudge.service <<'UNIT'
               [Unit]
-              Description=Restart a crashed engine via the outfit daemon
+              Description=Restart a crashed engine via the spinloop daemon
               [Service]
               Type=oneshot
-              ExecStart=/usr/local/bin/outfit-nudge
+              ExecStart=/usr/local/bin/spinloop-nudge
               UNIT
-              cat >/etc/systemd/system/outfit-nudge.timer <<'UNIT'
+              cat >/etc/systemd/system/spinloop-nudge.timer <<'UNIT'
               [Unit]
               Description=Check for a crashed engine every 30 seconds
               [Timer]
@@ -316,7 +316,7 @@ ${commonPreamble()}
               # probes for a GPU and fails on the CPU-only builder.
               /opt/llm/venv/bin/python -c "import importlib.metadata as m; print('vllm', m.version('vllm'))"
               # The daemon launches the engine as plain "vllm" — put the venv's
-              # entrypoint on the PATH so no venv path leaks into outfit.
+              # entrypoint on the PATH so no venv path leaks into spinloop.
               ln -sf /opt/llm/venv/bin/vllm /usr/local/bin/vllm
 
 ${CLEANUP}

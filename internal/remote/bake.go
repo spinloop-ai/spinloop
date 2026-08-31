@@ -11,7 +11,7 @@ import (
 // BakedRunners reports, for the account's own images, which runners already
 // have a runtime AMI baked — read from the tags the Image Builder distribution
 // applies (`cloud-vm-llm:role=runtime-ami`, `cloud-vm-llm:runner=<runner>`). It
-// lets `outfit remote bootstrap --wait` tell when a bake has finished.
+// lets `spinloop remote bootstrap --wait` tell when a bake has finished.
 func BakedRunners(ctx context.Context, cfg aws.Config) (map[string]bool, error) {
 	out, err := ec2.NewFromConfig(cfg).DescribeImages(ctx, &ec2.DescribeImagesInput{
 		Owners: []string{"self"},

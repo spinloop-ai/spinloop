@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/logo.png" alt="outfit" width="520">
+  <img src="assets/logo.png" alt="spinloop" width="520">
 </p>
 
 <p align="center">
@@ -14,25 +14,25 @@
 
 ```sh
 # point your coding agent at a model — here, a local Qwen3.6 on Ollama
-outfit add -p ollama -m qwen3.6
+spinloop add -p ollama -m qwen3.6
 
-# launch that agent, now wearing the model you picked
-outfit harness
+# launch that agent, now running the model you picked
+spinloop harness
 
-# prefer it declarative? commit an ./Outfit file and apply it
-outfit apply
+# prefer it declarative? commit an ./Spinloop file and apply it
+spinloop apply
 
 # running that model locally too? the same file launches the server
-outfit serve
+spinloop serve
 ```
 
-That's the whole tool. Your agent is dressed and pointed at the model; the rest
+That's the whole tool. Your agent is configured and pointed at the model; the rest
 of your config never moved.
 
 ## Supported providers
 
-Every provider below is built in — name it with `-p` and `outfit` fills in the
-base URL, package and key variable for you. Run `outfit list` to see them with
+Every provider below is built in — name it with `-p` and `spinloop` fills in the
+base URL, package and key variable for you. Run `spinloop list` to see them with
 their models.
 
 | Provider | `-p` name | What it is |
@@ -64,12 +64,12 @@ the environment variable holding your key. One stray brace and the agent won't
 start. **Local models are the worst of it** — each runtime has its own ports,
 model refs and quirks, and none of it is written down where you need it.
 
-`outfit` is the wardrobe for your coding agent. Tell it the provider you want and
-it dresses the agent for you:
+`spinloop` is the supply line for your coding agent. Tell it the provider you want and
+it configures the agent for you:
 
 - **One command, any model.** Pick from a built-in catalogue — OpenRouter,
   Bedrock, Ollama, llama.cpp, vLLM, oMLX, or any OpenAI-compatible endpoint. No
-  URLs to look up, and `outfit list --models` fetches the model ids straight from
+  URLs to look up, and `spinloop list --models` fetches the model ids straight from
   the provider.
 - **Your config survives.** Settings are merged *into* what you already have.
   Other providers, your theme, even your comments stay exactly where you left them.
@@ -88,31 +88,31 @@ per command, or set a default. The same selection works for any of them.
 With [Homebrew](https://brew.sh):
 
 ```sh
-brew install lucinate-ai/tap/outfit
+brew install spinloop-ai/tap/spinloop
 ```
 
-To upgrade later, run `brew upgrade outfit`.
+To upgrade later, run `brew upgrade spinloop`.
 
 ### From source
 
 ```sh
-go build -o outfit ./cmd/outfit
+go build -o spinloop ./cmd/spinloop
 ```
 
-Drop the resulting `outfit` binary anywhere on your `PATH`.
+Drop the resulting `spinloop` binary anywhere on your `PATH`.
 
 ## Quickstart
 
 See what's in the catalogue:
 
 ```sh
-outfit list
+spinloop list
 ```
 
 Need a model id? Ask the provider itself — no memorising, no guessing:
 
 ```sh
-outfit list --models openrouter    # the models it currently serves, live
+spinloop list --models openrouter    # the models it currently serves, live
 ```
 
 Add a provider and a model:
@@ -121,7 +121,7 @@ Add a provider and a model:
 # OpenRouter needs a key — put it in .env first:
 echo 'DEEPSEEK_API_KEY=sk-or-v1-...' > .env
 
-outfit add --provider openrouter --model deepseek/deepseek-v4-flash
+spinloop add --provider openrouter --model deepseek/deepseek-v4-flash
 ```
 
 Then just run `opencode`. That's it — your agent is pointed at the new model, and
@@ -131,30 +131,30 @@ the rest of your config is untouched.
 
 ```sh
 # A local Ollama model (no key required)
-outfit add -p ollama -m llama3.2
+spinloop add -p ollama -m llama3.2
 
 # Claude on AWS Bedrock (uses your AWS credentials)
-outfit add -p amazon-bedrock -m anthropic.claude-3-5-sonnet
+spinloop add -p amazon-bedrock -m anthropic.claude-3-5-sonnet
 
 # Any OpenAI-compatible endpoint, base URL via flag
 OPENAI_API_KEY=sk-... \
-  outfit add -p openai-compatible -m my-model --base-url https://my-endpoint/v1
+  spinloop add -p openai-compatible -m my-model --base-url https://my-endpoint/v1
 
 # Pin a specific default model
-outfit add -p openrouter -m deepseek/deepseek-v4-pro
+spinloop add -p openrouter -m deepseek/deepseek-v4-pro
 
 # Set the context window — human suffixes or an absolute count, both fine
-outfit add -p llamacpp -m my-model -c 128k
-outfit add -p llamacpp -m my-model --context 200000
+spinloop add -p llamacpp -m my-model -c 128k
+spinloop add -p llamacpp -m my-model --context 200000
 
 # Cap the max output tokens too (defaults to a quarter of the context)
-outfit add -p llamacpp -m my-model -c 128k -o 32k
+spinloop add -p llamacpp -m my-model -c 128k -o 32k
 
 # Take a provider back out
-outfit remove -p ollama
+spinloop remove -p ollama
 
 # Or just drop one model
-outfit remove -p openrouter -m deepseek/deepseek-v4-flash
+spinloop remove -p openrouter -m deepseek/deepseek-v4-flash
 ```
 
 On opencode, `add` sets the chosen model as the default and `remove` clears it
@@ -168,49 +168,49 @@ forgiving: `128k`, `1m`, `1.5m`, `200000`, `128,000`, even `128 K tokens` all
 land where you'd expect (`k`/`m`/`g` are decimal — `128k` is 128,000 tokens).
 
 `--output`/`-o` caps the max output tokens, in the same format. opencode needs
-one whenever a context is set, so when you leave it off `outfit` fills in a
+one whenever a context is set, so when you leave it off `spinloop` fills in a
 quarter of the context for you. It can't exceed the context window.
 
 ## Usage
 
 ```sh
-outfit list   [--models [<provider>]]    # the catalogue; --models fetches live model ids
-outfit show   [--harness <name>]         # show what the harness has configured
-outfit add    --provider <name> [--model <id>] [--alias <name>] [--context <size>] [--output <size>] [--base-url <url>]
-outfit remove --provider <name> [--model <id>] [--alias <name>]
-outfit apply  [path] [--output <size>]   # apply an Outfit file or directory (default ./Outfit)
-outfit unapply [path]                    # remove what an Outfit file selects
-outfit alias  [path] [-n <name>] [-l]    # name an Outfit; -l lists them
-outfit unalias <name>                    # drop a registered name
-outfit serve  [path] [--dry-run] [-a]    # run the PROVIDER's inference server, from the PRESET
+spinloop list   [--models [<provider>]]    # the catalogue; --models fetches live model ids
+spinloop show   [--harness <name>]         # show what the harness has configured
+spinloop add    --provider <name> [--model <id>] [--alias <name>] [--context <size>] [--output <size>] [--base-url <url>]
+spinloop remove --provider <name> [--model <id>] [--alias <name>]
+spinloop apply  [path] [--output <size>]   # apply a Spinloop file or directory (default ./Spinloop)
+spinloop unapply [path]                    # remove what a Spinloop file selects
+spinloop alias  [path] [-n <name>] [-l]    # name a Spinloop; -l lists them
+spinloop unalias <name>                    # drop a registered name
+spinloop serve  [path] [--dry-run] [-a]    # run the PROVIDER's inference server, from the PRESET
                                          #   (-a/--api serves the control API beside it)
-outfit daemon [--api-addr <addr>] [--loopback] # supervise an engine via the control API — reads
-                                         #   no Outfit, starts nothing until asked over the API
-outfit fleet <status|metrics|logs|dashboard|route|start|stop>
+spinloop daemon [--api-addr <addr>] [--loopback] # supervise an engine via the control API — reads
+                                         #   no Spinloop, starts nothing until asked over the API
+spinloop fleet <status|metrics|logs|dashboard|route|start|stop>
                                           # observe and drive the engines in
                                           #   fleet.yaml (dashboard is the
                                           #   interactive tiled view)
-outfit export [--provider <name>]        # print the current config as an Outfit
-outfit init-providers [path]             # write the built-in catalogue out to edit
-outfit harness [<outfit>] [-H <name>] [--outfit[=<path>]] [args...]
-                                         # launch the harness (a leading Outfit or alias is
+spinloop export [--provider <name>]        # print the current config as a Spinloop
+spinloop init-providers [path]             # write the built-in catalogue out to edit
+spinloop harness [<spinloop>] [-H <name>] [--spinloop[=<path>]] [args...]
+                                         # launch the harness (a leading Spinloop or alias is
                                          #   applied first; --get shows it; --set stores it)
-outfit completion <shell>                # tab completion (bash, zsh, powershell)
-outfit remote <bootstrap|start|pause|stop|status|metrics|logs|deploy|env|ls|keep> [path]
+spinloop completion <shell>                # tab completion (bash, zsh, powershell)
+spinloop remote <bootstrap|start|pause|stop|status|metrics|logs|deploy|env|ls|keep> [path]
                                          # control the remote GPU inference instance
                                          #   (bootstrap does the once-per-account setup;
-                                         #    deploy sets what it serves, from the Outfit;
+                                         #    deploy sets what it serves, from the Spinloop;
                                          #    pause stops it while keeping it re-wakeable;
                                          #    keep holds it against the idle sweep;
                                          #    logs reads the shipped logs, alive or not;
                                          #    env prints the running endpoint's env vars)
 ```
 
-Short flags: `-p` (provider), `-m` (model), `-a` (alias), `-c` (context), `-o` (output), `-u` (base-url), `-H` (harness), `-O` (outfit), and under `alias`: `-n` (name), `-l` (list), `-F` (force).
+Short flags: `-p` (provider), `-m` (model), `-a` (alias), `-c` (context), `-o` (output), `-u` (base-url), `-H` (harness), `-O` (spinloop), and under `alias`: `-n` (name), `-l` (list), `-F` (force).
 
 Anywhere a `[path]` appears above you can put a name registered with
-[`outfit alias`](#aliases) instead, an `http(s)` URL, fetched instead of read
-from disk — or leave it out and let `OUTFIT_ALIAS` name one.
+[`spinloop alias`](#aliases) instead, an `http(s)` URL, fetched instead of read
+from disk — or leave it out and let `SPINLOOP_ALIAS` name one.
 
 ## Documentation
 
@@ -218,7 +218,7 @@ The [`docs/`](docs/) directory is the user manual:
 
 - [Getting started](docs/getting-started.md) — install to launched agent, end
   to end
-- [The `Outfit` file](docs/outfit-file.md) — full syntax and examples
+- [The `Spinloop` file](docs/spinloop-file.md) — full syntax and examples
 - [Command reference](docs/README.md#commands) — a page per command, under
   [`docs/commands/`](docs/commands/)
 
@@ -226,31 +226,31 @@ The [`docs/`](docs/) directory is the user manual:
 
 A **harness** is the coding agent being configured. opencode is the default; Pi
 and lucinate are also supported. The harness is chosen at runtime — never baked
-into an `Outfit` file — so the same selection works for any of them.
+into a `Spinloop` file — so the same selection works for any of them.
 
 ```sh
-outfit add -p ollama -m llama3.2 --harness pi   # this command only
-outfit harness --set pi    # make Pi the default for future commands
-outfit harness             # launch the active harness (forwards trailing args)
-outfit harness -O          # apply ./Outfit, then launch the harness
-outfit show                # what the active harness has configured
+spinloop add -p ollama -m llama3.2 --harness pi   # this command only
+spinloop harness --set pi    # make Pi the default for future commands
+spinloop harness             # launch the active harness (forwards trailing args)
+spinloop harness -O          # apply ./Spinloop, then launch the harness
+spinloop show                # what the active harness has configured
 ```
 
-Precedence: `--harness`/`-H` flag, then `OUTFIT_HARNESS`, then your stored
-default, then opencode. Not every provider maps to every harness — `outfit list`
+Precedence: `--harness`/`-H` flag, then `SPINLOOP_HARNESS`, then your stored
+default, then opencode. Not every provider maps to every harness — `spinloop list`
 shows which harnesses each one supports (AWS Bedrock, for instance, is
 opencode-only; lucinate takes the OpenAI-compatible providers). The full story —
-launching, dressing on the way in, inspecting
+launching, configuring on the way in, inspecting
 any harness — is in [`docs/commands/harness.md`](docs/commands/harness.md) and
 [`docs/commands/show.md`](docs/commands/show.md).
 
-## Outfit files
+## Spinloop files
 
 Prefer to keep a provider selection in a file — like a `Dockerfile`, but for
-your coding agent? Drop an `Outfit` in your project:
+your coding agent? Drop a `Spinloop` in your project:
 
 ```dockerfile
-# Outfit
+# Spinloop
 PROVIDER openrouter
 MODEL    deepseek/deepseek-v4-pro   # the provider-native model ref
 ALIAS    deepseek                   # optional; friendly name for the model
@@ -260,66 +260,66 @@ BASEURL  https://gateway/v1         # optional; API base URL override
 ```
 
 ```sh
-outfit apply              # reads ./Outfit and applies it
-outfit apply path/to/Outfit
-outfit apply path/to/dir  # or a directory that holds an Outfit
-outfit apply https://example.com/team/Outfit   # or a URL, fetched instead of read
-outfit harness -O         # apply ./Outfit, then launch the agent wearing it
-outfit export > Outfit    # capture your current setup as an Outfit
+spinloop apply              # reads ./Spinloop and applies it
+spinloop apply path/to/Spinloop
+spinloop apply path/to/dir  # or a directory that holds a Spinloop
+spinloop apply https://example.com/team/Spinloop   # or a URL, fetched instead of read
+spinloop harness -O         # apply ./Spinloop, then launch the agent running it
+spinloop export > Spinloop    # capture your current setup as a Spinloop
 ```
 
-An `Outfit` describes one provider selection and applies exactly like the
-equivalent `add`. Full syntax is in [`docs/outfit-file.md`](docs/outfit-file.md),
+A `Spinloop` describes one provider selection and applies exactly like the
+equivalent `add`. Full syntax is in [`docs/spinloop-file.md`](docs/spinloop-file.md),
 and ready-to-use examples live under [`examples/`](examples/), including
-[fetching one from a URL](examples/remote-outfit/).
+[fetching one from a URL](examples/remote-spinloop/).
 
 ## Aliases
 
 Keeping a directory per model soon means typing a path per command. Name one
-once with `outfit alias` and the name works wherever a path does:
+once with `spinloop alias` and the name works wherever a path does:
 
 ```sh
-$ outfit alias
-Added alias "qwen3.6-27b" for /home/me/models/qwen3.6/Outfit …
+$ spinloop alias
+Added alias "qwen3.6-27b" for /home/me/models/qwen3.6/Spinloop …
 
-$ outfit apply   qwen3.6-27b      # from anywhere, no path needed
-$ outfit serve   qwen3.6-27b
-$ outfit harness qwen3.6-27b -- --some-agent-arg
+$ spinloop apply   qwen3.6-27b      # from anywhere, no path needed
+$ spinloop serve   qwen3.6-27b
+$ spinloop harness qwen3.6-27b -- --some-agent-arg
 ```
 
-The path can be a URL too — hand out a short name for a published `Outfit`
+The path can be a URL too — hand out a short name for a published `Spinloop`
 instead of a link:
 
 ```sh
-outfit alias -n team-default https://example.com/team/Outfit
-outfit apply team-default
+spinloop alias -n team-default https://example.com/team/Spinloop
+spinloop apply team-default
 ```
 
-Set `OUTFIT_ALIAS` and the name is implied for a whole shell:
+Set `SPINLOOP_ALIAS` and the name is implied for a whole shell:
 
 ```sh
-export OUTFIT_ALIAS=qwen3.6-27b
-outfit apply              # the same as `outfit apply qwen3.6-27b`
-outfit serve
+export SPINLOOP_ALIAS=qwen3.6-27b
+spinloop apply              # the same as `spinloop apply qwen3.6-27b`
+spinloop serve
 ```
 
-An argument you type still wins, and the variable beats `./Outfit` — it decides
-*which* Outfit is the default, never *whether* one is applied, so a bare
-`outfit harness` still launches undressed.
+An argument you type still wins, and the variable beats `./Spinloop` — it decides
+*which* Spinloop is the default, never *whether* one is applied, so a bare
+`spinloop harness` still launches unconfigured.
 
-The name defaults to the `Outfit`'s own `ALIAS` (`--name`/`-n` picks another),
+The name defaults to the `Spinloop`'s own `ALIAS` (`--name`/`-n` picks another),
 a path on disk always beats a registered name — so adding an alias can never
 change what an already-working command does — and the registry lives in
-`outfit`'s own config, never in an `Outfit`, so your files stay portable and
+`spinloop`'s own config, never in a `Spinloop`, so your files stay portable and
 committable. Listing, re-pointing, and `unalias` are covered in
 [`docs/commands/alias.md`](docs/commands/alias.md).
 
 ### Tab completion
 
 ```sh
-source <(outfit completion bash)   # add to ~/.bashrc
-source <(outfit completion zsh)    # or ~/.zshrc (needs compinit)
-outfit completion powershell | Out-String | Invoke-Expression   # or $PROFILE
+source <(spinloop completion bash)   # add to ~/.bashrc
+source <(spinloop completion zsh)    # or ~/.zshrc (needs compinit)
+spinloop completion powershell | Out-String | Invoke-Expression   # or $PROFILE
 ```
 
 TAB then completes commands, flags, providers, harnesses, and your registered
@@ -329,13 +329,13 @@ the bash and zsh completions for you.
 
 ## Serving a local model
 
-Running a model locally? `outfit serve` reads an `Outfit` and launches the
+Running a model locally? `spinloop serve` reads a `Spinloop` and launches the
 inference server its `PROVIDER` names — `llamacpp` runs `llama-server`, `omlx`
 runs [oMLX](https://omlx.ai) on Apple Silicon — so the same file that points
 opencode at a model can start it too. The simple case needs no preset:
 
 ```dockerfile
-# Outfit
+# Spinloop
 PROVIDER llamacpp
 MODEL    unsloth/Qwen3.6-35B-A3B-GGUF:UD-Q4_K_XL   # HF repo, or a .gguf path
 ALIAS    qwen3.6                                    # llama-server --alias
@@ -344,16 +344,16 @@ CONTEXT  32768                                      # llama-server --ctx-size
 ```
 
 ```sh
-outfit serve              # builds a llama-server command and runs it
-outfit serve --dry-run    # just print the command — no server
+spinloop serve              # builds a llama-server command and runs it
+spinloop serve --dry-run    # just print the command — no server
 ```
 
-For flags an `Outfit` doesn't model (`-ngl`, `--jinja`, KV-cache types, draft
+For flags a `Spinloop` doesn't model (`-ngl`, `--jinja`, KV-cache types, draft
 models), point at a llama.cpp preset `.ini` with `PRESET` and `serve` flattens
-the chosen section into the command instead — with anything the `Outfit` states
+the chosen section into the command instead — with anything the `Spinloop` states
 (like `CONTEXT`) overriding the preset. It's the missing piece presets don't
 cover: launching a *single* model. `CONTEXT` always means the context per
-request; add `PARALLEL` to run more than one slot and `outfit` works out each
+request; add `PARALLEL` to run more than one slot and `spinloop` works out each
 engine's own accounting (llama.cpp's `--ctx-size` gets scaled, vLLM's and
 oMLX's don't) — see
 [Parallelism](docs/commands/serve.md#parallelism) for the full mapping.
@@ -361,11 +361,11 @@ Details in [`docs/commands/serve.md`](docs/commands/serve.md).
 
 ### The daemon
 
-`outfit daemon` runs a long-lived agent that supervises one engine and serves
+`spinloop daemon` runs a long-lived agent that supervises one engine and serves
 a small control API: status, start, stop, metrics — token counters scraped
 from the engine plus GPU/CPU/RAM readings from the host — and a deploy-config
-push. It's a worker: it reads no Outfit, no preset, and no `fleet.yaml`, and
-takes no Outfit path of its own — what it runs is decided entirely by
+push. It's a worker: it reads no Spinloop, no preset, and no `fleet.yaml`, and
+takes no Spinloop path of its own — what it runs is decided entirely by
 whoever asks it, over the API. It starts *nothing* on boot: the engine runs
 only when a start request asks, and the request can carry the deploy config
 (runner, model, flags) to run — or fall back to a previously pushed one. With
@@ -378,18 +378,18 @@ two cannot disagree. Ask the daemon how busy it is rather than working it out
 from raw counters yourself.
 
 ```sh
-OUTFIT_API_TOKEN=…  outfit daemon           # control API on :4242
-outfit daemon --loopback                    # loopback-only (127.0.0.1:4242), needs no token
-outfit daemon --api-token-file /run/secrets/outfit-token   # from a service manager
-outfit daemon --log-level warn              # quiet on a node a fleet polls
+SPINLOOP_API_TOKEN=…  spinloop daemon           # control API on :4242
+spinloop daemon --loopback                    # loopback-only (127.0.0.1:4242), needs no token
+spinloop daemon --api-token-file /run/secrets/spinloop-token   # from a service manager
+spinloop daemon --log-level warn              # quiet on a node a fleet polls
 ```
 
-The API is bearer-token authenticated — `OUTFIT_API_TOKEN`, `--api-token`, or
+The API is bearer-token authenticated — `SPINLOOP_API_TOKEN`, `--api-token`, or
 `--api-token-file` (giving two at once is an error, since the daemon reads no
-Outfit and so has no adjacent `.env` to fall back to); a non-loopback listen
+Spinloop and so has no adjacent `.env` to fall back to); a non-loopback listen
 without a token refuses to start — which is exactly what `--loopback` is for.
-`outfit serve -a/--api` exposes the same API beside an ordinary foreground
-serve, and — because that command *does* read an Outfit — takes its token
+`spinloop serve -a/--api` exposes the same API beside an ordinary foreground
+serve, and — because that command *does* read a Spinloop — takes its token
 from the environment as usual, `.env` included.
 
 Every request is summarised on stderr — method, path, status, duration, size,
@@ -399,7 +399,7 @@ rejections; see [what gets logged](docs/commands/serve.md#what-gets-logged).
 
 ### The fleet
 
-With a daemon on each machine, `outfit fleet` observes them all. A
+With a daemon on each machine, `spinloop fleet` observes them all. A
 `fleet.yaml` names the nodes — and holds no secrets, referencing each node's
 token by environment-variable name:
 
@@ -414,9 +414,9 @@ nodes:
 ```
 
 ```sh
-outfit fleet status          # one row per node: state and what it serves
-outfit fleet dashboard       # the interactive tiled view — watch it, drive it
-outfit fleet start gpu-box   # start one node's engine
+spinloop fleet status          # one row per node: state and what it serves
+spinloop fleet dashboard       # the interactive tiled view — watch it, drive it
+spinloop fleet start gpu-box   # start one node's engine
 ```
 
 `dashboard` is the fleet you actually look at: one tile per node, repainted
@@ -446,12 +446,12 @@ engine — in about a minute:
 cd examples/fleet-docker && cp .env.example .env
 docker compose up -d --build
 set -a && . ./.env && set +a
-outfit fleet status --fleet ./fleet.yaml
+spinloop fleet status --fleet ./fleet.yaml
 ```
 
 Only one machine? A fleet of one is still worth it —
 [`examples/fleet-local/`](examples/fleet-local/) runs a daemon on your own box
-so `outfit harness` starts the engine when you need it and leaves it up for the
+so `spinloop harness` starts the engine when you need it and leaves it up for the
 next session, instead of you keeping a terminal open for `llama-server`.
 
 Details in [`docs/commands/fleet.md`](docs/commands/fleet.md); a `fleet.yaml`
@@ -464,36 +464,36 @@ contract, and it ships with every release. See
 ## Remote inference instance
 
 Running a model on your own cloud GPU box? [`remote/`](remote/) deploys one.
-`outfit remote` drives its scale-to-zero lifecycle: the instance only exists
+`spinloop remote` drives its scale-to-zero lifecycle: the instance only exists
 while you are using it, and stops itself after a period of idleness.
 
 ```sh
-outfit remote start     # boot the instance, wait for the model to load,
+spinloop remote start     # boot the instance, wait for the model to load,
                          # then print OPENAI_BASE_URL / OPENAI_API_KEY exports
-outfit remote status    # instance state, endpoint health, and when it last
+spinloop remote status    # instance state, endpoint health, and when it last
                          # did any work
-outfit remote metrics   # tokens, GPU, CPU and RAM — plus the same last-active
-outfit remote logs      # what the engine (or the boot) said, even after it's gone
-outfit remote pause     # stop now, but keep it re-wakeable
-outfit remote restart   # fresh engine, same address: stop it, then wake it
-outfit remote keep 4h   # hold it against the idle sweep for 4 hours
+spinloop remote metrics   # tokens, GPU, CPU and RAM — plus the same last-active
+spinloop remote logs      # what the engine (or the boot) said, even after it's gone
+spinloop remote pause     # stop now, but keep it re-wakeable
+spinloop remote restart   # fresh engine, same address: stop it, then wake it
+spinloop remote keep 4h   # hold it against the idle sweep for 4 hours
                          # (start --keep does the same at wake time)
-outfit remote stop      # terminate now instead of waiting for the idle timer
+spinloop remote stop      # terminate now instead of waiting for the idle timer
 ```
 
-Instances ship their engine and boot output to CloudWatch, so `outfit remote
+Instances ship their engine and boot output to CloudWatch, so `spinloop remote
 logs` still works once the instance has terminated — including for a start that
 failed before the engine came up (`--source boot`). See
 [docs/commands/remote.md](docs/commands/remote.md#reading-the-logs).
 
-Configuration lives in a `remote.json`. A project's `Outfit` file can name
+Configuration lives in a `remote.json`. A project's `Spinloop` file can name
 one with a `REMOTE` instruction — either a path (`REMOTE remote.json`,
-resolved relative to the Outfit, like `PRESET`, so the pair travel together)
+resolved relative to the Spinloop, like `PRESET`, so the pair travel together)
 or the name of a registered environment (`REMOTE dev-2`, whose file sits at
-`remotes/dev-2/remote.json` under outfit's config directory,
-`${OUTFIT_CONFIG_DIR:-${XDG_CONFIG_HOME:-~/.config}/outfit}`). With no
+`remotes/dev-2/remote.json` under spinloop's config directory,
+`${SPINLOOP_CONFIG_DIR:-${XDG_CONFIG_HOME:-~/.config}/spinloop}`). With no
 `REMOTE`, the `default` environment is used. Either way the file takes the
-`OutfitRemoteConfig` output of the `remote/` deployment — or `outfit remote
+`SpinloopRemoteConfig` output of the `remote/` deployment — or `spinloop remote
 deploy` writes it when it registers the environment:
 
 ```json
@@ -501,47 +501,47 @@ deploy` writes it when it registers the environment:
 ```
 
 `base_url` is the endpoint's own address. `remote` doesn't need it — `start`
-and `status` report the address themselves — but `outfit apply` reads it, so an
-Outfit with a `REMOTE` line can leave `BASEURL` out and still point your agent
-at the endpoint. A `BASEURL` in the Outfit takes precedence.
+and `status` report the address themselves — but `spinloop apply` reads it, so an
+Spinloop with a `REMOTE` line can leave `BASEURL` out and still point your agent
+at the endpoint. A `BASEURL` in the Spinloop takes precedence.
 
 Every URL and the region can be overridden with the matching
-[`OUTFIT_REMOTE_*`](docs/env-vars.md) environment variable. Requests are
+[`SPINLOOP_REMOTE_*`](docs/env-vars.md) environment variable. Requests are
 SigV4-signed
 with your AWS credentials (env, profile or SSO — the standard chain), which
 must be allowed `lambda:InvokeFunctionUrl`. A cold `start` takes a few
 minutes while the instance boots and loads the model; `--timeout` (default
 15m) caps the wait.
 
-The remote commands read the `.env` beside the Outfit before they sign, so the
-AWS credentials, region and `OUTFIT_REMOTE_*` overrides can travel with the
-Outfit. A value already set in your shell wins over the `.env`. To pin a value
-in the Outfit itself, add an `ENV` line (`ENV AWS_PROFILE=prod`) — it may repeat
+The remote commands read the `.env` beside the Spinloop before they sign, so the
+AWS credentials, region and `SPINLOOP_REMOTE_*` overrides can travel with the
+Spinloop. A value already set in your shell wins over the `.env`. To pin a value
+in the Spinloop itself, add an `ENV` line (`ENV AWS_PROFILE=prod`) — it may repeat
 and overrides both the `.env` and your shell. `ENV` applies only on your
 machine; it is never sent to the deployed instance.
 
 ## Keys and endpoints
 
-Each provider declares which environment variable holds its key (`outfit
+Each provider declares which environment variable holds its key (`spinloop
 list` shows them). Values are looked up in your shell environment first, then a
-`.env` beside the `Outfit`, so an exported variable always wins and the `.env`
+`.env` beside the `Spinloop`, so an exported variable always wins and the `.env`
 only fills a gap. Local providers like Ollama, llama.cpp and oMLX need no
 key;
 Bedrock authenticates through your AWS credentials.
 
-`outfit harness` carries that same local environment to the agent it launches:
-the whole `.env` beside the worn Outfit fills gaps, and the Outfit's `ENV` lines
-override both your shell and the `.env` — the same precedence the `outfit remote`
-commands use. These variables shape only the launched agent; `outfit` never
+`spinloop harness` carries that same local environment to the agent it launches:
+the whole `.env` beside the active Spinloop fills gaps, and the Spinloop's `ENV` lines
+override both your shell and the `.env` — the same precedence the `spinloop remote`
+commands use. These variables shape only the launched agent; `spinloop` never
 changes its own environment.
 
 Base URLs default to the usual local ports. Override the endpoint for **any**
-provider with `--base-url`/`-u` or the `OUTFIT_BASE_URL` env var — handy for
+provider with `--base-url`/`-u` or the `SPINLOOP_BASE_URL` env var — handy for
 proxies, gateways, or a server on a non-default host:
 
 ```sh
-outfit add -p openai-compatible -m my-model --base-url https://gateway/v1
-OUTFIT_BASE_URL=https://gateway/v1 outfit add -p openai-compatible -m my-model
+spinloop add -p openai-compatible -m my-model --base-url https://gateway/v1
+SPINLOOP_BASE_URL=https://gateway/v1 spinloop add -p openai-compatible -m my-model
 ```
 
 The flag wins over the env var, and either wins over the catalogue's defaults
@@ -551,7 +551,7 @@ and the per-provider variables (`OLLAMA_BASE_URL`, `LLAMACPP_BASE_URL`,
 ## Guides
 
 Provider- and model-specific walkthroughs live in [`examples/`](examples/), each
-with a ready-to-apply `Outfit`:
+with a ready-to-apply `Spinloop`:
 
 - [Qwen3.8-27B on llama.cpp — local or deployed to AWS](examples/llamacpp/qwen3.8-27b/README.md)
 - [Qwen3.6-27B on llama.cpp](examples/llamacpp/qwen3.6-27b/README.md)
@@ -559,33 +559,33 @@ with a ready-to-apply `Outfit`:
 - [Gemma-4-12B-IT on llama.cpp](examples/llamacpp/gemma4/README.md)
 - [Qwen3.6-35B-A3B on oMLX (Apple Silicon)](examples/omlx/qwen3.6/README.md)
 - [Gemma-4-E2B on oMLX (Apple Silicon)](examples/omlx/gemma-4-e2b/README.md)
-- [Fetching an Outfit from a URL](examples/remote-outfit/README.md)
+- [Fetching a Spinloop from a URL](examples/remote-spinloop/README.md)
 
 ## Adding providers and models
 
-Everything `outfit` knows lives in `internal/catalog/providers.yaml`. Add a
+Everything `spinloop` knows lives in `internal/catalog/providers.yaml`. Add a
 provider there and rebuild — no Go required. The
 file is commented with the schema.
 
 Don't want to rebuild? Write the catalogue out with
-[`outfit init-providers`](docs/commands/init-providers.md), edit it, and point
-`outfit` at it at runtime — the flag wins, then the env var, then the built-in
+[`spinloop init-providers`](docs/commands/init-providers.md), edit it, and point
+`spinloop` at it at runtime — the flag wins, then the env var, then the built-in
 default:
 
 ```sh
-outfit init-providers                 # writes ./providers.yaml
-outfit list --providers providers.yaml
-OUTFIT_PROVIDERS=providers.yaml outfit list
+spinloop init-providers                 # writes ./providers.yaml
+spinloop list --providers providers.yaml
+SPINLOOP_PROVIDERS=providers.yaml spinloop list
 ```
 
 ## Development
 
-`outfit` is a Go CLI with no runtime dependencies. The domain logic is split
+`spinloop` is a Go CLI with no runtime dependencies. The domain logic is split
 into `internal/` packages so each concern is isolated and independently testable;
 [`AGENTS.md`](AGENTS.md) is the map of how it all fits together.
 
 ```sh
-go build -o outfit ./cmd/outfit   # build the binary
+go build -o spinloop ./cmd/spinloop   # build the binary
 go test ./...                     # run the suite
 go test ./... -cover              # with coverage (kept >= 80%)
 go vet ./...                      # vet

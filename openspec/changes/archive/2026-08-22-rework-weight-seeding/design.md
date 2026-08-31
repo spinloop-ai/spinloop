@@ -2,7 +2,7 @@
 
 The seed is the only part of the control plane with no feedback path. Everything
 else — start, stop, stats, env — is a Lambda behind an IAM Function URL that the
-Go client calls with SigV4, and the inference instance reports through an outfit
+Go client calls with SigV4, and the inference instance reports through an spinloop
 daemon on loopback that those Lambdas reach over SSM Run Command. The seed has
 none of that: it is a bash string (`lambda/shared/seed.ts`), duplicated in
 `scripts/seed-model.mjs`, launched and forgotten. See proposal.md for what that
@@ -55,8 +55,8 @@ Constraints that shape the approach:
 
 ### The seeder is a TypeScript program in `remote/seeder/`, not a bash string
 
-The alternative was Go — `outfit` is Go, the binary is already baked into the AMI
-and already plays a server-side role as `outfit daemon`, and a static binary needs
+The alternative was Go — `spinloop` is Go, the binary is already baked into the AMI
+and already plays a server-side role as `spinloop daemon`, and a static binary needs
 no runtime on the box. It was rejected because Hugging Face publishes no Go SDK,
 so the repository-listing, revision-resolution and gated-auth paths would all be
 hand-rolled against an API that changes, and "don't make the pull brittle" is the
@@ -309,7 +309,7 @@ Layers 2 and 3 read `maxSeedMinutes` from the same `lib/config.ts` value — lay
 by rendering it into user-data — so they cannot drift apart.
 
 Layer 3 is the one that needs care about *where it looks*. `StopFn` currently
-judges an inference instance by scraping its outfit daemon over SSM
+judges an inference instance by scraping its spinloop daemon over SSM
 (`DAEMON_STATUS_CMD`). A seed instance runs no daemon, so that check would fail
 against it and yield nothing usable. The seed pass instead judges liveness from
 `DescribeLogStreams`'s `lastEventTimestamp` — the seed's own progress reports, per
@@ -373,8 +373,8 @@ The CLI then queries `SeedFn` directly rather than reading progress through
 a function whose job is to mutate environment state — the wrong shape for a poll.
 
 `SeedURL` joins `remote.Config` as an optional field with an
-`OUTFIT_REMOTE_SEED_URL` override and a `SeedUrl` stack output added to
-`OutfitRemoteConfig`, following exactly how `EnvURL` degrades: a configuration
+`SPINLOOP_REMOTE_SEED_URL` override and a `SeedUrl` stack output added to
+`SpinloopRemoteConfig`, following exactly how `EnvURL` degrades: a configuration
 written before the seed endpoint existed keeps working for every other subcommand
 and simply cannot print the tracking hint.
 

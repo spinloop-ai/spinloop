@@ -1,7 +1,7 @@
 ## Context
 
-`applySelection` (`cmd/outfit/main.go`) is the shared core of `add`, `apply`, and
-`harness <outfit>`. It resolves the catalogue provider `p` from `sel.Provider`,
+`applySelection` (`cmd/spinloop/main.go`) is the shared core of `add`, `apply`, and
+`harness <spinloop>`. It resolves the catalogue provider `p` from `sel.Provider`,
 then hands `sel` to the active harness, which keys its config on `sel.Provider`
 and constructs the default model as `sel.Provider + "/" + modelKey` (in
 `internal/catalog`). The `REMOTE` value is currently consulted only to fill a
@@ -15,17 +15,17 @@ differ from the catalogue key the engine was looked up under.
 ## Goals / Non-Goals
 
 **Goals:**
-- Key the harness provider on the remote environment name when an applied Outfit
+- Key the harness provider on the remote environment name when an applied Spinloop
   has a `REMOTE`, producing `<env>/<model>`.
 - Support both `REMOTE` forms (bare name; path with an `environment` field).
 - Keep `PROVIDER` as the engine definition.
 - Keep apply and unapply symmetric.
 
 **Non-Goals:**
-- Round-tripping a remote Outfit through `outfit export` (already lossy — the
+- Round-tripping a remote Spinloop through `spinloop export` (already lossy — the
   harness config does not record `REMOTE`).
 - Any change to the on-disk `remote.json` format or the deploy/registry flow.
-- Changing behaviour for Outfits without a `REMOTE`.
+- Changing behaviour for Spinloops without a `REMOTE`.
 
 ## Decisions
 
@@ -37,17 +37,17 @@ no signature changes to the harness interface. Alternative — threading a separ
 `providerName` argument through `harness.Apply` and both catalogue builders — was
 rejected as more churn across packages for the same effect.
 
-**Resolve the env name in `cmd/outfit`, next to the existing remote helpers.** Add
-a tolerant `remoteConfig(remoteValue, outfitDir)` that returns the whole
+**Resolve the env name in `cmd/spinloop`, next to the existing remote helpers.** Add
+a tolerant `remoteConfig(remoteValue, spinloopDir)` that returns the whole
 `remote.Config` (a missing file yields the zero value, matching how the base-URL
-lookup already tolerates an Outfit naming a remote before deploy writes it), and
+lookup already tolerates a Spinloop naming a remote before deploy writes it), and
 `remoteEnvName` on top of it: the bare name when `remote.IsEnvName` is true, else
 `cfg.Environment`. `remoteBaseURL` is refactored onto `remoteConfig` so the two
 never diverge. The bare-name path needs no file read.
 
 **Apply the same override in `removeSelection` for symmetry.** `removeSelection`
-removes by `sel.Provider`, so it gains the Outfit directory (`cmdUnapply` passes
-`filepath.Dir(outfitPath)`; `cmdRemove` passes `""`) and applies the same
+removes by `sel.Provider`, so it gains the Spinloop directory (`cmdUnapply` passes
+`filepath.Dir(spinloopPath)`; `cmdRemove` passes `""`) and applies the same
 `remoteEnvName` override, so unapply removes exactly what apply wrote.
 
 ## Risks / Trade-offs
@@ -57,8 +57,8 @@ removes by `sel.Provider`, so it gains the Outfit directory (`cmdUnapply` passes
   behind.** → The canonical workflow uses the bare-name form, which needs no file
   and is unaffected; the path form is the older usage and the config normally
   persists.
-- **`outfit export` of a remote-applied Outfit emits `PROVIDER <env>`, which does
-  not re-apply cleanly.** → Export was already lossy for remote Outfits (it
+- **`spinloop export` of a remote-applied Spinloop emits `PROVIDER <env>`, which does
+  not re-apply cleanly.** → Export was already lossy for remote Spinloops (it
   dropped `REMOTE` and emitted `PROVIDER <engine>` + `BASEURL`); this is not a
   regression and is called out as out of scope.
 - **Two environments from the same engine now write two harness blocks instead of

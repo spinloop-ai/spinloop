@@ -15,13 +15,13 @@ import (
 
 // ProvidersEnv names the environment variable that points at a providers.yaml
 // override.
-const ProvidersEnv = "OUTFIT_PROVIDERS"
+const ProvidersEnv = "SPINLOOP_PROVIDERS"
 
 // baseURLEnv names the environment variable that overrides the provider's API
 // base URL, regardless of which provider is selected. The --base-url flag takes
 // precedence over it; both win over the catalogue's static and per-provider
 // (optionsFromEnv) base URLs.
-const baseURLEnv = "OUTFIT_BASE_URL"
+const baseURLEnv = "SPINLOOP_BASE_URL"
 
 // providersYAML is the externalised provider/model-family catalogue, embedded
 // into the binary at build time but maintained as a plain file.
@@ -82,7 +82,7 @@ type LucinateConfig struct {
 }
 
 // ResolveCatalogPath determines which catalogue file to use: the flag value if
-// given, otherwise the OUTFIT_PROVIDERS env var, otherwise "" (embedded).
+// given, otherwise the SPINLOOP_PROVIDERS env var, otherwise "" (embedded).
 func ResolveCatalogPath(flagPath string) string {
 	if flagPath != "" {
 		return flagPath
@@ -97,7 +97,7 @@ func Load() (*Catalog, error) {
 
 // EmbeddedYAML returns a copy of the raw providers.yaml embedded into the
 // binary, so callers can write it out as a starting point for a custom
-// catalogue (see `outfit init-providers`).
+// catalogue (see `spinloop init-providers`).
 func EmbeddedYAML() []byte {
 	out := make([]byte, len(providersYAML))
 	copy(out, providersYAML)
@@ -181,7 +181,7 @@ func (p *Provider) RequireOptions(id string, options map[string]any) error {
 // (typically from .env, then the environment).
 //
 // baseURLOverride, when non-empty, sets options.baseURL for any provider. It
-// comes from the --base-url flag; when empty, the OUTFIT_BASE_URL env var is
+// comes from the --base-url flag; when empty, the SPINLOOP_BASE_URL env var is
 // consulted via resolve. Either wins over the catalogue's static baseURL and
 // any per-provider optionsFromEnv mapping.
 func BuildProviderBlock(id string, p *Provider, modelOverride, baseURLOverride string, resolve func(string) string) (block map[string]any, defaultModel string, err error) {
@@ -217,7 +217,7 @@ func BuildProviderBlock(id string, p *Provider, modelOverride, baseURLOverride s
 		default:
 			// opencode substitutes {env:VAR} when it reads the config, so the
 			// secret is never written to disk. The variable has to be set when
-			// opencode runs; `outfit harness` passes on whatever it can resolve,
+			// opencode runs; `spinloop harness` passes on whatever it can resolve,
 			// including from its own .env.
 			options["apiKey"] = EnvRef(p.APIKeyEnv)
 		}
@@ -281,14 +281,14 @@ type PiModel struct {
 // BuildPiProvider turns a provider plus an explicit model into a Pi provider
 // entry, returning the entry and the chosen default model key
 // (provider-relative), or "" if none was selected. resolve looks up env vars
-// (used only for the OUTFIT_BASE_URL override).
+// (used only for the SPINLOOP_BASE_URL override).
 //
 // Unlike opencode, the API key is written as a "$ENV_VAR" interpolation rather
 // than the resolved secret, matching Pi's idiom. A provider without a `pi:`
 // block in the catalogue is not Pi-compatible and yields an error.
 //
 // baseURLOverride mirrors BuildProviderBlock: when non-empty it wins; otherwise
-// OUTFIT_BASE_URL is consulted, then the catalogue's pi.baseUrl, then
+// SPINLOOP_BASE_URL is consulted, then the catalogue's pi.baseUrl, then
 // options.baseURL.
 func BuildPiProvider(id string, p *Provider, modelOverride, baseURLOverride string, resolve func(string) string) (PiProvider, string, error) {
 	if p.Pi == nil {
@@ -301,7 +301,7 @@ func BuildPiProvider(id string, p *Provider, modelOverride, baseURLOverride stri
 	if baseURLOverride == "" {
 		baseURLOverride = resolve(baseURLEnv)
 	}
-	// Precedence: the explicit override (--base-url, then OUTFIT_BASE_URL), then
+	// Precedence: the explicit override (--base-url, then SPINLOOP_BASE_URL), then
 	// the provider's own endpoint variable, then the catalogue's Pi endpoint,
 	// then its opencode one. The per-provider variable sits above both catalogue
 	// values because it is the user speaking about their own machine, and below
@@ -335,7 +335,7 @@ func BuildPiProvider(id string, p *Provider, modelOverride, baseURLOverride stri
 	//
 	// A "$VAR" reference is written whenever the provider has a key env var,
 	// because Pi resolves it at run time: the key need not be set when the
-	// Outfit is applied, and exporting it later is enough. The exception is an
+	// Spinloop is applied, and exporting it later is enough. The exception is an
 	// apiKeyOptional provider, pointed at a local endpoint, whose var is unset:
 	// one provider covers both a keyless local server and an authenticated
 	// remote one, and for the local server a reference to a variable set
@@ -376,7 +376,7 @@ type LucinateConnection struct {
 // in the catalogue is not lucinate-compatible and yields an error.
 //
 // baseURLOverride mirrors BuildPiProvider: when non-empty it wins; otherwise
-// OUTFIT_BASE_URL is consulted, then the provider's own endpoint variable, then
+// SPINLOOP_BASE_URL is consulted, then the provider's own endpoint variable, then
 // the catalogue's lucinate.baseUrl, then options.baseURL. resolve looks up env
 // vars (used for the override and the per-provider baseURL variable).
 func BuildLucinateConnection(id string, p *Provider, modelOverride, baseURLOverride string, resolve func(string) string) (LucinateConnection, string, error) {

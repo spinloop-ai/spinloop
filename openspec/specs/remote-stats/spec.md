@@ -2,36 +2,36 @@
 
 ## Purpose
 
-Define the `outfit remote metrics` command: reading token usage, resource consumption, and GPU information from a running remote inference instance.
+Define the `spinloop remote metrics` command: reading token usage, resource consumption, and GPU information from a running remote inference instance.
 ## Requirements
 ### Requirement: Stats subcommand
 
-The system SHALL provide a `metrics` subcommand (`outfit remote metrics`) that reports the current state of a remote inference instance. It SHALL accept the same Outfit resolution as `start`, `stop`, and `deploy` — an optional positional Outfit path, defaulting to `./Outfit` when present — and SHALL require the Outfit to name a `REMOTE` environment. When the instance is running, the report SHALL include the outfit version from the daemon, carried by the stats Lambda reply.
+The system SHALL provide a `metrics` subcommand (`spinloop remote metrics`) that reports the current state of a remote inference instance. It SHALL accept the same Spinloop resolution as `start`, `stop`, and `deploy` — an optional positional Spinloop path, defaulting to `./Spinloop` when present — and SHALL require the Spinloop to name a `REMOTE` environment. When the instance is running, the report SHALL include the spinloop version from the daemon, carried by the stats Lambda reply.
 
 #### Scenario: Stats with a running instance
 
-- **WHEN** the user runs `outfit remote metrics` with a running instance
-- **THEN** the command reports the instance state, runner, model, outfit version, GPU info, CPU/RAM usage, token counts, and request counts
+- **WHEN** the user runs `spinloop remote metrics` with a running instance
+- **THEN** the command reports the instance state, runner, model, spinloop version, GPU info, CPU/RAM usage, token counts, and request counts
 
 #### Scenario: Stats with a stopped instance
 
-- **WHEN** the user runs `outfit remote metrics` and the instance is stopped
+- **WHEN** the user runs `spinloop remote metrics` and the instance is stopped
 - **THEN** the command reports `state: stopped` and no metrics
 
-#### Scenario: Stats resolves the Outfit
+#### Scenario: Stats resolves the Spinloop
 
-- **WHEN** the user runs `outfit remote metrics` in a directory with an `Outfit` that has a `REMOTE` instruction
-- **THEN** the command uses that Outfit's remote environment without an explicit path argument
+- **WHEN** the user runs `spinloop remote metrics` in a directory with a `Spinloop` that has a `REMOTE` instruction
+- **THEN** the command uses that Spinloop's remote environment without an explicit path argument
 
-#### Scenario: Stats with explicit Outfit path
+#### Scenario: Stats with explicit Spinloop path
 
-- **WHEN** the user runs `outfit remote metrics ./some/Outfit`
-- **THEN** the command uses that Outfit's `REMOTE` environment
+- **WHEN** the user runs `spinloop remote metrics ./some/Spinloop`
+- **THEN** the command uses that Spinloop's `REMOTE` environment
 
 #### Scenario: Version is shown in stats output
 
-- **WHEN** the user runs `outfit remote metrics` with a running instance
-- **THEN** the output includes the outfit version
+- **WHEN** the user runs `spinloop remote metrics` with a running instance
+- **THEN** the output includes the spinloop version
 
 ### Requirement: Optional cost estimation
 
@@ -39,12 +39,12 @@ When the user passes `--cost`, the stats report SHALL include an estimated on-de
 
 #### Scenario: Cost is shown with flag
 
-- **WHEN** the user runs `outfit remote metrics --cost` with a running instance
+- **WHEN** the user runs `spinloop remote metrics --cost` with a running instance
 - **THEN** the report includes the estimated cost for the current session
 
 #### Scenario: Cost is not shown by default
 
-- **WHEN** the user runs `outfit remote metrics` without `--cost`
+- **WHEN** the user runs `spinloop remote metrics` without `--cost`
 - **THEN** the report does not include a cost line
 
 ### Requirement: Tabular display
@@ -58,32 +58,32 @@ The stats output SHALL support three formats via the `--format` flag: `bar` (def
 
 #### Scenario: Default format is bar
 
-- **WHEN** the user runs `outfit remote metrics` without `--format`
+- **WHEN** the user runs `spinloop remote metrics` without `--format`
 - **THEN** the output is in bar format
 
 #### Scenario: Table format is explicit
 
-- **WHEN** the user runs `outfit remote metrics --format=table`
+- **WHEN** the user runs `spinloop remote metrics --format=table`
 - **THEN** the output is in table format
 
 #### Scenario: Bar format is explicit
 
-- **WHEN** the user runs `outfit remote metrics --format=bar`
+- **WHEN** the user runs `spinloop remote metrics --format=bar`
 - **THEN** the output is in bar format with progress bars for resource metrics
 
 #### Scenario: JSON format
 
-- **WHEN** the user runs `outfit remote metrics --format=json`
+- **WHEN** the user runs `spinloop remote metrics --format=json`
 - **THEN** the output is valid JSON containing the instance state, runner, model, GPU info, CPU/RAM usage, and token counts
 
 #### Scenario: JSON format with cost
 
-- **WHEN** the user runs `outfit remote metrics --format=json --cost` with a running instance
+- **WHEN** the user runs `spinloop remote metrics --format=json --cost` with a running instance
 - **THEN** the JSON output includes a cost estimate field
 
 #### Scenario: Invalid format errors
 
-- **WHEN** the user runs `outfit remote metrics --format=csv`
+- **WHEN** the user runs `spinloop remote metrics --format=csv`
 - **THEN** the command exits with an error and usage message
 
 ### Requirement: Watch mode
@@ -92,27 +92,27 @@ The system SHALL support a `--watch`/`-w` flag that repeatedly queries metrics e
 
 #### Scenario: Watch mode repeats output
 
-- **WHEN** the user runs `outfit remote metrics --watch`
+- **WHEN** the user runs `spinloop remote metrics --watch`
 - **THEN** the command prints metrics, waits 60 seconds, clears the screen, and prints updated metrics
 
 #### Scenario: Watch redraws in place
 
-- **WHEN** the user runs `outfit remote metrics -w`
+- **WHEN** the user runs `spinloop remote metrics -w`
 - **THEN** each refresh after the first clears the screen before displaying new output, with no separator lines
 
 #### Scenario: Watch with JSON format
 
-- **WHEN** the user runs `outfit remote metrics --watch --format=json`
+- **WHEN** the user runs `spinloop remote metrics --watch --format=json`
 - **THEN** each refresh clears the screen and outputs a JSON object
 
 #### Scenario: Watch with cost
 
-- **WHEN** the user runs `outfit remote metrics --watch --cost`
+- **WHEN** the user runs `spinloop remote metrics --watch --cost`
 - **THEN** each refresh includes the cost estimate
 
 #### Scenario: Watch stops on interrupt
 
-- **WHEN** the user runs `outfit remote metrics -w` and presses Ctrl+C
+- **WHEN** the user runs `spinloop remote metrics -w` and presses Ctrl+C
 - **THEN** the command exits cleanly without error
 
 ### Requirement: Reporting when the endpoint last did work
@@ -135,20 +135,20 @@ show one implying the endpoint has been quiet since it started.
 
 #### Scenario: A working endpoint reports its last activity
 
-- **WHEN** the user runs `outfit remote metrics` against a running endpoint
+- **WHEN** the user runs `spinloop remote metrics` against a running endpoint
   whose engine has served work
 - **THEN** the report shows how long ago that work happened, labelled "last
   active"
 
 #### Scenario: Every format carries the figure
 
-- **WHEN** the user runs `outfit remote metrics` with `--format=bar`,
+- **WHEN** the user runs `spinloop remote metrics` with `--format=bar`,
   `--format=table`, or `--format=json`
 - **THEN** each output carries the last-active figure in its own idiom
 
 #### Scenario: An endpoint that has done nothing omits the figure
 
-- **WHEN** the user runs `outfit remote metrics` against an endpoint whose
+- **WHEN** the user runs `spinloop remote metrics` against an endpoint whose
   engine has not yet done any work
 - **THEN** the report shows no last-active figure
 

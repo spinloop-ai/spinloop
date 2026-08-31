@@ -1,6 +1,6 @@
 ## Purpose
 
-Define the control HTTP API a serving outfit exposes: the endpoint surface for
+Define the control HTTP API a serving spinloop exposes: the endpoint surface for
 observing and driving a supervised engine (status, start, stop, metrics,
 deploy config), how it is switched on, and how it is authenticated — the one
 contract fleet clients and the remote control plane speak to a node.
@@ -9,32 +9,32 @@ contract fleet clients and the remote control plane speak to a node.
 
 ### Requirement: API exposure
 
-`outfit daemon` SHALL always expose the control API — it is the command's
-purpose. `outfit serve` SHALL expose it only when `-a`/`--api` is passed, and
+`spinloop daemon` SHALL always expose the control API — it is the command's
+purpose. `spinloop serve` SHALL expose it only when `-a`/`--api` is passed, and
 remains a foreground command either way; serve SHALL have no daemon flag. The
 listen address SHALL default to port 4242 on all interfaces and SHALL be
 overridable by flag.
 
 #### Scenario: The daemon exposes the API
 
-- **WHEN** `outfit daemon` runs with no API flags
+- **WHEN** `spinloop daemon` runs with no API flags
 - **THEN** the control API listens on the default address
 
 #### Scenario: Foreground serve is API-off by default
 
-- **WHEN** `outfit serve` runs without `--api`
+- **WHEN** `spinloop serve` runs without `--api`
 - **THEN** no control API listens
 
 #### Scenario: Foreground serve can opt in
 
-- **WHEN** `outfit serve --api` runs
+- **WHEN** `spinloop serve --api` runs
 - **THEN** the control API listens while the engine runs in the foreground
 
 ### Requirement: Bearer-token authentication
 
 The API SHALL authenticate requests with a bearer token compared against the
 token configured for the process. The token SHALL be supplied via the
-environment (including the `.env` loading the Outfit resolution already
+environment (including the `.env` loading the Spinloop resolution already
 performs), never as a command-line flag. Requests without the correct token
 SHALL be rejected with `401` and no state change. When no token is configured,
 the API SHALL refuse to listen on a non-loopback address and SHALL say why;
@@ -64,11 +64,11 @@ being served, the engine log path); start the engine; stop the engine; return
 collected metrics; and accept a deploy config. Start SHALL accept an optional
 deploy config in its request body — validated and persisted exactly as a
 config push, then started — so a client can say what to run and run it in one
-call; without a body, start uses the stored config or the Outfit. Start SHALL
+call; without a body, start uses the stored config or the Spinloop. Start SHALL
 fail when an engine is already running, changing nothing — a body sent with a
 rejected start SHALL NOT be stored. Stop SHALL succeed when nothing is
 running (idempotent), and stopping the engine SHALL never terminate
-`outfit daemon` — the API keeps answering. Errors SHALL be returned as JSON
+`spinloop daemon` — the API keeps answering. Errors SHALL be returned as JSON
 with a message and a meaningful HTTP status.
 
 #### Scenario: Status reports the supervised state
@@ -104,7 +104,7 @@ with a message and a meaningful HTTP status.
 
 #### Scenario: Stop never ends the daemon
 
-- **WHEN** a stop request stops the engine under `outfit daemon`
+- **WHEN** a stop request stops the engine under `spinloop daemon`
 - **THEN** the daemon and its API keep running, and a later start request
   succeeds
 
@@ -116,8 +116,8 @@ with a message and a meaningful HTTP status.
 
 ### Requirement: Deploy config push
 
-The API SHALL accept a deploy config in the same shape `outfit remote deploy`
-derives from an Outfit and its preset (runner, model, context, alias, serve
+The API SHALL accept a deploy config in the same shape `spinloop remote deploy`
+derives from a Spinloop and its preset (runner, model, context, alias, serve
 args — the preset already resolved by the pusher). The daemon SHALL validate
 that the runner names an engine it can serve, persist the config, and use it
 for subsequent starts. Pushing a config SHALL NOT itself restart a running

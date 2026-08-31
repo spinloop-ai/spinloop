@@ -83,10 +83,10 @@ func TestWrite_FreshFile(t *testing.T) {
 	}
 
 	root := readStore(t, path)
-	if root["defaultId"] != "outfit:openrouter" {
-		t.Errorf("defaultId = %v, want outfit:openrouter", root["defaultId"])
+	if root["defaultId"] != "spinloop:openrouter" {
+		t.Errorf("defaultId = %v, want spinloop:openrouter", root["defaultId"])
 	}
-	conn := connByID(root, "outfit:openrouter")
+	conn := connByID(root, "spinloop:openrouter")
 	if conn == nil {
 		t.Fatal("managed connection missing")
 	}
@@ -118,7 +118,7 @@ func TestWrite_PreservesSiblingsAndUnknownFields(t *testing.T) {
   "theme": "dark",
   "connections": [
     { "id": "abc123", "name": "My Gateway", "type": "openclaw", "url": "https://gw.example" },
-    { "id": "outfit:openrouter", "name": "old", "type": "openai", "url": "https://old",
+    { "id": "spinloop:openrouter", "name": "old", "type": "openai", "url": "https://old",
       "createdAt": "2020-01-01T00:00:00Z", "lastUsed": "2020-02-02T00:00:00Z" }
   ]
 }`
@@ -135,7 +135,7 @@ func TestWrite_PreservesSiblingsAndUnknownFields(t *testing.T) {
 	if connByID(root, "abc123") == nil {
 		t.Error("sibling connection was dropped")
 	}
-	conn := connByID(root, "outfit:openrouter")
+	conn := connByID(root, "spinloop:openrouter")
 	if conn["url"] != "https://openrouter.ai/api/v1" {
 		t.Errorf("url not updated: %v", conn["url"])
 	}
@@ -147,8 +147,8 @@ func TestWrite_PreservesSiblingsAndUnknownFields(t *testing.T) {
 		t.Errorf("unknown field lastUsed not preserved: %v", conn["lastUsed"])
 	}
 	// defaultId now points at the managed connection.
-	if root["defaultId"] != "outfit:openrouter" {
-		t.Errorf("defaultId = %v, want outfit:openrouter", root["defaultId"])
+	if root["defaultId"] != "spinloop:openrouter" {
+		t.Errorf("defaultId = %v, want spinloop:openrouter", root["defaultId"])
 	}
 }
 
@@ -169,7 +169,7 @@ func TestWrite_ReapplyUpdatesInPlace(t *testing.T) {
 	conns, _ := readStore(t, path)["connections"].([]any)
 	count := 0
 	for _, raw := range conns {
-		if m, ok := raw.(map[string]any); ok && m["id"] == "outfit:openrouter" {
+		if m, ok := raw.(map[string]any); ok && m["id"] == "spinloop:openrouter" {
 			count++
 			if m["defaultModel"] != "deepseek/deepseek-v4-flash" {
 				t.Errorf("defaultModel = %v, want the updated model", m["defaultModel"])
@@ -201,7 +201,7 @@ func TestRemove(t *testing.T) {
 		t.Fatalf("Remove = %d, %v; want 1, nil", n, err)
 	}
 	root := readStore(t, path)
-	if connByID(root, "outfit:openrouter") != nil {
+	if connByID(root, "spinloop:openrouter") != nil {
 		t.Error("connection should have been removed")
 	}
 	if _, ok := root["defaultId"]; ok {

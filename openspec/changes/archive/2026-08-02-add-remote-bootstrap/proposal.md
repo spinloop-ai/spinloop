@@ -1,6 +1,6 @@
 ## Why
 
-Standing up remote GPU inference from the `outfit` CLI needs a one-time,
+Standing up remote GPU inference from the `spinloop` CLI needs a one-time,
 per-account setup — much like `cdk bootstrap` — before any endpoint can run.
 Today that setup lives only as a manual `pnpm`/`cdk` sequence in
 `remote/README.md`, and it is tangled together with a single endpoint's own
@@ -8,14 +8,14 @@ resources. Separating the two makes the model scale: shared, reusable
 infrastructure is deployed **once per account**, and individual endpoints
 (environments) are created later, on demand.
 
-`outfit remote bootstrap` should deploy only that shared layer — the parts every
+`spinloop remote bootstrap` should deploy only that shared layer — the parts every
 environment reuses — and leave the per-environment resources to
 [`add-remote-deploy-environments`](../add-remote-deploy-environments/proposal.md),
-where `outfit remote deploy` creates an environment's own instance.
+where `spinloop remote deploy` creates an environment's own instance.
 
 ## What Changes
 
-- Add a `bootstrap` subcommand to `outfit remote`. It deploys the **shared,
+- Add a `bootstrap` subcommand to `spinloop remote`. It deploys the **shared,
   account-level** infrastructure once, analogous to `cdk bootstrap`:
   - EC2 Image Builder pipelines and the baked AMIs (baking is a shared, common
     thing);
@@ -25,11 +25,11 @@ where `outfit remote deploy` creates an environment's own instance.
   - the shared S3 weights bucket (per-model prefixes), shared IAM roles, and a
     shared VPC with public subnets.
 - **No EIP and no EC2 instance** are created by bootstrap, and **no environment
-  is registered** — those belong to `outfit remote deploy`. The per-environment
+  is registered** — those belong to `spinloop remote deploy`. The per-environment
   **API key** is also per-environment, not shared.
 - Make the shared stack **discoverable**: it publishes its Lambda URLs, weights
   bucket, roles, and region as CloudFormation stack outputs under a well-known
-  stack name, which `outfit remote deploy` reads (via `DescribeStacks`) to create
+  stack name, which `spinloop remote deploy` reads (via `DescribeStacks`) to create
   and drive environments.
 - Obtain the CDK sources by **downloading** a version-matched snapshot of
   `remote/` from the repository (`--ref` override; `dev` fallback), into a
@@ -75,9 +75,9 @@ This does **not** rewrite the CDK in Go or embed infrastructure in the binary;
   resources (the deploy change), and the Lambdas become environment-aware. That
   TS work is a prerequisite carried alongside these two changes.
 - **Paired with `add-remote-deploy-environments`**: bootstrap deploys the shared
-  layer; that change's `outfit remote deploy` creates per-environment EIP +
+  layer; that change's `spinloop remote deploy` creates per-environment EIP +
   instance, registers the environment, and the shared Lambdas manage it.
-- **New code**: `cmd/outfit/remote_bootstrap.go`, `internal/remote/source.go`
+- **New code**: `cmd/spinloop/remote_bootstrap.go`, `internal/remote/source.go`
   (download/extract/prune), a `case "bootstrap"` in `cmdRemote`.
 - **Dependencies**: reuses `aws-sdk-go-v2`; adds the STS client (name the account
   in the plan) and the CloudFormation client (detect whether the shared stack is

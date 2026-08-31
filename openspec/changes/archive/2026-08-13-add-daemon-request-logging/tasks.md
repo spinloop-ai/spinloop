@@ -22,18 +22,18 @@
 
 ## 4. Wiring the commands
 
-- [x] 4.1 Add `--log-level` to `outfit daemon`, resolving flag > `OUTFIT_LOG_LEVEL` > info, failing startup before the listener opens when the value is unrecognised
-- [x] 4.2 Add the same flag to `outfit serve`, accepted with or without `--api` so one command line works both ways
+- [x] 4.1 Add `--log-level` to `spinloop daemon`, resolving flag > `SPINLOOP_LOG_LEVEL` > info, failing startup before the listener opens when the value is unrecognised
+- [x] 4.2 Add the same flag to `spinloop serve`, accepted with or without `--api` so one command line works both ways
 - [x] 4.3 Build the logger from `os.Stderr` inside each command and assign it to both the `Daemon` and the `Supervisor` where they are constructed, on the `daemon` and `serve --api` paths
-- [x] 4.4 Move the operational lines to the log at info — `daemon ready`, `engine log: …`, `control API on …`, and `Serving … from the pushed deploy config` — and leave serve's narration (the formatted command, `Using preset …`, `Serving … from <Outfit>`, everything `--dry-run` prints) on stdout untouched
-- [x] 4.5 Rework `apiAddrFromStdout` in `cmd/outfit/serve_daemon_test.go` to read the redirected `os.Stderr`; without it the daemon tests hang for ten seconds and fail confusingly
-- [x] 4.6 Add `--log-level` and its values to `cmd/outfit/complete.go` for both commands, and confirm `TestCompletionCoversDispatch` still passes
+- [x] 4.4 Move the operational lines to the log at info — `daemon ready`, `engine log: …`, `control API on …`, and `Serving … from the pushed deploy config` — and leave serve's narration (the formatted command, `Using preset …`, `Serving … from <Spinloop>`, everything `--dry-run` prints) on stdout untouched
+- [x] 4.5 Rework `apiAddrFromStdout` in `cmd/spinloop/serve_daemon_test.go` to read the redirected `os.Stderr`; without it the daemon tests hang for ten seconds and fail confusingly
+- [x] 4.6 Add `--log-level` and its values to `cmd/spinloop/complete.go` for both commands, and confirm `TestCompletionCoversDispatch` still passes
 - [x] 4.7 Test the command wiring end to end: a daemon at the default level summarising a real request on stderr, the same daemon at `warn` staying silent for a success but recording a 401, the flag overriding the environment variable, and an unrecognised level failing before anything listens
 
 ## 5. Documentation
 
 - [x] 5.1 Document `--log-level` in `docs/commands/serve.md` for both commands, in that file's voice, naming `warn` as the setting for a node a fleet polls
-- [x] 5.2 Add `OUTFIT_LOG_LEVEL` to `docs/env-vars.md`, stating the flag-beats-variable precedence
+- [x] 5.2 Add `SPINLOOP_LOG_LEVEL` to `docs/env-vars.md`, stating the flag-beats-variable precedence
 - [x] 5.3 Describe the request summary in `docs/http-api.md`: the fields it carries, that bodies and the token never appear, and that severity is graded by status so `warn` keeps rejections and failures visible
 - [x] 5.4 Say plainly that records go to stderr and nothing rotates them — where they end up is the service manager's business
 - [x] 5.5 Update the `internal/daemon` entry in AGENTS.md to note the logger is injected and defaults to discarding, so a future test does not acquire a global one
@@ -45,4 +45,4 @@
 - [x] 6.3 Confirm `internal/daemon/openapi_test.go` and `docs/openapi.yaml` needed no edit — the API surface was not to move, and the contract test passing untouched is the check
 - [x] 6.4 `bash scripts/check-spec-purposes.sh` and `openspec validate add-daemon-request-logging --strict` pass
 - [x] 6.5 Run the dockerised fleet example (`examples/fleet-docker/run-tests.sh`) to confirm real daemons under a real fleet poll still behave, and eyeball the volume of the summaries it produces
-- [x] 6.6 Manually run `outfit daemon` and `outfit serve --api`: watch a start, a stop, a crash, a 401 and a poll at info, then repeat at `warn` and confirm only the failures remain
+- [x] 6.6 Manually run `spinloop daemon` and `spinloop serve --api`: watch a start, a stop, a crash, a 401 and a poll at info, then repeat at `warn` and confirm only the failures remain

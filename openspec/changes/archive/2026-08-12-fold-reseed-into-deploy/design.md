@@ -92,14 +92,14 @@ the spec now states it.
   it; the next wake picks up the new copy. Unchanged from the script's
   behaviour, which had the same property.
 - **Losing the "re-seed exactly what SSM holds" behaviour** → Deliberate, per
-  the decision above. Anyone wanting the old semantics deploys the same Outfit
-  with `--reseed`, which is the same thing whenever the Outfit is the source of
+  the decision above. Anyone wanting the old semantics deploys the same Spinloop
+  with `--reseed`, which is the same thing whenever the Spinloop is the source of
   truth — which the deploy flow already assumes everywhere else.
 
 ## Migration Plan
 
 No data migration. `pnpm seed-model <env>` becomes
-`outfit remote deploy --reseed [outfit]`, documented in `remote/README.md`
+`spinloop remote deploy --reseed [spinloop]`, documented in `remote/README.md`
 where the script is currently described.
 
 Rollback is a Lambda redeploy: an older Lambda ignores the unknown `reseed`

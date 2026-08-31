@@ -2,8 +2,8 @@
 
 See `proposal.md` — Why. What shapes the approach:
 
-- The cloud already runs the daemon this way. Its instances start `outfit daemon
-  --api-addr 127.0.0.1:4242` with no Outfit path, the control plane writes the
+- The cloud already runs the daemon this way. Its instances start `spinloop daemon
+  --api-addr 127.0.0.1:4242` with no Spinloop path, the control plane writes the
   deploy config, and the key is delivered as a file the engine reads with
   `--api-key-file`. Nothing here is a new pattern; it is the existing one applied
   to a fleet node, with the client in the control plane's seat.
@@ -14,8 +14,8 @@ See `proposal.md` — Why. What shapes the approach:
 - `daemon.Push` already persists the deploy config at 0600 with the comment
   "serve args can carry sensitive flags". Persisting a key alongside it is the
   same trust decision already taken, made explicit.
-- `outfit serve --api` keeps its Outfit. It is the foreground
-  run-what-this-file-says command; only `outfit daemon` becomes API-driven.
+- `spinloop serve --api` keeps its Spinloop. It is the foreground
+  run-what-this-file-says command; only `spinloop daemon` becomes API-driven.
 
 ## Goals / Non-Goals
 
@@ -23,9 +23,9 @@ See `proposal.md` — Why. What shapes the approach:
 
 - One party holds the engine's key: the client that starts the engine.
 - The key never reaches a process command line, on any path.
-- A node holds no workload configuration — no Outfit, no preset, no fleet file.
+- A node holds no workload configuration — no Spinloop, no preset, no fleet file.
 - A hand-started LAN daemon has somewhere convenient to put its bearer token
-  now that an Outfit's `.env` is gone.
+  now that a Spinloop's `.env` is gone.
 
 **Non-Goals:**
 
@@ -35,7 +35,7 @@ See `proposal.md` — Why. What shapes the approach:
   bearer token already does in its header; both rely on the network being
   trusted (a LAN, a tailnet). Changing that is its own change.
 - Rotating a running engine's key. A key takes effect at start, as it does today.
-- Changing `outfit serve --api`.
+- Changing `spinloop serve --api`.
 
 ## Decisions
 
@@ -68,7 +68,7 @@ rather than a symmetric addition — see below.
 
 ### The key persists with the config
 
-`outfit fleet start <node>` sends no body. If the key did not persist, that
+`spinloop fleet start <node>` sends no body. If the key did not persist, that
 restart would silently produce an ungated engine — reintroducing, in a smaller
 place, the inconsistency this change removes. So a key is stored with the deploy
 config it arrived with, at the same 0600 protection, and replaced when a new one
@@ -84,13 +84,13 @@ of the value of `fleet start`.
 
 ### The daemon reads nothing
 
-`resolveDaemonOutfit`, the `OUTFIT_ALIAS` gate (`defaultOutfitNamed`), and the
-Outfit branch of `BuildArgv` all go. The daemon keeps exactly two inputs: its
+`resolveDaemonSpinloop`, the `SPINLOOP_ALIAS` gate (`defaultSpinloopNamed`), and the
+Spinloop branch of `BuildArgv` all go. The daemon keeps exactly two inputs: its
 flags and its API.
 
-The temptation is to leave the Outfit path working "for convenience". It is not
+The temptation is to leave the Spinloop path working "for convenience". It is not
 convenient — it is the reason the fleet examples needed a paragraph explaining
-that a node's Outfit and a client's Outfit are different documents, and the
+that a node's Spinloop and a client's Spinloop are different documents, and the
 reason a node's `BASEURL` silently disabled routing for anyone who reused the
 file. Removing it makes a node the same thing on every machine.
 
@@ -101,9 +101,9 @@ is a registry, which is a different product.
 
 ### The bearer token gains a file and a flag
 
-Removing the Outfit removes the `.env` beside it, which is where a hand-started
-LAN daemon's `OUTFIT_API_TOKEN` conventionally lived. Three sources replace it:
-`--api-token-file`, `OUTFIT_API_TOKEN`, and `--api-token`.
+Removing the Spinloop removes the `.env` beside it, which is where a hand-started
+LAN daemon's `SPINLOOP_API_TOKEN` conventionally lived. Three sources replace it:
+`--api-token-file`, `SPINLOOP_API_TOKEN`, and `--api-token`.
 
 The current spec says the token is supplied via the environment "never as a
 command-line flag", for the `ps` reason that governs the engine key above. That
@@ -142,11 +142,11 @@ to a keychain or secret manager a change to one resolver.
   exposure class but does extend it to a longer-lived secret. Documented as
   requiring a trusted network, which the daemon's non-loopback token guard
   already implies.
-- **`outfit daemon ./Outfit` breaks.** → It fails with a message naming the
+- **`spinloop daemon ./Spinloop` breaks.** → It fails with a message naming the
   start request rather than silently ignoring the argument. Both fleet examples
   and the daemon docs change with it. There is no deprecation window; if one is
   wanted, accepting the path with a warning for a release is a small addition.
-- **`outfit fleet start <node>` needs a prior push.** → After one routed launch
+- **`spinloop fleet start <node>` needs a prior push.** → After one routed launch
   or one push it works as before. A daemon that has never been told anything
   fails saying so, which is more honest than serving whatever file happened to
   be in the directory it started in.

@@ -13,7 +13,7 @@ import (
 	"path/filepath"
 	"sort"
 
-	"github.com/lucinate-ai/outfit/internal/catalog"
+	"github.com/spinloop-ai/spinloop/internal/catalog"
 )
 
 // ConfigPath returns the path to Pi's models.json (~/.pi/agent/models.json).

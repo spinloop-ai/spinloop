@@ -7,7 +7,7 @@ environment-variable reference in opencode's `{env:VAR}` form, naming the
 provider's key variable — never the resolved secret, so no secret is written to
 disk. The reference SHALL be written even when the variable is currently unset,
 because opencode substitutes it when it reads the config, so the key may be set
-after the Outfit is applied. The option SHALL be omitted entirely when the
+after the Spinloop is applied. The option SHALL be omitted entirely when the
 provider declares no key variable, or when its key variable is declared
 optional and the provider's endpoint is a local address — a local server needs
 no key, and naming a variable nobody will set would only mislead.
@@ -24,7 +24,7 @@ the user's providers and endpoints.
 
 #### Scenario: A key set after applying still works
 
-- **WHEN** an Outfit is applied with the key variable unset, and the variable is
+- **WHEN** a Spinloop is applied with the key variable unset, and the variable is
   set before opencode runs
 - **THEN** opencode resolves the reference to that value
 
@@ -36,6 +36,6 @@ the user's providers and endpoints.
 
 #### Scenario: Permissions enforced on existing file
 
-- **WHEN** the config file exists with permissive mode and `outfit add` writes
+- **WHEN** the config file exists with permissive mode and `spinloop add` writes
   it
 - **THEN** the file's mode is owner-only afterwards

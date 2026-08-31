@@ -29,7 +29,7 @@ const logGroupPrefix = "/" + ControlPlaneStackName
 // Runners are the inference engines an environment can run, and so the engine
 // log groups its instances can ship to. An environment's runner is not knowable
 // locally once its instance is gone — the stats Lambda only answers for a
-// running one, and an Outfit states intent rather than what last ran — so the
+// running one, and a Spinloop states intent rather than what last ran — so the
 // reader asks every engine group and merges. That is also what an environment
 // whose runner changed needs, since its history spans two groups. It must track
 // RUNNERS in remote/lambda/shared/deploy-config.ts, and runnerFor's switch.
@@ -140,7 +140,7 @@ func FetchLogs(ctx context.Context, cfg Config, q LogQuery) (LogResult, error) {
 	if q.Environment == "" {
 		return LogResult{}, fmt.Errorf(
 			"this remote config names no environment, so its log streams cannot be identified: " +
-				"re-register it with `outfit remote deploy` (which writes the environment name)")
+				"re-register it with `spinloop remote deploy` (which writes the environment name)")
 	}
 	awsCfg, err := LoadAWSConfig(ctx, cfg.Region)
 	if err != nil {
@@ -180,7 +180,7 @@ func fetchLogs(ctx context.Context, api logsAPI, q LogQuery) (LogResult, error) 
 	if missing == len(groups) {
 		return LogResult{}, fmt.Errorf(
 			"no log group exists for this environment's %s logs (looked for %s): "+
-				"the control plane was deployed before log shipping — re-deploy it with `outfit remote bootstrap`",
+				"the control plane was deployed before log shipping — re-deploy it with `spinloop remote bootstrap`",
 			q.Source, strings.Join(groupNames(groups), ", "))
 	}
 	sortEvents(events)

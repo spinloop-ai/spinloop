@@ -13,9 +13,9 @@ already accepts `env` as a query parameter.
 ## Goals / Non-Goals
 
 **Goals:**
-- Add `outfit remote keep DURATION` that sets the `Retain-Until` tag on a running instance
-- Add `outfit remote start --keep DURATION` that sets the tag at wake time
-- Report the active retention deadline in `outfit remote status`
+- Add `spinloop remote keep DURATION` that sets the `Retain-Until` tag on a running instance
+- Add `spinloop remote start --keep DURATION` that sets the tag at wake time
+- Report the active retention deadline in `spinloop remote status`
 
 **Non-Goals:**
 - Removing an existing retention tag (a new tag with a past date has no effect; a `--clear` flag is out of scope)

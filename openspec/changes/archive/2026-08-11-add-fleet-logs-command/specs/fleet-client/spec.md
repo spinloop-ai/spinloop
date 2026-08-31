@@ -2,7 +2,7 @@
 
 ### Requirement: Fleet logs
 
-`outfit fleet logs` SHALL read the engine output of the fleet's nodes through
+`spinloop fleet logs` SHALL read the engine output of the fleet's nodes through
 each node's daemon, so "what did that engine say?" is answerable from the same
 place as "what is it doing?" — without shell access to any machine. With no node
 named it SHALL read every node in the fleet; naming a node SHALL restrict it to
@@ -11,7 +11,7 @@ the slowest reachable node rather than their sum.
 
 #### Scenario: Reading the whole fleet
 
-- **WHEN** the operator runs `outfit fleet logs` with no node named
+- **WHEN** the operator runs `spinloop fleet logs` with no node named
 - **THEN** every node's engine output is read and printed
 
 #### Scenario: Reading one node
@@ -22,7 +22,7 @@ the slowest reachable node rather than their sum.
 
 #### Scenario: A crashed node's output is readable
 
-- **WHEN** a node's engine has crashed, as `outfit fleet status` reports
+- **WHEN** a node's engine has crashed, as `spinloop fleet status` reports
 - **THEN** its output up to the crash is printed, explaining what status can
   only report
 
@@ -51,7 +51,7 @@ than merged into a false chronology.
 
 ### Requirement: Fleet logs can be followed
 
-`outfit fleet logs` SHALL be able to keep running and print output as nodes
+`spinloop fleet logs` SHALL be able to keep running and print output as nodes
 produce it, rather than exiting after one read. Following SHALL resume each node
 from the position that node last returned, so a line already printed is never
 printed twice. Interrupting SHALL exit cleanly, without reporting an error.

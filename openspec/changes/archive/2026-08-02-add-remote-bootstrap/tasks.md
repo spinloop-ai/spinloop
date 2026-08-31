@@ -2,8 +2,8 @@
 
 - [x] 1.1 Add `ResolveRef(version, override string) string`: `--ref` wins; a clean tag verbatim; `dev`/`-dirty`/`-g<sha>` fall back to `main`.
 - [x] 1.2 Add `SourceDir(ref string) string` reusing internal/remote's `configHome()` → `<configHome>/cdk/<ref>` (named `cdk/` to avoid collision with the `remotes/` registry); add `SourceRoot() string` returning the `cdk` parent for pruning.
-- [x] 1.3 Add `ExtractRemote(r io.Reader, destDir string) error`: gunzip+untar, keep only `remote/*` (strip the leading `outfit-<ref>/`), reject `..` traversal, skip `node_modules`/`cdk.out`/gitignored generated files.
-- [x] 1.4 Add `DownloadRemote(ctx, ref, destDir string) error`: GET `codeload.github.com/lucinate-ai/outfit/tar.gz/<ref>`, stream into `ExtractRemote`; skip re-download when `<destDir>/package.json` exists.
+- [x] 1.3 Add `ExtractRemote(r io.Reader, destDir string) error`: gunzip+untar, keep only `remote/*` (strip the leading `spinloop-<ref>/`), reject `..` traversal, skip `node_modules`/`cdk.out`/gitignored generated files.
+- [x] 1.4 Add `DownloadRemote(ctx, ref, destDir string) error`: GET `codeload.github.com/spinloop-ai/spinloop/tar.gz/<ref>`, stream into `ExtractRemote`; skip re-download when `<destDir>/package.json` exists.
 - [x] 1.5 Add `PruneSources(root, keepRef string) error`: after a successful bootstrap, remove every `<root>/<ref>` sibling except `keepRef`; no-op when `--dir` was given.
 - [x] 1.6 Tests (`internal/remote/source_test.go`): `ResolveRef` table; in-memory gzip-tar extraction (only `remote/*`, README skipped, traversal rejected); `PruneSources` keeps `keepRef`.
 
@@ -13,10 +13,10 @@
 - [x] 2.2 Add `CallerIdentity(ctx, cfg)` (wraps `sts.GetCallerIdentity`) for the plan; promote the already-indirect `service/sts` to a direct require.
 - [x] 2.3 Add `SharedStackDeployed(ctx, cfg, stackName string) (bool, error)` (wraps CloudFormation `DescribeStacks`) to detect whether the account is already bootstrapped; add the `aws-sdk-go-v2/service/cloudformation` client.
 
-## 3. Bootstrap command skeleton (`cmd/outfit/remote_bootstrap.go`)
+## 3. Bootstrap command skeleton (`cmd/spinloop/remote_bootstrap.go`)
 
 - [x] 3.1 Add `cmdRemoteBootstrap(args []string) error` with the FlagSet: `--runners` (comma-separated, default `llamacpp,vllm`), `--hf-token`, `--ref`, `--dir`, `--region`, `--dry-run`/`-n`, `--yes`/`-y`, `--wait`, `--force-bake`.
-- [x] 3.2 Validate `--runners` against the accepted set (reuse `runnerFor` per entry). (No CIDR here — allowed ingress is a per-environment setting on `outfit remote deploy`.)
+- [x] 3.2 Validate `--runners` against the accepted set (reuse `runnerFor` per entry). (No CIDR here — allowed ingress is a per-environment setting on `spinloop remote deploy`.)
 - [x] 3.3 Add `case "bootstrap": return cmdRemoteBootstrap(rest)` to `cmdRemote` and widen its usage string and unknown-subcommand error to include `bootstrap`.
 
 ## 4. Preflight checks
@@ -41,14 +41,14 @@
 
 - [x] 7.1 Add the `runStep` exec helper (behind a `stepRunner` seam): `exec.CommandContext`, `cmd.Dir = <cdkDir>`, streamed stdio, `signal.NotifyContext`; return an error naming the failed step (no `os.Exit`).
 - [x] 7.2 Run the sequence: `pnpm install` (skip if `node_modules`) → `pnpm cdk bootstrap` → `pnpm deploy:image` → `pnpm bake <runner>` per selected runner (async, skip on re-run unless `--force-bake`) → deploy the shared stack (`pnpm run deploy`). No environment is created or registered.
-- [x] 7.3 Print next steps: the account is bootstrapped; create an endpoint with `outfit remote deploy` (naming an environment), which discovers this shared layer.
+- [x] 7.3 Print next steps: the account is bootstrapped; create an endpoint with `spinloop remote deploy` (naming an environment), which discovers this shared layer.
 - [x] 7.4 Implement `--wait`: after the shared deploy, poll the Image Builder pipeline until the AMI(s) are available before finishing; without it, print the async hand-off and exit 0.
 - [x] 7.5 On success (default location only), call `PruneSources(SourceRoot(), ref)`; skip when `--dir` was given.
 
 ## 8. Help text and completion
 
-- [x] 8.1 Update `usage()` and the package doc comment in `cmd/outfit/main.go` to list `bootstrap` and describe it as the once-per-account shared setup with a consent gate / `--dry-run` / `--yes`.
-- [x] 8.2 Add `bootstrap` and its flags to the `remote` entry in `cmd/outfit/complete.go`; confirm `TestCompletionCoversDispatch` passes.
+- [x] 8.1 Update `usage()` and the package doc comment in `cmd/spinloop/main.go` to list `bootstrap` and describe it as the once-per-account shared setup with a consent gate / `--dry-run` / `--yes`.
+- [x] 8.2 Add `bootstrap` and its flags to the `remote` entry in `cmd/spinloop/complete.go`; confirm `TestCompletionCoversDispatch` passes.
 
 ## 9. Tests (hermetic — no AWS, no network)
 
@@ -60,6 +60,6 @@
 
 ## 10. Docs and verification
 
-- [x] 10.1 Add the bootstrap flow (once-per-account shared setup) to `docs/commands/remote.md` and `remote/README.md`, keeping the manual sequence as under-the-hood detail; note that environments come from `outfit remote deploy`.
-- [x] 10.2 Run `go test ./... -cover` (keep ≥ 80%), `gofmt`, and `outfit remote bootstrap --dry-run` to confirm the plan renders and nothing runs.
-- [x] 10.3 End-to-end on a throwaway AWS account: `outfit remote bootstrap` → confirm → shared stack deployed, its outputs present, no EIP/instance created.
+- [x] 10.1 Add the bootstrap flow (once-per-account shared setup) to `docs/commands/remote.md` and `remote/README.md`, keeping the manual sequence as under-the-hood detail; note that environments come from `spinloop remote deploy`.
+- [x] 10.2 Run `go test ./... -cover` (keep ≥ 80%), `gofmt`, and `spinloop remote bootstrap --dry-run` to confirm the plan renders and nothing runs.
+- [x] 10.3 End-to-end on a throwaway AWS account: `spinloop remote bootstrap` → confirm → shared stack deployed, its outputs present, no EIP/instance created.

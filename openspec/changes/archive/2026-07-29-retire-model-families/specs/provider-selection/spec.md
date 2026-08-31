@@ -9,7 +9,7 @@ URL, next steps).
 
 #### Scenario: Successful add
 
-- **WHEN** `outfit add -p openrouter -m deepseek/deepseek-v4-pro -c 128k`
+- **WHEN** `spinloop add -p openrouter -m deepseek/deepseek-v4-pro -c 128k`
   succeeds
 - **THEN** the output names the config path, the provider, the default model,
   and the 128000/32000 token limits
@@ -44,7 +44,7 @@ removing, and carried a scenario about removing one family's models. Families ar
 removed, so removal no longer expands anything; the family-free rules are
 restated by the "Removing a provider or model" requirement below.
 
-**Migration**: `outfit remove -p <provider>` still removes the whole provider;
+**Migration**: `spinloop remove -p <provider>` still removes the whole provider;
 name a `--model` or `--alias` to remove exactly that one key.
 
 ## ADDED Requirements
@@ -57,19 +57,19 @@ MUST exist in the resolved catalogue.
 
 #### Scenario: Missing provider
 
-- **WHEN** the user runs `outfit add` without `--provider`
-- **THEN** the command fails, pointing at `outfit list`
+- **WHEN** the user runs `spinloop add` without `--provider`
+- **THEN** the command fails, pointing at `spinloop list`
 
 #### Scenario: Provider alone is not enough to apply
 
-- **WHEN** the user runs `outfit add -p openrouter` with no model or alias
+- **WHEN** the user runs `spinloop add -p openrouter` with no model or alias
 - **THEN** the command fails explaining a selection needs a model or an alias
 
 #### Scenario: Unknown provider
 
 - **WHEN** the selection names a provider not in the catalogue
 - **THEN** the command fails naming the unknown id and pointing at
-  `outfit list`
+  `spinloop list`
 
 ### Requirement: Selection model key
 
@@ -79,7 +79,7 @@ configured and SHALL become the selection's default model.
 
 #### Scenario: Model becomes the default
 
-- **WHEN** the user runs `outfit add -p openrouter -m deepseek/deepseek-v4-pro`
+- **WHEN** the user runs `spinloop add -p openrouter -m deepseek/deepseek-v4-pro`
 - **THEN** `deepseek/deepseek-v4-pro` is configured and becomes the default
   model
 
@@ -90,19 +90,19 @@ configured and SHALL become the selection's default model.
 
 ### Requirement: Removing a provider or model
 
-`outfit remove` (and `unapply`) SHALL remove the whole provider when no model or
+`spinloop remove` (and `unapply`) SHALL remove the whole provider when no model or
 alias is given, and otherwise SHALL remove exactly the named model — an alias or
 model id each name one key. The command SHALL report how many entries were
 removed, and SHALL report "nothing to remove" (not an error) when none matched.
 
 #### Scenario: Removing a whole provider
 
-- **WHEN** the user runs `outfit remove -p ollama`
+- **WHEN** the user runs `spinloop remove -p ollama`
 - **THEN** the provider block is removed from the harness config
 
 #### Scenario: Removing one model
 
-- **WHEN** the user runs `outfit remove -p openrouter -m deepseek/deepseek-v4-pro`
+- **WHEN** the user runs `spinloop remove -p openrouter -m deepseek/deepseek-v4-pro`
 - **THEN** only that model is removed and the provider's other models survive
 
 #### Scenario: Nothing matched

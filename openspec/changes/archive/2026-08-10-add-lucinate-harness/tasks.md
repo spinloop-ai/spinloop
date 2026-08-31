@@ -19,7 +19,7 @@
   fields — with a catch-all so unknown store-level and connection-level fields
   round-trip untouched.
 - [x] 2.3 Implement the preserving merge: insert/update one managed `openai`
-  connection keyed by a deterministic id (`outfit:<providerId>`), preserving its
+  connection keyed by a deterministic id (`spinloop:<providerId>`), preserving its
   `createdAt` on update and all sibling connections and unknown fields; set
   `defaultId` to the managed connection. Write `0600` atomically.
 - [x] 2.4 Implement `Remove(providerID)`: delete the managed connection, clear
@@ -52,13 +52,13 @@
 
 ## 4. Launch-time key injection
 
-- [x] 4.1 On the launch path (`cmd/outfit/main.go`, around `harnessEnv`), when the
+- [x] 4.1 On the launch path (`cmd/spinloop/main.go`, around `harnessEnv`), when the
   resolved harness is lucinate, inject `LUCINATE_OPENAI_API_KEY` set to the active
   provider's resolved key into the launched agent's environment only; inject
   nothing when no key resolves.
 - [x] 4.2 Tests: launching lucinate for a resolvable-key provider sets
   `LUCINATE_OPENAI_API_KEY` in the child env; an unresolvable key injects nothing
-  and the launch still proceeds; outfit's own process environment is not mutated.
+  and the launch still proceeds; spinloop's own process environment is not mutated.
 
 ## 5. CLI surface
 
@@ -80,9 +80,9 @@
 ## 7. Verification
 
 - [x] 7.1 `gofmt` and `go test ./... -cover`; keep coverage >= 80%.
-- [x] 7.2 Manually exercise: `outfit add -H lucinate -p openrouter -m <model>`
+- [x] 7.2 Manually exercise: `spinloop add -H lucinate -p openrouter -m <model>`
   writes a managed connection to `connections.json` with `defaultId` set and no
-  secret on disk; `outfit harness -H lucinate` launches lucinate into that model
-  with the key injected; `outfit export -H lucinate` reconstructs the selection.
+  secret on disk; `spinloop harness -H lucinate` launches lucinate into that model
+  with the key injected; `spinloop export -H lucinate` reconstructs the selection.
 - [x] 7.3 Run `openspec validate --change add-lucinate-harness` and resolve any
   findings.

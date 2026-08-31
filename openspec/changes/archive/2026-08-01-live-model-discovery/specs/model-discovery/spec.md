@@ -9,7 +9,7 @@ discoverable provider — OpenRouter, vLLM, llama.cpp, the generic `openai-compa
 endpoint, and Ollama (whose compatibility layer serves `/v1/models`).
 
 The base URL SHALL be resolved with the same precedence a selection uses (`--base-url`,
-then `OUTFIT_BASE_URL`, then the provider's catalogue value, then its Pi endpoint). A
+then `SPINLOOP_BASE_URL`, then the provider's catalogue value, then its Pi endpoint). A
 provider with no resolvable base URL (for example AWS Bedrock) is not discoverable. When
 the provider declares an API key variable and it resolves to a value, that value SHALL be
 sent as the request's `Authorization` header; a resolved key SHALL NOT be written to disk
@@ -41,7 +41,7 @@ hang a command.
 
 #### Scenario: Offline discovery does not fail the command
 
-- **WHEN** `outfit list --models <provider>` runs and the provider's endpoint is
+- **WHEN** `spinloop list --models <provider>` runs and the provider's endpoint is
   unreachable
 - **THEN** the command still prints the provider's plumbing, reports no models were found,
   and exits successfully
@@ -70,22 +70,22 @@ A cache entry SHALL be keyed by the resolved provider endpoint.
 
 ### Requirement: Surfacing discovered models
 
-`outfit list --models <provider>` SHALL print the provider's discovered models beneath its
-plumbing. Without `--models`, `outfit list` SHALL behave as before (plumbing only) and
+`spinloop list --models <provider>` SHALL print the provider's discovered models beneath its
+plumbing. Without `--models`, `spinloop list` SHALL behave as before (plumbing only) and
 SHALL NOT perform any network request. Shell model completion SHALL offer discovered models
 for a provider that supports discovery, scoped to the `--provider` already on the line.
 
 #### Scenario: Listing a provider's live models
 
-- **WHEN** the user runs `outfit list --models openrouter` and discovery succeeds
+- **WHEN** the user runs `spinloop list --models openrouter` and discovery succeeds
 - **THEN** the provider's currently-served model ids are printed under its entry
 
 #### Scenario: Plain list makes no network call
 
-- **WHEN** the user runs `outfit list` with no `--models` flag
+- **WHEN** the user runs `spinloop list` with no `--models` flag
 - **THEN** no discovery request is made and only provider plumbing is printed
 
 #### Scenario: Model completion offers discovered ids
 
-- **WHEN** the user completes `outfit add -p openrouter -m <TAB>` and discovery succeeds
+- **WHEN** the user completes `spinloop add -p openrouter -m <TAB>` and discovery succeeds
 - **THEN** the provider's discovered model ids are offered as candidates

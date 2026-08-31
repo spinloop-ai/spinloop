@@ -317,10 +317,10 @@ func TestResolveConfigFile(t *testing.T) {
 	}
 }
 
-// The .env belongs beside the Outfit, the same rule PRESET and REMOTE follow —
+// The .env belongs beside the Spinloop, the same rule PRESET and REMOTE follow —
 // not beside the binary, and emphatically not beside the source file, which is
 // a path from the build machine that an installed binary can never find.
-func TestEnvResolver_ReadsDotEnvBesideTheOutfit(t *testing.T) {
+func TestEnvResolver_ReadsDotEnvBesideTheSpinloop(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte("OPENAI_API_KEY=sk-beside\n"), 0o600); err != nil {
 		t.Fatal(err)
@@ -328,9 +328,9 @@ func TestEnvResolver_ReadsDotEnvBesideTheOutfit(t *testing.T) {
 	t.Setenv("OPENAI_API_KEY", "")
 
 	if got := EnvResolver(dir)("OPENAI_API_KEY"); got != "sk-beside" {
-		t.Errorf("EnvResolver(dir) = %q, want the value from the Outfit's .env", got)
+		t.Errorf("EnvResolver(dir) = %q, want the value from the Spinloop's .env", got)
 	}
-	// Another directory's .env is none of this Outfit's business.
+	// Another directory's .env is none of this Spinloop's business.
 	if got := EnvResolver(t.TempDir())("OPENAI_API_KEY"); got != "" {
 		t.Errorf("resolved %q from an unrelated directory", got)
 	}
@@ -340,7 +340,7 @@ func TestEnvResolver_FallsBackToTheEnvironment(t *testing.T) {
 	t.Chdir(t.TempDir())
 	t.Setenv("OPENAI_API_KEY", "sk-exported")
 	if got := EnvResolver("")("OPENAI_API_KEY"); got != "sk-exported" {
-		t.Errorf("with no Outfit directory, want the environment's value, got %q", got)
+		t.Errorf("with no Spinloop directory, want the environment's value, got %q", got)
 	}
 
 	// An exported variable beats the .env — the environment always wins.
@@ -370,8 +370,8 @@ func TestEnvResolver_DotEnvFillsAGap(t *testing.T) {
 	}
 }
 
-// LoadConfigState is the inverse of WriteConfig, used by `outfit export` to
-// reconstruct an Outfit from the applied configuration.
+// LoadConfigState is the inverse of WriteConfig, used by `spinloop export` to
+// reconstruct a Spinloop from the applied configuration.
 func TestLoadConfigState_MissingFile(t *testing.T) {
 	providers, defaultModel, err := LoadConfigState(filepath.Join(t.TempDir(), "no-such-file.json"))
 	if err != nil {
@@ -492,9 +492,9 @@ func TestLoadConfigState_NoProviders(t *testing.T) {
 	}
 }
 
-// A command with no Outfit — `outfit add -p openrouter` and friends — still has
+// A command with no Spinloop — `spinloop add -p openrouter` and friends — still has
 // a project around it, so its .env is worth reading.
-func TestEnvResolver_NoOutfitReadsTheWorkingDirectory(t *testing.T) {
+func TestEnvResolver_NoSpinloopReadsTheWorkingDirectory(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
 	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte("DEEPSEEK_API_KEY=sk-or-cwd\n"), 0o600); err != nil {

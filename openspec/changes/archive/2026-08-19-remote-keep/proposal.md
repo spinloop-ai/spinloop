@@ -4,8 +4,8 @@ The idle sweep can be prevented from terminating an instance via the `Retain-Unt
 
 ## What Changes
 
-- Add `outfit remote keep DURATION` subcommand that sets the `Retain-Until` tag on the current environment's instance to `now + DURATION` (e.g. `4h`, `60m`).
-- Add `--keep DURATION` flag to `outfit remote start` that sets the same tag at wake time, so the instance is retained from the moment it boots.
+- Add `spinloop remote keep DURATION` subcommand that sets the `Retain-Until` tag on the current environment's instance to `now + DURATION` (e.g. `4h`, `60m`).
+- Add `--keep DURATION` flag to `spinloop remote start` that sets the same tag at wake time, so the instance is retained from the moment it boots.
 - Add `retainUntil` to the `status` output when the tag is present, so the user can see the active retention deadline.
 
 ## Capabilities
@@ -19,7 +19,7 @@ The idle sweep can be prevented from terminating an instance via the `Retain-Unt
 
 ## Impact
 
-- **CLI** (`cmd/outfit/remote.go`): New `cmdRemoteKeep` function; `--keep` flag on `cmdRemoteStart`; `retainUntil` line in `cmdRemoteStatus`.
+- **CLI** (`cmd/spinloop/remote.go`): New `cmdRemoteKeep` function; `--keep` flag on `cmdRemoteStart`; `retainUntil` line in `cmdRemoteStatus`.
 - **Go client** (`internal/remote/remote.go`): New `Keep` function; optional `retainUntil` parameter on `Start`.
 - **Lambda** (`remote/lambda/update/index.ts`): New `UpdateFn` Lambda with a `cmd` dispatch table; first command `set-keep` tags the instance with `Retain-Until`.
 - **Lambda** (`remote/lambda/start/index.ts`): Reads `retainUntil` query parameter and tags the instance on wake.

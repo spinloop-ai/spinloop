@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lucinate-ai/outfit/internal/daemon"
-	"github.com/lucinate-ai/outfit/internal/remote"
+	"github.com/spinloop-ai/spinloop/internal/daemon"
+	"github.com/spinloop-ai/spinloop/internal/remote"
 )
 
 // fakeNode is one machine's daemon plus, optionally, its engine's listener.

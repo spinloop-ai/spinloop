@@ -2,17 +2,17 @@
 
 See proposal.md — Why. What already exists, and what a live prototype established:
 
-- `outfit daemon` supervises the engine as a **child process** (`exec.Command`,
+- `spinloop daemon` supervises the engine as a **child process** (`exec.Command`,
   own process group, log capture) and exposes the control API `fleet` speaks.
   `engineFor("llamacpp")` resolves the engine binary as `llama-server` from
   `PATH`.
 - `internal/metrics` scrapes the engine's own Prometheus `/metrics` and parses
   the `llamacpp:` dialect.
-- `OUTFIT_CONFIG_DIR` pins outfit's config directory, which a container needs
+- `SPINLOOP_CONFIG_DIR` pins spinloop's config directory, which a container needs
   since a bare service has no useful `$HOME` (the bug that motivated it).
 - **Prototype findings** (run end to end on a laptop before this was written):
   Imposter's native engine is a standalone `imposter-go` binary invoked as
-  `imposter-go <config-dir>` with the port from `IMPOSTER_PORT`; outfit's own
+  `imposter-go <config-dir>` with the port from `IMPOSTER_PORT`; spinloop's own
   scraper parses its `llamacpp:`-dialect output (`Running:3 PromptTokens:4096
   Requests:17`); a real daemon supervises it as a genuine child (verified by
   PPID); and `fleet status`/`metrics`/`start`/`stop` all work against it.
@@ -24,13 +24,13 @@ See proposal.md — Why. What already exists, and what a live prototype establis
 - One artifact that is both a good example and a real integration test.
 - Exercise the parts stubs cannot: a real supervised process, a real network
   hop, real auth, real unreachability, real crash detection.
-- No production code changes — test outfit as shipped.
+- No production code changes — test spinloop as shipped.
 
 **Non-Goals:**
 
 - A real inference engine (llama.cpp/vLLM). The point is the fleet control
   path, not inference; a real engine would need GPUs and minutes of model load.
-- Testing `outfit remote` (the cloud path) — that has its own AWS-side story.
+- Testing `spinloop remote` (the cloud path) — that has its own AWS-side story.
 - The interactive TUI (#59) or the published multi-arch image (#57), though
   this example will use the latter when it exists.
 
@@ -42,7 +42,7 @@ exec — a sidecar container would bypass the supervisor entirely, which is the
 part most worth testing. Imposter's native engine is a single binary that
 serves configured HTTP from static YAML, so it stands in for `llama-server`
 convincingly: it answers `/health` and serves a `llamacpp:` Prometheus
-`/metrics` that outfit's real collector parses.
+`/metrics` that spinloop's real collector parses.
 
 **D2 — The shim execs the engine binary, never the Imposter CLI.** This is the
 finding that most shapes the design, and it was only visible in a live run:
@@ -57,10 +57,10 @@ and reads as `crashed`.
 script named `llama-server` earlier on `PATH` than anything else; it parses the
 `--port` the daemon passes, ignores the rest of llama.cpp's flags, and execs
 the engine with `IMPOSTER_PORT` set. `engineFor("llamacpp")` therefore resolves
-to it with no test-only branch in outfit — the example tests the shipped
-binary, and the shim is a property of the *image*, not of outfit.
+to it with no test-only branch in spinloop — the example tests the shipped
+binary, and the shim is a property of the *image*, not of spinloop.
 
-**D4 — Each node pins `OUTFIT_CONFIG_DIR`.** Containers get no useful `$HOME`;
+**D4 — Each node pins `SPINLOOP_CONFIG_DIR`.** Containers get no useful `$HOME`;
 the daemon unit on the cloud instance already pins this for the same reason.
 Setting it in the image keeps the container's state deterministic and exercises
 the same resolution path production uses.
@@ -75,7 +75,7 @@ The fleet view stays worth looking at because state differs — start some nodes
 and not others — and because stopping a container produces a genuinely
 unreachable node on demand.
 
-**D6 — Build outfit from the working tree.** The node image builds outfit from
+**D6 — Build spinloop from the working tree.** The node image builds spinloop from
 the repository being tested, so CI verifies *this commit* rather than a
 published artifact. A published image (#57) would be friendlier for a user just
 kicking the tyres; the Dockerfile should leave that switchable later, but
@@ -91,7 +91,7 @@ maintainer runs locally.
 ## Risks / Trade-offs
 
 - [Imposter is a new dependency of the example] → only of the *example image*,
-  not of outfit; it is fetched during the image build and pinned to a version.
+  not of spinloop; it is fetched during the image build and pinned to a version.
 - [A fake engine cannot catch real-engine quirks] → true and accepted: this
   tests the fleet control path. Real-engine behaviour is covered by the cloud
   e2e on an actual GPU box.

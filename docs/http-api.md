@@ -1,13 +1,13 @@
 # HTTP Control API
 
-When running `outfit daemon` (always) or `outfit serve --api` (opt-in), a control API is exposed on `:4242` (or the address specified by `--api-addr`; on the daemon, `--loopback` binds `127.0.0.1:4242` instead) that allows management of the engine via JSON requests.
+When running `spinloop daemon` (always) or `spinloop serve --api` (opt-in), a control API is exposed on `:4242` (or the address specified by `--api-addr`; on the daemon, `--loopback` binds `127.0.0.1:4242` instead) that allows management of the engine via JSON requests.
 
 > **The machine-readable contract is [`openapi.yaml`](openapi.yaml)** — every route, its
 > auth, its request body and the schemas of its replies. Point a client generator
 > at that rather than at this page, and use this page for the behaviour a schema
 > cannot express. It is also attached to each [GitHub
-> release](https://github.com/lucinate-ai/outfit/releases), so a consumer can pin
-> the contract to the outfit version it talks to.
+> release](https://github.com/spinloop-ai/spinloop/releases), so a consumer can pin
+> the contract to the spinloop version it talks to.
 >
 > It cannot silently fall behind: `internal/daemon/openapi_test.go` compares it
 > against the routes the handler registers and the JSON fields of the structs it
@@ -15,11 +15,11 @@ When running `outfit daemon` (always) or `outfit serve --api` (opt-in), a contro
 > response field and the spec has to change with it.
 
 All requests must include a bearer token in the `Authorization` header:
-`Authorization: Bearer $OUTFIT_API_TOKEN`
+`Authorization: Bearer $SPINLOOP_API_TOKEN`
 
-Under `outfit daemon` the token comes from `--api-token`, `--api-token-file`, or `OUTFIT_API_TOKEN` — the daemon reads no Outfit and so has no adjacent `.env` to fall back to; giving two sources at once is an error. Under `serve --api` it is read from the environment, including the `.env` beside the Outfit being served. A non-loopback listen with no token refuses to start; a loopback listen may go tokenless.
+Under `spinloop daemon` the token comes from `--api-token`, `--api-token-file`, or `SPINLOOP_API_TOKEN` — the daemon reads no Spinloop and so has no adjacent `.env` to fall back to; giving two sources at once is an error. Under `serve --api` it is read from the environment, including the `.env` beside the Spinloop being served. A non-loopback listen with no token refuses to start; a loopback listen may go tokenless.
 
-Under `outfit daemon`, nothing runs until a start request asks, and stopping the engine never ends the daemon — the API keeps answering. Under `serve --api` the engine is foreground-managed: start always fails as already-running, and stopping the engine ends serve itself.
+Under `spinloop daemon`, nothing runs until a start request asks, and stopping the engine never ends the daemon — the API keeps answering. Under `serve --api` the engine is foreground-managed: start always fails as already-running, and stopping the engine ends serve itself.
 
 ## Endpoints
 
@@ -44,7 +44,7 @@ than each caller re-deriving it from raw counters at whatever rate it polls.
 The cloud deployment's idle check reads exactly these two fields.
 
 ### POST `/v1/start`
-Starts the engine. The request body may carry a deploy config (same JSON as `PUT /v1/deploy-config`) naming what to run, plus an optional `engineApiKey` gating it — both validated and persisted like a push, then started. With no body, the stored deploy config is served; with neither a body nor a stored config, the start fails, since the daemon reads no Outfit of its own to fall back to. The key is never returned by this or any other endpoint, and reaches the engine as a file path argument rather than a literal one, so it never appears in the node's process list.
+Starts the engine. The request body may carry a deploy config (same JSON as `PUT /v1/deploy-config`) naming what to run, plus an optional `engineApiKey` gating it — both validated and persisted like a push, then started. With no body, the stored deploy config is served; with neither a body nor a stored config, the start fails, since the daemon reads no Spinloop of its own to fall back to. The key is never returned by this or any other endpoint, and reaches the engine as a file path argument rather than a literal one, so it never appears in the node's process list.
 - Returns `200 OK` on success.
 - Returns `409 Conflict` if an engine is already running — a carried config is **not** stored.
 - Returns `400 Bad Request` if the config is invalid or the engine fails to start.
@@ -138,7 +138,7 @@ before it silences problems:
 | 5xx | `error` |
 
 A node that a fleet polls will log a line per poll per client at the default
-level. Run it with `--log-level warn` (or `OUTFIT_LOG_LEVEL=warn`) and the
+level. Run it with `--log-level warn` (or `SPINLOOP_LOG_LEVEL=warn`) and the
 polling goes quiet while rejections and failures still show up. Nothing rotates
 this output — it goes to stderr, and where that lands is your service manager's
 business. See [what gets logged](commands/serve.md#what-gets-logged).

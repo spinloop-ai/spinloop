@@ -19,7 +19,7 @@ import {
   tagInstance,
 } from '../shared/aws';
 import {
-  LATEST_OUTFIT,
+  LATEST_SPINLOOP,
   type DeployConfig,
   logGroupEnvVar,
   type Runner,
@@ -53,8 +53,8 @@ const BOOT_LOG_GROUP = requireEnv('BOOT_LOG_GROUP');
 const ENGINE_LOG_GROUP = Object.fromEntries(
   RUNNERS.map((r) => [r, requireEnv(logGroupEnvVar(r))]),
 ) as Record<Runner, string>;
-// Where the outfit daemon writes the engine's stdout/stderr (tailed by the
-// CloudWatch agent): under the daemon's pinned config dir (OUTFIT_CONFIG_DIR),
+// Where the spinloop daemon writes the engine's stdout/stderr (tailed by the
+// CloudWatch agent): under the daemon's pinned config dir (SPINLOOP_CONFIG_DIR),
 // a fixed system path that does not depend on $HOME.
 const ENGINE_LOG_FILE = `${DAEMON_CONFIG_DIR}/daemon/engine.log`;
 
@@ -233,7 +233,7 @@ async function wake(
       {
         state: 'unconfigured',
         environment: env,
-        message: `${(err as Error).message} — run \`outfit remote deploy\``,
+        message: `${(err as Error).message} — run \`spinloop remote deploy\``,
         retry_after_seconds: 300,
       },
       { 'retry-after': '300' },
@@ -248,7 +248,7 @@ async function wake(
     return jsonResponse(503, {
       state: 'undeployed',
       environment: env,
-      message: `environment ${JSON.stringify(env)} has no deployed infrastructure — run \`outfit remote deploy\``,
+      message: `environment ${JSON.stringify(env)} has no deployed infrastructure — run \`spinloop remote deploy\``,
       retry_after_seconds: 300,
     });
   }
@@ -542,10 +542,10 @@ function cloudwatchAgentConfig(env: string, runner: Runner): string {
 }
 
 /**
- * The outfit daemon's binary, fetched and installed at boot rather than baked
- * into the AMI — so an outfit release reaches an environment without a
+ * The spinloop daemon's binary, fetched and installed at boot rather than baked
+ * into the AMI — so an spinloop release reaches an environment without a
  * re-bake. The version comes from the deploy config: a pin is exact, and the
- * absent pin's default (LATEST_OUTFIT) is resolved from GitHub here at boot,
+ * absent pin's default (LATEST_SPINLOOP) is resolved from GitHub here at boot,
  * so "latest" stays the latest published release on every fresh launch.
  *
  * Idempotent: a re-run against an already-correct install skips the download,
@@ -555,29 +555,29 @@ function cloudwatchAgentConfig(env: string, runner: Runner): string {
  * leaves the previous state — no binary, or a previously verified one — never
  * a partial or unverified binary.
  */
-export function outfitInstallStep(version: string): string {
-  const pin = version === LATEST_OUTFIT ? '' : version;
-  return `# outfit itself — the daemon that hosts the engine and answers the control
+export function spinloopInstallStep(version: string): string {
+  const pin = version === LATEST_SPINLOOP ? '' : version;
+  return `# spinloop itself — the daemon that hosts the engine and answers the control
 # Lambdas over its loopback API. A pin is an exact release; an empty pin is
 # the deploy config's default (latest), resolved from GitHub here at boot.
-OUTFIT_VERSION='${pin}'
-if [ -z "$OUTFIT_VERSION" ]; then
-  OUTFIT_TAG=$(curl -fsSL https://api.github.com/repos/lucinate-ai/outfit/releases/latest | grep -o '"tag_name": *"[^"]*"' | head -n1 | cut -d'"' -f4)
-  OUTFIT_VERSION=\${OUTFIT_TAG#v}
+SPINLOOP_VERSION='${pin}'
+if [ -z "$SPINLOOP_VERSION" ]; then
+  SPINLOOP_TAG=$(curl -fsSL https://api.github.com/repos/spinloop-ai/spinloop/releases/latest | grep -o '"tag_name": *"[^"]*"' | head -n1 | cut -d'"' -f4)
+  SPINLOOP_VERSION=\${SPINLOOP_TAG#v}
 fi
-test -n "$OUTFIT_VERSION" || { echo "outfit version unresolved — check the deploy config's outfitVersion" >&2; exit 1; }
-if [ -x /usr/local/bin/outfit ] && [ "$(/usr/local/bin/outfit version)" = "$OUTFIT_VERSION" ]; then
-  echo "outfit \${OUTFIT_VERSION} already installed"
+test -n "$SPINLOOP_VERSION" || { echo "spinloop version unresolved — check the deploy config's spinloopVersion" >&2; exit 1; }
+if [ -x /usr/local/bin/spinloop ] && [ "$(/usr/local/bin/spinloop version)" = "$SPINLOOP_VERSION" ]; then
+  echo "spinloop \${SPINLOOP_VERSION} already installed"
 else
-  OUTFIT_URL="https://github.com/lucinate-ai/outfit/releases/download/v\${OUTFIT_VERSION}"
-  mkdir -p /tmp/outfit-dl
-  curl -fsSL "$OUTFIT_URL/outfit_linux_amd64.tar.gz" -o /tmp/outfit-dl/outfit_linux_amd64.tar.gz
-  curl -fsSL "$OUTFIT_URL/checksums.txt" -o /tmp/outfit-dl/checksums.txt
-  (cd /tmp/outfit-dl && grep ' outfit_linux_amd64.tar.gz$' checksums.txt | sha256sum -c -)
-  tar -xzf /tmp/outfit-dl/outfit_linux_amd64.tar.gz -C /tmp/outfit-dl
-  install -m 0755 /tmp/outfit-dl/outfit /usr/local/bin/outfit
-  /usr/local/bin/outfit version
-  rm -rf /tmp/outfit-dl
+  SPINLOOP_URL="https://github.com/spinloop-ai/spinloop/releases/download/v\${SPINLOOP_VERSION}"
+  mkdir -p /tmp/spinloop-dl
+  curl -fsSL "$SPINLOOP_URL/spinloop_linux_amd64.tar.gz" -o /tmp/spinloop-dl/spinloop_linux_amd64.tar.gz
+  curl -fsSL "$SPINLOOP_URL/checksums.txt" -o /tmp/spinloop-dl/checksums.txt
+  (cd /tmp/spinloop-dl && grep ' spinloop_linux_amd64.tar.gz$' checksums.txt | sha256sum -c -)
+  tar -xzf /tmp/spinloop-dl/spinloop_linux_amd64.tar.gz -C /tmp/spinloop-dl
+  install -m 0755 /tmp/spinloop-dl/spinloop /usr/local/bin/spinloop
+  /usr/local/bin/spinloop version
+  rm -rf /tmp/spinloop-dl
 fi
 `;
 }
@@ -588,7 +588,7 @@ export function buildInferenceUserData(env: string, cfg: DeployConfig): string {
   const runnerUnit = runnerSpec(cfg.runner).daemonBoot(cfg, modelDir, Number(ENGINE_PORT));
   const cwAgentConfig = cloudwatchAgentConfig(env, cfg.runner);
   // Common boot: log the GPU, add swap for the load spike, start the log
-  // shipper, install outfit (not baked into the AMI — see outfitInstallStep),
+  // shipper, install spinloop (not baked into the AMI — see spinloopInstallStep),
   // sync the weights from S3, fetch the environment's API key. Then the
   // daemon takes over: its deploy config is written, its unit enabled, and
   // the engine's first start requested over the control API.
@@ -623,7 +623,7 @@ CWCONFIG
 /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -s \\
   -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json || echo "CW_AGENT_START_FAILED"
 
-${outfitInstallStep(cfg.outfitVersion)}
+${spinloopInstallStep(cfg.spinloopVersion)}
 MODEL_DIR=${modelDir}
 mkdir -p "$MODEL_DIR"
 # --no-progress: without a TTY the sync writes a "Completed … MiB" line per

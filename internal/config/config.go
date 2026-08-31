@@ -1,11 +1,11 @@
-// Package config owns outfit's own config file — the small JSON document under
-// ${XDG_CONFIG_HOME:-~/.config}/outfit/config.json holding the machine-local
-// state: the default-harness preference and the Outfit alias registry.
+// Package config owns spinloop's own config file — the small JSON document under
+// ${XDG_CONFIG_HOME:-~/.config}/spinloop/config.json holding the machine-local
+// state: the default-harness preference and the Spinloop alias registry.
 //
 // It is a leaf package: it imports nothing else from this module, so both
 // internal/harness (for the preference) and cmd (for aliases) can depend on it
-// without a cycle, and locating an Outfit stays harness-agnostic. In particular
-// it must never import internal/outfit — parsing an Outfit to find its ALIAS is
+// without a cycle, and locating a Spinloop stays harness-agnostic. In particular
+// it must never import internal/spinloop — parsing a Spinloop to find its ALIAS is
 // the caller's job; this package is a dumb key/value store.
 //
 // Every write goes through Update, which is a read-modify-write of the whole
@@ -23,43 +23,43 @@ import (
 	"unicode"
 )
 
-// fileName is outfit's own config file, inside its config directory.
+// fileName is spinloop's own config file, inside its config directory.
 const fileName = "config.json"
 
-// DirEnvVar overrides outfit's config directory. When set, its value is that
-// directory verbatim — no "outfit" segment is appended — and it wins over
+// DirEnvVar overrides spinloop's config directory. When set, its value is that
+// directory verbatim — no "spinloop" segment is appended — and it wins over
 // XDG_CONFIG_HOME and the home-directory default. It exists so a service that
 // gets no $HOME (a bare systemd unit, say) can be told exactly where its
 // config lives, rather than silently resolving to the wrong place.
-const DirEnvVar = "OUTFIT_CONFIG_DIR"
+const DirEnvVar = "SPINLOOP_CONFIG_DIR"
 
-// Dir returns outfit's config directory — the single root every file outfit
+// Dir returns spinloop's config directory — the single root every file spinloop
 // owns resolves under (this package's config.json, and, via
 // internal/remote.ConfigHome, remote.json, the environment registry, the
 // daemon state dir and the CDK source cache). Resolution order:
 //
-//  1. OUTFIT_CONFIG_DIR, used verbatim;
-//  2. ${XDG_CONFIG_HOME}/outfit;
-//  3. ~/.config/outfit.
+//  1. SPINLOOP_CONFIG_DIR, used verbatim;
+//  2. ${XDG_CONFIG_HOME}/spinloop;
+//  3. ~/.config/spinloop.
 //
 // When none of those can be determined — no override, no XDG_CONFIG_HOME, and
-// no resolvable home — it returns an error naming OUTFIT_CONFIG_DIR, rather
-// than joining an empty home into a bogus relative ".config/outfit" as the
+// no resolvable home — it returns an error naming SPINLOOP_CONFIG_DIR, rather
+// than joining an empty home into a bogus relative ".config/spinloop" as the
 // earlier silent fallback did.
 func Dir() (string, error) {
 	if dir := os.Getenv(DirEnvVar); dir != "" {
 		return dir, nil
 	}
 	if xdg := os.Getenv("XDG_CONFIG_HOME"); xdg != "" {
-		return filepath.Join(xdg, "outfit"), nil
+		return filepath.Join(xdg, "spinloop"), nil
 	}
 	home, err := os.UserHomeDir()
 	if err != nil || home == "" {
 		return "", fmt.Errorf(
-			"cannot locate outfit's config directory: no home directory (%v); set %s to choose one",
+			"cannot locate spinloop's config directory: no home directory (%v); set %s to choose one",
 			err, DirEnvVar)
 	}
-	return filepath.Join(home, ".config", "outfit"), nil
+	return filepath.Join(home, ".config", "spinloop"), nil
 }
 
 // Path returns the config file's location, <config-dir>/config.json. It fails
@@ -72,7 +72,7 @@ func Path() (string, error) {
 	return filepath.Join(dir, fileName), nil
 }
 
-// File is outfit's config document.
+// File is spinloop's config document.
 //
 // Unknown top-level keys are round-tripped through extra, so a read-modify-write
 // by this version never drops what another version wrote — the same courtesy
@@ -190,7 +190,7 @@ func Update(mutate func(*File) error) error {
 	return f.Save()
 }
 
-// Alias returns the Outfit path registered under name.
+// Alias returns the Spinloop path registered under name.
 func (f *File) Alias(name string) (string, bool) {
 	path, ok := f.Aliases[name]
 	return path, ok
@@ -223,9 +223,9 @@ func (f *File) AliasNames() []string {
 	return names
 }
 
-// ValidAliasName checks that name can be typed where an Outfit path goes. It
+// ValidAliasName checks that name can be typed where a Spinloop path goes. It
 // has to be a plain name: anything path-shaped could be confused with a file,
-// and anything flag-shaped could not be passed to `outfit unalias` at all.
+// and anything flag-shaped could not be passed to `spinloop unalias` at all.
 func ValidAliasName(name string) error {
 	switch {
 	case name == "":

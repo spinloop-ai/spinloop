@@ -2,7 +2,7 @@
 
 The machine-readable description of the daemon's control API: what it covers,
 how it is kept honest against the implementation, and how a consumer gets the
-one matching the outfit version it is talking to. The API's *behaviour* is
+one matching the spinloop version it is talking to. The API's *behaviour* is
 specified by `daemon-api`; this is about the contract document describing it.
 
 ## ADDED Requirements

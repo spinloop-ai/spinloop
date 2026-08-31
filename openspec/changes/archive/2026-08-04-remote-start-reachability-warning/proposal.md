@@ -1,6 +1,6 @@
 ## Why
 
-After `outfit remote start` reports ready, inference traffic to the endpoint can still fail silently if the caller changed networks since deploy: the ingress security group admits only one CIDR, so a new address gets blocked. The control-plane calls succeed (they are SigV4 Lambda URLs), but the actual inference endpoint times out. The user's first sign is a hanging curl or a harness that can't connect.
+After `spinloop remote start` reports ready, inference traffic to the endpoint can still fail silently if the caller changed networks since deploy: the ingress security group admits only one CIDR, so a new address gets blocked. The control-plane calls succeed (they are SigV4 Lambda URLs), but the actual inference endpoint times out. The user's first sign is a hanging curl or a harness that can't connect.
 
 ## What Changes
 
@@ -21,8 +21,8 @@ After `outfit remote start` reports ready, inference traffic to the endpoint can
 
 ## Impact
 
-- `cmd/outfit/remote.go` — `cmdRemoteStart` gains the post-start probe call
+- `cmd/spinloop/remote.go` — `cmdRemoteStart` gains the post-start probe call
 - `internal/remote/remote.go` — new `ProbeReachability` function for the TCP check
-- `cmd/outfit/remote_test.go` — tests for the probe path and warning output
+- `cmd/spinloop/remote_test.go` — tests for the probe path and warning output
 - `internal/remote/remote_test.go` — unit tests for `ProbeReachability`
 - No new dependencies; uses stdlib `net` for TCP dial

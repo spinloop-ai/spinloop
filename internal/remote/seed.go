@@ -96,7 +96,7 @@ type SeedStopped struct {
 func seedURL(cfg Config) (string, error) {
 	if cfg.SeedURL == "" {
 		return "", fmt.Errorf(
-			"no seed_url configured: add the remote/ deployment's SeedUrl output to the remote config (or set OUTFIT_REMOTE_SEED_URL)")
+			"no seed_url configured: add the remote/ deployment's SeedUrl output to the remote config (or set SPINLOOP_REMOTE_SEED_URL)")
 	}
 	return cfg.SeedURL, nil
 }

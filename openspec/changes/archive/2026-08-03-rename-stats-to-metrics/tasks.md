@@ -1,6 +1,6 @@
 ## 1. Rename subcommand from `stats` to `metrics`
 
-- [x] 1.1 Rename `cmdRemoteStats` to `cmdRemoteMetrics` in `cmd/outfit/remote.go`
+- [x] 1.1 Rename `cmdRemoteStats` to `cmdRemoteMetrics` in `cmd/spinloop/remote.go`
 - [x] 1.2 Update dispatch switch: `case "stats"` to `case "metrics"`, handler to `cmdRemoteMetrics`
 - [x] 1.3 Update usage string in `cmdRemote`: `stats` to `metrics` in the error messages
 - [x] 1.4 Update `flag.NewFlagSet` name from `"remote stats"` to `"remote metrics"`
@@ -32,7 +32,7 @@
 
 ## 5. Update tests
 
-- [x] 5.1 Rename `cmd/outfit/remote_test.go` test functions: `TestRemoteStats_*` to `TestRemoteMetrics_*`
+- [x] 5.1 Rename `cmd/spinloop/remote_test.go` test functions: `TestRemoteStats_*` to `TestRemoteMetrics_*`
 - [x] 5.2 Update test assertions: command invocations from `stats` to `metrics`
 - [x] 5.3 Add test: `TestRemoteMetrics_DefaultFormat` — default format is table
 - [x] 5.4 Add test: `TestRemoteMetrics_JsonFormat` — JSON output is valid and contains expected fields

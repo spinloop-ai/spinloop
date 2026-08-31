@@ -2,14 +2,14 @@
 
 The idle Lambda already scrapes `/metrics` on the instance every 5 minutes via SSM RunCommand, parsing token counters and request counts to decide whether to terminate. That data is consumed once and discarded. The instance also runs `nvidia-smi`, `free`, and `vmstat`-queryable system stats that are never exposed to the user.
 
-The CLI today has no way to read live metrics. `outfit remote status` only reports instance state and health.
+The CLI today has no way to read live metrics. `spinloop remote status` only reports instance state and health.
 
 ## Goals / Non-Goals
 
 **Goals:**
-- User can run `outfit remote stats` and see token counts, resource usage, GPU info, and instance details
+- User can run `spinloop remote stats` and see token counts, resource usage, GPU info, and instance details
 - Works for both llama.cpp and vLLM backends
-- Runner (llama.cpp vs vLLM) is auto-detected from the Outfit — no manual configuration
+- Runner (llama.cpp vs vLLM) is auto-detected from the Spinloop — no manual configuration
 - GPU info shows per-GPU stats (`nvidia-smi -L`), with aggregated totals for multi-GPU
 - Optional `--cost` flag computes estimated session cost via AWS Price List API
 
@@ -33,9 +33,9 @@ The CLI has the instance's public URL from `remote.json`, but scraping `/metrics
 
 `nvidia-smi --query-gpu=index,utilization.gpu,memory.used,memory.total --format=csv,noheader` returns one line per GPU. For a single GPU (current `g6e.xlarge`), it's a simple display. For multi-GPU (`g6e.4xlarge` etc.), show each GPU's line plus an average utilization and summed memory.
 
-**Runner discovered from the Outfit's PROVIDER.**
+**Runner discovered from the Spinloop's PROVIDER.**
 
-The Outfit is resolved using the same logic as `start`/`stop`/`deploy` — `readOutfit()` — which carries `PROVIDER llamacpp` or `PROVIDER vllm`. No probing, no infra change. This also means `stats` requires an Outfit with a `REMOTE` instruction, matching the pattern of `deploy`.
+The Spinloop is resolved using the same logic as `start`/`stop`/`deploy` — `readSpinloop()` — which carries `PROVIDER llamacpp` or `PROVIDER vllm`. No probing, no infra change. This also means `stats` requires a Spinloop with a `REMOTE` instruction, matching the pattern of `deploy`.
 
 **Cost is optional and fetched live.**
 
@@ -43,7 +43,7 @@ The on-demand price for `g6e.xlarge` varies by region and AZ. Rather than hard-c
 
 **Tabular output, one key-value per line.**
 
-Consistent with `outfit remote status`. No JSON output for now (can be added later with `--json`).
+Consistent with `spinloop remote status`. No JSON output for now (can be added later with `--json`).
 
 ## Risks / Trade-offs
 

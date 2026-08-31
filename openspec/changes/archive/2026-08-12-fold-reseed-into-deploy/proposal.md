@@ -25,11 +25,11 @@ only remaining consumer of that file.
 - A deployment request MAY ask for its weights to be re-fetched even when they
   are already stored. The deploy Lambda then seeds unconditionally rather than
   only on absence.
-- `outfit remote deploy --reseed` sends that, and reports the seed it started
+- `spinloop remote deploy --reseed` sends that, and reports the seed it started
   the same way a first deploy does.
 - **BREAKING (tooling only)**: `remote/scripts/seed-model.mts` and the
   `pnpm seed-model` script are removed. The replacement is
-  `outfit remote deploy --reseed`, which needs no `cdk-outputs.json` and no
+  `spinloop remote deploy --reseed`, which needs no `cdk-outputs.json` and no
   local checkout of `remote/`.
 - The `ClientToken` idempotency guard and the runner-tagged AMI selection now
   apply to a forced re-seed too, because it goes through `launchSeedInstance`
@@ -58,7 +58,7 @@ None. This narrows an existing capability's behaviour to one code path.
 - `remote/scripts/seed-model.mts` — deleted.
 - `remote/package.json` — the `seed-model` script entry removed.
 - `remote/README.md`, `remote/docs/architecture.md` — both document the script.
-- `cmd/outfit/remote.go` — the `--reseed` flag and its wiring.
+- `cmd/spinloop/remote.go` — the `--reseed` flag and its wiring.
 - `internal/remote/remote.go` — the request body gains the field.
 - `docs/openapi.yaml` — guarded by a contract test against the Go types.
 - No infrastructure change: same Lambda, same seed role, same bucket.

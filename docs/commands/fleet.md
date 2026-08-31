@@ -1,21 +1,21 @@
-# outfit fleet
+# spinloop fleet
 
 Observe and drive every engine you run, from one place. Each machine runs
-[`outfit daemon`](serve.md#the-control-api---api-and-outfit-daemon); a
-`fleet.yaml` names them, and `outfit fleet` fans out over their control APIs.
+[`spinloop daemon`](serve.md#the-control-api---api-and-spinloop-daemon); a
+`fleet.yaml` names them, and `spinloop fleet` fans out over their control APIs.
 
 ```sh
-outfit fleet status          # one row per node: state and what it serves
-outfit fleet metrics         # each node's engine + system metrics
-outfit fleet metrics -w      # the same, redrawn in place until interrupted
-outfit fleet dashboard       # the interactive tiled view — watch it, drive it
-outfit fleet route my-outfit # which node a harness launch would pick
-outfit fleet start gpu-box   # start one node's engine
-outfit fleet stop gpu-box    # stop it
+spinloop fleet status          # one row per node: state and what it serves
+spinloop fleet metrics         # each node's engine + system metrics
+spinloop fleet metrics -w      # the same, redrawn in place until interrupted
+spinloop fleet dashboard       # the interactive tiled view — watch it, drive it
+spinloop fleet route my-spinloop # which node a harness launch would pick
+spinloop fleet start gpu-box   # start one node's engine
+spinloop fleet stop gpu-box    # stop it
 ```
 
-A fleet is also where [`outfit harness`](harness.md#launching-against-your-fleet)
-sends an agent: an Outfit naming a `FLEET` picks a node and launches against it,
+A fleet is also where [`spinloop harness`](harness.md#launching-against-your-fleet)
+sends an agent: a Spinloop naming a `FLEET` picks a node and launches against it,
 so the machine you are sitting at needs no engine of its own.
 
 ## Try it without any hardware
@@ -28,7 +28,7 @@ you can see all of this working before setting up a single machine:
 cd examples/fleet-docker && cp .env.example .env
 docker compose up -d --build
 set -a && . ./.env && set +a
-outfit fleet status --fleet ./fleet.yaml
+spinloop fleet status --fleet ./fleet.yaml
 ```
 
 ## `fleet.yaml`
@@ -47,13 +47,13 @@ nodes:
     tokenEnv: GPU_BOX_TOKEN   # the *name* of the variable, never the token
 ```
 
-The file is found the way an `Outfit` is: `./fleet.yaml` in the working
+The file is found the way a `Spinloop` is: `./fleet.yaml` in the working
 directory, or `--fleet <path>`.
 
 ### Where a node's engine answers
 
 A node's `host` and `port` name its **daemon**, which is a different port from
-the **engine** it supervises. For [routing](#which-node-would-i-get) outfit
+the **engine** it supervises. For [routing](#which-node-would-i-get) spinloop
 needs the engine's, and the daemon reports it — so most nodes need nothing
 more. Declare an `engine` block for the cases a daemon cannot describe:
 
@@ -71,7 +71,7 @@ nodes:
       path: /openai                  # when it is not the usual /v1
 ```
 
-Each field falls back independently to what outfit would otherwise derive: the
+Each field falls back independently to what spinloop would otherwise derive: the
 node's own `host`, and the port and path the daemon reports.
 
 An engine bound to loopback answers only on its own machine. Routing to it from
@@ -82,7 +82,7 @@ declare an `engine` block, which is you taking responsibility for reachability.
 ### Remote environments
 
 `kind` (defaulted to `daemon`) says how the fleet reaches a node. A node can
-also be an [`outfit remote`](remote.md) environment rather than a machine: its
+also be an [`spinloop remote`](remote.md) environment rather than a machine: its
 `name` is the registered environment it drives — no `host` needed — and it is
 reached through its control plane, which signs each call with your AWS
 credentials, so it needs no bearer token:
@@ -94,7 +94,7 @@ nodes:
 ```
 
 The environment's control URLs live in its `remote.json` (under
-`~/.config/outfit/remotes/<name>/`), written by `outfit remote deploy` and never
+`~/.config/spinloop/remotes/<name>/`), written by `spinloop remote deploy` and never
 stored in the fleet file. So a daemon and an environment sit side by side as the
 same kind of row, and an environment that has not been deployed yet shows as
 `config-error` on its row rather than blanking the fleet. See
@@ -117,7 +117,7 @@ nodes: …
   engine and leaving the others free to be woken for another model, or left
   asleep.
 
-`outfit harness --prefer <value>` and `outfit fleet route --prefer <value>`
+`spinloop harness --prefer <value>` and `spinloop fleet route --prefer <value>`
 override the file for one command, which is the cheap way to see what the other
 setting would do before committing to it.
 
@@ -125,7 +125,7 @@ setting would do before committing to it.
 
 `tokenEnv` names an environment variable; the value is resolved from the
 process environment first, then a `.env` beside the `fleet.yaml` — the same
-precedence outfit uses everywhere, so an exported value wins and the `.env`
+precedence spinloop uses everywhere, so an exported value wins and the `.env`
 only fills a gap. Put the secrets there:
 
 ```sh
@@ -184,9 +184,9 @@ has been started at all.
 
 ## Metrics
 
-`outfit fleet metrics` renders each node's engine and system metrics in the
+`spinloop fleet metrics` renders each node's engine and system metrics in the
 same `bar` (default), `table`, and `json` formats as
-[`outfit remote metrics`](remote.md) — they share the renderers, so a node in
+[`spinloop remote metrics`](remote.md) — they share the renderers, so a node in
 your fleet and a cloud endpoint look the same.
 
 Each node's block carries the same `last active` figure the status table
@@ -213,7 +213,7 @@ silently missing whatever was down:
 
 ## The dashboard
 
-`outfit fleet dashboard` is that same board as a live view: one tile per
+`spinloop fleet dashboard` is that same board as a live view: one tile per
 node, repainted in place, each drawing exactly what `fleet metrics`' bar
 format prints for the node — state and uptime, what it serves, the CPU/GPU/RAM
 bars, the token counters — so the view and the one-shot command never word a
@@ -222,8 +222,8 @@ whose token reference resolves to nothing holds that reason for the life of
 the view:
 
 ```sh
-outfit fleet dashboard                # ./fleet.yaml
-outfit fleet dashboard --fleet f.yaml # another fleet file
+spinloop fleet dashboard                # ./fleet.yaml
+spinloop fleet dashboard --fleet f.yaml # another fleet file
 ```
 
 | Key | Does |
@@ -275,7 +275,7 @@ keys the view answers to. `Esc` closes it and returns to the grid with the
 same node still selected.
 
 ```sh
-outfit fleet dashboard
+spinloop fleet dashboard
 # select a node, press Enter for its full metrics and log, Esc to go back
 ```
 
@@ -296,14 +296,14 @@ poll that simply ran late.
 
 ## Logs
 
-`outfit fleet logs` prints what your engines actually said — the answer to the
+`spinloop fleet logs` prints what your engines actually said — the answer to the
 question `fleet status` raises when it reports a node as `crashed`.
 
 ```sh
-outfit fleet logs              # the tail of every node's engine log
-outfit fleet logs gpu-box      # just that node
-outfit fleet logs -f           # follow, until you interrupt it
-outfit fleet logs --limit 500  # more backlog per node
+spinloop fleet logs              # the tail of every node's engine log
+spinloop fleet logs gpu-box      # just that node
+spinloop fleet logs -f           # follow, until you interrupt it
+spinloop fleet logs --limit 500  # more backlog per node
 ```
 
 Each node's daemon captures its engine's stdout and stderr to a file, and
@@ -342,18 +342,18 @@ on the node rather than anything at the client.
 
 ## Which node would I get?
 
-`outfit fleet route` reports the node a
+`spinloop fleet route` reports the node a
 [harness launch](harness.md#launching-against-your-fleet) would pick for an
-Outfit, and **changes nothing** — no config pushed, no engine started, no
+Spinloop, and **changes nothing** — no config pushed, no engine started, no
 harness config written:
 
 ```sh
-outfit fleet route my-outfit
-outfit fleet route --prefer active my-outfit
+spinloop fleet route my-spinloop
+spinloop fleet route --prefer active my-spinloop
 ```
 
 ```
-Outfit: ./my-outfit/Outfit
+Spinloop: ./my-spinloop/Spinloop
 Fleet:  ./fleet.yaml
 Prefer: idle
 
@@ -381,7 +381,7 @@ Use it to check a route before an agent depends on it, to see what the other
 `fleet start` and `fleet stop` take **one node**:
 
 ```sh
-outfit fleet start gpu-box
+spinloop fleet start gpu-box
 ```
 
 They deliberately refuse to act on the whole fleet — mutating every engine at
@@ -406,6 +406,6 @@ conflict, and stopping one that is not running succeeds quietly.
 
 - [`examples/fleet-local/`](../../examples/fleet-local/) — a fleet of one, on your own machine
 - [`examples/fleet-docker/`](../../examples/fleet-docker/) — a runnable fleet
-- [`outfit daemon`](serve.md) — what runs on each node
+- [`spinloop daemon`](serve.md) — what runs on each node
 - [HTTP Control API](../http-api.md) — the API the fleet client speaks
 - [Environment variables](../env-vars.md)

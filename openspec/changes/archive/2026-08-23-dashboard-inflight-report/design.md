@@ -5,7 +5,7 @@ refresh rounds, which land their `NodeResult` in the model's `results` on the
 group's cadence (2s local, 60s remote) and never look at the actions, and the
 per-node action, which carries the verb, the call's latest status line and the
 call's cancel. The tile draw — `dashTileContent` in
-`cmd/outfit/dashboard_render.go` — was the only layer that knew about both,
+`cmd/spinloop/dashboard_render.go` — was the only layer that knew about both,
 and it preferred the action case: whenever a node had an action in flight it
 rendered the verb and the action's line and did not consult `results` at all.
 

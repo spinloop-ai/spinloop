@@ -1,7 +1,7 @@
 # A mixed fleet
 
 One `fleet.yaml`, one set of commands, two kinds of node: machines running
-`outfit daemon` and [`outfit remote`](../../docs/commands/remote.md)
+`spinloop daemon` and [`spinloop remote`](../../docs/commands/remote.md)
 environments. The same fan-out reaches every node, so the fleet reads as a
 single table.
 
@@ -12,7 +12,7 @@ single table.
 On the box you want in the fleet, run the daemon:
 
 ```sh
-OUTFIT_API_TOKEN=… outfit daemon ./Outfit
+SPINLOOP_API_TOKEN=… spinloop daemon ./Spinloop
 ```
 
 Put that token in a `.env` beside `fleet.yaml` (copy [`.env.example`](.env.example)).
@@ -22,17 +22,17 @@ containers rather than real machines, see
 
 ### 2. Register the environments (the cloud nodes)
 
-Each remote environment is created and registered by an `outfit remote deploy`
-of an `Outfit` that says `REMOTE <name>` — see [`outfit
+Each remote environment is created and registered by a `spinloop remote deploy`
+of a `Spinloop` that says `REMOTE <name>` — see [`spinloop
 remote`](../../docs/commands/remote.md).
 
 ### 3. Observe the whole fleet
 
 ```sh
-outfit fleet status        # one row per node: the machine and the environments
-outfit fleet metrics -w    # a live dashboard
-outfit fleet start qwen    # wake a sleeping environment from zero
-outfit fleet stop gpu-box  # stop the machine's engine
+spinloop fleet status        # one row per node: the machine and the environments
+spinloop fleet metrics -w    # a live dashboard
+spinloop fleet start qwen    # wake a sleeping environment from zero
+spinloop fleet stop gpu-box  # stop the machine's engine
 ```
 
 Every node renders as the same kind of row: a daemon that is down shows
@@ -43,4 +43,4 @@ and the rest of the fleet still shows.
 
 - [`examples/fleet`](../fleet/README.md) — a fleet of daemons only
 - [`examples/fleet-remote`](../fleet-remote/README.md) — a fleet of remote environments only
-- [`outfit fleet`](../../docs/commands/fleet.md) — the fleet file, its node kinds, and routing
+- [`spinloop fleet`](../../docs/commands/fleet.md) — the fleet file, its node kinds, and routing

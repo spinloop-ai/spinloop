@@ -1,0 +1,1628 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"maps"
+	"net/http"
+	"os"
+	"os/signal"
+	"path/filepath"
+	"regexp"
+	"slices"
+	"strconv"
+	"strings"
+	"sync"
+	"syscall"
+	"time"
+
+	"github.com/spinloop-ai/spinloop/internal/contextsize"
+	"github.com/spinloop-ai/spinloop/internal/opencode"
+	"github.com/spinloop-ai/spinloop/internal/spinloop"
+	"github.com/spinloop-ai/spinloop/internal/spinloopsrc"
+	"github.com/spinloop-ai/spinloop/internal/preset"
+	"github.com/spinloop-ai/spinloop/internal/remote"
+	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
+)
+
+// cmdRemote dispatches the remote subcommands, which control the
+// scale-to-zero GPU inference instance defined in this repo's remote/:
+// start boots it and prints the endpoint exports, pause stops it without
+// terminating it (the sweep terminates stopped instances after their
+// retention, and a later start re-wakes them), stop shuts it down
+// immediately (its stop Lambda also runs on a schedule to auto-stop on
+// idle), status reports instance state and endpoint health, keep sets the
+// retention deadline to prevent the sweep from terminating the instance
+// early, and deploy sets what the instance will serve from the Spinloop itself.
+// Each subcommand takes an optional Spinloop path; see resolveRemoteConfig for
+// how the remote config is found.
+// cmdRemote reports the usage when no (named) subcommand is given, and rejects
+// the ones that are not named — the subcommands themselves are real commands
+// in the tree, so only the unknown and the bare cases reach here.
+// remoteParentFallback reports the usage when no (named) subcommand is given,
+// and rejects the ones that are not named — the subcommands themselves are real
+// commands in the tree, so only the unknown and the bare cases reach here.
+func remoteParentFallback(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: spinloop remote <bootstrap|start|pause|restart|stop|status|metrics|logs|deploy|seed|env|ls|keep> [path]")
+	}
+	return fmt.Errorf(
+		"unknown remote subcommand %q (expected bootstrap, start, pause, restart, stop, status, metrics, logs, deploy, seed, env, ls or keep)", args[0])
+}
+
+// cmdRemote runs the remote subcommands through the tree — the seam the suite
+// calls directly.
+func cmdRemote(args []string) error {
+	return execCmd(remoteCmd(), args)
+}
+
+// applySpinloopEnv makes the remote commands respect the Spinloop's local
+// environment. The AWS SDK's credential chain reads the process environment
+// directly, and the SPINLOOP_REMOTE_*/AWS_REGION lookups (Viper's AutomaticEnv
+// included) ultimately do the same, so the values have to be present in the
+// environment itself — a lookup closure would not reach the SDK. It therefore
+// mutates this process's environment, in two passes that give the precedence
+// ENV > process environment > .env:
+//
+//  1. the .env beside the Spinloop fills only gaps — a variable already set in
+//     the environment wins, so a deliberately exported credential is not shadowed;
+//  2. the Spinloop's ENV instructions override both.
+//
+// ENV (and .env) apply only to this local process; they are never sent to the
+// deployed instance — deployConfigFor builds the deploy payload from Spinloop
+// fields alone. spinloopPath is the Spinloop's own path; its directory is where
+// its .env lives. A URL-sourced Spinloop has no local directory to look beside,
+// so its .env read is skipped entirely — not attempted against a nonsense
+// path — leaving the Spinloop's own ENV instructions and the process
+// environment as the two remaining sources.
+func applySpinloopEnv(sel spinloop.Selection, spinloopPath string) error {
+	if !spinloopsrc.IsURL(spinloopPath) {
+		vars, err := opencode.ParseEnvFile(filepath.Join(filepath.Dir(spinloopPath), ".env"))
+		if err != nil {
+			return err
+		}
+		for key, value := range vars {
+			if os.Getenv(key) == "" {
+				if err := os.Setenv(key, value); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	for _, e := range sel.Env {
+		if err := os.Setenv(e.Key, e.Value); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// resolveRemoteConfig loads the remote config, preferring a Spinloop's REMOTE
+// instruction over the per-user file. An explicit [path] argument must name
+// a Spinloop (or a directory holding one) with a REMOTE instruction. With no
+// argument, ./Spinloop is consulted when present; the per-user config
+// (~/.config/spinloop/remote.json) is the fallback, so `spinloop remote` still
+// works outside any project. A relative REMOTE resolves against the Spinloop's
+// own source — a local directory when the Spinloop was read from disk,
+// URL-relative resolution when it was fetched from a URL — the same rule
+// PRESET uses.
+func resolveRemoteConfig(spinloopArg string) (remote.Config, error) {
+	if spinloopArg != "" {
+		sel, spinloopPath, err := readSpinloop("remote", spinloopArg)
+		if err != nil {
+			return remote.Config{}, err
+		}
+		if sel.Remote == "" {
+			return remote.Config{}, fmt.Errorf("%s has no REMOTE instruction", spinloopPath)
+		}
+		if err := applySpinloopEnv(sel, spinloopPath); err != nil {
+			return remote.Config{}, err
+		}
+		return resolveRemoteConfigForSpinloop(sel.Remote, spinloopPath)
+	}
+	if defaultSpinloopNamed() {
+		sel, spinloopPath, err := readSpinloop("remote", "")
+		if err != nil {
+			return remote.Config{}, err
+		}
+		if sel.Remote != "" {
+			if err := applySpinloopEnv(sel, spinloopPath); err != nil {
+				return remote.Config{}, err
+			}
+			return resolveRemoteConfigForSpinloop(sel.Remote, spinloopPath)
+		}
+	}
+	return remote.LoadDefault(viperGetenv())
+}
+
+// resolveRemotePath turns a Spinloop's REMOTE value into the config to read. A
+// bare name selects an environment from the per-user registry (always local);
+// a path or URL resolves against the Spinloop's own source — spinloopPath, the
+// Spinloop's own file (not its directory), so a relative REMOTE resolves
+// correctly whether the Spinloop came from local disk or a URL. Both the
+// control commands and apply's base-URL lookup go through here, so the two
+// never diverge.
+func resolveRemotePath(remoteValue, spinloopPath string) (string, error) {
+	if remote.IsEnvName(remoteValue) {
+		return remote.EnvConfigPath(remoteValue)
+	}
+	return spinloopsrc.Resolve(spinloopPath, remoteValue)
+}
+
+// defaultSpinloopNamed reports whether there is a default Spinloop for readSpinloop
+// to resolve — one named by SPINLOOP_ALIAS, or a ./Spinloop here. Only the
+// existence question is answered; readSpinloop does the resolving, so a variable
+// naming an alias that is unregistered or dangling fails there rather than
+// falling silently back to the per-user config.
+func defaultSpinloopNamed() bool {
+	// Same Viper read as readSpinloop's empty-path branch: the gate and the
+	// reader must count the same default, or a variable-named Spinloop is read
+	// by apply and skipped here.
+	return cliViper.GetString("alias") != "" || defaultSpinloopExists()
+}
+
+// defaultSpinloopExists reports whether the working directory holds a file
+// named exactly "Spinloop". A plain os.Stat would do, except that on
+// case-insensitive filesystems (macOS, Windows) it also matches a file named
+// "spinloop" — such as the binary `make build` drops in this repo's root — so
+// the directory listing is checked for the exact name instead.
+func defaultSpinloopExists() bool {
+	entries, err := os.ReadDir(".")
+	if err != nil {
+		return false
+	}
+	for _, entry := range entries {
+		if entry.Name() == spinloop.DefaultFile && !entry.IsDir() {
+			return true
+		}
+	}
+	return false
+}
+
+// remoteConfig reads the remote config a Spinloop's REMOTE names — a registry
+// environment or a file/URL, per resolveRemotePath. A config that is absent
+// yields the zero Config rather than an error, since a Spinloop may name a
+// remote config before the deployment that writes it exists; only a real
+// read, fetch, or parse failure is reported.
+func remoteConfig(remoteValue, spinloopPath string) (remote.Config, error) {
+	path, err := resolveRemotePath(remoteValue, spinloopPath)
+	if err != nil {
+		return remote.Config{}, err
+	}
+	if spinloopsrc.IsURL(path) {
+		data, err := spinloopsrc.Fetch(path)
+		if err != nil {
+			if errors.Is(err, spinloopsrc.ErrNotFound) {
+				return remote.Config{}, nil
+			}
+			return remote.Config{}, err
+		}
+		return remote.LoadConfigBytes(data, path, viperGetenv())
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return remote.Config{}, nil
+		}
+		return remote.Config{}, err
+	}
+	var cfg remote.Config
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return remote.Config{}, fmt.Errorf("parsing %s: %w", path, err)
+	}
+	return cfg, nil
+}
+
+// remoteBaseURL returns the endpoint address recorded in the remote config an
+// Spinloop's REMOTE names. The deployment generates that config, so the address
+// lives there rather than in the hand-written Spinloop — but only as a fallback:
+// a Spinloop that states its own BASEURL never asks. A config that is absent, or
+// that predates base_url, yields "" rather than an error.
+func remoteBaseURL(remoteValue, spinloopPath string) (string, error) {
+	cfg, err := remoteConfig(remoteValue, spinloopPath)
+	if err != nil {
+		return "", err
+	}
+	return cfg.BaseURL, nil
+}
+
+// remoteEnvName returns the harness provider name a Spinloop's REMOTE implies: the
+// bare name when REMOTE is a name, otherwise the environment field of the
+// remote.json it names. It yields "" when there is no REMOTE, or when a
+// path-form REMOTE names a config that is absent or records no environment — in
+// which case the caller keeps the PROVIDER value as the name.
+func remoteEnvName(remoteValue, spinloopPath string) (string, error) {
+	if remoteValue == "" {
+		return "", nil
+	}
+	if remote.IsEnvName(remoteValue) {
+		return remoteValue, nil
+	}
+	cfg, err := remoteConfig(remoteValue, spinloopPath)
+	if err != nil {
+		return "", err
+	}
+	return cfg.Environment, nil
+}
+
+// resolveRemoteConfigForSpinloop resolves the remote config for a Spinloop's
+// REMOTE value, given the Spinloop's own path. Unlike resolveRemoteConfig it
+// does not consult the working directory or the per-user fallback — the REMOTE
+// is already known from the parsed Spinloop, so it goes straight to resolving
+// that path, fetching over HTTP when it resolves to a URL.
+func resolveRemoteConfigForSpinloop(remoteValue, spinloopPath string) (remote.Config, error) {
+	path, err := resolveRemotePath(remoteValue, spinloopPath)
+	if err != nil {
+		return remote.Config{}, err
+	}
+	if spinloopsrc.IsURL(path) {
+		data, err := spinloopsrc.Fetch(path)
+		if err != nil {
+			return remote.Config{}, err
+		}
+		return remote.LoadConfigBytes(data, path, viperGetenv())
+	}
+	return remote.LoadConfigFile(path, viperGetenv())
+}
+
+// spinloopArg returns the optional positional Spinloop path after the flags.
+// spinloopArg is the first positional argument of a remote subcommand — the
+// Spinloop path — or "" when none was given.
+func spinloopArg(args []string) string {
+	if len(args) > 0 {
+		return args[0]
+	}
+	return ""
+}
+
+// heartbeatEvery is how often a start that is still waiting says so. The start
+// endpoint blocks until the model is serving, which on a cold start is minutes,
+// so without this the command looks hung. A variable so tests can shorten it.
+var heartbeatEvery = 30 * time.Second
+
+// startProgress reports what a slow start is doing. Everything it writes goes
+// to stderr, so `spinloop remote start | grep '^export '` still yields just the
+// exports while the user watching the terminal still sees progress.
+type startProgress struct {
+	mu    sync.Mutex
+	since time.Time
+	state string // most recent state the endpoint reported; "" until the first poll
+	done  chan struct{}
+	stop  sync.Once
+}
+
+func newStartProgress(every time.Duration) *startProgress {
+	p := &startProgress{since: time.Now(), done: make(chan struct{})}
+	go func() {
+		ticker := time.NewTicker(every)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-p.done:
+				return
+			case <-ticker.C:
+				p.line(p.heartbeat())
+			}
+		}
+	}()
+	return p
+}
+
+// setState records the state of the latest poll so the heartbeat can describe
+// what is actually happening. Called from remote.Start on every poll.
+func (p *startProgress) setState(state string) {
+	p.mu.Lock()
+	p.state = state
+	p.mu.Unlock()
+}
+
+// heartbeat is the periodic line. It reflects the latest state so it does not
+// claim the instance is booting when it is really blocked on capacity. Any
+// state other than no-capacity (including the unset state before the first
+// poll) reads as a normal cold start.
+func (p *startProgress) heartbeat() string {
+	p.mu.Lock()
+	state := p.state
+	p.mu.Unlock()
+	if state == "no-capacity" {
+		return fmt.Sprintf("still waiting for capacity (%s elapsed)", p.elapsed())
+	}
+	return fmt.Sprintf("still starting (%s elapsed)", p.elapsed())
+}
+
+func (p *startProgress) elapsed() time.Duration {
+	return time.Since(p.since).Round(time.Second)
+}
+
+// line prints one progress line. Serialised, so a heartbeat landing at the same
+// moment as a retry notice cannot interleave with it.
+func (p *startProgress) line(msg string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	fmt.Fprintln(os.Stderr, msg)
+}
+
+func (p *startProgress) close() {
+	p.stop.Do(func() { close(p.done) })
+}
+
+// The variables a remote endpoint is addressed by. The instance is started
+// with its API key as --api-key on an OpenAI-compatible server, so these are
+// the names every consumer uses: the export lines below, and the environment
+// `spinloop harness` hands the agent it launches.
+const (
+	remoteBaseURLEnv = "OPENAI_BASE_URL"
+	remoteAPIKeyEnv  = "OPENAI_API_KEY"
+)
+
+// printRemoteEnv prints the remote endpoint's environment variables as shell
+// export lines to stdout, suitable for eval. Nothing else on this path may
+// write to stdout, or the eval fails on the stray line.
+func printRemoteEnv(resp *remote.Response) {
+	fmt.Printf("export %s=%s\n", remoteBaseURLEnv, resp.BaseURL)
+	fmt.Printf("export %s=%s\n", remoteAPIKeyEnv, resp.APIKey)
+}
+
+func remoteEnvCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "env",
+		Short: "print the running endpoint's env vars",
+		Long: `returns the running endpoint's environment variables without
+starting it.`,
+		Args:              cobra.ArbitraryArgs,
+		SilenceErrors:     true,
+		SilenceUsage:      true,
+		ValidArgsFunction: aliasSlot,
+		RunE: func(c *cobra.Command, args []string) error {
+			resolve(c)
+			return runRemoteEnv(args)
+		},
+	}
+}
+
+// runRemoteEnv is the body of `spinloop remote env`.
+func runRemoteEnv(args []string) error {
+	cfg, err := resolveRemoteConfig(spinloopArg(args))
+	if err != nil {
+		return err
+	}
+	resp, err := remote.Env(context.Background(), cfg)
+	if err != nil {
+		return err
+	}
+	printRemoteEnv(resp)
+	return nil
+}
+
+// prewarmFlag is the start's page-cache pre-warm choice: bare --prewarm
+// enables it, --prewarm=false disables it, and an absent flag sends no choice
+// at all, in which case the cloud default (enabled) applies. A *bool rather
+// than a bool: nil is the "unset" state a plain flag cannot hold.
+type prewarmFlag struct {
+	choice *bool
+}
+
+func (f *prewarmFlag) String() string {
+	if f.choice == nil {
+		return ""
+	}
+	return strconv.FormatBool(*f.choice)
+}
+
+func (f *prewarmFlag) Type() string { return "bool" }
+
+func (f *prewarmFlag) Set(v string) error {
+	b, err := strconv.ParseBool(v)
+	if err != nil {
+		return fmt.Errorf("--prewarm takes a boolean, got %q", v)
+	}
+	f.choice = &b
+	return nil
+}
+
+const prewarmUsage = "pre-warm the model's page cache before the engine loads it: --prewarm to enable, --prewarm=false to disable; unset leaves the cloud default (enabled) in place"
+
+// registerPrewarmChoice binds the start's pre-warm choice to a command's flag
+// set. The caller's variable is what the body reads after parsing. Bare
+// --prewarm arrives as NoOptDefVal, the same way -O does.
+func registerPrewarmChoice(fs *pflag.FlagSet, f *prewarmFlag) {
+	fs.Var(f, "prewarm", prewarmUsage)
+	fs.Lookup("prewarm").NoOptDefVal = "true"
+}
+
+func remoteStartCmd() *cobra.Command {
+	var timeout time.Duration
+	const timeoutUsage = "overall time to wait for the endpoint"
+	var printEnv bool
+	var keepD string
+	var prewarm prewarmFlag
+	c := &cobra.Command{
+		Use:   "start",
+		Short: "boot the instance and print its endpoint",
+		Long: `boots the instance and, with --env/-e, prints the exports your
+agent needs.`,
+		Args:              cobra.ArbitraryArgs,
+		SilenceErrors:     true,
+		SilenceUsage:      true,
+		ValidArgsFunction: aliasSlot,
+		RunE: func(c *cobra.Command, args []string) error {
+			resolve(c)
+			return runRemoteStart(args, timeout, printEnv, keepD, prewarm.choice)
+		},
+	}
+	fs := c.Flags()
+	fs.DurationVarP(&timeout, "timeout", "t", 15*time.Minute, timeoutUsage)
+	fs.BoolVarP(&printEnv, "env", "e", false, "print export lines to stdout for eval")
+	fs.StringVar(&keepD, "keep", "", "retain instance until now + DURATION (e.g. 4h, 60m), preventing the idle sweep from stopping it")
+	registerPrewarmChoice(fs, &prewarm)
+	return c
+}
+
+// runRemoteStart is the body of `spinloop remote start`.
+func runRemoteStart(args []string, timeout time.Duration, printEnv bool, keepD string, prewarm *bool) error {
+	cfg, err := resolveRemoteConfig(spinloopArg(args))
+	if err != nil {
+		return err
+	}
+
+	var retainUntil *time.Time
+	if keepD != "" {
+		d, err := time.ParseDuration(keepD)
+		if err != nil {
+			return fmt.Errorf("invalid --keep duration %q: %w", keepD, err)
+		}
+		if d <= 0 {
+			return fmt.Errorf("--keep duration must be positive, got %q", keepD)
+		}
+		t := time.Now().Add(d)
+		retainUntil = &t
+	}
+
+	progress := newStartProgress(heartbeatEvery)
+	defer progress.close()
+	progress.line(fmt.Sprintf(
+		"Starting the endpoint. It boots, fetches the weights, and loads them into the GPU,\nwhich takes several minutes from cold; waiting up to %s.", timeout))
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	resp, err := remote.Start(ctx, cfg, prewarm, progress.line, progress.setState, retainUntil)
+	if err != nil {
+		return err
+	}
+	progress.close()
+	progress.line(fmt.Sprintf("ready after %s", progress.elapsed()))
+
+	// Probe the inference endpoint to check whether this network can actually
+	// reach it — the control plane (SigV4 Lambda URLs) works from anywhere,
+	// but the inference port is guarded by a security group that admits only
+	// one CIDR. A changed network means start succeeds but inference hangs.
+	if err := remote.ProbeReachability(resp.BaseURL); err != nil {
+		cidr := "<your-ip>/32"
+		if detected, detErr := detectPublicCIDRFn(context.Background()); detErr == nil {
+			cidr = detected
+		}
+		fmt.Fprintln(os.Stderr, "the endpoint is ready but not reachable from this network — its ingress admits a different address.")
+		fmt.Fprintf(os.Stderr, "Re-admit this machine with:\n  spinloop remote deploy --overwrite --allowed-cidr %s\n", cidr)
+	}
+
+	if retainUntil != nil || resp.RetainUntil != "" {
+		retainStr := resp.RetainUntil
+		if retainStr == "" && retainUntil != nil {
+			retainStr = retainUntil.Format(time.RFC3339)
+		}
+		progress.line(fmt.Sprintf("retain until: %s", retainStr))
+	}
+
+	if printEnv {
+		envCtx, envCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		envResp, err := remote.Env(envCtx, cfg)
+		envCancel()
+		if err != nil {
+			return err
+		}
+		printRemoteEnv(envResp)
+	}
+	return nil
+}
+
+// cmdRemoteList prints the registered remote environments, each with its base
+// URL and region, marking any whose remote.json is missing or unreadable. It
+// contacts no endpoint. Environments are registered under
+// ~/.config/spinloop/remotes/<name>/ (by `spinloop remote bootstrap`, or by hand).
+func remoteListCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:               "ls",
+		Short:             "list the registered environments",
+		Args:              cobra.ArbitraryArgs,
+		SilenceErrors:     true,
+		SilenceUsage:      true,
+		ValidArgsFunction: noPositionals,
+		RunE: func(c *cobra.Command, _ []string) error {
+			resolve(c)
+			return runRemoteList()
+		},
+	}
+}
+
+// runRemoteList is the body of `spinloop remote ls`.
+func runRemoteList() error {
+	envs, err := remote.ListEnvironments()
+	if err != nil {
+		return err
+	}
+	if len(envs) == 0 {
+		fmt.Println("No remote environments registered. Register one with `spinloop remote bootstrap`.")
+		return nil
+	}
+	for _, e := range envs {
+		if !e.OK {
+			fmt.Printf("%s\t(missing or unreadable remote.json)\n", e.Name)
+			continue
+		}
+		base := e.BaseURL
+		if base == "" {
+			base = "(no base URL)"
+		}
+		fmt.Printf("%s\t%s\t%s\n", e.Name, base, e.Region)
+	}
+	return nil
+}
+
+func remoteKeepCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:               "keep",
+		Short:             "defer the instance's idle termination",
+		Args:              cobra.ArbitraryArgs,
+		SilenceErrors:     true,
+		SilenceUsage:      true,
+		ValidArgsFunction: keepSlot,
+		RunE: func(c *cobra.Command, rest []string) error {
+			resolve(c)
+			return runRemoteKeep(rest)
+		},
+	}
+}
+
+// runRemoteKeep is the body of `spinloop remote keep`.
+func runRemoteKeep(rest []string) error {
+	if len(rest) == 0 {
+		return fmt.Errorf("usage: spinloop remote keep <duration> [path]")
+	}
+	durationStr := rest[0]
+	d, err := time.ParseDuration(durationStr)
+	if err != nil {
+		return fmt.Errorf("invalid duration %q: %w", durationStr, err)
+	}
+	if d <= 0 {
+		return fmt.Errorf("duration must be positive, got %q", durationStr)
+	}
+	// The Spinloop path is the second positional, after the duration.
+	spinloopPath := ""
+	if len(rest) > 1 {
+		spinloopPath = rest[1]
+	}
+	cfg, err := resolveRemoteConfig(spinloopPath)
+	if err != nil {
+		return err
+	}
+	retainUntil := time.Now().Add(d)
+	_, err = remote.Keep(context.Background(), cfg, retainUntil)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("retain until: %s (in %s)\n", retainUntil.Format(time.RFC3339), d)
+	return nil
+}
+
+func remotePauseCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:               "pause",
+		Short:             "stop the instance without terminating it",
+		Args:              cobra.ArbitraryArgs,
+		SilenceErrors:     true,
+		SilenceUsage:      true,
+		ValidArgsFunction: aliasSlot,
+		RunE: func(c *cobra.Command, args []string) error {
+			resolve(c)
+			return runRemotePause(args)
+		},
+	}
+}
+
+// runRemotePause is the body of `spinloop remote pause`.
+func runRemotePause(args []string) error {
+	cfg, err := resolveRemoteConfig(spinloopArg(args))
+	if err != nil {
+		return err
+	}
+	resp, err := remote.Pause(context.Background(), cfg, false)
+	if err != nil {
+		return err
+	}
+	// State is "stopping" (EC2 has not finished) or "stopped" (it already
+	// was); either way the instance is re-wakeable, and the control plane's
+	// sweep terminates it once the stop retention passes.
+	fmt.Printf("state: %s\n", resp.State)
+	fmt.Println("the endpoint can be re-woken with `spinloop remote start`, or terminated now with `spinloop remote stop`")
+	return nil
+}
+
+func remoteRestartCmd() *cobra.Command {
+	var force bool
+	var timeout time.Duration
+	const timeoutUsage = "overall time to wait for the endpoint"
+	var prewarm prewarmFlag
+	c := &cobra.Command{
+		Use:   "restart",
+		Short: "stop the instance and bring it back",
+		Long: `stops the instance without terminating it, then wakes it and blocks
+until the model serves again. The boot disk and its weights survive, and the
+endpoint's address is unchanged. With --force the graceful engine stop is
+skipped: for when the engine or its daemon will not answer it.`,
+		Args:              cobra.ArbitraryArgs,
+		SilenceErrors:     true,
+		SilenceUsage:      true,
+		ValidArgsFunction: aliasSlot,
+		RunE: func(c *cobra.Command, args []string) error {
+			resolve(c)
+			return runRemoteRestart(args, force, timeout, prewarm.choice)
+		},
+	}
+	fs := c.Flags()
+	fs.BoolVarP(&force, "force", "F", false, "skip the graceful engine stop")
+	fs.DurationVarP(&timeout, "timeout", "t", 15*time.Minute, timeoutUsage)
+	registerPrewarmChoice(fs, &prewarm)
+	return c
+}
+
+// runRemoteRestart is the body of `spinloop remote restart`. It stops the
+// instance in the pause manner — without terminating it, so the boot disk and
+// weights survive and the address does not change — and reuses the wake's own
+// deadline and retry handling to block until the model serves again. prewarm
+// rides on the wake's start exactly as a start's would.
+func runRemoteRestart(args []string, force bool, timeout time.Duration, prewarm *bool) error {
+	cfg, err := resolveRemoteConfig(spinloopArg(args))
+	if err != nil {
+		return err
+	}
+
+	progress := newStartProgress(heartbeatEvery)
+	defer progress.close()
+
+	// A lenient status call up front: its reply only feeds a progress line
+	// saying where the instance is now (running, or already stopped / no
+	// instance). It gates nothing — the stop Lambda is correct for every
+	// state — so a failed check just means we do not know the starting point.
+	if status, err := remote.Status(context.Background(), cfg); err == nil {
+		switch status.State {
+		case "stopped", "undeployed":
+			progress.line(fmt.Sprintf("the instance is already %s; waking it", status.State))
+		default:
+			progress.line(fmt.Sprintf("the instance is %s; stopping it, then waking it", status.State))
+		}
+	}
+
+	stopPhase := "stopping the instance, then waking it"
+	if force {
+		stopPhase = "stopping the instance (the graceful engine stop is skipped), then waking it"
+	}
+	progress.line(stopPhase)
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	resp, err := remote.Restart(ctx, cfg, force, prewarm, progress.line, progress.setState)
+	if err != nil {
+		return err
+	}
+	progress.close()
+	progress.line(fmt.Sprintf("ready after %s", progress.elapsed()))
+	fmt.Printf("base url: %s\n", resp.BaseURL)
+	return nil
+}
+
+func remoteStopCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:               "stop",
+		Short:             "shut the instance down",
+		Long:              `shuts the instance down rather than waiting for the idle timer.`,
+		Args:              cobra.ArbitraryArgs,
+		SilenceErrors:     true,
+		SilenceUsage:      true,
+		ValidArgsFunction: aliasSlot,
+		RunE: func(c *cobra.Command, args []string) error {
+			resolve(c)
+			return runRemoteStop(args)
+		},
+	}
+}
+
+// runRemoteStop is the body of `spinloop remote stop`.
+func runRemoteStop(args []string) error {
+	cfg, err := resolveRemoteConfig(spinloopArg(args))
+	if err != nil {
+		return err
+	}
+	resp, err := remote.Stop(context.Background(), cfg)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("state: %s\n", resp.State)
+	return nil
+}
+
+func remoteStatusCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:               "status",
+		Short:             "report the instance's state",
+		Args:              cobra.ArbitraryArgs,
+		SilenceErrors:     true,
+		SilenceUsage:      true,
+		ValidArgsFunction: aliasSlot,
+		RunE: func(c *cobra.Command, args []string) error {
+			resolve(c)
+			return runRemoteStatus(args)
+		},
+	}
+}
+
+// runRemoteStatus is the body of `spinloop remote status`.
+func runRemoteStatus(args []string) error {
+	cfg, err := resolveRemoteConfig(spinloopArg(args))
+	if err != nil {
+		return err
+	}
+	resp, err := remote.Status(context.Background(), cfg)
+	if err != nil {
+		return err
+	}
+	// The shared facts — state, since-last-work, version — come from the same
+	// source `fleet status` reads, so the two status views cannot word them
+	// differently. This view keeps its own extra facts (health, base URL) and
+	// its key-value layout. The version is only in the stats reply, which
+	// reads the daemon over SSM: attempt it only when the instance is running,
+	// since the daemon will not answer when it is stopped.
+	fact := statusFact{
+		State:        resp.State,
+		LastActiveAt: resp.LastActiveAt,
+		IdleSeconds:  resp.IdleSeconds,
+	}
+	if resp.State == "running" || resp.State == "ready" {
+		if stats, err := remote.Stats(context.Background(), cfg); err == nil {
+			fact.Version = stats.Version
+		}
+	}
+	fmt.Printf("state: %s\n", fact.State)
+	if resp.Healthy != nil {
+		fmt.Printf("healthy: %t\n", *resp.Healthy)
+	}
+	if fact.Version != "" {
+		fmt.Printf("version: %s\n", fact.Version)
+	}
+	if resp.BaseURL != "" {
+		fmt.Printf("base_url: %s\n", resp.BaseURL)
+	}
+	if text := lastActiveText(fact.LastActiveAt, fact.IdleSeconds); text != "" {
+		fmt.Printf("last active: %s\n", text)
+	}
+	if resp.RetainUntil != "" {
+		fmt.Printf("retain until: %s\n", resp.RetainUntil)
+	}
+	return nil
+}
+
+// cmdRemoteMetrics queries the stats Lambda for instance metrics: token usage,
+// GPU, CPU, and RAM utilization. With --format=json it outputs JSON; the
+// default is a key-value table. With --cost, it looks up the on-demand price
+// for the instance type from the AWS Price List API. With --watch it polls
+// every 60 seconds until interrupted.
+func remoteMetricsCmd() *cobra.Command {
+	var (
+		withCost bool
+		format   string
+		watch    bool
+	)
+	c := &cobra.Command{
+		Use:               "metrics",
+		Short:             "sample the instance's metrics",
+		Args:              cobra.ArbitraryArgs,
+		SilenceErrors:     true,
+		SilenceUsage:      true,
+		ValidArgsFunction: aliasSlot,
+		RunE: func(c *cobra.Command, args []string) error {
+			resolve(c)
+			return runRemoteMetrics(args, withCost, format, watch)
+		},
+	}
+	fs := c.Flags()
+	fs.BoolVar(&withCost, "cost", false, "include cost estimate from AWS Price List API")
+	fs.StringVar(&format, "format", "bar", "output format: bar (default), table or json")
+	fs.BoolVarP(&watch, "watch", "w", false, "poll metrics every 60 seconds")
+	return c
+}
+
+// runRemoteMetrics is the body of `spinloop remote metrics`.
+func runRemoteMetrics(args []string, withCost bool, format string, watch bool) error {
+	if format != "table" && format != "json" && format != "bar" {
+		return fmt.Errorf("--format must be \"table\", \"bar\", or \"json\", got %q", format)
+	}
+
+	cfg, err := resolveRemoteConfig(spinloopArg(args))
+	if err != nil {
+		return err
+	}
+
+	if watch {
+		return runMetricsWatch(cfg, format, withCost)
+	}
+	return runMetricsOnce(context.Background(), cfg, format, withCost, os.Stdout)
+}
+
+func runMetricsOnce(ctx context.Context, cfg remote.Config, format string, withCost bool, w io.Writer) error {
+	resp, err := remote.Stats(ctx, cfg)
+	if err != nil {
+		return err
+	}
+
+	if format == "json" {
+		return formatMetricsJSON(resp, withCost, cfg, w)
+	}
+	if format == "bar" {
+		return formatMetricsBar(resp, cfg, w)
+	}
+	return formatMetricsTable(ctx, resp, withCost, cfg, w)
+}
+
+func runMetricsWatch(cfg remote.Config, format string, withCost bool) error {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-sigCh
+		cancel()
+	}()
+
+	first := true
+	for {
+		// Fetch into a buffer first so the clear-and-render is instant.
+		var buf strings.Builder
+		if err := runMetricsOnce(ctx, cfg, format, withCost, &buf); err != nil {
+			if ctx.Err() != nil {
+				return nil
+			}
+			return err
+		}
+		if !first {
+			fmt.Fprint(os.Stdout, "\033[2J\033[H")
+		}
+		first = false
+		fmt.Fprint(os.Stdout, buf.String())
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-time.After(metricsWatchInterval):
+		}
+	}
+}
+
+func formatMetricsTable(ctx context.Context, resp *remote.StatsResponse, withCost bool, cfg remote.Config, w io.Writer) error {
+	fmt.Fprintf(w, "environment:  %s\n", resp.Environment)
+	fmt.Fprintf(w, "state:        %s\n", resp.State)
+
+	if resp.State != "running" {
+		if resp.Runner != "" {
+			fmt.Fprintf(w, "runner:       %s\n", resp.Runner)
+		}
+		if resp.ModelID != "" {
+			fmt.Fprintf(w, "model:        %s\n", resp.ModelID)
+		}
+		renderLastActiveKeyValue(w, resp.LastActiveAt, resp.IdleSeconds)
+		return nil
+	}
+
+	if resp.InstanceID != "" {
+		fmt.Fprintf(w, "instance:     %s\n", resp.InstanceID)
+	}
+	if resp.InstanceType != "" {
+		fmt.Fprintf(w, "instanceType: %s\n", resp.InstanceType)
+	}
+	if resp.Runner != "" {
+		fmt.Fprintf(w, "runner:       %s\n", resp.Runner)
+	}
+	if resp.ModelID != "" {
+		fmt.Fprintf(w, "model:        %s\n", resp.ModelID)
+	}
+	if resp.Version != "" {
+		fmt.Fprintf(w, "version:      %s\n", resp.Version)
+	}
+	if resp.UptimeSeconds > 0 {
+		fmt.Fprintf(w, "uptime:       %s\n", formatDuration(resp.UptimeSeconds))
+	}
+	renderLastActiveKeyValue(w, resp.LastActiveAt, resp.IdleSeconds)
+
+	renderTokenLines(w, resp.Tokens)
+	renderGPUTable(w, resp.GPUs)
+	renderCPUMemTable(w, resp.CPU, resp.Memory)
+
+	if withCost && resp.UptimeSeconds > 0 && resp.InstanceType != "" {
+		if price, err := getOnDemandPrice(ctx, cfg.Region, resp.InstanceType); err == nil {
+			hours := float64(resp.UptimeSeconds) / 3600.0
+			fmt.Fprintf(w, "  cost so far:  $%.2f (%.4f/hr)\n", hours*price, price)
+		}
+	}
+
+	renderCollectionErrors(os.Stderr, resp.Errors)
+
+	return nil
+}
+
+func formatMetricsJSON(resp *remote.StatsResponse, withCost bool, cfg remote.Config, w io.Writer) error {
+	var costInfo *float64
+	if withCost && resp.UptimeSeconds > 0 && resp.InstanceType != "" {
+		if price, err := getOnDemandPrice(context.Background(), cfg.Region, resp.InstanceType); err == nil {
+			hours := float64(resp.UptimeSeconds) / 3600.0
+			cost := hours * price
+			costInfo = &cost
+		}
+	}
+
+	if costInfo != nil {
+		type output struct {
+			remote.StatsResponse
+			Cost *float64 `json:"cost"`
+		}
+		out := output{
+			StatsResponse: *resp,
+			Cost:          costInfo,
+		}
+		data, err := json.MarshalIndent(out, "", "  ")
+		if err != nil {
+			return err
+		}
+		fmt.Fprintln(w, string(data))
+	} else {
+		data, err := json.MarshalIndent(resp, "", "  ")
+		if err != nil {
+			return err
+		}
+		fmt.Fprintln(w, string(data))
+	}
+
+	renderCollectionErrors(os.Stderr, resp.Errors)
+
+	return nil
+}
+
+func formatMetricsBar(resp *remote.StatsResponse, cfg remote.Config, w io.Writer) error {
+	fmt.Fprintf(w, "%s  %s", resp.Environment, resp.State)
+	if resp.InstanceType != "" {
+		fmt.Fprintf(w, "  %s", resp.InstanceType)
+	}
+	if resp.ModelID != "" {
+		fmt.Fprintf(w, "  %s", resp.ModelID)
+	}
+	if resp.Version != "" {
+		fmt.Fprintf(w, "  %s", resp.Version)
+	}
+	fmt.Fprintln(w)
+
+	// Before the early return: a stopped endpoint draws no bars, but when it
+	// last did work is exactly what a stopped endpoint is worth asking about.
+	renderLastActiveIndented(w, resp.LastActiveAt, resp.IdleSeconds)
+
+	if resp.State != "running" {
+		return nil
+	}
+
+	renderStatBars(w, resp.CPU, resp.Memory, resp.GPUs)
+	renderTokenLines(w, resp.Tokens)
+	renderCollectionErrors(os.Stderr, resp.Errors)
+
+	return nil
+}
+
+func renderBar(w io.Writer, label string, pct float64) {
+	const width = 25
+	colour := "\033[92m"
+	if pct > 90 {
+		colour = "\033[31m"
+	} else if pct >= 80 {
+		colour = "\033[33m"
+	}
+	filled := int(pct / 100.0 * float64(width))
+	if filled > width {
+		filled = width
+	}
+	empty := width - filled
+	fmt.Fprintf(w, "  %-9s ", label)
+	fmt.Fprintf(w, "%s", colour)
+	for i := 0; i < filled; i++ {
+		fmt.Fprint(w, "█")
+	}
+	fmt.Fprintf(w, "\033[0m")
+	for i := 0; i < empty; i++ {
+		fmt.Fprint(w, "░")
+	}
+	fmt.Fprintf(w, " %.0f%%\n", pct)
+}
+
+func formatDuration(seconds int) string {
+	d := time.Duration(seconds) * time.Second
+	h := int(d.Hours())
+	m := int(d.Minutes()) % 60
+	s := int(d.Seconds()) % 60
+	if h > 0 {
+		return fmt.Sprintf("%dh %dm %ds", h, m, s)
+	}
+	if m > 0 {
+		return fmt.Sprintf("%dm %ds", m, s)
+	}
+	return fmt.Sprintf("%ds", s)
+}
+
+func formatBytes(b int64) string {
+	const unit = 1024.0
+	if b < int64(unit) {
+		return fmt.Sprintf("%d B", b)
+	}
+	kb := float64(b) / unit
+	if kb < unit {
+		return fmt.Sprintf("%.0f KB", kb)
+	}
+	mb := kb / unit
+	if mb < unit {
+		return fmt.Sprintf("%.0f MB", mb)
+	}
+	return fmt.Sprintf("%.1f GB", mb/unit)
+}
+
+// getOnDemandPrice fetches the hourly on-demand price for an instance type
+// from the AWS Price List API. Uses GetProducts with a filter on instance type
+// and operation (Linux/Windows). Returns the price per hour.
+func getOnDemandPrice(ctx context.Context, region, instanceType string) (float64, error) {
+	return remote.GetOnDemandPrice(ctx, region, instanceType)
+}
+
+// runnerFor maps a Spinloop's PROVIDER to the inference runner the cloud should
+// run. PROVIDER already names the engine — `spinloop serve` starts that engine
+// locally, `spinloop remote deploy` asks the cloud for the same one — so no
+// separate keyword is needed. Providers that are not self-hosted engines have
+// nothing to deploy.
+func runnerFor(provider string) (string, error) {
+	switch provider {
+	case "llamacpp", "vllm":
+		return provider, nil
+	default:
+		return "", fmt.Errorf(
+			"PROVIDER %q cannot be deployed: remote deploy runs a self-hosted engine, so use llamacpp or vllm",
+			provider)
+	}
+}
+
+// splitModelQuant splits a model reference into the Hugging Face repo and an
+// optional quant tag, as used by llama.cpp's -hf (org/model:QUANT). Repo ids
+// cannot contain a colon, so the first one separates them.
+func splitModelQuant(model string) (repo, quant string) {
+	if i := strings.Index(model, ":"); i >= 0 {
+		return model[:i], model[i+1:]
+	}
+	return model, ""
+}
+
+// cloudOwnedFlags are the llama-server settings the cloud sets itself, from the
+// deploy config and the instance's own environment. They are dropped from a
+// preset before it becomes serveArgs, so a preset written for a local run does
+// not fight the deployment — binding to 127.0.0.1, say, or serving from a local
+// .gguf path or an HF repo that the instance does not use (it syncs the weights
+// from S3 instead). Keyed by canonical name, so short aliases match too.
+var cloudOwnedFlags = map[string]bool{
+	"host": true, "port": true,
+	"model": true, "model-url": true,
+	"hf-repo": true, "hf-file": true, "hf-token": true,
+	"api-key": true, "api-key-file": true,
+	"ctx-size": true, "alias": true, "metrics": true,
+	// Companion weights: the cloud syncs these from S3 and names them at its
+	// own paths, so the preset's local paths must not travel. Only the
+	// location is cloud-owned — how the engine is asked to use a drafter
+	// (--spec-type) stays the user's, exactly as it is for a local run.
+	"spec-draft-model": true, "mmproj": true,
+	// Parallelism: spinloop computes each runner's own flag from
+	// DeployConfig.Parallel, exactly as it computes ctx-size — a preset's
+	// raw value would otherwise survive in serveArgs and double-define the
+	// flag alongside the computed one.
+	"parallel": true, "max-num-seqs": true, "max-concurrent-requests": true,
+}
+
+// companionRoleForFlag maps a preset flag naming a companion weight to the
+// deploy-config role the cloud knows it by. Keyed by canonical name, so every
+// spelling the preset dialect accepts (`md`, `model-draft`, `mm`) resolves
+// here too.
+var companionRoleForFlag = map[string]string{
+	"spec-draft-model": "draft",
+	"mmproj":           "mmproj",
+}
+
+// isCloudOwned reports whether the cloud sets this preset key itself.
+func isCloudOwned(key string) bool {
+	return cloudOwnedFlags[preset.CanonicalKey(key)]
+}
+
+// parallelPresetKey names the preset key holding a runner's slot count, in
+// that engine's own vocabulary — the same split the *ServeParams functions
+// make when they render it. It is what a deploy reads back out of a preset,
+// so the value survives cloudOwnedFlags dropping it from the passthrough args.
+// A runner with no parallelism key yields "", which reads as "not set".
+func parallelPresetKey(runner string) string {
+	switch runner {
+	case "llamacpp":
+		return "parallel" // also matches the np alias, via CanonicalKey
+	case "vllm":
+		return "max-num-seqs"
+	case "omlx":
+		return "max-concurrent-requests"
+	default:
+		return ""
+	}
+}
+
+// isNodeOwned reports whether a fleet node's daemon sets this preset key
+// itself. It is the cloud's set minus the bind and the companion paths: a node
+// is a machine the operator owns, so where its engine listens is their choice
+// to make. Dropping the bind left a woken engine on llama.cpp's loopback
+// default however the preset was written — reachable from nobody else in the
+// fleet, which is the whole point of a fleet.
+//
+// The companion paths go the same way, for the same reason. The cloud owns them
+// because it seeds the weights from Hugging Face and puts them where it likes;
+// a node has the files already, at the path its preset names, so dropping them
+// would lose the drafter with nothing to replace it.
+func isNodeOwned(key string) bool {
+	switch preset.CanonicalKey(key) {
+	case "host", "port", "spec-draft-model", "mmproj":
+		return false
+	}
+	return isCloudOwned(key)
+}
+
+// dropOwned returns the params the destination does not set for itself.
+func dropOwned(owned func(string) bool, params []preset.Param) []preset.Param {
+	var kept []preset.Param
+	for _, p := range params {
+		if !owned(p.Key) {
+			kept = append(kept, p)
+		}
+	}
+	return kept
+}
+
+// deployConfigFor turns a Spinloop (plus its preset, if any) into the config the
+// deploy Lambda accepts. The Spinloop is the single source of truth: PROVIDER
+// picks the runner, MODEL or the preset's hf names the weights, CONTEXT the
+// window, ALIAS the served name, and whatever else the preset sets becomes the
+// runner's own flags.
+//
+// A context size is required, because a cloud instance has to be sized before
+// it is provisioned. deployConfigWithoutContext is the same derivation for a
+// caller where that is not true.
+func deployConfigFor(sel spinloop.Selection, spinloopPath string) (remote.DeployConfig, error) {
+	return deployConfig(sel, spinloopPath, deployTarget{
+		requireContext: true,
+		seedsWeights:   true,
+		owns:           isCloudOwned,
+	})
+}
+
+// deployConfigForNode derives the same config for a machine that already
+// exists — a fleet node being woken. Two things differ from a cloud
+// deployment, both because the machine is the operator's rather than the
+// deployment's: sizing falls back to the engine's own default, so a Spinloop
+// that `spinloop serve` runs happily needs no CONTEXT added merely to be routed;
+// and the preset's bind survives, so an engine told to listen on 0.0.0.0 does.
+func deployConfigForNode(sel spinloop.Selection, spinloopPath string) (remote.DeployConfig, error) {
+	return deployConfig(sel, spinloopPath, deployTarget{owns: isNodeOwned})
+}
+
+// deployTarget is what the derivation cannot decide for itself: whether a
+// context size is required, which preset flags the destination assigns, and
+// whether it fetches the weights itself (and so needs companions named).
+type deployTarget struct {
+	requireContext bool
+	seedsWeights   bool
+	owns           func(key string) bool
+}
+
+func deployConfig(sel spinloop.Selection, spinloopPath string, target deployTarget) (remote.DeployConfig, error) {
+	var dc remote.DeployConfig
+
+	runner, err := runnerFor(sel.Provider)
+	if err != nil {
+		return dc, err
+	}
+	dc.Runner = runner
+
+	// The preset supplies the model and the runner flags when the Spinloop does
+	// not state them, so a single preset can drive both serve and deploy. The
+	// [*] globals are a separate layer that the chosen section overrides —
+	// exactly as preset.Args does for a local serve — so settings written there
+	// (commonly ngl and jinja) are not lost.
+	var global, params []preset.Param
+	if sel.Preset != "" {
+		presetPath, err := resolvePresetPath(sel.Preset, spinloopPath)
+		if err != nil {
+			return dc, err
+		}
+		data, err := spinloopsrc.Fetch(presetPath)
+		if err != nil {
+			return dc, fmt.Errorf("reading preset %s: %w", presetPath, err)
+		}
+		pre, err := preset.Parse(data)
+		if err != nil {
+			return dc, fmt.Errorf("%s: %w", presetPath, err)
+		}
+		sec, err := pre.Select(sel.Alias)
+		if err != nil {
+			return dc, fmt.Errorf("%s: %w", presetPath, err)
+		}
+		global, params = pre.Global, sec.Params
+	}
+
+	model := sel.Model
+	if model == "" {
+		model = presetValue("hf", global, params)
+	}
+	if model == "" {
+		return dc, fmt.Errorf(
+			"nothing to deploy: set MODEL (an HF repo like org/model:QUANT) in %s, or hf in its preset",
+			spinloopPath)
+	}
+	if isModelPath(model) {
+		return dc, fmt.Errorf(
+			"cannot deploy the local model file %q: the cloud downloads weights from Hugging Face, so name a repo (org/model:QUANT)",
+			model)
+	}
+	dc.ModelID, dc.Quant = splitModelQuant(model)
+
+	context := sel.Context
+	if context == "" {
+		context = presetValue("ctx-size", global, params)
+	}
+	if context == "" && target.requireContext {
+		return dc, fmt.Errorf("no context size: set CONTEXT in %s, or ctx-size in its preset", spinloopPath)
+	}
+	if context != "" {
+		n, err := contextsize.Parse(context)
+		if err != nil {
+			return dc, err
+		}
+		dc.ContextSize = n
+	}
+
+	// Parallel falls back to the preset's own parallelism key the same way
+	// context falls back to ctx-size, since that value is about to be dropped
+	// from serveArgs below (it is cloud-owned) — capturing it here is what
+	// keeps it from being silently lost rather than re-emitted as the
+	// deployment's own computed flag. The key is the runner's own spelling:
+	// reading only llama.cpp's would drop a vLLM preset's max-num-seqs on the
+	// floor, since dropOwned removes it either way.
+	parallel := sel.Parallel
+	if key := parallelPresetKey(dc.Runner); parallel == "" && key != "" {
+		parallel = presetValue(key, global, params)
+	}
+	if parallel != "" {
+		n, err := parseParallel(parallel)
+		if err != nil {
+			return dc, err
+		}
+		dc.Parallel = n
+	}
+
+	// The served name is what a coding agent asks for. ALIAS is the friendly
+	// name; without one the repo id is served under its own name.
+	dc.ServedModelName = sel.Alias
+	if dc.ServedModelName == "" {
+		dc.ServedModelName = dc.ModelID
+	}
+
+	// Companion weights are read from the same preset keys that drive a local
+	// serve, so one preset still works both ways. Only where the destination
+	// fetches the weights itself: it pulls them from the model's own repo, so
+	// only the filename travels and the local path the user downloaded to is
+	// meaningless there. A node already has its files, and keeps its own path.
+	if target.seedsWeights {
+		dc.Companions = companionsFrom(global, params)
+	}
+
+	dc.ServeArgs = preset.Flags(dropOwned(target.owns, global), dropOwned(target.owns, params))
+	if dc.ServeArgs == nil {
+		dc.ServeArgs = []string{}
+	}
+	return dc, nil
+}
+
+// companionsFrom collects the companion weights a preset names, as role ->
+// filename. The value is reduced to its base name: a companion ships in the
+// model's own repo, so the basename is what the seed asks Hugging Face for.
+func companionsFrom(layers ...[]preset.Param) map[string]string {
+	companions := map[string]string{}
+	for _, layer := range layers {
+		for _, p := range layer {
+			role, ok := companionRoleForFlag[preset.CanonicalKey(p.Key)]
+			if !ok || strings.TrimSpace(p.Value) == "" {
+				continue
+			}
+			companions[role] = filepath.Base(strings.TrimSpace(p.Value))
+		}
+	}
+	if len(companions) == 0 {
+		return nil
+	}
+	return companions
+}
+
+// presetValue returns a preset param's value across layers, or "" when it is
+// not set. Later layers win, matching preset.Flags — so a section overrides the
+// [*] globals.
+func presetValue(key string, layers ...[]preset.Param) string {
+	want := preset.CanonicalKey(key)
+	value := ""
+	for _, layer := range layers {
+		for _, p := range layer {
+			if preset.CanonicalKey(p.Key) == want {
+				value = p.Value
+			}
+		}
+	}
+	return value
+}
+
+// Seams for the deploy flow, so tests drive it without AWS or a network.
+var (
+	deployDiscoverFn   = remote.DiscoverControlPlane
+	remoteDeployFn     = remote.Deploy
+	remoteStatusFn     = remote.Status
+	detectPublicCIDRFn = detectPublicCIDR
+)
+
+// metricsWatchInterval is the polling interval for --watch mode.
+// Tests override this to avoid sleeping 60 seconds.
+var metricsWatchInterval = 60 * time.Second
+
+func remoteDeployCmd() *cobra.Command {
+	var (
+		dryRun        bool
+		overwrite     bool
+		reseed        bool
+		allowedCidr   string
+		region        string
+		spinloopVersion string
+	)
+	c := &cobra.Command{
+		Use:   "deploy",
+		Short: "set what the instance serves, from the Spinloop",
+		Long: `creates the environment the Spinloop's REMOTE names — its own
+address, API key and allowed CIDR — and says what it serves (PROVIDER picks
+the engine, just as it does for serve). --spinloop-version pins the spinloop
+release a fresh boot of the environment installs; without it, a boot
+installs the latest published release.`,
+		Args:              cobra.ArbitraryArgs,
+		SilenceErrors:     true,
+		SilenceUsage:      true,
+		ValidArgsFunction: aliasSlot,
+		RunE: func(c *cobra.Command, args []string) error {
+			resolve(c)
+			return runRemoteDeploy(args, dryRun, overwrite, reseed, allowedCidr, region, spinloopVersion)
+		},
+	}
+	fs := c.Flags()
+	fs.BoolVarP(&dryRun, "dry-run", "n", false, "print the config that would be deployed, without sending it")
+	fs.BoolVar(&overwrite, "overwrite", false, "proceed against an already-registered or live environment")
+	fs.BoolVar(&reseed, "reseed", false, "re-fetch the weights even if they are already in S3 (starts a ~20-minute seed)")
+	fs.StringVar(&allowedCidr, "allowed-cidr", "", "who may reach this environment's instance (default: your public IP as a /32, on first deploy)")
+	fs.StringVar(&region, "region", "", "AWS region of the control plane (default: AWS_REGION or us-east-1)")
+	fs.StringVar(&spinloopVersion, "spinloop-version", "", "spinloop release the environment's instances install at boot (default: latest)")
+	return c
+}
+
+// runRemoteDeploy is the body of `spinloop remote deploy`.
+func runRemoteDeploy(args []string, dryRun, overwrite, reseed bool, allowedCidr, region, spinloopVersion string) error {
+	// deploy reads the Spinloop for what to serve, so unlike the other
+	// subcommands it always needs one — the per-user remote config alone is not
+	// enough.
+	sel, spinloopPath, err := readSpinloop("spinloop remote deploy <file>", spinloopArg(args))
+	if err != nil {
+		return err
+	}
+	// Respect the Spinloop's local environment (.env beside it, then its ENV
+	// lines) before any AWS work, so the credentials the deploy signs with, the
+	// region, and the SPINLOOP_REMOTE_* overrides all see it. ENV stays local — it
+	// never enters dc, so nothing here reaches the deployed instance.
+	if err := applySpinloopEnv(sel, spinloopPath); err != nil {
+		return err
+	}
+	dc, err := deployConfigFor(sel, spinloopPath)
+	if err != nil {
+		return err
+	}
+	// The environment name is the Spinloop's REMOTE — the committed link between
+	// the Spinloop and its deployment. One source of truth: deploy registers the
+	// environment under exactly the name the same Spinloop's REMOTE resolves to.
+	env := sel.Remote
+	if env == "" || !remote.IsEnvName(env) {
+		return fmt.Errorf(
+			"%s must name its environment with `REMOTE <name>` (e.g. REMOTE %s) — deploy creates and registers that environment",
+			spinloopPath, dc.ServedModelName)
+	}
+	if allowedCidr != "" && !cidrPattern.MatchString(allowedCidr) {
+		return fmt.Errorf("--allowed-cidr must be an IPv4 CIDR (e.g. 203.0.113.7/32), got %q", allowedCidr)
+	}
+	// The spinloop release a fresh boot installs: empty (or `latest`) means the
+	// boot's own default, a pin means exactly that release. Normalised the way
+	// the control plane is — the v a tag carries is not part of the version —
+	// and checked here, so a typo is named now rather than as a 404 inside a
+	// boot nobody is watching.
+	if pin := strings.TrimPrefix(strings.TrimSpace(spinloopVersion), "v"); pin != "" && pin != "latest" {
+		if !spinloopVersionPattern.MatchString(pin) {
+			return fmt.Errorf("--spinloop-version must be a release version (e.g. 1.26.1) or latest, got %q", spinloopVersion)
+		}
+		dc.SpinloopVersion = pin
+	}
+
+	fmt.Printf("Deploying from %s\n", spinloopPath)
+	fmt.Printf("  environment: %s\n", env)
+	fmt.Printf("  runner:  %s\n", dc.Runner)
+	fmt.Printf("  model:   %s", dc.ModelID)
+	if dc.Quant != "" {
+		fmt.Printf(" (%s)", dc.Quant)
+	}
+	fmt.Println()
+	fmt.Printf("  context: %d\n", dc.ContextSize)
+	if dc.Parallel > 0 {
+		fmt.Printf("  parallel: %d\n", dc.Parallel)
+	}
+	fmt.Printf("  served:  %s\n", dc.ServedModelName)
+	// Companions are easy to get wrong quietly — a renamed file yields no
+	// drafter and a slower endpoint with no error — so show what was picked up.
+	for _, role := range slices.Sorted(maps.Keys(dc.Companions)) {
+		fmt.Printf("  %-8s %s\n", role+":", dc.Companions[role])
+	}
+	if len(dc.ServeArgs) > 0 {
+		fmt.Printf("  args:    %s\n", strings.Join(dc.ServeArgs, " "))
+	}
+	// Worth stating: a re-seed costs a ~20-minute instance and re-downloads the
+	// weights, so --reseed --dry-run must not look like a plain deploy.
+	if reseed {
+		fmt.Println("  reseed:  yes — the weights will be re-fetched even if already in S3")
+	}
+	// A fresh boot's spinloop: latest is a promise, not an absence, so the plan
+	// always says which release a boot will install.
+	spinloopVer := dc.SpinloopVersion
+	if spinloopVer == "" {
+		spinloopVer = "latest"
+	}
+	fmt.Printf("  spinloop:  %s\n", spinloopVer)
+	if dryRun {
+		return nil
+	}
+
+	// The control URLs come from the control plane's stack outputs — the
+	// environment may not exist yet, so there is nothing local to resolve.
+	ctx := context.Background()
+	awsCfg, err := remote.LoadAWSConfig(ctx, resolveRegion(region))
+	if err != nil {
+		return err
+	}
+	layer, err := deployDiscoverFn(ctx, awsCfg, controlPlaneStackName)
+	if err != nil {
+		return err
+	}
+	cfg := layer.Config
+	cfg.Environment = env
+
+	// Refuse to clobber silently: an environment that is already registered, or
+	// whose instance is live, needs explicit consent to redeploy over.
+	envConfigPath, err := remote.EnvConfigPath(env)
+	if err != nil {
+		return err
+	}
+	registered := false
+	if _, err := os.Stat(envConfigPath); err == nil {
+		registered = true
+	}
+	live := false
+	if status, err := remoteStatusFn(ctx, cfg); err == nil {
+		live = status.State == "running" || status.State == "pending" || status.State == "starting"
+	}
+	if (registered || live) && !overwrite {
+		what := "is already registered"
+		if live {
+			what = "has a live instance"
+		}
+		return fmt.Errorf(
+			"environment %q %s — pass --overwrite to redeploy over it", env, what)
+	}
+
+	// Ingress is per environment. A fresh environment needs a CIDR (default:
+	// the caller's public address); an existing one keeps its ingress unless a
+	// CIDR is given explicitly.
+	if allowedCidr == "" && !registered {
+		allowedCidr, err = detectPublicCIDRFn(ctx)
+		if err != nil {
+			return fmt.Errorf("detecting your public IP for the allowed CIDR: %w (pass --allowed-cidr)", err)
+		}
+		fmt.Printf("  ingress: %s (your public IP; override with --allowed-cidr)\n", allowedCidr)
+	}
+
+	resp, err := remoteDeployFn(ctx, cfg, dc, allowedCidr, reseed)
+	if err != nil {
+		return err
+	}
+
+	// Register the environment so REMOTE <env> (and the other remote
+	// subcommands) resolve to it from now on.
+	cfg.BaseURL = resp.BaseURL
+	if err := remote.SaveEnvironment(env, cfg); err != nil {
+		return err
+	}
+
+	fmt.Println()
+	fmt.Printf("deployed: environment %s at %s\n", env, resp.BaseURL)
+	fmt.Printf("registered: %s\n", envConfigPath)
+	if resp.Seeding {
+		fmt.Printf("seeding the weights — follow it with `spinloop remote seed status %s`.\n", resp.SeedID)
+		fmt.Println("Wait for it to finish before `spinloop remote start`, or the instance will")
+		fmt.Println("start against an incomplete download.")
+	} else {
+		fmt.Println("weights already in place — `spinloop remote start` will serve this.")
+	}
+	return nil
+}
+
+// cidrPattern matches an IPv4 CIDR, the same shape the deploy Lambda accepts.
+var cidrPattern = regexp.MustCompile(`^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/\d{1,2}$`)
+
+// spinloopVersionPattern matches a release version pin, the same charset the
+// deploy Lambda accepts after its leading v is stripped (1.26.1, not v1.26.1).
+var spinloopVersionPattern = regexp.MustCompile(`^[0-9A-Za-z.-]+$`)
+
+// detectPublicCIDR returns the caller's public IPv4 address as a /32, the
+// default ingress for a fresh environment.
+func detectPublicCIDR(ctx context.Context) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://checkip.amazonaws.com", nil)
+	if err != nil {
+		return "", err
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	data, err := io.ReadAll(io.LimitReader(resp.Body, 64))
+	if err != nil {
+		return "", err
+	}
+	ip := strings.TrimSpace(string(data))
+	cidr := ip + "/32"
+	if !cidrPattern.MatchString(cidr) {
+		return "", fmt.Errorf("unexpected public-IP response %q", ip)
+	}
+	return cidr, nil
+}
+
+// Test seams: the suite calls these the way the tree does — each runs its
+// command through execCmd rather than parsing a private FlagSet.
+func cmdRemoteBootstrap(args []string) error { return execCmd(remoteBootstrapCmd(), args) }
+func cmdRemoteStart(args []string) error     { return execCmd(remoteStartCmd(), args) }
+func cmdRemotePause(args []string) error     { return execCmd(remotePauseCmd(), args) }
+func cmdRemoteRestart(args []string) error   { return execCmd(remoteRestartCmd(), args) }
+func cmdRemoteStop(args []string) error      { return execCmd(remoteStopCmd(), args) }
+func cmdRemoteStatus(args []string) error    { return execCmd(remoteStatusCmd(), args) }
+func cmdRemoteMetrics(args []string) error   { return execCmd(remoteMetricsCmd(), args) }
+func cmdRemoteDeploy(args []string) error    { return execCmd(remoteDeployCmd(), args) }
+func cmdRemoteEnv(args []string) error       { return execCmd(remoteEnvCmd(), args) }
+func cmdRemoteList(args []string) error      { return execCmd(remoteListCmd(), args) }
+func cmdRemoteKeep(args []string) error      { return execCmd(remoteKeepCmd(), args) }

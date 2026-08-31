@@ -2,13 +2,13 @@
 
 ## Purpose
 Connecting a harness launch to the fleet: choosing which node serves the agent
-outfit is about to launch, waking that node when nothing is serving yet, and
+spinloop is about to launch, waking that node when nothing is serving yet, and
 turning the choice into the base URL and key the launched agent authenticates
 with — so a machine that can reach the fleet needs no addresses of its own.
 ## Requirements
 ### Requirement: A fleet-routed launch
 
-`outfit harness` SHALL route through a fleet when the Outfit it wears names one
+`spinloop harness` SHALL route through a fleet when the Spinloop it wears names one
 with a `FLEET` instruction, or when `--fleet <path>` is given; `--fleet` SHALL
 override the instruction, and a launch with neither SHALL behave exactly as it
 does today. Routing SHALL choose one node and give the launched agent that
@@ -17,12 +17,12 @@ written as the applied provider's base URL, in the same place a `REMOTE`
 endpoint's address is written, and SHALL also be placed in the launched agent's
 environment as `OPENAI_BASE_URL`.
 
-A variable already set in outfit's environment SHALL win, as it does on the
+A variable already set in spinloop's environment SHALL win, as it does on the
 remote path — routing fills what is unset, it does not override an explicit
 choice.
 
-An Outfit that pins a `BASEURL` SHALL NOT be routed: the pinned address wins and
-outfit SHALL say it is not routing through the fleet, rather than silently
+A Spinloop that pins a `BASEURL` SHALL NOT be routed: the pinned address wins and
+spinloop SHALL say it is not routing through the fleet, rather than silently
 selecting a node whose address it then discards.
 
 The chosen node and the reason it was chosen SHALL be reported on stderr before
@@ -31,28 +31,28 @@ time rather than at the first request.
 
 #### Scenario: A running node becomes the agent's endpoint
 
-- **WHEN** the user runs `outfit harness` with an Outfit naming a `FLEET`, and a
-  node in that fleet is running the model the Outfit names
+- **WHEN** the user runs `spinloop harness` with a Spinloop naming a `FLEET`, and a
+  node in that fleet is running the model the Spinloop names
 - **THEN** the launched agent's environment carries `OPENAI_BASE_URL` pointing
   at that node's engine, and the applied provider's base URL is the same address
 
 #### Scenario: The flag overrides the instruction
 
-- **WHEN** the user runs `outfit harness --fleet=./cluster.yaml` with an Outfit
+- **WHEN** the user runs `spinloop harness --fleet=./cluster.yaml` with a Spinloop
   whose `FLEET` names a different file
 - **THEN** the nodes in `./cluster.yaml` are the candidates
 
-#### Scenario: An Outfit with no FLEET is unaffected
+#### Scenario: A Spinloop with no FLEET is unaffected
 
-- **WHEN** the user runs `outfit harness` with an Outfit naming no `FLEET` and
+- **WHEN** the user runs `spinloop harness` with a Spinloop naming no `FLEET` and
   passes no `--fleet`
 - **THEN** no fleet file is read, no node is contacted, and the launch behaves
   as it did before
 
 #### Scenario: A pinned BASEURL is not routed
 
-- **WHEN** an Outfit names both a `FLEET` and a `BASEURL`
-- **THEN** the `BASEURL` is used, no node is selected, and outfit reports that
+- **WHEN** a Spinloop names both a `FLEET` and a `BASEURL`
+- **THEN** the `BASEURL` is used, no node is selected, and spinloop reports that
   it is not routing through the fleet
 
 #### Scenario: An exported base URL wins
@@ -69,10 +69,10 @@ time rather than at the first request.
 
 ### Requirement: Choosing a node
 
-Selection SHALL query every candidate node concurrently, as `outfit fleet
+Selection SHALL query every candidate node concurrently, as `spinloop fleet
 status` does, and SHALL prefer a node that is already running what is wanted: a
-node whose state is `running` and whose served model matches the Outfit's
-`MODEL` (or its `ALIAS`, against the name the node reports serving). An Outfit
+node whose state is `running` and whose served model matches the Spinloop's
+`MODEL` (or its `ALIAS`, against the name the node reports serving). A Spinloop
 that names no model SHALL match any running node.
 
 Matching nodes SHALL be ranked by the activity preference in force (see
@@ -81,7 +81,7 @@ order, so the same fleet in the same state chooses the same node.
 
 A node that does not answer — unreachable, unauthorized, or a configuration
 error — SHALL be skipped rather than aborting the selection, exactly as it is a
-row rather than a failure in `outfit fleet status`.
+row rather than a failure in `spinloop fleet status`.
 
 `--node <name>` SHALL pin the selection to one node, skipping the search. An
 unknown name SHALL fail naming the known nodes, and a pinned node that cannot be
@@ -107,7 +107,7 @@ therefore not a candidate, and pinning one SHALL fail saying what it is serving.
 
 #### Scenario: A pinned node is used as given
 
-- **WHEN** the user runs `outfit harness --node gpu-box` and that node is
+- **WHEN** the user runs `spinloop harness --node gpu-box` and that node is
   running the wanted model
 - **THEN** `gpu-box` is chosen without regard to what the other nodes are doing
 
@@ -196,7 +196,7 @@ those rules hold whichever value is in force.
 ### Requirement: Waking a node
 
 When no running node is serving what is wanted, routing SHALL wake one: it SHALL
-choose a node that is not running, push what the Outfit asks for as that node's
+choose a node that is not running, push what the Spinloop asks for as that node's
 deploy config, start it through the daemon's start endpoint, and wait before
 launching the agent — not merely until the node reports `running`, which says
 only that a process exists, but until its engine endpoint answers. A node whose
@@ -225,7 +225,7 @@ command that would start one.
 
 - **WHEN** a fleet-routed launch finds no node serving the wanted model and one
   node is idle and able to serve it
-- **THEN** that node is given the Outfit's model as its deploy config, started,
+- **THEN** that node is given the Spinloop's model as its deploy config, started,
   and the agent launches against it once its engine answers
 
 #### Scenario: A started engine that is not yet loaded is waited for
@@ -262,7 +262,7 @@ command that would start one.
 
 - **WHEN** `--no-wake` is passed and no node is serving the wanted model
 - **THEN** the command fails, listing the nodes with their states and naming the
-  `outfit fleet start` command that would start one, and nothing is started
+  `spinloop fleet start` command that would start one, and nothing is started
 
 ### Requirement: Resolving the chosen node's endpoint
 
@@ -316,7 +316,7 @@ of each node it considered.
 
 #### Scenario: A failed route leaves the config untouched
 
-- **WHEN** routing fails because no node can serve the Outfit's model
+- **WHEN** routing fails because no node can serve the Spinloop's model
 - **THEN** the harness config is not written and no agent is launched
 
 #### Scenario: A whole fleet that cannot be reached
@@ -331,7 +331,7 @@ Routing SHALL resolve the engine key from the variable the node's fleet entry
 names, supply it to the node when it wakes one, and place it in the launched
 agent's environment as `OPENAI_API_KEY` — and, for a harness that reads the key
 under its own name, under that name too, as the remote path already does. A key
-already set in outfit's environment SHALL win.
+already set in spinloop's environment SHALL win.
 
 The client is therefore the one party that holds the key: it decides what the
 engine it starts is gated with, and it knows what to give the agent because it

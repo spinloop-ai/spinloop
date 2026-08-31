@@ -1,8 +1,8 @@
 ## Context
 
 The archived `remote-harness-provider-name` change made `applySelection`
-(`cmd/outfit/main.go`) override `sel.Provider` with the resolved environment name
-for a remote Outfit, so the opencode provider is keyed `dev-2` and the model reads
+(`cmd/spinloop/main.go`) override `sel.Provider` with the resolved environment name
+for a remote Spinloop, so the opencode provider is keyed `dev-2` and the model reads
 `dev-2/qwen`. But the provider block's display name is still set from the
 catalogue engine in `catalog.BuildProviderBlock`:
 
@@ -87,6 +87,6 @@ needs no label — removal is by provider key and model key.
   remote config, `Provider` overwritten with the environment name), so a
   documented `DisplayName` follows the established pattern rather than setting a
   new one.
-- **A user who already applied a remote Outfit keeps the old bare label until
-  they re-apply.** → Acceptable: `outfit apply` is the natural point to pick up
+- **A user who already applied a remote Spinloop keeps the old bare label until
+  they re-apply.** → Acceptable: `spinloop apply` is the natural point to pick up
   the new label, and the deep-merge overwrites the stale `name` cleanly.

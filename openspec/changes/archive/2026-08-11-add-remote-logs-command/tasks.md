@@ -16,19 +16,19 @@
 
 ## 3. The `logs` subcommand
 
-- [x] 3.1 Create `cmd/outfit/remote_logs.go` with `cmdRemoteLogs`, parsing `--source`, `--since`, `--limit`, `--instance`, `--follow`/`-f`, `--format` via `sortFlagsBeforeArgs`, and resolving the environment with `resolveRemoteConfig(outfitArg(fs))`
+- [x] 3.1 Create `cmd/spinloop/remote_logs.go` with `cmdRemoteLogs`, parsing `--source`, `--since`, `--limit`, `--instance`, `--follow`/`-f`, `--format` via `sortFlagsBeforeArgs`, and resolving the environment with `resolveRemoteConfig(spinloopArg(fs))`
 - [x] 3.2 Validate flag values (`--source` one of engine/boot/all, `--format` one of text/json, positive `--since` and `--limit`) with messages matching the style of `remote metrics`
 - [x] 3.3 Implement text rendering: oldest first, timestamp per line, source/instance prefix only when more than one source or instance is present
 - [x] 3.4 Implement `--format json` emitting the structured events
 - [x] 3.5 Implement the follow loop: poll from the last seen timestamp less a small overlap, suppress already-printed event ids from a bounded set, cancel on SIGINT/SIGTERM and exit nil on a cancelled context, following `runMetricsWatch`
 - [x] 3.6 Add the `logs` case to `cmdRemote`, update its usage string and the unknown-subcommand error text
-- [x] 3.7 Add `logs` to the remote subcommand list in `cmd/outfit/complete.go`
+- [x] 3.7 Add `logs` to the remote subcommand list in `cmd/spinloop/complete.go`
 - [x] 3.8 Test the command end to end with a substituted fetcher: default engine source, boot and all, labelling on and off, json output, flag validation, instance filter, and a follow loop that terminates on a cancelled context without duplicates
 
 ## 4. Documentation
 
-- [x] 4.1 Document `outfit remote logs` and its flags in `docs/commands/remote.md`, including the `logs:FilterLogEvents` permission the caller needs
-- [x] 4.2 Update the `outfit remote <...>` usage line in `README.md` and mention reading logs in the remote section
+- [x] 4.1 Document `spinloop remote logs` and its flags in `docs/commands/remote.md`, including the `logs:FilterLogEvents` permission the caller needs
+- [x] 4.2 Update the `spinloop remote <...>` usage line in `README.md` and mention reading logs in the remote section
 - [x] 4.3 Note in the docs that logs remain readable after an instance terminates, and what the "re-deploy the shared layer" error means
 
 ## 5. Verification

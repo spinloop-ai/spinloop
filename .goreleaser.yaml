@@ -1,11 +1,11 @@
 version: 2
 
-project_name: outfit
+project_name: spinloop
 
 builds:
-  - id: outfit
-    binary: outfit
-    main: ./cmd/outfit
+  - id: spinloop
+    binary: spinloop
+    main: ./cmd/spinloop
     env:
       - CGO_ENABLED=0
     goos:
@@ -27,16 +27,16 @@ archives:
         formats: [zip]
 
 brews:
-  - name: outfit
+  - name: spinloop
     # Publish the formula to the dedicated tap repository.
     repository:
-      owner: lucinate-ai
+      owner: spinloop-ai
       name: homebrew-tap
       branch: main
       # Uses a PAT with write access to the tap repo (the default GITHUB_TOKEN
       # only has access to this repository, not the tap).
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
-    homepage: "https://github.com/lucinate-ai/outfit"
+    homepage: "https://github.com/spinloop-ai/spinloop"
     description: "Configure opencode provider catalogues"
     license: "MIT"
     # Publish into Formula/ — Homebrew ignores root-level .rb files once a tap
@@ -50,9 +50,9 @@ brews:
     # Install the completions the binary prints, so `brew install` wires TAB up
     # with no extra step. (PowerShell is supported too, but not by Homebrew.)
     extra_install: |
-      generate_completions_from_executable(bin/"outfit", "completion", shells: [:bash, :zsh])
+      generate_completions_from_executable(bin/"spinloop", "completion", shells: [:bash, :zsh])
     test: |
-      system "#{bin}/outfit", "--help"
+      system "#{bin}/spinloop", "--help"
 
 checksum:
   name_template: checksums.txt
@@ -81,7 +81,7 @@ release:
   draft: false
   prerelease: auto
   # The daemon's control API contract, attached per release so a consumer can
-  # pin it to the outfit version it talks to rather than reading whatever is
+  # pin it to the spinloop version it talks to rather than reading whatever is
   # currently on the default branch. Kept honest by
   # internal/daemon/openapi_test.go.
   extra_files:

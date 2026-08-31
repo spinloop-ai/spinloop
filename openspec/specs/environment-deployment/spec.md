@@ -2,19 +2,19 @@
 
 ## Purpose
 
-Define how `outfit remote deploy` creates a named environment on the
+Define how `spinloop remote deploy` creates a named environment on the
 account-level control plane: discovering it, provisioning per-environment resources, registering the environment, and guarding against accidental overwrites.
 
 ## Requirements
 
 ### Requirement: Deploy creates an environment on the control plane
 
-`outfit remote deploy` SHALL create a named environment on top of the control
+`spinloop remote deploy` SHALL create a named environment on top of the control
 plane: it SHALL discover it, then provision the
 environment's own Elastic IP, EC2 instance configuration, per-environment API
 key, per-environment allowed-ingress rule, and per-environment SSM state
 (the deploy-config), all tagged by the environment name. It SHALL set
-what the environment serves from the Outfit and its preset, and SHALL register
+what the environment serves from the Spinloop and its preset, and SHALL register
 the environment so the other `remote` commands can drive it. Deploying SHALL NOT
 start the instance.
 
@@ -24,7 +24,7 @@ plane to seed, read or write.
 
 #### Scenario: Deploying stands up and registers an environment
 
-- **WHEN** `outfit remote deploy` runs for an environment against a bootstrapped
+- **WHEN** `spinloop remote deploy` runs for an environment against a bootstrapped
   account
 - **THEN** the environment's Elastic IP, instance configuration, API key,
   ingress rule, and SSM state are provisioned, and the environment is registered
@@ -39,14 +39,14 @@ plane to seed, read or write.
 
 - **WHEN** a deploy succeeds
 - **THEN** the environment is configured and registered but no instance is
-  running until `outfit remote start`
+  running until `spinloop remote start`
 ### Requirement: Discovering the control plane
 
 Deploy SHALL discover the control plane from the bootstrap stack's
 CloudFormation outputs (a well-known stack name) — the lifecycle Lambda URLs, the
 weights bucket, the shared roles, and the region — rather than from any local
 file. When the control-plane stack is absent, deploy SHALL fail telling the user to run
-`outfit remote bootstrap` first, rather than attempting to create an environment.
+`spinloop remote bootstrap` first, rather than attempting to create an environment.
 
 #### Scenario: The control plane is discovered
 
@@ -57,7 +57,7 @@ file. When the control-plane stack is absent, deploy SHALL fail telling the user
 #### Scenario: Not bootstrapped
 
 - **WHEN** deploy runs against an account with no control-plane stack
-- **THEN** it fails saying to run `outfit remote bootstrap` first, and creates
+- **THEN** it fails saying to run `spinloop remote bootstrap` first, and creates
   nothing
 
 ### Requirement: Per-environment allowed ingress
@@ -80,16 +80,16 @@ rule. It SHALL NOT be an account-wide setting.
 ### Requirement: Registering the environment
 
 Deploy SHALL register the environment in the per-user registry defined by the
-Remote Environments specification — `~/.config/outfit/remotes/<env>/remote.json`,
+Remote Environments specification — `~/.config/spinloop/remotes/<env>/remote.json`,
 written owner-only — carrying the shared lifecycle Lambda URLs, the region, the
 environment's base URL (its Elastic IP), and the environment identifier the
 shared Lambdas use to select this environment's instance.
 
 #### Scenario: The environment is registered and resolvable
 
-- **WHEN** `outfit remote deploy` for environment `prod` succeeds
-- **THEN** `~/.config/outfit/remotes/prod/remote.json` exists (owner-only) and an
-  Outfit stating `REMOTE prod` resolves to it
+- **WHEN** `spinloop remote deploy` for environment `prod` succeeds
+- **THEN** `~/.config/spinloop/remotes/prod/remote.json` exists (owner-only) and an
+  Spinloop stating `REMOTE prod` resolves to it
 
 ### Requirement: Refuse to overwrite a live environment
 
@@ -116,9 +116,9 @@ warning and without requiring `--overwrite`.
 - **WHEN** deploy targets an environment that is neither registered nor live
 - **THEN** it proceeds without an overwrite warning
 
-### Requirement: Deploy accepts an optional outfit version pin
+### Requirement: Deploy accepts an optional spinloop version pin
 
-`outfit remote deploy` SHALL accept an optional flag pinning the exact outfit
+`spinloop remote deploy` SHALL accept an optional flag pinning the exact spinloop
 release the environment's instances install at boot. When the flag is given,
 deploy SHALL record that version in the environment's stored deploy config so
 the next fresh boot installs it; when it is absent, deploy SHALL record no pin
@@ -128,37 +128,37 @@ whitespace-only value SHALL be treated as if the flag were not given.
 
 #### Scenario: A pin is recorded in the deploy config
 
-- **WHEN** `outfit remote deploy` runs with an outfit version pin
+- **WHEN** `spinloop remote deploy` runs with an spinloop version pin
 - **THEN** the environment's stored deploy config carries that version, and
   the environment's next fresh boot installs exactly that release
 
 #### Scenario: No pin leaves the boot on its default
 
-- **WHEN** `outfit remote deploy` runs without an outfit version pin
-- **THEN** the stored deploy config carries no outfit version, and the
+- **WHEN** `spinloop remote deploy` runs without an spinloop version pin
+- **THEN** the stored deploy config carries no spinloop version, and the
   environment's boots install the latest published release
 
 #### Scenario: An empty pin value is ignored
 
-- **WHEN** `outfit remote deploy` is given an outfit version pin whose value is
+- **WHEN** `spinloop remote deploy` is given an spinloop version pin whose value is
   empty or whitespace only
 - **THEN** it is treated as if no pin were given
 
-### Requirement: The deploy plan shows the resolved outfit version
+### Requirement: The deploy plan shows the resolved spinloop version
 
-The plan `outfit remote deploy` prints — including under `--dry-run`, before
-any AWS work or send — SHALL state the outfit version the environment's boots
+The plan `spinloop remote deploy` prints — including under `--dry-run`, before
+any AWS work or send — SHALL state the spinloop version the environment's boots
 will install: the pinned version when a pin is given, otherwise `latest`. It
 SHALL appear alongside the runner and model the plan already prints.
 
 #### Scenario: A pinned deploy prints the pinned version
 
-- **WHEN** `outfit remote deploy --dry-run` runs with an outfit version pin
-- **THEN** the printed plan names that pinned version as the outfit the
+- **WHEN** `spinloop remote deploy --dry-run` runs with an spinloop version pin
+- **THEN** the printed plan names that pinned version as the spinloop the
   environment will run
 
 #### Scenario: An unpinned deploy prints latest
 
-- **WHEN** `outfit remote deploy --dry-run` runs without an outfit version pin
-- **THEN** the printed plan names `latest` as the outfit the environment will
+- **WHEN** `spinloop remote deploy --dry-run` runs without an spinloop version pin
+- **THEN** the printed plan names `latest` as the spinloop the environment will
   run

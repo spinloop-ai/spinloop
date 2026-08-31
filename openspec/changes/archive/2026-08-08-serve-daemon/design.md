@@ -2,15 +2,15 @@
 
 See proposal.md — Why. The relevant current state:
 
-- `cmd/outfit/serve.go` builds an engine command from an Outfit (+ optional
+- `cmd/spinloop/serve.go` builds an engine command from a Spinloop (+ optional
   preset) via `engineFor` and runs it foreground with `cmd.Run()`. It has no
   notion of process state, logs, or metrics.
 - All metric collection lives in `remote/lambda/shared/stats.ts`: token stats
   parsed from the engine's Prometheus `/metrics` text, GPU from `nvidia-smi`,
   CPU from `vmstat`, RAM from `free`, executed over SSM. The Go client
-  (`internal/remote.StatsResponse` + the formatters in `cmd/outfit/remote.go`)
+  (`internal/remote.StatsResponse` + the formatters in `cmd/spinloop/remote.go`)
   only renders.
-- `deployConfigFor` (cmd/outfit/remote.go) already flattens Outfit + preset
+- `deployConfigFor` (cmd/spinloop/remote.go) already flattens Spinloop + preset
   into the `DeployConfig` shape (runner, model, context, alias, serveArgs);
   the cloud path injects cloud-owned flags (`--metrics`, ports) itself.
 - Constraints: coverage >= 80%, secrets never on the command line, files that
@@ -24,13 +24,13 @@ See proposal.md — Why. The relevant current state:
   daemon mode now and the remote Lambdas in the follow-up change.
 - A supervisor whose observable states and API are exactly what the fleet
   client and the rewired Lambdas will consume — no redesign later.
-- Zero disturbance to plain `outfit serve` foreground behaviour.
+- Zero disturbance to plain `spinloop serve` foreground behaviour.
 
 **Non-Goals:**
 
-- Rewiring the remote Lambdas or baking outfit into the AMI
+- Rewiring the remote Lambdas or baking spinloop into the AMI
   (`remote-on-daemon` change).
-- `fleet.yaml`, the `outfit fleet` command family, TUI (`fleet` change).
+- `fleet.yaml`, the `spinloop fleet` command family, TUI (`fleet` change).
 - Auto-restart (#48), multi-engine (#49), web UI (#50), Apple GPU stats (#47).
 - Log rotation; daemon detach/service installation.
 
@@ -40,7 +40,7 @@ See proposal.md — Why. The relevant current state:
 `internal/metrics` owns the canonical stats types and collectors. The stats
 types currently in `internal/remote` (StatsResponse and friends) move here;
 `internal/remote` keeps aliases so its API surface is unchanged, and the
-formatters in `cmd/outfit` switch to the metrics types. Alternative — duplicate
+formatters in `cmd/spinloop` switch to the metrics types. Alternative — duplicate
 shapes and convert — rejected: the whole point is one dialect everywhere.
 
 **D2 — Collectors are command-output parsers, not a system library.**
@@ -70,8 +70,8 @@ SIGKILL after a 10s grace. An unprompted exit is `crashed` on non-zero status,
 one has been pushed. Engine stdout/stderr go to a log file opened by the
 daemon.
 
-**D5 — Daemon state lives under outfit's config home,
-`~/.config/outfit/daemon/`** (deploy-config.json written 0600 — serveArgs
+**D5 — Daemon state lives under spinloop's config home,
+`~/.config/spinloop/daemon/`** (deploy-config.json written 0600 — serveArgs
 could carry sensitive flags — plus engine.log). The existing `configHome()`
 helper moves from `internal/remote` to a spot both packages can use. One
 daemon per machine is the v1 assumption (matches one engine per node);
@@ -81,8 +81,8 @@ a second daemon fails to bind the API port, which is the collision report.
 `GET /v1/status`, `POST /v1/start`, `POST /v1/stop`, `GET /v1/metrics`,
 `PUT /v1/deploy-config`. JSON in/out; errors as `{"error": "..."}` with a
 meaningful status (409 for start-while-running, 400 for bad config, 401 for
-auth). Token read from `OUTFIT_API_TOKEN` (reached by the same `.env` loading
-the Outfit resolution already performs), compared constant-time. Default
+auth). Token read from `SPINLOOP_API_TOKEN` (reached by the same `.env` loading
+the Spinloop resolution already performs), compared constant-time. Default
 listen `:4242`, overridable with `--api-addr`; a non-loopback bind with no
 token refuses to start (spec: daemon-api). No TLS in v1: tailscale/LAN plus
 bearer token is the threat model the proposal accepts.
@@ -94,17 +94,17 @@ already running — and when it exits, serve itself exits); `stop` terminates
 the foreground engine, after which serve exits as it always has on engine
 exit. No special foreground mode in the API.
 
-**D8a — `outfit daemon` is the only daemon; serve stays a foreground verb.**
+**D8a — `spinloop daemon` is the only daemon; serve stays a foreground verb.**
 A top-level command (own `case` in `run()`'s switch, completion-table entry)
 hosting the Daemon/Supervisor/API stack, with no boot-time engine start
 ever: nothing runs unless a client asks, so a node's state is always
-client-driven. It resolves an optional Outfit (for the `.env`-carried token
+client-driven. It resolves an optional Spinloop (for the `.env`-carried token
 and as the bare start's fallback source) and honours `--api-addr` and the
 token rules; there is no `--api=false` — the API is the command's purpose.
 `serve` keeps only `-a/--api` (the foreground engine with the API beside it)
 and has no daemon flag: one meaning per verb — serve runs an engine in front
 of you, daemon waits to be told. Hosts that should come back serving after a
-reboot pair `outfit daemon` under their service manager with an explicit
+reboot pair `spinloop daemon` under their service manager with an explicit
 start request once it answers — which is exactly how the `remote-on-daemon`
 change boots the cloud instance. Alternatives rejected: a `serve --daemon`
 flag (implemented first, then removed — two entry points to one lifecycle

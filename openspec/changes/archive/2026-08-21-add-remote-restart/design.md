@@ -75,14 +75,14 @@ the pause-style stop (with force when requested) and then calls the existing
 `Start`, passing the caller's progress and state observers and no retention.
 Stop failing means the wake never starts; the wake failing after the stop
 took effect yields an error that says the instance is stopped and that
-`outfit remote start` will bring it back — the state is exactly what a
+`spinloop remote start` will bring it back — the state is exactly what a
 manual pause leaves behind. Keeping the pairing in the transport package
 (rather than composing two calls in the command) puts the error
 classification beside the retry/deadline semantics it belongs with, and
 keeps the command body to progress and output.
 
 **`Pause` gains a force argument rather than a sibling function.** There is
-one caller (`outfit remote pause`), so `Pause(ctx, cfg, force)` with the URL
+one caller (`spinloop remote pause`), so `Pause(ctx, cfg, force)` with the URL
 builder appending `force=true` when set is simpler than a near-duplicate
 `ForcePause`.
 
@@ -102,7 +102,7 @@ restart.
 ## Risks / Trade-offs
 
 - [The wake fails after the stop succeeded, leaving the endpoint down] → the
-  error names the state and the one command that recovers it (`outfit remote
+  error names the state and the one command that recovers it (`spinloop remote
   start`); that state is otherwise reached by a plain `pause`, so there is
   no new way to strand an endpoint.
 - [`--force` kills in-flight requests] → intentional and opt-in; the progress

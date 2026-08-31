@@ -1,8 +1,8 @@
 # Claude 3.5 Sonnet on AWS Bedrock
 
 Point opencode at Anthropic's Claude running on [AWS Bedrock](https://aws.amazon.com/bedrock/),
-using the [`Outfit`](Outfit) in this directory. Bedrock authenticates with your
-**AWS credentials**, so there is no API key to set — `outfit` injects none.
+using the [`Spinloop`](Spinloop) in this directory. Bedrock authenticates with your
+**AWS credentials**, so there is no API key to set — `spinloop` injects none.
 
 ## Prerequisites
 
@@ -26,15 +26,15 @@ defaults to `us-east-1`; override it for this shell with `AWS_REGION`:
 export AWS_REGION=eu-west-2
 ```
 
-## 2. Apply the Outfit
+## 2. Apply the Spinloop
 
 ```sh
-outfit apply examples/amazon-bedrock/claude-sonnet/Outfit
+spinloop apply examples/amazon-bedrock/claude-sonnet/Spinloop
 # or, from this directory:
-outfit apply
+spinloop apply
 ```
 
-The Outfit is:
+The Spinloop is:
 
 ```dockerfile
 PROVIDER amazon-bedrock

@@ -1,15 +1,15 @@
 # Qwen3.8-27B on llama.cpp
 
 Run Unsloth's GGUF build of Qwen3.8-27B locally with `llama-server`, then point
-opencode at it with the [`Outfit`](Outfit) in this directory. The same file also
-deploys it to a GPU in AWS with [`outfit remote`](#running-it-on-aws) — no
-infrastructure to hand-write, just this Outfit and one extra line.
+opencode at it with the [`Spinloop`](Spinloop) in this directory. The same file also
+deploys it to a GPU in AWS with [`spinloop remote`](#running-it-on-aws) — no
+infrastructure to hand-write, just this Spinloop and one extra line.
 
 Qwen3.8-27B is a dense 27B model built on Qwen's hybrid attention architecture
 (mostly linear "Gated DeltaNet" layers with full attention every fourth layer),
 which is what lets it carry a native 262144-token context, extensible to 1M,
 without the usual KV-cache blowup. It's also vision-language — it can take
-images and video — though this Outfit only wires up the text side, which is
+images and video — though this Spinloop only wires up the text side, which is
 all `opencode` needs; see [Vision input](#vision-input-optional) if you want
 the rest.
 
@@ -73,11 +73,11 @@ What the flags do:
   `http://127.0.0.1:8080/v1`.
 
 Rather than remember those flags, this directory keeps them in a
-[`preset.ini`](preset.ini) and lets `outfit` build and run the command:
+[`preset.ini`](preset.ini) and lets `spinloop` build and run the command:
 
 ```sh
-outfit serve              # from this directory; reads ./Outfit and its PRESET
-outfit serve --dry-run    # print the llama-server command without running it
+spinloop serve              # from this directory; reads ./Spinloop and its PRESET
+spinloop serve --dry-run    # print the llama-server command without running it
 ```
 
 ### Optional: quantise the KV cache
@@ -107,15 +107,15 @@ curl http://127.0.0.1:8080/v1/models
 
 `llama-server` speaks the OpenAI-compatible API, which is exactly what the
 `llamacpp` provider targets (default base URL `http://localhost:8080/v1`). Apply
-the [`Outfit`](Outfit) in this directory:
+the [`Spinloop`](Spinloop) in this directory:
 
 ```sh
-outfit apply examples/llamacpp/qwen3.8-27b/Outfit
+spinloop apply examples/llamacpp/qwen3.8-27b/Spinloop
 # or, from this directory:
-outfit apply
+spinloop apply
 ```
 
-The Outfit is:
+The Spinloop is:
 
 ```dockerfile
 PROVIDER llamacpp
@@ -131,7 +131,7 @@ whatever you find readable. `CONTEXT` matches opencode's context window to the
 `--ctx-size` you launched the server with, so it doesn't overshoot what
 `llama-server` will accept.
 
-Running on a non-default host or port? Add a `BASEURL` line to the Outfit (the
+Running on a non-default host or port? Add a `BASEURL` line to the Spinloop (the
 file ships one commented out):
 
 ```dockerfile
@@ -160,7 +160,7 @@ over to a local/`llama.cpp` deployment, and what doesn't:
   cut down on repetition, at some risk of language-mixing on the higher end.
 - **Give it room to think.** Qwen's own guidance allocates up to 262144
   tokens for reasoning content and 131072 for the final response within a 1M
-  context. This Outfit's 32768-token default is a laptop-friendly floor, not
+  context. This Spinloop's 32768-token default is a laptop-friendly floor, not
   that — thinking mode can burn through it on a hard problem and get cut off
   mid-answer. Raise `CONTEXT`/`ctx-size` (both, together) once you have the
   memory for it, e.g. after [deploying to a bigger box](#running-it-on-aws).
@@ -184,13 +184,13 @@ over to a local/`llama.cpp` deployment, and what doesn't:
   or high-throughput scenarios" and doesn't mention llama.cpp at all — the
   GGUF quants here come from the community (Unsloth, bartowski, ggml-org).
   It's a good fit for a single-GPU box with opencode, which is what this
-  Outfit is for; for serious throughput, `outfit`'s `vllm` provider and
-  `outfit remote`'s vLLM runner are the closer match to Qwen's guidance.
+  Spinloop is for; for serious throughput, `spinloop`'s `vllm` provider and
+  `spinloop remote`'s vLLM runner are the closer match to Qwen's guidance.
 
 ## Running it on AWS
 
-The same Outfit and preset run this model on a GPU in the cloud — provisioned
-by [`outfit remote`](../../../docs/commands/remote.md) — rather than the
+The same Spinloop and preset run this model on a GPU in the cloud — provisioned
+by [`spinloop remote`](../../../docs/commands/remote.md) — rather than the
 machine in front of you, and terminate themselves once you stop using them.
 This is real, billed AWS infrastructure (an EC2 GPU instance, an Elastic IP,
 image-builder pipelines), so each step below shows you a plan and asks for
@@ -199,8 +199,8 @@ confirmation before it creates anything.
 ### Once per AWS account: bootstrap the control plane
 
 ```sh
-outfit remote bootstrap                     # shows a plan, then deploys
-outfit remote bootstrap --dry-run           # see the plan without deploying
+spinloop remote bootstrap                     # shows a plan, then deploys
+spinloop remote bootstrap --dry-run           # see the plan without deploying
 ```
 
 This deploys the shared control plane — the AMI-baking pipelines for
@@ -208,10 +208,10 @@ This deploys the shared control plane — the AMI-baking pipelines for
 roles and VPC. It needs Node 22, `pnpm` or `npm`, AWS credentials, and GPU
 vCPU quota in the target region. It creates no instance and no Elastic IP.
 
-### Deploy this Outfit as an environment
+### Deploy this Spinloop as an environment
 
-Uncomment the `REMOTE` line in the [`Outfit`](Outfit) — it names the
-environment `outfit remote` creates and registers:
+Uncomment the `REMOTE` line in the [`Spinloop`](Spinloop) — it names the
+environment `spinloop remote` creates and registers:
 
 ```dockerfile
 REMOTE qwen3.8-27b
@@ -220,40 +220,40 @@ REMOTE qwen3.8-27b
 Then:
 
 ```sh
-outfit remote deploy    # from this directory
-outfit remote deploy --dry-run   # see what would be sent first
+spinloop remote deploy    # from this directory
+spinloop remote deploy --dry-run   # see what would be sent first
 ```
 
-`deploy` reads `PROVIDER`, `ALIAS`, `CONTEXT` and `PRESET` from the Outfit — the
-same values [`outfit serve`](../../../docs/commands/serve.md) uses locally —
+`deploy` reads `PROVIDER`, `ALIAS`, `CONTEXT` and `PRESET` from the Spinloop — the
+same values [`spinloop serve`](../../../docs/commands/serve.md) uses locally —
 provisions the environment's Elastic IP, API key, ingress rule (defaulting to
 your own public IP) and state, and registers it at
-`~/.config/outfit/remotes/qwen3.8-27b/remote.json`. If the shared bucket
+`~/.config/spinloop/remotes/qwen3.8-27b/remote.json`. If the shared bucket
 doesn't have these weights cached yet, deploy fetches them in the background
 (15–20 minutes) — wait for that before your first `start`.
 
 ### Start it, use it, stop it
 
 ```sh
-eval "$(outfit remote start)"   # boots the instance (~10 min cold), exports
+eval "$(spinloop remote start)"   # boots the instance (~10 min cold), exports
                                  # OPENAI_BASE_URL / OPENAI_API_KEY
-outfit remote status            # is it up, is it healthy
-outfit apply                    # point opencode at the running endpoint
-outfit harness                  # work
-outfit remote stop              # done — shut it down now rather than waiting
+spinloop remote status            # is it up, is it healthy
+spinloop apply                    # point opencode at the running endpoint
+spinloop harness                  # work
+spinloop remote stop              # done — shut it down now rather than waiting
                                  # for the idle timer
 ```
 
 Once deployed, this box has the memory to run past the 32768-token default —
-raise `CONTEXT`/`ctx-size` in the Outfit and preset together (up to the
+raise `CONTEXT`/`ctx-size` in the Spinloop and preset together (up to the
 model's native 262144) before your next `deploy`.
 
-See [`outfit remote`](../../../docs/commands/remote.md) for `logs`, `metrics`,
+See [`spinloop remote`](../../../docs/commands/remote.md) for `logs`, `metrics`,
 and how to name and switch between multiple deployed environments.
 
 ## Vision input (optional)
 
-This Outfit only serves text, which is all a coding agent needs. The GGUF repo
+This Spinloop only serves text, which is all a coding agent needs. The GGUF repo
 also ships `mmproj-F16.gguf` / `mmproj-BF16.gguf` for the vision tower; passing
 one to `llama-server` with `--mmproj` enables image input over the same
 OpenAI-compatible API, for anyone driving this server outside opencode.

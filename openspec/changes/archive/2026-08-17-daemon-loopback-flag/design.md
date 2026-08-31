@@ -1,11 +1,11 @@
 ## Context
 
-`cmdDaemon` (`cmd/outfit/serve_daemon.go`) declares `--api-addr` defaulting to
+`cmdDaemon` (`cmd/spinloop/serve_daemon.go`) declares `--api-addr` defaulting to
 `daemon.DefaultAPIAddr` (`:4242`, every interface) and hands it to
 `daemon.Listen`, which enforces the exposure rule — a non-loopback address
 refuses to start without a token (internal/daemon/api.go). The loopback
 bind's token-free property already exists; only its one-flag spelling is
-missing. The completion mirror in `cmd/outfit/complete.go` is checked by
+missing. The completion mirror in `cmd/spinloop/complete.go` is checked by
 test, so a new flag belongs in that table. See proposal.md for motivation.
 
 Existing `cmdDaemon` tests always listen on `127.0.0.1:0` and read the bound
@@ -16,14 +16,14 @@ constraint shapes the testable shape below.
 
 **Goals:**
 
-- `outfit daemon --loopback` / `outfit daemon -l` binds the control API to
+- `spinloop daemon --loopback` / `spinloop daemon -l` binds the control API to
   `127.0.0.1:4242` and needs no token.
 - Combining it with an explicit `--api-addr` fails, naming both.
 - The flag completes and is documented like its siblings.
 
 **Non-Goals:**
 
-- No `--loopback` for `outfit serve --api` (the spec pins the shorthand to
+- No `--loopback` for `spinloop serve --api` (the spec pins the shorthand to
   the daemon; serve keeps `--api-addr` alone).
 - No new listen-address concepts in `daemon.Listen` — it keeps taking a
   finished address; the flag is resolved before it.

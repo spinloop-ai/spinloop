@@ -2,7 +2,7 @@
 
 Run Unsloth's GGUF build of Gemma-4-12B-IT locally with `llama-server`, using
 Multi-Token Prediction (MTP) for faster inference, then point opencode at it
-with the [`Outfit`](Outfit) in this directory.
+with the [`Spinloop`](Spinloop) in this directory.
 
 This model uses MTP: a small draft model (`mtp-gemma-4-12b-it.gguf`) runs
 ahead of the main model to propose candidate tokens, which the main model
@@ -53,11 +53,11 @@ llama-server \
 ```
 
 Rather than remember those flags, this directory keeps them in a
-[`preset.ini`](preset.ini) and lets `outfit` build and run the command:
+[`preset.ini`](preset.ini) and lets `spinloop` build and run the command:
 
 ```sh
-outfit serve              # from this directory; reads ./Outfit and its PRESET
-outfit serve --dry-run    # print the llama-server command without running it
+spinloop serve              # from this directory; reads ./Spinloop and its PRESET
+spinloop serve --dry-run    # print the llama-server command without running it
 ```
 
 What the flags do:
@@ -116,15 +116,15 @@ curl http://127.0.0.1:8080/v1/models
 
 `llama-server` speaks the OpenAI-compatible API, which is exactly what the
 `llamacpp` provider targets (default base URL `http://localhost:8080/v1`). Apply
-the [`Outfit`](Outfit) in this directory:
+the [`Spinloop`](Spinloop) in this directory:
 
 ```sh
-outfit apply examples/llamacpp/gemma4/Outfit
+spinloop apply examples/llamacpp/gemma4/Spinloop
 # or, from this directory:
-outfit apply
+spinloop apply
 ```
 
-The Outfit is:
+The Spinloop is:
 
 ```dockerfile
 PROVIDER llamacpp
@@ -140,7 +140,7 @@ whatever you find readable. `CONTEXT` matches opencode's context window to the
 `--ctx-size` you launched the server with, so it doesn't overshoot what
 `llama-server` will accept.
 
-Running on a non-default host or port? Add a `BASEURL` line to the Outfit (the
+Running on a non-default host or port? Add a `BASEURL` line to the Spinloop (the
 file ships one commented out):
 
 ```dockerfile

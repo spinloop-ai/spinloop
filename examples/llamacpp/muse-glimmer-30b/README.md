@@ -2,7 +2,7 @@
 
 Run Meta's [`meta-models/Muse-Glimmer-30B`](https://huggingface.co/meta-models/Muse-Glimmer-30B)
 (Apache 2.0, ~29.6B params, 131k context, text + image input) via
-`llama-server`, using the [`Outfit`](Outfit) and [`preset.ini`](preset.ini) in
+`llama-server`, using the [`Spinloop`](Spinloop) and [`preset.ini`](preset.ini) in
 this directory. This example targets Meta's **K-Quant-Dynamic** build.
 
 ## Which build this uses
@@ -86,7 +86,7 @@ Three things follow, none of them obvious:
 - **Unsloth's conversion binds the drafter fine**, per the issue — its
   `sliding_window_pattern` is a scalar. Switching to it means different
   filenames throughout (`Muse-Glimmer-30B-UD-Q4_K_XL.gguf`, no
-  `kquant-dynamic`), so the Outfit, preset, `MODEL` tag and companion wiring all
+  `kquant-dynamic`), so the Spinloop, preset, `MODEL` tag and companion wiring all
   change — and #26900 may since have disallowed the scalar form it relies on.
 
 The rope format, incidentally, is *not* the problem. An earlier revision of this
@@ -110,7 +110,7 @@ llama-server \
   --host 127.0.0.1 --port 8080 --alias muse-glimmer-30b
 ```
 
-(`outfit serve --dry-run` prints the same command, built from
+(`spinloop serve --dry-run` prints the same command, built from
 [`preset.ini`](preset.ini); this is what it produces.)
 
 `--no-mmproj` is what makes this text-only: the repo publishes
@@ -154,13 +154,13 @@ so it's the portable way to put the weights on another volume:
 export LLAMA_CACHE=/Volumes/big-disk/llama.cpp
 ```
 
-Or let `outfit` build that from [`preset.ini`](preset.ini):
+Or let `spinloop` build that from [`preset.ini`](preset.ini):
 
 ```sh
-outfit serve --dry-run    # print the command
-outfit serve              # run it
+spinloop serve --dry-run    # print the command
+spinloop serve              # run it
 curl http://127.0.0.1:8080/v1/models
-outfit apply              # point opencode at it
+spinloop apply              # point opencode at it
 ```
 
 This example is deliberately **text-only**. If you do want image input, drop
@@ -288,7 +288,7 @@ memory/prefill regression ([#26873](https://github.com/ggml-org/llama.cpp/issues
 which this text-only example avoids anyway.
 
 **The drafter would be carried across, but is off** — see the DFlash note
-above. `outfit remote deploy` reads `spec-draft-model` from the preset, takes
+above. `spinloop remote deploy` reads `spec-draft-model` from the preset, takes
 its **basename** and asks the seed for that file from the model's own repo, so
 the local path is never sent and the instance loads its own synced copy. Deploy
 prints what it picked up:
@@ -304,7 +304,7 @@ the seed fails with a "not found" naming it, and that `--spec-type
 draft-dflash` stays yours to set: the deployment owns *where* the drafter is,
 not how the engine is told to use it.
 
-Deploy also needs a `MODEL` line, which the [`Outfit`](Outfit) deliberately
+Deploy also needs a `MODEL` line, which the [`Spinloop`](Spinloop) deliberately
 leaves out — the cloud seed globs filenames rather than resolving a tag, so it
 wants the quant suffix:
 
@@ -322,19 +322,19 @@ The encoder stays out unless you ask for it, which is what we want here: this
 example sets `no-mmproj`, and the seed only fetches a projector when one is
 named as an `mmproj` companion.
 
-Adding `MODEL` breaks the local `outfit serve` path above, since it becomes
+Adding `MODEL` breaks the local `spinloop serve` path above, since it becomes
 `--hf-repo meta-models/Muse-Glimmer-30B-GGUF:kquant-dynamic` — a tag that
-doesn't resolve. Keep separate Outfits if you want both.
+doesn't resolve. Keep separate Spinloops if you want both.
 
 ```sh
-outfit remote deploy --dry-run
-outfit remote deploy
-eval "$(outfit remote start --env)"   # -e/--env is what prints the
+spinloop remote deploy --dry-run
+spinloop remote deploy
+eval "$(spinloop remote start --env)"   # -e/--env is what prints the
                                        # OPENAI_BASE_URL/OPENAI_API_KEY export
                                        # lines; without it, start's output is
                                        # progress text on stderr and there is
                                        # nothing on stdout for eval to run
-outfit remote stop
+spinloop remote stop
 ```
 
 Costs and the idle/max-runtime bounds are in
@@ -345,4 +345,4 @@ Costs and the idle/max-runtime bounds are in
 - [`examples/llamacpp/qwen3.6-27b`](../qwen3.6-27b/README.md) — the example this
   one is modelled on.
 - [`docs/commands/remote.md`](../../../docs/commands/remote.md) — full
-  `outfit remote` reference.
+  `spinloop remote` reference.

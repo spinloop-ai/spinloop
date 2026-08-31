@@ -2,9 +2,9 @@
 
 ### Requirement: The instance engine runs under the daemon
 
-At boot the instance SHALL run `outfit daemon` as its engine host, bound to
+At boot the instance SHALL run `spinloop daemon` as its engine host, bound to
 loopback, instead of a per-runner engine unit. The daemon's config directory
-SHALL be pinned to a fixed system path via `OUTFIT_CONFIG_DIR` on its service
+SHALL be pinned to a fixed system path via `SPINLOOP_CONFIG_DIR` on its service
 unit, so it does not depend on `$HOME` (which a systemd service does not get)
 — what the boot writes and what the daemon reads are the same location. The
 daemon's service unit SHALL run the daemon with the pre-warm option enabled.
@@ -39,7 +39,7 @@ previously installed for that runner.
 #### Scenario: The daemon reads what the boot wrote
 
 - **WHEN** the boot writes the deploy config under the daemon's pinned
-  `OUTFIT_CONFIG_DIR` and the control plane's start request arrives
+  `SPINLOOP_CONFIG_DIR` and the control plane's start request arrives
 - **THEN** the daemon finds that deploy config and starts the engine, rather
   than reporting nothing to serve
 

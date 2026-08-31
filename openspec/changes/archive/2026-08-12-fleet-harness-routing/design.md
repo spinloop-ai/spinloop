@@ -9,14 +9,14 @@ See `proposal.md` — Why. What matters for the approach is what already exists:
 - The daemon control API already takes a deploy config in the body of `POST
   /v1/start`, validating it against the engines that host can serve and
   persisting it before starting. Waking a node is that call — no new endpoint.
-- `outfit harness` already resolves a dynamic endpoint before launching, for
+- `spinloop harness` already resolves a dynamic endpoint before launching, for
   `REMOTE`: `fetchRemoteEnv` runs *before* `applySelection`, fills
   `sel.BaseURL`, and injects `OPENAI_BASE_URL`/`OPENAI_API_KEY` into the child
   environment. Fleet routing plugs into exactly that seam with a selection step
   instead of a Lambda call.
 - What is missing is one fact: `daemon.StatusResponse` says the engine is
-  running but not where it serves. `scrapeTargetFor` in `cmd/outfit` already
-  derives that address for the metrics collector — the Outfit's `BASEURL` or the
+  running but not where it serves. `scrapeTargetFor` in `cmd/spinloop` already
+  derives that address for the metrics collector — the Spinloop's `BASEURL` or the
   engine's default bind — and already lifts `--api-key`/`--api-key-file` from
   the argv.
 
@@ -54,27 +54,27 @@ endpoint — use it". A gateway then needs no new keyword, no new flag, and no
 change to the launch path:
 
 ```
-FLEET ./fleet.yaml            # client-side: outfit chooses a node
-FLEET http://gw.internal:4000 # gateway: outfit points straight at it
+FLEET ./fleet.yaml            # client-side: spinloop chooses a node
+FLEET http://gw.internal:4000 # gateway: spinloop points straight at it
 ```
 
 Parsing accepts both from the start (a value with a scheme is a URL, anything
 else is a path); this change implements only the path branch, and the URL branch
 is rejected with "gateway routing is not implemented yet" rather than being left
 as an unhandled shape. That keeps the eventual gateway change from having to
-revisit the Outfit format.
+revisit the Spinloop format.
 
 *Alternative considered*: a separate `GATEWAY` keyword. Rejected — it would make
-"which of the two is in force" a precedence question in every Outfit, for two
+"which of the two is in force" a precedence question in every Spinloop, for two
 things that answer the same question.
 
-### The outfit gateway, sketched
+### The spinloop gateway, sketched
 
 Recorded here so the seam above is a real plan rather than a hope. Not built in
 this change.
 
-- `outfit gateway --fleet ./fleet.yaml --listen :4000` — a foreground process
-  like `outfit serve`, holding the same `fleet.yaml`.
+- `spinloop gateway --fleet ./fleet.yaml --listen :4000` — a foreground process
+  like `spinloop serve`, holding the same `fleet.yaml`.
 - It serves an OpenAI-compatible surface: `/v1/models` (the union of what the
   fleet's nodes serve, refreshed by the same status fan-out), and a reverse
   proxy for `/v1/chat/completions` and `/v1/completions` that picks a node with
@@ -107,11 +107,11 @@ hint; reported as a flag, routing can say "this engine answers only on that
 machine — bind it to a reachable address, or set the node's engine override".
 
 The values come from the same derivation `scrapeTargetFor` already performs (the
-Outfit's `BASEURL` or the engine's `defaultBaseURL`, and the argv's
+Spinloop's `BASEURL` or the engine's `defaultBaseURL`, and the argv's
 `--api-key`/`--api-key-file`), so the endpoint status reports and the endpoint
 metrics scrapes cannot drift apart. That derivation moves into a shared helper
 the daemon is handed alongside `BuildArgv`, keeping the engine table in
-`cmd/outfit` where it lives now.
+`cmd/spinloop` where it lives now.
 
 *Alternative considered*: the daemon reports a full base URL and the client
 rewrites the host. Rejected — same information, but it invites a client that
@@ -131,7 +131,7 @@ the trade the gateway later removes by holding those keys centrally.
 
 ### Waking is the existing start-with-config call
 
-Selection derives a `remote.DeployConfig` from the Outfit exactly as `outfit
+Selection derives a `remote.DeployConfig` from the Spinloop exactly as `spinloop
 remote deploy` does (runner from `PROVIDER`, model from `MODEL`, context, served
 name from `ALIAS`, serve args from the `PRESET`), and `POST /v1/start` with it
 in the body.
@@ -169,12 +169,12 @@ someone is already in, while over-spreading only costs the odd extra wake.
 
 The setting resolves flag-then-file-then-default: `--prefer` on the launch, then
 `prefer:` in `fleet.yaml`, then `idle`. It sits in the fleet file rather than the
-Outfit because it describes how a *cluster* should be used — the same Outfit
+Spinloop because it describes how a *cluster* should be used — the same Spinloop
 routed at a shared fleet and a personal one wants different answers, and the
 fleet file is the thing that differs.
 
-*Alternative considered*: an `OUTFIT_FLEET_PREFER` environment variable, for
-symmetry with `OUTFIT_HARNESS` and `OUTFIT_ALIAS`. Left out — those name *what
+*Alternative considered*: an `SPINLOOP_FLEET_PREFER` environment variable, for
+symmetry with `SPINLOOP_HARNESS` and `SPINLOOP_ALIAS`. Left out — those name *what
 to run*, which changes shell to shell; this names *how a cluster is shared*,
 which does not. It can be added later without disturbing the precedence.
 
@@ -211,21 +211,21 @@ safe to attempt automatically.
 
 - `internal/fleet`: a `Selector` over `[]NodeResult` (pure ranking, trivially
   testable), the engine-endpoint resolution, and the wake-and-wait. It gains no
-  knowledge of Outfits — the caller hands it a wanted model and a deploy config.
-- `internal/outfit`: the `FLEET` keyword, the URL-vs-path distinction, and the
+  knowledge of Spinloops — the caller hands it a wanted model and a deploy config.
+- `internal/spinloop`: the `FLEET` keyword, the URL-vs-path distinction, and the
   `FLEET`/`REMOTE` exclusivity.
 - `internal/daemon`: the endpoint fields on `StatusResponse`, populated from a
   helper the CLI supplies.
-- `cmd/outfit`: `--fleet`, `--node`, `--no-wake`, `--wake-timeout` on `harness`;
+- `cmd/spinloop`: `--fleet`, `--node`, `--no-wake`, `--wake-timeout` on `harness`;
   `fleet route`; the deploy-config derivation shared with `remote deploy`.
 
 ## Risks / Trade-offs
 
 - **A stale base URL is written into the harness config.** Routing fills the
   same `BASEURL` slot a `REMOTE` fills, so the config records where the last
-  launch pointed. Running the harness directly, outside `outfit`, then hits a
+  launch pointed. Running the harness directly, outside `spinloop`, then hits a
   node that may have moved on. → The same is already true of `REMOTE`; each
-  `outfit harness` run rewrites it, and `outfit show` reports the address that
+  `spinloop harness` run rewrites it, and `spinloop show` reports the address that
   is written.
 - **Auto-waking starts processes on other people's machines.** A launch can
   spin up an engine on a shared box without anyone asking. → It only ever wakes
@@ -248,10 +248,10 @@ safe to attempt automatically.
   node already at capacity, because nothing here measures capacity. → It is
   opt-in, it is a per-fleet choice made once by whoever runs the fleet, and
   `--prefer idle` overrides it for a launch that should go elsewhere.
-- **More network in the launch path.** Every fleet-routed `outfit harness` now
+- **More network in the launch path.** Every fleet-routed `spinloop harness` now
   fans out over the fleet before it launches anything. → Bounded by the same
   `RequestTimeout` the fleet client already uses, and skipped entirely for an
-  Outfit with no `FLEET`.
+  Spinloop with no `FLEET`.
 - **A container-published engine port will not match what the daemon reports.**
   Inside the container the engine binds 8080; outside it is published as
   something else. → The per-node engine override exists for exactly this, and
@@ -259,7 +259,7 @@ safe to attempt automatically.
 
 ## Migration Plan
 
-Additive throughout. An Outfit with no `FLEET`, a `fleet.yaml` with no engine
+Additive throughout. A Spinloop with no `FLEET`, a `fleet.yaml` with no engine
 block, and an older daemon that reports no engine endpoint all behave as they do
 today. A client that routes against a daemon too old to report an endpoint fails
 with a message naming the node and saying to upgrade it or set the node's engine

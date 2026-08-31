@@ -5,7 +5,7 @@
 The managed provider's `apiKey` SHALL be written as a `$ENV_VAR` interpolation
 referencing the provider's key variable — never the resolved secret. The
 reference SHALL be written even when that variable is currently unset, because
-Pi resolves it when it runs, so the key may be exported after the Outfit is
+Pi resolves it when it runs, so the key may be exported after the Spinloop is
 applied.
 
 A dummy literal placeholder SHALL be written instead when the provider has no

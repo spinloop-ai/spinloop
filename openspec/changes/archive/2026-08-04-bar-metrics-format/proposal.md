@@ -5,7 +5,7 @@ The default metrics output is a verbose key-value table that's hard to scan quic
 ## What Changes
 
 - Add a new `--format=bar` output mode that renders CPU, RAM, GPU utilization, and GPU memory as coloured progress bars (green ≤80%, yellow 80–90%, red >90%)
-- Make `bar` the default format for `outfit remote metrics` (previously `table`)
+- Make `bar` the default format for `spinloop remote metrics` (previously `table`)
 - In `--watch` mode, clear the screen and redraw in place instead of appending with `---` separators
 - Pre-render metrics into a buffer before clearing the screen to eliminate the blank-frame delay between refreshes
 
@@ -19,6 +19,6 @@ The default metrics output is a verbose key-value table that's hard to scan quic
 
 ## Impact
 
-- `cmd/outfit/remote.go`: New `formatMetricsBar`, `renderBar` functions; refactored format functions to accept `io.Writer`; updated `runMetricsOnce` and `runMetricsWatch`
-- `cmd/outfit/remote_test.go`: New tests for bar format and updated tests that relied on table defaults
+- `cmd/spinloop/remote.go`: New `formatMetricsBar`, `renderBar` functions; refactored format functions to accept `io.Writer`; updated `runMetricsOnce` and `runMetricsWatch`
+- `cmd/spinloop/remote_test.go`: New tests for bar format and updated tests that relied on table defaults
 - No new dependencies — uses stdlib `io.Writer`, `strings.Builder`, and ANSI escape codes already in the codebase

@@ -23,16 +23,16 @@ read can be made sequential.
   best-effort: it never blocks the start, it fails silently, and a missing
   path is a no-op.
 
-- **Prewarm is a daemon option, on only for cloud daemons.** `outfit daemon`
+- **Prewarm is a daemon option, on only for cloud daemons.** `spinloop daemon`
   gains a pre-warm option, off by default. The cloud runtime AMI's daemon
   unit passes it, so a cloud daemon pre-warms by default; a local
-  `outfit daemon`, `outfit serve --api`, and a fleet node never do. A start
+  `spinloop daemon`, `spinloop serve --api`, and a fleet node never do. A start
   request may disable the pre-warm for itself, but may not enable it where
   the daemon does not run with the option.
 
 - **The pre-warm choice rides the start request.** The deploy config a start
   carries gains an optional pre-warm field. On the cloud the default is
-  enabled, and `outfit remote start` (and `restart`, which composes a stop
+  enabled, and `spinloop remote start` (and `restart`, which composes a stop
   and a start) accept the choice, so the operator can skip the pre-warm for
   the wake they are asking for.
 
@@ -62,14 +62,14 @@ None.
   started the engine, once boot has signalled complete.
 - `daemon-api`: the deploy config a start carries may name the pre-warm
   choice for that start.
-- `remote-endpoint`: `outfit remote start` and `restart` accept the pre-warm
+- `remote-endpoint`: `spinloop remote start` and `restart` accept the pre-warm
   choice, defaulting to the cloud default.
 
 ## Impact
 
 - **Go**: `internal/daemon` (the pre-warm, the option's wiring, honouring the
   per-start choice); `internal/remote` (`DeployConfig`'s pre-warm field and
-  the start request's choice); `cmd/outfit` (the daemon option, the remote
+  the start request's choice); `cmd/spinloop` (the daemon option, the remote
   start/restart flags); the daemon's OpenAPI description and its contract
   test for the new field.
 - **remote/**: the start Lambda (the block device mapping, the wait for the
@@ -80,7 +80,7 @@ None.
 - **Cost**: provisioned throughput adds roughly $4.40/month, pro-rated to
   time up (875 MiB/s over the baseline at $0.005/MiB-month).
 - **Release coupling**: the pre-warm and the boot change live in the baked
-  runtime AMI, so they take effect only after an outfit release and a
+  runtime AMI, so they take effect only after a spinloop release and a
   rebake; the control plane ships separately and must follow the rebake,
   because the daemon unit it renders carries the new option, which an older
-  outfit binary would refuse.
+  spinloop binary would refuse.

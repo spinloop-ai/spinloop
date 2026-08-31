@@ -1,10 +1,10 @@
 ## Why
 
-A node's tile in `outfit fleet dashboard` shows its state and outcome only as
+A node's tile in `spinloop fleet dashboard` shows its state and outcome only as
 plain text ("running", "unreachable", "crashed"...), read left to right
 alongside everything else on the tile. Scanning a grid of many nodes for the
 ones that need attention means reading every tile's text in full; a glance
-cannot tell "healthy" from "not" the way colour can. [Issue #124](https://github.com/lucinate-ai/outfit/issues/124).
+cannot tell "healthy" from "not" the way colour can. [Issue #124](https://github.com/spinloop-ai/spinloop/issues/124).
 
 More importantly, `state: running` on its own doesn't mean an engine can
 serve requests: the daemon's supervisor flips to `running` the moment the
@@ -26,7 +26,7 @@ polling reaches — that distinguishes the two.
   answered, failed outcome), so health reads at a glance without the border
   colour — which stays reserved for the selection cursor.
 - Four health tiers, reusing the project's existing green/yellow/red
-  convention from the resource bars (`renderBar` in `cmd/outfit/remote.go`),
+  convention from the resource bars (`renderBar` in `cmd/spinloop/remote.go`),
   plus a grey for when no status can be determined at all:
   - **Healthy (green)**: the node answered, its engine is not crashed, and —
     when the daemon reports readiness at all — the engine confirmed ready.
@@ -63,9 +63,9 @@ polling reaches — that distinguishes the two.
 - `docs/openapi.yaml`: `StatusResponse` and `Stats` schemas gain the new
   field (checked against the implementation by `internal/daemon/openapi_test.go`,
   per `daemon-api-contract`)
-- `cmd/outfit/dashboard_render.go`: `dashTileContent`, a new health-tier
+- `cmd/spinloop/dashboard_render.go`: `dashTileContent`, a new health-tier
   helper reading the readiness field, the glyph rendering
-- `cmd/outfit/fleet_dashboard_test.go`, `internal/daemon/*_test.go`: fixtures
+- `cmd/spinloop/fleet_dashboard_test.go`, `internal/daemon/*_test.go`: fixtures
   and new tests for the readiness check and the tile's tiers
 - `openspec/specs/daemon-api/spec.md`, `openspec/specs/fleet-client/spec.md`:
   deltas for the two capabilities above

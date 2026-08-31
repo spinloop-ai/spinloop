@@ -1,7 +1,7 @@
 openapi: 3.1.0
 
-# The daemon's HTTP control API — what `outfit daemon` always exposes, and what
-# `outfit serve --api` exposes alongside a foreground engine.
+# The daemon's HTTP control API — what `spinloop daemon` always exposes, and what
+# `spinloop serve --api` exposes alongside a foreground engine.
 #
 # This file is checked against the implementation by
 # internal/daemon/openapi_test.go: the routes here must match the ones the
@@ -12,7 +12,7 @@ openapi: 3.1.0
 # Prose on the behaviour a schema cannot express lives in docs/http-api.md.
 
 info:
-  title: outfit daemon control API
+  title: spinloop daemon control API
   summary: Supervise and observe a local inference engine.
   description: |
     The control API drives one supervised inference engine: start it, stop it,
@@ -23,9 +23,9 @@ info:
      listen with no bearer token configured refuses to start, since the API can
      start and stop processes; a loopback listen may go tokenless.
 
-    Under `outfit daemon` nothing runs until a start request asks, and stopping
+    Under `spinloop daemon` nothing runs until a start request asks, and stopping
     the engine never ends the daemon — the API keeps answering. Under
-    `outfit serve --api` the engine is foreground-managed, so start always
+    `spinloop serve --api` the engine is foreground-managed, so start always
     fails as already-running and stopping the engine ends serve itself.
   license:
     name: MIT
@@ -115,7 +115,7 @@ paths:
       operationId: stopEngine
       summary: Stop the engine.
       description: |
-        Idempotent: stopping when nothing runs succeeds. Under `outfit daemon`
+        Idempotent: stopping when nothing runs succeeds. Under `spinloop daemon`
         this never ends the daemon itself.
       responses:
         "200":
@@ -242,8 +242,8 @@ components:
       type: http
       scheme: bearer
       description: |
-        The token comes from the `OUTFIT_API_TOKEN` environment variable —
-        reachable through the Outfit's adjacent `.env` — never from a flag, so
+        The token comes from the `SPINLOOP_API_TOKEN` environment variable —
+        reachable through the Spinloop's adjacent `.env` — never from a flag, so
         the secret stays out of the process table. When no token is configured
         the API is unauthenticated, which `Listen` permits only on loopback.
 
@@ -334,7 +334,7 @@ components:
         version:
           type: string
           description: |
-            The outfit binary's build-time version string, from
+            The spinloop binary's build-time version string, from
             `main.version`. Set to "dev" when not overridden at build time.
 
     EngineEndpoint:
@@ -482,8 +482,8 @@ components:
     DeployConfig:
       type: object
       description: |
-        What to serve, in the same shape `outfit remote deploy` derives from an
-        Outfit. Mirrors Go's remote.DeployConfig. There is no default runner: an
+        What to serve, in the same shape `spinloop remote deploy` derives from an
+        Spinloop. Mirrors Go's remote.DeployConfig. There is no default runner: an
         unset or invalid one fails loudly rather than guessing.
       required: [runner]
       properties:
@@ -535,10 +535,10 @@ components:
             disables a pre-warm the daemon would otherwise do. It can never
             enable one — whether a daemon pre-warms at all is the daemon's
             own, so a client cannot switch it on a host that lacks it.
-        outfitVersion:
+        spinloopVersion:
           type: string
           description: |
-            The outfit release the environment's instances install at boot.
+            The spinloop release the environment's instances install at boot.
             Empty or absent means the boot installs the latest published
             release. A pin is normalised before it is sent — the leading v
             of a release tag is not part of the version (1.26.1, not

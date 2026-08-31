@@ -8,10 +8,10 @@ the engine; stop the engine; return collected metrics; and accept a deploy
 config. Start SHALL accept an optional deploy config in its request body —
 validated and persisted exactly as a config push, then started — so a client
 can say what to run and run it in one call; without a body, start uses the
-stored config or the Outfit. Start SHALL fail when an engine is already
+stored config or the Spinloop. Start SHALL fail when an engine is already
 running, changing nothing — a body sent with a rejected start SHALL NOT be
 stored. Stop SHALL succeed when nothing is running (idempotent), and stopping
-the engine SHALL never terminate `outfit daemon` — the API keeps answering.
+the engine SHALL never terminate `spinloop daemon` — the API keeps answering.
 Errors SHALL be returned as JSON with a message and a meaningful HTTP status.
 
 Status SHALL report the engine's last-active time as an RFC 3339 timestamp and
@@ -66,7 +66,7 @@ run, and neither SHALL be inferred by the caller from any other field.
 
 #### Scenario: Stop never ends the daemon
 
-- **WHEN** a stop request stops the engine under `outfit daemon`
+- **WHEN** a stop request stops the engine under `spinloop daemon`
 - **THEN** the daemon and its API keep running, and a later start request
   succeeds
 

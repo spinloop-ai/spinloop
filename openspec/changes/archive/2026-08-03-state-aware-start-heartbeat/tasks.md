@@ -1,6 +1,6 @@
 ## 1. Surface the latest poll state to the heartbeat
 
-- [x] 1.1 In `cmd/outfit/remote.go`, add a mutex-guarded last-seen-state field to
+- [x] 1.1 In `cmd/spinloop/remote.go`, add a mutex-guarded last-seen-state field to
   `startProgress`, defaulting to empty (treated as "starting").
 - [x] 1.2 Wire `remote.Start`'s per-poll state to that field so the heartbeat can
   read it — either by having the progress callback in `cmdRemoteStart` record the
@@ -17,14 +17,14 @@
 
 ## 3. Short alias for the start timeout
 
-- [x] 3.1 In `cmdRemoteStart` (`cmd/outfit/remote.go`), register `-t` as a second
+- [x] 3.1 In `cmdRemoteStart` (`cmd/spinloop/remote.go`), register `-t` as a second
   name bound to the same `timeout` variable as `--timeout`, keeping the 15m
   default and duration parsing (e.g. `-t 5m`).
 - [x] 3.2 Confirm the `remote start` usage/help lists both `--timeout` and `-t`.
 
 ## 4. Tests
 
-- [x] 4.1 Update `cmd/outfit/remote_deploy_test.go` so the mocked start endpoint
+- [x] 4.1 Update `cmd/spinloop/remote_deploy_test.go` so the mocked start endpoint
   can return a `no-capacity` 503, and assert the heartbeat says "waiting for
   capacity" during that window and "still starting" while booting.
 - [x] 4.2 Add a test that `-t <dur>` sets the wait — e.g. a very short timeout

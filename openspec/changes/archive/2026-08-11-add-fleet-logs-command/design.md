@@ -1,6 +1,6 @@
 ## Context
 
-`outfit remote logs` shipped in #60 and reads a remote environment's logs from
+`spinloop remote logs` shipped in #60 and reads a remote environment's logs from
 CloudWatch. This is the fleet half of the same question, and almost none of the
 remote implementation transfers — the transport, the data model and the ordering
 guarantees are all different.
@@ -31,7 +31,7 @@ What exists today:
 **Goals:**
 
 - Read a node's engine output over the daemon API, bounded and resumable.
-- `outfit fleet logs [node]`, fanning out by default, degrading per node.
+- `spinloop fleet logs [node]`, fanning out by default, degrading per node.
 - Exact following: never reprint a line, never miss one.
 - Keep the daemon's contract honest — route table, OpenAPI document and schema
   table move together.
@@ -43,7 +43,7 @@ What exists today:
 - Log rotation or retention on the node. The daemon's log growth is a real
   problem, but it is a separate one and predates this change — see Risks.
 - Search or filtering. `grep` composes with this fine.
-- Changing `outfit remote logs`, or unifying the two behind one command. They
+- Changing `spinloop remote logs`, or unifying the two behind one command. They
   answer the same question about different things, and their data models differ
   enough that a forced union would serve neither.
 
@@ -95,7 +95,7 @@ No delta is needed for `daemon-api-contract`: it already requires the published
 description to cover the implementation and be verified against it, so the
 OpenAPI work is mandated by the spec as it stands.
 
-### What is actually shared with `outfit remote logs`
+### What is actually shared with `spinloop remote logs`
 
 Less than "mirroring" suggests, and the design is honest about it rather than
 forcing reuse:
@@ -146,7 +146,7 @@ specifically — the operator's fix is to upgrade that node.
   stating plainly in the docs because logs can carry prompts or model output.
 - [Polling N nodes on a follow is N requests per interval] → the interval is a
   few seconds, each request is bounded, and a node with nothing new returns an
-  empty body. `outfit fleet logs <node>` narrows it to one when that matters.
+  empty body. `spinloop fleet logs <node>` narrows it to one when that matters.
 
 ## Migration Plan
 

@@ -2,7 +2,7 @@
 
 ### Requirement: Deploying what the endpoint serves
 
-`outfit remote deploy` SHALL derive the deployment from the Outfit and its
+`spinloop remote deploy` SHALL derive the deployment from the Spinloop and its
 preset: `PROVIDER` SHALL select the inference engine, `MODEL` or the preset's
 Hugging Face reference SHALL name the weights as a repository and optional
 quantisation, `CONTEXT` or the preset's context size SHALL set the window,
@@ -22,25 +22,25 @@ the instance.
 
 #### Scenario: A preset drives both serving and deploying
 
-- **WHEN** an Outfit with a preset is deployed
+- **WHEN** a Spinloop with a preset is deployed
 - **THEN** the engine's arguments are the preset's, minus the settings the
   endpoint sets itself
 
-#### Scenario: The Outfit overrides its preset
+#### Scenario: The Spinloop overrides its preset
 
-- **WHEN** the Outfit states a `MODEL` and `CONTEXT` that differ from the
+- **WHEN** the Spinloop states a `MODEL` and `CONTEXT` that differ from the
   preset's
-- **THEN** the Outfit's values are deployed
+- **THEN** the Spinloop's values are deployed
 
 #### Scenario: A provider that is not a self-hosted engine
 
-- **WHEN** an Outfit naming a hosted provider is deployed
+- **WHEN** a Spinloop naming a hosted provider is deployed
 - **THEN** the command fails saying that only a self-hosted engine can be
   deployed
 
 #### Scenario: A local model file
 
-- **WHEN** an Outfit naming a local model file is deployed
+- **WHEN** a Spinloop naming a local model file is deployed
 - **THEN** the command fails saying to name a repository instead, because the
   endpoint fetches its own weights
 

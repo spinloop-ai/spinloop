@@ -2,18 +2,18 @@
 
 ### Requirement: Deploy creates an environment on the shared layer
 
-`outfit remote deploy` SHALL create a named environment on top of the shared
+`spinloop remote deploy` SHALL create a named environment on top of the shared
 infrastructure: it SHALL discover the shared layer, then provision the
 environment's own Elastic IP, EC2 instance configuration, per-environment API
 key, per-environment allowed-ingress rule, and per-environment SSM state
 (deploy-config and idle-state), all tagged by the environment name. It SHALL set
-what the environment serves from the Outfit and its preset, and SHALL register
+what the environment serves from the Spinloop and its preset, and SHALL register
 the environment so the other `remote` commands can drive it. Deploying SHALL NOT
 start the instance.
 
 #### Scenario: Deploying stands up and registers an environment
 
-- **WHEN** `outfit remote deploy` runs for an environment against a bootstrapped
+- **WHEN** `spinloop remote deploy` runs for an environment against a bootstrapped
   account
 - **THEN** the environment's Elastic IP, instance configuration, API key,
   ingress rule, and SSM state are provisioned, and the environment is registered
@@ -22,7 +22,7 @@ start the instance.
 
 - **WHEN** a deploy succeeds
 - **THEN** the environment is configured and registered but no instance is
-  running until `outfit remote start`
+  running until `spinloop remote start`
 
 ### Requirement: Discovering the shared layer
 
@@ -30,7 +30,7 @@ Deploy SHALL discover the shared infrastructure from the bootstrap stack's
 CloudFormation outputs (a well-known stack name) — the lifecycle Lambda URLs, the
 weights bucket, the shared roles, and the region — rather than from any local
 file. When the shared stack is absent, deploy SHALL fail telling the user to run
-`outfit remote bootstrap` first, rather than attempting to create an environment.
+`spinloop remote bootstrap` first, rather than attempting to create an environment.
 
 #### Scenario: The shared layer is discovered
 
@@ -41,7 +41,7 @@ file. When the shared stack is absent, deploy SHALL fail telling the user to run
 #### Scenario: Not bootstrapped
 
 - **WHEN** deploy runs against an account with no shared stack
-- **THEN** it fails saying to run `outfit remote bootstrap` first, and creates
+- **THEN** it fails saying to run `spinloop remote bootstrap` first, and creates
   nothing
 
 ### Requirement: Per-environment allowed ingress
@@ -64,16 +64,16 @@ rule. It SHALL NOT be an account-wide setting.
 ### Requirement: Registering the environment
 
 Deploy SHALL register the environment in the per-user registry defined by the
-Remote Environments specification — `~/.config/outfit/remotes/<env>/remote.json`,
+Remote Environments specification — `~/.config/spinloop/remotes/<env>/remote.json`,
 written owner-only — carrying the shared lifecycle Lambda URLs, the region, the
 environment's base URL (its Elastic IP), and the environment identifier the
 shared Lambdas use to select this environment's instance.
 
 #### Scenario: The environment is registered and resolvable
 
-- **WHEN** `outfit remote deploy` for environment `prod` succeeds
-- **THEN** `~/.config/outfit/remotes/prod/remote.json` exists (owner-only) and an
-  Outfit stating `REMOTE prod` resolves to it
+- **WHEN** `spinloop remote deploy` for environment `prod` succeeds
+- **THEN** `~/.config/spinloop/remotes/prod/remote.json` exists (owner-only) and an
+  Spinloop stating `REMOTE prod` resolves to it
 
 ### Requirement: Refuse to overwrite a live environment
 

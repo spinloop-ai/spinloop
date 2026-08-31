@@ -3,7 +3,7 @@
 ### Requirement: Rendering-compatible stats shape
 
 The collected metrics SHALL be expressible in the same stats shape the
-`outfit remote metrics` formatters render (state, runner, model, GPU, CPU,
+`spinloop remote metrics` formatters render (state, runner, model, GPU, CPU,
 RAM, token stats, and the engine's last-active time with the idle duration
 derived from it), so the existing bar, table, and JSON formats display
 in-process metrics without format-specific changes.

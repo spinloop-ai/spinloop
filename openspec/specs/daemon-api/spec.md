@@ -15,48 +15,48 @@ counters a caller would have to compare for itself.
 ## Requirements
 ### Requirement: API exposure
 
-`outfit daemon` SHALL always expose the control API — it is the command's
-purpose. `outfit serve` SHALL expose it only when `-a`/`--api` is passed, and
+`spinloop daemon` SHALL always expose the control API — it is the command's
+purpose. `spinloop serve` SHALL expose it only when `-a`/`--api` is passed, and
 remains a foreground command either way; serve SHALL have no daemon flag. The
 listen address SHALL default to port 4242 on all interfaces and SHALL be
-overridable by flag; `outfit daemon` SHALL also offer a `--loopback`
+overridable by flag; `spinloop daemon` SHALL also offer a `--loopback`
 (short `-l`) boolean flag that binds the API to loopback on the default port,
 identical to giving `--api-addr 127.0.0.1:4242`. The shorthand applies to
-`outfit daemon` only — `outfit serve`'s API keeps `--api-addr` alone. Giving
+`spinloop daemon` only — `spinloop serve`'s API keeps `--api-addr` alone. Giving
 `--loopback` together with an explicit `--api-addr` SHALL fail, naming the
 conflict, rather than letting one win.
 
 #### Scenario: The daemon exposes the API
 
-- **WHEN** `outfit daemon` runs with no API flags
+- **WHEN** `spinloop daemon` runs with no API flags
 - **THEN** the control API listens on the default address
 
 #### Scenario: Loopback shorthand
 
-- **WHEN** `outfit daemon` runs with `--loopback` and no `--api-addr`
+- **WHEN** `spinloop daemon` runs with `--loopback` and no `--api-addr`
 - **THEN** the control API listens on `127.0.0.1:4242` and — being loopback —
   needs no bearer token
 
 #### Scenario: Loopback with an explicit address is a conflict
 
-- **WHEN** `outfit daemon` is given both `--loopback` and `--api-addr <addr>`
+- **WHEN** `spinloop daemon` is given both `--loopback` and `--api-addr <addr>`
 - **THEN** it fails at startup naming both flags, rather than choosing one
 
 #### Scenario: Foreground serve is API-off by default
 
-- **WHEN** `outfit serve` runs without `--api`
+- **WHEN** `spinloop serve` runs without `--api`
 - **THEN** no control API listens
 
 #### Scenario: Foreground serve can opt in
 
-- **WHEN** `outfit serve --api` runs
+- **WHEN** `spinloop serve --api` runs
 - **THEN** the control API listens while the engine runs in the foreground
 
 ### Requirement: Bearer-token authentication
 
 The API SHALL authenticate requests with a bearer token compared against the
 token configured for the process. The token MAY be supplied three ways: a file
-naming it (`--api-token-file`), the environment (`OUTFIT_API_TOKEN`), or
+naming it (`--api-token-file`), the environment (`SPINLOOP_API_TOKEN`), or
 literally on the command line (`--api-token`). Giving more than one SHALL fail
 naming the conflict rather than picking one. Requests without the correct token
 SHALL be rejected with `401` and no state change. When no token is configured,
@@ -113,16 +113,16 @@ the process list.
 
 ### Requirement: Control endpoints
 
-The API SHALL provide JSON endpoints to: report status (engine state, what is being served, the engine log path, when the engine was last active, and the daemon's outfit version); start the engine; stop the engine; return collected metrics; and accept a deploy config. Start SHALL accept an optional deploy config in its request body — validated and persisted exactly as a config push, then started — so a client can say what to run and run it in one call; without a body, start uses the stored config or the Outfit. Start SHALL fail when an engine is already running, changing nothing — a body sent with a rejected start SHALL NOT be stored. Stop SHALL succeed when nothing is running (idempotent), and stopping the engine SHALL never terminate `outfit daemon` — the API keeps answering. Errors SHALL be returned as JSON with a message and a meaningful HTTP status.
+The API SHALL provide JSON endpoints to: report status (engine state, what is being served, the engine log path, when the engine was last active, and the daemon's spinloop version); start the engine; stop the engine; return collected metrics; and accept a deploy config. Start SHALL accept an optional deploy config in its request body — validated and persisted exactly as a config push, then started — so a client can say what to run and run it in one call; without a body, start uses the stored config or the Spinloop. Start SHALL fail when an engine is already running, changing nothing — a body sent with a rejected start SHALL NOT be stored. Stop SHALL succeed when nothing is running (idempotent), and stopping the engine SHALL never terminate `spinloop daemon` — the API keeps answering. Errors SHALL be returned as JSON with a message and a meaningful HTTP status.
 
 Status SHALL report the engine's last-active time as an RFC 3339 timestamp and the idle duration derived from it in seconds, so a caller can judge idleness from a decision the daemon has already made rather than from raw counters it would have to compare itself. Both SHALL be omitted when no engine has ever run, and neither SHALL be inferred by the caller from any other field.
 
-Status SHALL also report the daemon's outfit version as a string, set from the binary's build-time version variable. This enables remote callers to verify which outfit release the node is running without SSH access.
+Status SHALL also report the daemon's spinloop version as a string, set from the binary's build-time version variable. This enables remote callers to verify which spinloop release the node is running without SSH access.
 
 #### Scenario: Status reports the supervised state
 
 - **WHEN** a status request is made
-- **THEN** the response reports the engine state, the model/runner being served (when known), the engine log path, and the outfit version
+- **THEN** the response reports the engine state, the model/runner being served (when known), the engine log path, and the spinloop version
 
 #### Scenario: Status reports engine activity
 
@@ -161,7 +161,7 @@ Status SHALL also report the daemon's outfit version as a string, set from the b
 
 #### Scenario: Stop never ends the daemon
 
-- **WHEN** a stop request stops the engine under `outfit daemon`
+- **WHEN** a stop request stops the engine under `spinloop daemon`
 - **THEN** the daemon and its API keep running, and a later start request succeeds
 
 #### Scenario: Metrics endpoint returns collected stats
@@ -171,8 +171,8 @@ Status SHALL also report the daemon's outfit version as a string, set from the b
 
 ### Requirement: Deploy config push
 
-The API SHALL accept a deploy config in the same shape `outfit remote deploy`
-derives from an Outfit and its preset (runner, model, context, alias, serve
+The API SHALL accept a deploy config in the same shape `spinloop remote deploy`
+derives from a Spinloop and its preset (runner, model, context, alias, serve
 args — the preset already resolved by the pusher). The daemon SHALL validate
 that the runner names an engine it can serve, persist the config, and use it
 for subsequent starts. Pushing a config SHALL NOT itself restart a running

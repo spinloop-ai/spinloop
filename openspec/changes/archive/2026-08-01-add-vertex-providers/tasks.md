@@ -14,7 +14,7 @@
 
 - [x] 3.1 `catalog` test: required option unset → error names option + env var; set → injected into block
 - [x] 3.2 `catalog` test: both Vertex providers build with no apiKey and expected options; `BuildPiProvider` rejects them
-- [x] 3.3 `outfit list` test/golden: both providers appear, opencode-only
+- [x] 3.3 `spinloop list` test/golden: both providers appear, opencode-only
 - [x] 3.4 `go test ./... -cover` stays >= 80%; run gofmt
 
 ## 4. Docs

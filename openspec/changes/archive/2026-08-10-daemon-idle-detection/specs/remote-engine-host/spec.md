@@ -5,7 +5,7 @@
 The stats path SHALL obtain engine and system metrics by calling the
 on-instance daemon's metrics endpoint over SSM, merging in what only the
 control plane knows (environment, instance id and type, uptime), and SHALL
-preserve the reply shape `outfit remote metrics` renders today. The control
+preserve the reply shape `spinloop remote metrics` renders today. The control
 plane SHALL NOT collect metrics by running per-metric shell commands on the
 instance.
 
@@ -19,13 +19,13 @@ A daemon that cannot be reached, and a daemon whose reply carries no
 last-active time, SHALL both be treated as showing no activity, so an instance
 in either state is terminated once the idle threshold passes rather than left
 running. There SHALL be no second way of judging idleness for a daemon that
-does not report one: an instance running an outfit older than this behaviour
+does not report one: an instance running an spinloop older than this behaviour
 is handled by deploying the control plane after the images that carry it, not
 by a compatibility path in the check.
 
 #### Scenario: Stats flow through the daemon
 
-- **WHEN** `outfit remote metrics` runs against a running instance
+- **WHEN** `spinloop remote metrics` runs against a running instance
 - **THEN** the reported state, GPU, CPU, RAM and token figures come from the
   daemon's metrics endpoint and render in the existing bar, table and JSON
   formats unchanged

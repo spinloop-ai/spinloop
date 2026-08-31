@@ -1,6 +1,6 @@
 ## Context
 
-Currently `outfit remote status` calls the start Lambda's GET endpoint, which returns EC2 instance state and `/health` status but has no path to the daemon running on the box. The daemon already exposes its own status at `GET /v1/status`, including runner/model/uptime — the stats Lambda scrapes that endpoint over SSM for metrics. The binary already tracks `main.version` (set by goreleaser ldflags) and has a `version` command.
+Currently `spinloop remote status` calls the start Lambda's GET endpoint, which returns EC2 instance state and `/health` status but has no path to the daemon running on the box. The daemon already exposes its own status at `GET /v1/status`, including runner/model/uptime — the stats Lambda scrapes that endpoint over SSM for metrics. The binary already tracks `main.version` (set by goreleaser ldflags) and has a `version` command.
 
 The daemon's `StatusResponse` struct currently has no version field. The stats Lambda's `StatsResponse` struct likewise has none. Fleet nodes already read `/v1/status` directly, so they can render version once it exists in the response.
 
@@ -8,13 +8,13 @@ The daemon's `StatusResponse` struct currently has no version field. The stats L
 
 **Goals:**
 - Add `version` to the daemon's `StatusResponse` so any caller reading `/v1/status` gets it
-- Add `version` to the stats Lambda's reply so `outfit remote metrics` can show it
-- Add `version` to `outfit remote status` output, sourced from the stats Lambda (reusing the same SSM path)
+- Add `version` to the stats Lambda's reply so `spinloop remote metrics` can show it
+- Add `version` to `spinloop remote status` output, sourced from the stats Lambda (reusing the same SSM path)
 - Update `formatMetricsTable` and `formatMetricsJSON` to render the version
-- Add version to `outfit fleet status` per-node display, read directly from `/v1/status`
+- Add version to `spinloop fleet status` per-node display, read directly from `/v1/status`
 
 **Non-Goals:**
-- Adding version to `outfit remote status` when the instance is stopped — the daemon isn't reachable, so there's nothing to read. Reporting "unavailable" or omitting the field is acceptable.
+- Adding version to `spinloop remote status` when the instance is stopped — the daemon isn't reachable, so there's nothing to read. Reporting "unavailable" or omitting the field is acceptable.
 - Modifying the remote TypeScript Lambda source in this change. The Lambda-side change is necessary but lives in `remote/` (a TypeScript CDK project). The Go-side change is complete on its own; the Lambda change is a one-line field passthrough that the remote deployment owner applies.
 
 ## Decisions

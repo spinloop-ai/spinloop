@@ -1,6 +1,6 @@
 ## Purpose
 
-Define `outfit daemon`: a long-lived, foreground process that supervises a
+Define `spinloop daemon`: a long-lived, foreground process that supervises a
 single engine — starting it on request, capturing its logs, tracking its
 state, stopping it on request — and holds the deploy config that says what to
 serve. This is the engine host a fleet node runs, and (in a follow-up change)
@@ -10,11 +10,11 @@ the cloud instance too.
 
 ### Requirement: The daemon command
 
-`outfit daemon [path]` SHALL run a long-lived foreground process that
+`spinloop daemon [path]` SHALL run a long-lived foreground process that
 supervises the engine and serves the control API — always on, the API being
 the command's purpose, under the same listen-address and token rules as any
 API exposure. It SHALL NOT start an engine on boot — even when a stored
-deploy config or a resolved Outfit is present — and SHALL wait idle for API
+deploy config or a resolved Spinloop is present — and SHALL wait idle for API
 requests; the engine starts only on a start request. The daemon SHALL keep
 running when the engine exits or is stopped over the API, answering
 subsequent requests, and SHALL exit cleanly on `SIGINT`/`SIGTERM`, stopping a
@@ -23,7 +23,7 @@ running engine before exiting. Backgrounding the daemon is the user's concern
 
 #### Scenario: Daemon does not auto-start
 
-- **WHEN** `outfit daemon` runs beside an Outfit that names a self-hosted
+- **WHEN** `spinloop daemon` runs beside a Spinloop that names a self-hosted
   engine
 - **THEN** no engine starts, and status reports `idle` until a start request
   arrives
@@ -49,23 +49,23 @@ running engine before exiting. Backgrounding the daemon is the user's concern
 When starting an engine, the daemon SHALL determine what to serve in this
 order: a deploy config carried by the start request itself; else a deploy
 config previously pushed and stored for this daemon; otherwise the resolved
-Outfit (the same resolution foreground `serve` uses, including presets —
-`outfit daemon` accepts the same optional Outfit path). With no source at
+Spinloop (the same resolution foreground `serve` uses, including presets —
+`spinloop daemon` accepts the same optional Spinloop path). With no source at
 all, a start request SHALL fail saying there is nothing to serve. A pushed or
 start-carried deploy config SHALL be persisted so a restarted daemon serves
-the same thing on its next start, and SHALL take precedence over the Outfit
+the same thing on its next start, and SHALL take precedence over the Spinloop
 thereafter.
 
-#### Scenario: Bare start serves the Outfit
+#### Scenario: Bare start serves the Spinloop
 
-- **WHEN** `outfit daemon` runs beside an Outfit naming a self-hosted engine
+- **WHEN** `spinloop daemon` runs beside a Spinloop naming a self-hosted engine
   and a start request with no body arrives
-- **THEN** the engine starts serving what the Outfit describes
+- **THEN** the engine starts serving what the Spinloop describes
 
 #### Scenario: Nothing to serve fails the start
 
 - **WHEN** a bare start request arrives with no stored deploy config and no
-  Outfit
+  Spinloop
 - **THEN** the start fails, saying there is nothing to serve, and the daemon
   keeps running
 

@@ -2,9 +2,9 @@
 
 Two gaps, one artifact closes both.
 
-**Nothing verifies fleet against a real daemon.** `outfit fleet` is covered by unit
+**Nothing verifies fleet against a real daemon.** `spinloop fleet` is covered by unit
 tests using `httptest` stubs. Those prove the client logic, but no test starts a
-real `outfit daemon`, supervises a real engine process, or crosses a real network
+real `spinloop daemon`, supervises a real engine process, or crosses a real network
 boundary with real auth. That is precisely the shape of gap that produced the
 systemd `$HOME` bug: every test green, the wiring wrong in a real process.
 
@@ -16,9 +16,9 @@ whose whole point is seeing many engines at once.
 ## What Changes
 
 - **`examples/fleet-docker/`**: a Docker Compose fleet of several containers, each
-  running a **real `outfit daemon`**, that a user can bring up with
-  `docker compose up -d` and immediately point `outfit fleet status` /
-  `outfit fleet metrics -w` at — a real multi-node fleet on a laptop, with no
+  running a **real `spinloop daemon`**, that a user can bring up with
+  `docker compose up -d` and immediately point `spinloop fleet status` /
+  `spinloop fleet metrics -w` at — a real multi-node fleet on a laptop, with no
   GPUs and no cloud.
 - **A fake engine the daemon genuinely supervises**: each daemon starts
   [Imposter](https://imposter.sh)'s native engine as its engine process, via a
@@ -43,7 +43,7 @@ whose whole point is seeing many engines at once.
 
 _None._ The example exercises `fleet-client`, `fleet-config`, and `daemon-api`
 exactly as they are; production code is unchanged (the shim exists so no
-test-only branch is needed in outfit itself).
+test-only branch is needed in spinloop itself).
 
 ## Impact
 
@@ -52,10 +52,10 @@ test-only branch is needed in outfit itself).
   `.env.example`, `run-tests.sh`, and a README.
 - New CI job running `run-tests.sh`; adds Docker as a CI dependency.
 - One Go fix the harness immediately earned: `sortFlagsBeforeArgs` moved a
-  value-taking flag without its value, so `outfit fleet start <node> --fleet
+  value-taking flag without its value, so `spinloop fleet start <node> --fleet
   <path>` bound the node name to `--fleet`. The same latent bug affected
   `remote`/`serve` (`--format json` after a positional). Fixed with the flag
   set consulted for which flags consume a following argument, plus test cases.
-  No other production changes — the example otherwise tests outfit as shipped.
+  No other production changes — the example otherwise tests spinloop as shipped.
 - `examples/fleet/` stays as the "real machines" example; the two are
   complementary and cross-link.

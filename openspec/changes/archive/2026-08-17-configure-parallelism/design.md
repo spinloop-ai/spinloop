@@ -2,26 +2,26 @@
 
 See proposal.md — Why. What the change builds on:
 
-- `outfit.Selection` (`internal/outfit/outfit.go:45-68`) is the shared
-  currency between CLI flags, the Outfit file, and apply/export. `CONTEXT`
+- `spinloop.Selection` (`internal/spinloop/spinloop.go:45-68`) is the shared
+  currency between CLI flags, the Spinloop file, and apply/export. `CONTEXT`
   is a string (parsed lazily with `internal/contextsize.Parse`, which is
   lenient about `128k`/`1m`/plain digits); `PRESET`, `REMOTE`, and `FLEET`
-  are Outfit-file-only fields with no CLI flag counterpart in `parseSelection`
-  (`cmd/outfit/main.go:257-283`) — the precedent this change follows for
+  are Spinloop-file-only fields with no CLI flag counterpart in `parseSelection`
+  (`cmd/spinloop/main.go:257-283`) — the precedent this change follows for
   `PARALLEL`.
-- Three functions in `cmd/outfit/serve.go` are the single choke point that
+- Three functions in `cmd/spinloop/serve.go` are the single choke point that
   turns a `Selection` into an engine's argv: `llamacppServeParams` (335-359),
   `vllmServeParams` (297-314), `omlxServeParams` (326-328). They are reused
-  unchanged by three callers: `outfit serve` itself (`buildServeArgv`,
+  unchanged by three callers: `spinloop serve` itself (`buildServeArgv`,
   228-281), the daemon's pushed-config path (`argvFromDeployConfig`,
-  `cmd/outfit/serve_daemon.go:296-323`, which builds a throwaway `Selection`
+  `cmd/spinloop/serve_daemon.go:296-323`, which builds a throwaway `Selection`
   from a `remote.DeployConfig`), and therefore every fleet-node start too.
   Fixing the math once here fixes it everywhere a `Selection` becomes a
   command.
 - `preset.Flags` layers globals, a preset section, and override params (in
   that order, later wins by canonical name) — `internal/preset/preset.go:198-246`.
   This is why `CONTEXT` already overrides a preset's own `ctx-size` with no
-  special-case code: the Outfit's params are just the last layer. `PARALLEL`
+  special-case code: the Spinloop's params are just the last layer. `PARALLEL`
   gets the same win-for-free by being emitted as an ordinary param in the same
   functions.
 - The `LlamaCpp` dialect already canonicalises `np` → `parallel` and knows
@@ -29,8 +29,8 @@ See proposal.md — Why. What the change builds on:
   `OMLX` are the zero-value `Dialect{}` — no aliases, keys render as written.
   So `max-num-seqs` and `max-concurrent-requests` need no dialect changes:
   writing those keys directly is already correct.
-- `outfit remote deploy` derives a `remote.DeployConfig` from an Outfit via
-  `deployConfig` (`cmd/outfit/remote.go:909-984`): `CONTEXT` (or a preset's
+- `spinloop remote deploy` derives a `remote.DeployConfig` from a Spinloop via
+  `deployConfig` (`cmd/spinloop/remote.go:909-984`): `CONTEXT` (or a preset's
   `ctx-size`) becomes `dc.ContextSize`, an `int`, required for a cloud deploy
   (`requireContext: true`) but not for waking a fleet node. `cloudOwnedFlags`
   (`remote.go:841-847`) lists preset keys the cloud/daemon computes itself
@@ -46,7 +46,7 @@ See proposal.md — Why. What the change builds on:
   reads back via `argvFromDeployConfig`. Any field meant to reach a
   cloud-deployed or fleet-woken engine has to exist on both sides of that
   wire, exactly as `contextSize` does today.
-- `outfit serve` never deploys `omlx` to the cloud (`runnerFor` rejects it —
+- `spinloop serve` never deploys `omlx` to the cloud (`runnerFor` rejects it —
   see the `add-omlx-provider` change's non-goals); the `DeployConfig`/cloud
   side of this change is therefore `llamacpp` and `vllm` only. `omlx` is
   local-serve-only, as it already is for everything else.
@@ -55,14 +55,14 @@ See proposal.md — Why. What the change builds on:
 
 **Goals:**
 
-- One Outfit keyword, `PARALLEL`, whose meaning is the same across engines
+- One Spinloop keyword, `PARALLEL`, whose meaning is the same across engines
   (a slot/concurrency count) even though its effect on the command differs.
 - `CONTEXT` keeps one fixed meaning everywhere: usable context per request.
-  `outfit` — not the person writing the Outfit — carries the burden of
+  `spinloop` — not the person writing the Spinloop — carries the burden of
   knowing that llama.cpp's `--ctx-size` needs scaling and vLLM/oMLX's don't.
-- Zero behaviour change for any Outfit that does not set `PARALLEL`.
-- The same fix applies to `outfit serve`, the daemon/fleet push path, and
-  `outfit remote deploy` — not just the first one someone tests.
+- Zero behaviour change for any Spinloop that does not set `PARALLEL`.
+- The same fix applies to `spinloop serve`, the daemon/fleet push path, and
+  `spinloop remote deploy` — not just the first one someone tests.
 
 **Non-Goals:**
 
@@ -70,26 +70,26 @@ See proposal.md — Why. What the change builds on:
   `--cont-batching` (llama.cpp) from `PARALLEL`. Both are real settings with
   real consequences (GPU topology; a scheduling behaviour that most modern
   llama.cpp builds already default on) that deserve their own explicit
-  Outfit keyword if they get one, not a side effect of this one.
+  Spinloop keyword if they get one, not a side effect of this one.
 - Rescaling a `PRESET`-only `ctx-size` (see proposal.md — Non-Goals). Only an
-  Outfit-stated `CONTEXT` participates in the multiply; a preset's own value
-  is trusted as already correct, the same trust `outfit` already extends to
+  Spinloop-stated `CONTEXT` participates in the multiply; a preset's own value
+  is trusted as already correct, the same trust `spinloop` already extends to
   every other preset-set flag.
 - A CLI flag on `add`/`remove` for `PARALLEL` (see proposal.md — Non-Goals).
 - Any change to cloud instance sizing/selection.
 
 ## Decisions
 
-**D1 — `PARALLEL` is a new `Selection` field and Outfit keyword, parsed as a
+**D1 — `PARALLEL` is a new `Selection` field and Spinloop keyword, parsed as a
 plain positive integer, not a `contextsize`-style size.** It counts slots, not
 tokens — no `k`/`m` suffixes, no separators to tolerate. Empty/unset stays the
 zero value and changes nothing. A non-positive or non-integer value is a parse
 error naming the offending line, matching `CONTEXT`'s and `ENV`'s error style
-in `outfit.Parse` (`internal/outfit/outfit.go:110-190`). Validation happens
+in `spinloop.Parse` (`internal/spinloop/spinloop.go:110-190`). Validation happens
 where `CONTEXT` is validated for the same command (`contextsize.Parse` is
 called lazily by each consumer, not at parse time) — `PARALLEL` follows the
 same lazy-validation shape rather than diverging into eager validation at
-`outfit.Parse` time.
+`spinloop.Parse` time.
 
 **D2 — Translation lives in the three `*ServeParams` functions, not in a new
 shared helper.** Each engine's rule is genuinely different (multiply-and-emit,
@@ -131,8 +131,8 @@ if sel.Parallel != "" {
 deploy-config path in D4 share one error message and one positive-integer
 rule, without sharing per-engine translation.)
 
-**D3 — `PARALLEL` is Outfit-file-only.** Like `PRESET`/`REMOTE`/`FLEET`, it
-gets no entry in `parseSelection` and so no `outfit add --parallel`/`-P`.
+**D3 — `PARALLEL` is Spinloop-file-only.** Like `PRESET`/`REMOTE`/`FLEET`, it
+gets no entry in `parseSelection` and so no `spinloop add --parallel`/`-P`.
 Reasoning: `CONTEXT`/`OUTPUT` exist as flags because they mean something to a
 *hosted* provider selection (`opencode`'s `limit.context`/`limit.output`);
 `PARALLEL` means nothing until an engine is actually launched, so it belongs
@@ -140,13 +140,13 @@ next to the other serve/deploy-only settings.
 
 **D4 — The cloud/fleet path carries `PARALLEL` as a new `DeployConfig.Parallel
 int` field, mirrored on both sides of the wire.** `deployConfig`
-(`cmd/outfit/remote.go:909-984`) parses `sel.Parallel` into `dc.Parallel`
+(`cmd/spinloop/remote.go:909-984`) parses `sel.Parallel` into `dc.Parallel`
 exactly as it does `sel.Context` into `dc.ContextSize`, for both
 `deployConfigFor` (cloud) and `deployConfigForNode` (fleet wake) — no
 `requireContext`-style gate, since `PARALLEL` is optional everywhere.
 `cloudOwnedFlags`/`isNodeOwned` (`remote.go:841-866`) gain `"parallel"`,
 `"max-num-seqs"`, and `"max-concurrent-requests"`, so a preset that also
-hand-sets one of those is superseded by the Outfit-derived value the same way
+hand-sets one of those is superseded by the Spinloop-derived value the same way
 `ctx-size` already is — otherwise a deploy could silently carry both a
 computed `--parallel 2` from `PARALLEL` *and* a stale `-np 4` surviving from
 the preset's passthrough `serveArgs`, doubly-defining the flag.
@@ -160,24 +160,24 @@ an optional `parallel`/`Parallel` field; `daemon-boot.ts`'s
 `daemonDeployConfig` (21-39) copies it through to the JSON the instance's
 daemon reads, exactly like `contextSize`.
 
-**D5 — No `Format` ambiguity.** `outfit export`
-(`internal/outfit/outfit.go:219-239`) gains one more `line("PARALLEL",
+**D5 — No `Format` ambiguity.** `spinloop export`
+(`internal/spinloop/spinloop.go:219-239`) gains one more `line("PARALLEL",
 sel.Parallel)` call, in the same position as the other serve-only keywords
 (after `OUTPUT`, before `BASEURL`, matching the keyword table's order in
-`docs/outfit-file.md`).
+`docs/spinloop-file.md`).
 
 ## Risks / Trade-offs
 
 - **A user who already worked around the llama.cpp trap with a hand-written
-  `np`/`parallel` in a `PRESET`, with no `PARALLEL` in their Outfit, sees no
+  `np`/`parallel` in a `PRESET`, with no `PARALLEL` in their Spinloop, sees no
   change** — their preset's `ctx-size` is untouched (D2's multiply only fires
-  off an Outfit-stated `CONTEXT`), so their existing, presumably-already-correct
+  off a Spinloop-stated `CONTEXT`), so their existing, presumably-already-correct
   math keeps working. Migrating them onto `PARALLEL` is documentation, not a
   breaking change.
 - **`PARALLEL` meaning something different per engine is an inherent
   disambiguation cost**, not a flaw to design away — it is the actual
   question the proposal exists to answer. The design doc says so in one place
-  (D2) so `docs/outfit-file.md` and `docs/commands/serve.md` can each just
+  (D2) so `docs/spinloop-file.md` and `docs/commands/serve.md` can each just
   link back to a single explanation rather than re-deriving it.
 - **Extending the wire `DeployConfig`** touches a TypeScript Lambda most of
   this change's tests can't reach directly; `remote/test/deploy-config.test.ts`

@@ -1,5 +1,5 @@
 /**
- * The runner-neutral half of booting the instance's engine under the outfit
+ * The runner-neutral half of booting the instance's engine under the spinloop
  * daemon: rendering the daemon's stored deploy config from the environment's,
  * and the boot-script tail that enables the daemon and requests the first
  * start over its control API. Each runner's spec (vllm.ts, llamacpp.ts)
@@ -10,7 +10,7 @@
 import type { DeployConfig } from '../shared/deploy-config';
 
 /**
- * Render the daemon's stored deploy config: the same shape `outfit remote
+ * Render the daemon's stored deploy config: the same shape `spinloop remote
  * deploy` produces, with the cloud-owned settings resolved in — the model as
  * the synced local path, the bind address and port, and the runner's key
  * delivery — so the daemon's ordinary start serves exactly what the old
@@ -49,17 +49,17 @@ export function daemonDeployConfig(
 
 /**
  * The daemon's config directory on the instance. The unit pins
- * OUTFIT_CONFIG_DIR to this fixed system path so the daemon's config location
+ * SPINLOOP_CONFIG_DIR to this fixed system path so the daemon's config location
  * does not depend on $HOME — a bare systemd service gets none, and the earlier
  * $HOME-based default made the daemon read a different directory than the boot
  * wrote to. The daemon's state (deploy-config.json, engine.log) lives here.
  */
-export const DAEMON_CONFIG_DIR = '/var/lib/outfit';
+export const DAEMON_CONFIG_DIR = '/var/lib/spinloop';
 
 /**
  * The daemon boot shared by both runners: write the deploy config where the
- * daemon reads it (its pinned OUTFIT_CONFIG_DIR) and enable
- * outfit-daemon.service (and the baked crash-nudge timer). The engine is not
+ * daemon reads it (its pinned SPINLOOP_CONFIG_DIR) and enable
+ * spinloop-daemon.service (and the baked crash-nudge timer). The engine is not
  * started here: the daemon never auto-starts, and the control plane's start
  * request issues the start — on every path, a fresh boot and a re-wake alike,
  * the same explicit API start any client performs. The daemon's first answer
@@ -73,14 +73,14 @@ ${deployConfigJson}
 DEPLOYCONFIG
 chmod 600 ${DAEMON_CONFIG_DIR}/daemon/deploy-config.json
 
-cat >/etc/systemd/system/outfit-daemon.service <<'UNIT'
+cat >/etc/systemd/system/spinloop-daemon.service <<'UNIT'
 [Unit]
-Description=outfit daemon (engine host)
+Description=spinloop daemon (engine host)
 After=network-online.target
 Wants=network-online.target
 [Service]
-Environment=OUTFIT_CONFIG_DIR=${DAEMON_CONFIG_DIR}
-${unitExtra}ExecStart=/usr/local/bin/outfit daemon --api-addr 127.0.0.1:4242 --prewarm
+Environment=SPINLOOP_CONFIG_DIR=${DAEMON_CONFIG_DIR}
+${unitExtra}ExecStart=/usr/local/bin/spinloop daemon --api-addr 127.0.0.1:4242 --prewarm
 Restart=on-failure
 RestartSec=5
 [Install]
@@ -88,7 +88,7 @@ WantedBy=multi-user.target
 UNIT
 
 systemctl daemon-reload
-systemctl enable --now outfit-daemon.service
-systemctl enable --now outfit-nudge.timer || echo "NUDGE_TIMER_MISSING"
+systemctl enable --now spinloop-daemon.service
+systemctl enable --now spinloop-nudge.timer || echo "NUDGE_TIMER_MISSING"
 `;
 }

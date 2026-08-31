@@ -13,7 +13,7 @@ history of those readings lives in the control plane. Two consequences follow.
 An endpoint with steady but bursty traffic can present nothing in flight and an
 unchanged counter at the exact moment a sweep lands — five minutes of real work
 either side of it is invisible. And the same question ("is this engine busy?")
-is answered nowhere else, so a local `outfit daemon` has no idea, and neither
+is answered nowhere else, so a local `spinloop daemon` has no idea, and neither
 would a future fleet client.
 
 The daemon already holds everything needed to answer it: `Daemon.scrape`
@@ -32,7 +32,7 @@ state. It just never looks unless someone calls `/v1/metrics`.
   and nothing else. One way to judge idleness, not two.
 - The control plane keeps no activity history: the SSM `idle-state` parameter
   and everything that reads or writes it goes.
-- The same idle awareness exists for a purely local `outfit daemon`.
+- The same idle awareness exists for a purely local `spinloop daemon`.
 
 **Non-Goals:**
 
@@ -43,7 +43,7 @@ state. It just never looks unless someone calls `/v1/metrics`.
 - Persisting the last-active time across daemon restarts. A restarted daemon
   has no running engine, and the grace period covers the window in which that
   matters.
-- Supporting an instance whose baked outfit predates this change. Deployment
+- Supporting an instance whose baked spinloop predates this change. Deployment
   ordering handles that (see the migration note), not a compatibility path.
 - Changing the sweep interval, the thresholds, or the metrics/stats path.
 - Adding a new endpoint. `/v1/status` gains fields; nothing else moves.
@@ -183,7 +183,7 @@ a dead parameter behind would be the more confusing outcome, not the safer one.
 The daemon change and the Lambda change are independent deployments, and the
 order matters because there is no compatibility path.
 
-1. Land the whole change and cut an outfit release.
+1. Land the whole change and cut an spinloop release.
 2. Bake the runtime AMIs against that release (`pnpm bake`), for every runner.
    Until this is done, nothing has changed for a running fleet: the old Lambda
    is still deployed and still reads counters.

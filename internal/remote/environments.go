@@ -7,12 +7,12 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/lucinate-ai/outfit/internal/config"
+	"github.com/spinloop-ai/spinloop/internal/config"
 )
 
-// ConfigHome returns outfit's own config directory, where both the legacy
+// ConfigHome returns spinloop's own config directory, where both the legacy
 // remote.json and the environments registry live. It delegates to
-// internal/config.Dir, so the OUTFIT_CONFIG_DIR override and the fallback
+// internal/config.Dir, so the SPINLOOP_CONFIG_DIR override and the fallback
 // rules are resolved in one place; it fails when the directory cannot be
 // determined (see config.Dir).
 func ConfigHome() (string, error) {
@@ -131,9 +131,9 @@ func SaveEnvironment(name string, cfg Config) error {
 	return os.WriteFile(filepath.Join(dir, "remote.json"), append(data, '\n'), 0o600)
 }
 
-// LoadDefault loads the remote config used when no Outfit names an environment:
+// LoadDefault loads the remote config used when no Spinloop names an environment:
 // the `default` environment, falling back to the legacy single per-user file
-// (~/.config/outfit/remote.json) for setups that predate the registry. As with
+// (~/.config/spinloop/remote.json) for setups that predate the registry. As with
 // LoadConfig a missing file is not fatal — environment variables alone may carry
 // the config — and finishConfig reports where to put it otherwise.
 func LoadDefault(getenv func(string) string) (Config, error) {

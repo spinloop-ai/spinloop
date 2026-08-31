@@ -2,18 +2,18 @@
 
 ### Requirement: Bootstrap deploys the shared account infrastructure
 
-The system SHALL provide `outfit remote bootstrap`, which deploys the shared,
+The system SHALL provide `spinloop remote bootstrap`, which deploys the shared,
 account-level infrastructure that every remote environment reuses — the EC2
 Image Builder pipelines and baked AMIs, the environment-aware lifecycle Lambdas
 and their IAM, and the shared S3 weights bucket, IAM roles and VPC — by obtaining
 the CDK project shipped in `remote/` and driving its deploy of the shared stack.
 Bootstrap SHALL NOT create any Elastic IP or EC2 instance, and SHALL NOT register
-an environment; those belong to `outfit remote deploy`. Bootstrap SHALL NOT
+an environment; those belong to `spinloop remote deploy`. Bootstrap SHALL NOT
 reimplement the infrastructure; it SHALL orchestrate the existing CDK project.
 
 #### Scenario: A successful bootstrap yields the shared layer
 
-- **WHEN** `outfit remote bootstrap` completes
+- **WHEN** `spinloop remote bootstrap` completes
 - **THEN** the shared stack is deployed — Image Builder, the lifecycle Lambdas,
   and the shared bucket/roles/VPC — with no Elastic IP or instance created
 
@@ -25,7 +25,7 @@ reimplement the infrastructure; it SHALL orchestrate the existing CDK project.
 ### Requirement: Shared infrastructure is discoverable
 
 The shared stack SHALL publish, as CloudFormation stack outputs under a
-well-known stack name, the values a later `outfit remote deploy` needs to create
+well-known stack name, the values a later `spinloop remote deploy` needs to create
 and drive environments: the lifecycle Lambda URLs, the weights bucket, the shared
 roles, and the region. Discovery SHALL be from those outputs rather than a file
 bootstrap writes, so it reflects what is actually deployed and works from any
@@ -33,7 +33,7 @@ machine with account access.
 
 #### Scenario: Deploy can discover the shared layer
 
-- **WHEN** the shared stack is deployed and `outfit remote deploy` runs later
+- **WHEN** the shared stack is deployed and `spinloop remote deploy` runs later
 - **THEN** it reads the Lambda URLs, bucket, roles and region from the stack's
   outputs, without a local file having to carry them
 
@@ -49,13 +49,13 @@ other than an explicit yes as a decline that makes no changes.
 
 #### Scenario: The plan is shown before anything is deployed
 
-- **WHEN** the user runs `outfit remote bootstrap`
+- **WHEN** the user runs `spinloop remote bootstrap`
 - **THEN** the account, region, shared resources, cost caveat, and commands are
   printed before any AWS-mutating command runs
 
 #### Scenario: Dry run changes nothing
 
-- **WHEN** the user runs `outfit remote bootstrap --dry-run`
+- **WHEN** the user runs `spinloop remote bootstrap --dry-run`
 - **THEN** the plan is printed and no `pnpm`, `cdk`, or AWS-mutating command runs
 
 #### Scenario: Declining stops the run
@@ -82,7 +82,7 @@ location: neither keyed by reference nor pruned.
 
 #### Scenario: Sources match the binary version
 
-- **WHEN** a released `outfit` runs bootstrap with no `--ref`
+- **WHEN** a released `spinloop` runs bootstrap with no `--ref`
 - **THEN** it downloads the `remote/` sources at the tag matching its version
 
 #### Scenario: Development build falls back
@@ -142,7 +142,7 @@ per-environment and belongs to `deploy`, not here.
 
 - **WHEN** the user runs bootstrap
 - **THEN** no ingress CIDR is requested or written, since it is scoped per
-  environment at `outfit remote deploy`
+  environment at `spinloop remote deploy`
 
 ### Requirement: Idempotent bootstrap with an asynchronous bake
 

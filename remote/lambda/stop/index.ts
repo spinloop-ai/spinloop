@@ -41,7 +41,7 @@ export function isScheduledEvent(event: StopEvent): event is ScheduledEvent {
 export async function handler(event: StopEvent): Promise<LambdaFunctionURLResult | void> {
   if (isScheduledEvent(event)) {
     // Two passes over two disjoint populations, keyed on different tag values
-    // and judged by different signals. A seed runs no outfit daemon, so it must
+    // and judged by different signals. A seed runs no spinloop daemon, so it must
     // never reach the daemon scrape below; an inference instance has no seed
     // records, so it must never be judged by their absence.
     await idleSweep();
@@ -54,12 +54,12 @@ export async function handler(event: StopEvent): Promise<LambdaFunctionURLResult
 /**
  * Function URL — POST stops one environment's instance; GET reports it. The
  * `action` query parameter chooses the shutdown: `pause` (the default for a
- * manual `outfit remote pause`) stops without terminating, so the instance can
+ * manual `spinloop remote pause`) stops without terminating, so the instance can
  * be re-woken; anything else terminates, which is what a manual
- * `outfit remote stop` wants. A further query parameter, `force=true`, marks
+ * `spinloop remote stop` wants. A further query parameter, `force=true`, marks
  * the stop as forced: the engine is not asked to shut down first, so a wedged
  * engine or daemon cannot prevent the box from going down (a manual
- * `outfit remote restart -F`). The stop-time tag, the EC2 call and the reply
+ * `spinloop remote restart -F`). The stop-time tag, the EC2 call and the reply
  * are the same either way.
  */
 async function manualStop(event: LambdaFunctionURLEvent): Promise<LambdaFunctionURLResult> {
@@ -351,7 +351,7 @@ async function scrapeIdle(instanceId: string): Promise<MetricsResult> {
     const idle = idleFromDaemonStatus(parseDaemonStatus(result.stdout));
     if (!idle.ok) {
       // Either the reply was not the daemon's, or it carried no last-active
-      // time — an outfit baked before daemon-owned idle detection. Both mean
+      // time — an spinloop baked before daemon-owned idle detection. Both mean
       // no activity observed; there is deliberately no second way to judge it.
       console.log(JSON.stringify({ mode: 'idle', warning: 'daemon reported no activity time' }));
     }

@@ -48,7 +48,7 @@ export interface RunnerSpec {
   /**
    * Inference boot-script fragment: the runner's key delivery (env file or
    * key file), then the shared daemon boot that hands the engine to
-   * `outfit daemon`.
+   * `spinloop daemon`.
    */
   daemonBoot(cfg: DeployConfig, modelDir: string, port: number): string;
 }

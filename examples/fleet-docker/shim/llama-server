@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Stands in for llama-server so `outfit serve`/`outfit daemon` can start an
+# Stands in for llama-server so `spinloop serve`/`spinloop daemon` can start an
 # "engine" with no GPU and no model. The daemon execs this exactly as it would
 # the real binary, so process supervision, log capture and crash detection are
 # genuinely exercised.

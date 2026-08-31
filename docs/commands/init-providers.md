@@ -1,19 +1,19 @@
-# outfit init-providers
+# spinloop init-providers
 
 Write the built-in provider catalogue out as a file you can edit — the starting
 point for adding your own providers without rebuilding.
 
 ```sh
-outfit init-providers                 # writes ./providers.yaml
-outfit init-providers custom.yaml     # ...or to a path of your choosing
+spinloop init-providers                 # writes ./providers.yaml
+spinloop init-providers custom.yaml     # ...or to a path of your choosing
 ```
 
-Edit it, then point `outfit` at it — the flag wins, then the env var, then the
+Edit it, then point `spinloop` at it — the flag wins, then the env var, then the
 built-in default:
 
 ```sh
-outfit list --providers ./providers.yaml
-OUTFIT_PROVIDERS=./providers.yaml outfit list
+spinloop list --providers ./providers.yaml
+SPINLOOP_PROVIDERS=./providers.yaml spinloop list
 ```
 
 ## Flags
@@ -31,4 +31,4 @@ OUTFIT_PROVIDERS=./providers.yaml outfit list
 
 ## See also
 
-- [`outfit list`](list.md) — view whichever catalogue is active
+- [`spinloop list`](list.md) — view whichever catalogue is active

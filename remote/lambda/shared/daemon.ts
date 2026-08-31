@@ -1,9 +1,9 @@
 /**
- * The on-instance outfit daemon's control API, as seen from the control
- * plane. The instance runs `outfit daemon --api-addr 127.0.0.1:4242`
- * (loopback-only, tokenless — see the Listen rules in outfit), so every call
+ * The on-instance spinloop daemon's control API, as seen from the control
+ * plane. The instance runs `spinloop daemon --api-addr 127.0.0.1:4242`
+ * (loopback-only, tokenless — see the Listen rules in spinloop), so every call
  * here is a curl over SSM. Metric collection lives in the daemon
- * (outfit's internal/metrics); the Lambdas only relay its JSON.
+ * (spinloop's internal/metrics); the Lambdas only relay its JSON.
  */
 
 import type { CpuStat, GpuStat, MemoryStat, TokenStats } from './stats';
@@ -38,7 +38,7 @@ export function daemonStartCmd(body: string): string {
 
 /**
  * The daemon's /v1/metrics reply — the same stats dialect the Go formatters
- * render (outfit's internal/metrics.Stats), minus what only the control
+ * render (spinloop's internal/metrics.Stats), minus what only the control
  * plane knows (environment, instance id/type).
  */
 export interface DaemonMetrics {
@@ -62,7 +62,7 @@ export interface DaemonMetrics {
 }
 
 /**
- * The daemon's /v1/status reply (outfit's internal/daemon.StatusResponse).
+ * The daemon's /v1/status reply (spinloop's internal/daemon.StatusResponse).
  * `lastActiveAt` and `idleSeconds` are the daemon's own answer to "has this
  * engine been working?", derived on the instance from counters it samples
  * every few seconds — which is why the idle check reads this rather than
@@ -77,7 +77,7 @@ export interface DaemonStatus {
   logPath?: string;
   lastActiveAt?: string;
   idleSeconds?: number;
-  /** The outfit binary's build-time version string, reported by the daemon. */
+  /** The spinloop binary's build-time version string, reported by the daemon. */
   version?: string;
 }
 

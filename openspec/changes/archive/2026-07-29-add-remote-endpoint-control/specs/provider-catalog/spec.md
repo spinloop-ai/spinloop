@@ -19,7 +19,7 @@ not "a key that is missing".
 #### Scenario: Catalogue loads without external files
 
 - **WHEN** any command that needs the catalogue runs with no `--providers` flag
-  and no `OUTFIT_PROVIDERS` environment variable
+  and no `SPINLOOP_PROVIDERS` environment variable
 - **THEN** the embedded catalogue is used, with no file read from disk
 
 #### Scenario: Family default model is always a member of the family

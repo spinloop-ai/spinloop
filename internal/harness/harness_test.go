@@ -1,14 +1,14 @@
 package harness
 
 import (
-	"github.com/lucinate-ai/outfit/internal/catalog"
+	"github.com/spinloop-ai/spinloop/internal/catalog"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/lucinate-ai/outfit/internal/config"
-	"github.com/lucinate-ai/outfit/internal/outfit"
+	"github.com/spinloop-ai/spinloop/internal/config"
+	"github.com/spinloop-ai/spinloop/internal/spinloop"
 )
 
 func TestCommand(t *testing.T) {
@@ -79,7 +79,7 @@ func TestPreferenceRoundTrip(t *testing.T) {
 	if err := SavePreference("pi"); err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(dir, "outfit", "config.json")
+	path := filepath.Join(dir, "spinloop", "config.json")
 	info, err := os.Stat(path)
 	if err != nil {
 		t.Fatal(err)
@@ -100,7 +100,7 @@ func TestPreferenceRoundTrip(t *testing.T) {
 func TestLoadPreference_MalformedConfig(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
-	path := filepath.Join(dir, "outfit", "config.json")
+	path := filepath.Join(dir, "spinloop", "config.json")
 	os.MkdirAll(filepath.Dir(path), 0o755)
 	if err := os.WriteFile(path, []byte("{invalid}"), 0o600); err != nil {
 		t.Fatal(err)
@@ -118,7 +118,7 @@ func TestSavePreferenceKeepsAliases(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", dir)
 
 	if err := config.Update(func(f *config.File) error {
-		f.SetAlias("qwen3.6-27b", "/models/qwen/Outfit")
+		f.SetAlias("qwen3.6-27b", "/models/qwen/Spinloop")
 		return nil
 	}); err != nil {
 		t.Fatal(err)
@@ -213,7 +213,7 @@ func TestLucinateApplyStateRemove(t *testing.T) {
 		}
 		return ""
 	}
-	sel := outfit.Selection{Provider: "openrouter", Model: "deepseek/deepseek-v4-pro"}
+	sel := spinloop.Selection{Provider: "openrouter", Model: "deepseek/deepseek-v4-pro"}
 
 	sum, err := h.Apply(cat.Providers["openrouter"], sel, 0, 0, resolve)
 	if err != nil {
@@ -255,7 +255,7 @@ func TestLucinateRejectsNonOpenAIProvider(t *testing.T) {
 	t.Setenv("LUCINATE_DATA_DIR", t.TempDir())
 	cat, _ := catalog.Load()
 	h, _ := Lookup("lucinate")
-	sel := outfit.Selection{Provider: "amazon-bedrock", Model: "some-model"}
+	sel := spinloop.Selection{Provider: "amazon-bedrock", Model: "some-model"}
 	if _, err := h.Apply(cat.Providers["amazon-bedrock"], sel, 0, 0, func(string) string { return "" }); err == nil {
 		t.Error("expected amazon-bedrock to be unsupported by lucinate")
 	}
@@ -277,7 +277,7 @@ func TestOpencodeApplyStateRemove(t *testing.T) {
 		}
 		return ""
 	}
-	sel := outfit.Selection{Provider: "openrouter", Model: "deepseek/deepseek-v4-pro"}
+	sel := spinloop.Selection{Provider: "openrouter", Model: "deepseek/deepseek-v4-pro"}
 
 	sum, err := h.Apply(cat.Providers["openrouter"], sel, 0, 0, resolve)
 	if err != nil {
@@ -324,7 +324,7 @@ func TestOpencodeApplyWithContextSize(t *testing.T) {
 		}
 		return ""
 	}
-	sel := outfit.Selection{Provider: "openrouter", Model: "deepseek/deepseek-v4-pro"}
+	sel := spinloop.Selection{Provider: "openrouter", Model: "deepseek/deepseek-v4-pro"}
 
 	_, err = h.Apply(cat.Providers["openrouter"], sel, 128000, 32000, resolve)
 	if err != nil {
@@ -363,8 +363,8 @@ func TestOpencodeRemoveModelKey(t *testing.T) {
 	}
 
 	// Apply two models.
-	sel1 := outfit.Selection{Provider: "openrouter", Model: "deepseek/deepseek-v4-pro", Alias: "v4"}
-	sel2 := outfit.Selection{Provider: "openrouter", Model: "qwen3.6-27b", Alias: "qwen"}
+	sel1 := spinloop.Selection{Provider: "openrouter", Model: "deepseek/deepseek-v4-pro", Alias: "v4"}
+	sel2 := spinloop.Selection{Provider: "openrouter", Model: "qwen3.6-27b", Alias: "qwen"}
 	h.Apply(cat.Providers["openrouter"], sel1, 0, 0, resolve)
 	h.Apply(cat.Providers["openrouter"], sel2, 0, 0, resolve)
 
@@ -403,7 +403,7 @@ func TestPiApplyStateRemove(t *testing.T) {
 		}
 		return ""
 	}
-	sel := outfit.Selection{Provider: "openrouter", Model: "deepseek/deepseek-v4-pro"}
+	sel := spinloop.Selection{Provider: "openrouter", Model: "deepseek/deepseek-v4-pro"}
 
 	sum, err := h.Apply(cat.Providers["openrouter"], sel, 0, 0, resolve)
 	if err != nil {
@@ -434,7 +434,7 @@ func TestPiApplyStateRemove(t *testing.T) {
 
 // TestModelKey verifies the alias takes precedence over the model name.
 func TestModelKey(t *testing.T) {
-	sel := outfit.Selection{Provider: "openrouter", Model: "deepseek/deepseek-v4-pro"}
+	sel := spinloop.Selection{Provider: "openrouter", Model: "deepseek/deepseek-v4-pro"}
 	if got := modelKey(sel); got != "deepseek/deepseek-v4-pro" {
 		t.Errorf("no alias: modelKey = %q, want deepseek/deepseek-v4-pro", got)
 	}

@@ -3,14 +3,14 @@
 `remote.json` holds the outputs of one deployed CDK stack — the start/stop/deploy
 Lambda URLs, the region, and (since the base-URL change) the endpoint address. It
 is per-user (each user deploys their own stack) and per-instance (a user may run
-several). Today an Outfit's `REMOTE` resolves to a single file: one beside the
-Outfit (`remoteConfigPath`, `cmd/outfit/remote.go`) or, when no Outfit names one,
-the single per-user `~/.config/outfit/remote.json` (`internal/remote.ConfigPath`).
+several). Today a Spinloop's `REMOTE` resolves to a single file: one beside the
+Spinloop (`remoteConfigPath`, `cmd/spinloop/remote.go`) or, when no Spinloop names one,
+the single per-user `~/.config/spinloop/remote.json` (`internal/remote.ConfigPath`).
 That single fallback clobbers across projects and offers nowhere to keep more
 than one instance, and a committed `REMOTE ./remote.json` bakes one user's
 deployment state into a shared repo.
 
-This change makes the Outfit carry a stable *name* and keeps the *state* in a
+This change makes the Spinloop carry a stable *name* and keeps the *state* in a
 per-user registry of named environments. It is the foundation
 `add-remote-bootstrap` builds on — bootstrap writes a deployed instance into the
 registry instead of a shared file.
@@ -20,26 +20,26 @@ registry instead of a shared file.
 **Goals:**
 
 - Multiple remote instances per user, each its own environment, none clobbering.
-- Outfits stay committable: only an environment *name* is in the file; all
+- Spinloops stay committable: only an environment *name* is in the file; all
   deployment state is per-user.
 - Backward compatible: existing `REMOTE ./remote.json` (path) usage is unchanged.
-- `outfit remote ls` to see the registered environments.
+- `spinloop remote ls` to see the registered environments.
 
 **Non-Goals:**
 
 - Deploying or destroying instances (that is `add-remote-bootstrap` and
-  `pnpm cdk`). This change only concerns how an Outfit resolves to a
+  `pnpm cdk`). This change only concerns how a Spinloop resolves to a
   deployment's control config and how those configs are stored and listed.
 - Solving whether the CDK can host several instances in one AWS account (stack
   naming/topology) — noted as a downstream concern for the bootstrap change.
-- A remove command (`outfit remote rm <name>`) — flagged as a likely follow-up;
+- A remove command (`spinloop remote rm <name>`) — flagged as a likely follow-up;
   removing a registry entry would not tear down the AWS stack.
 
 ## Decisions
 
 ### An environment is a directory, not a config-map entry
 
-Each environment is `${XDG_CONFIG_HOME:-~/.config}/outfit/remotes/<name>/` with a
+Each environment is `${XDG_CONFIG_HOME:-~/.config}/spinloop/remotes/<name>/` with a
 canonical `remote.json` inside. Unlike the alias registry (name→path entries in
 `config.json`), environments are filesystem-native: `remote.json` is a whole
 document a deployment produces, so a directory per environment is the natural
@@ -47,8 +47,8 @@ home, listing is a directory scan, and bootstrap can drop the file straight in.
 The directory (rather than a flat `<name>.json`) leaves room for other
 per-environment state later (e.g. a saved `.env` or deploy config). New helpers
 in `internal/remote` beside `ConfigPath`: `EnvDir(name)` →
-`.../outfit/remotes/<name>`, `EnvConfigPath(name)` →
-`.../remotes/<name>/remote.json`, and a lister over `.../outfit/remotes/`.
+`.../spinloop/remotes/<name>`, `EnvConfigPath(name)` →
+`.../remotes/<name>/remote.json`, and a lister over `.../spinloop/remotes/`.
 
 ### `REMOTE` value: name vs path disambiguation
 
@@ -63,25 +63,25 @@ names).
 
 ### The `default` environment replaces the single-file fallback
 
-Where discovery used to fall back to `~/.config/outfit/remote.json`, it now uses
+Where discovery used to fall back to `~/.config/spinloop/remote.json`, it now uses
 the `default` environment (`.../remotes/default/remote.json`). This keeps the
-"works from anywhere with no Outfit" convenience inside the one model, so there is
+"works from anywhere with no Spinloop" convenience inside the one model, so there is
 no special single file living outside the registry.
 
-### Migration of an existing `~/.config/outfit/remote.json`
+### Migration of an existing `~/.config/spinloop/remote.json`
 
 For users who already have the old single file: on read, if
 `.../remotes/default/remote.json` is absent but the legacy
-`.../outfit/remote.json` exists, treat the legacy file as the `default`
+`.../spinloop/remote.json` exists, treat the legacy file as the `default`
 environment (read-through), and document moving it to
 `.../remotes/default/remote.json`. No silent rewrite. This keeps existing setups
 working without a flag day.
 
-### `outfit remote ls`
+### `spinloop remote ls`
 
-A new `cmdRemoteList` scans `.../outfit/remotes/`, reads each `remote.json`, and
+A new `cmdRemoteList` scans `.../spinloop/remotes/`, reads each `remote.json`, and
 prints name, base URL and region, marking entries whose `remote.json` is missing
-or unreadable (mirroring how `outfit alias --list` marks a missing target). It
+or unreadable (mirroring how `spinloop alias --list` marks a missing target). It
 contacts no endpoint. Empty registry prints a plain "no environments" line.
 
 ### Interaction with `add-remote-bootstrap`
@@ -100,19 +100,19 @@ expected for sequenced changes, not a genuine conflict.
   silently invented as an environment).
 - **Legacy single file** → read-through migration keeps it working; documented
   path to move it, no destructive rewrite.
-- **`default` magic name** → mildly implicit, but preserves today's no-Outfit
+- **`default` magic name** → mildly implicit, but preserves today's no-Spinloop
   convenience; users with several instances simply name them and rely on the
-  Outfit rather than the default.
+  Spinloop rather than the default.
 - **Registry drift from real stacks** → `ls` reflects what is on disk, not what
   is deployed in AWS; a stale entry is a listing concern, and teardown/removal is
   a separate (flagged) follow-up.
 
 ## Open Questions
 
-- Whether to add `outfit remote rm <name>` now or as a follow-up (recommended
+- Whether to add `spinloop remote rm <name>` now or as a follow-up (recommended
   follow-up; it must be clear it removes only the local registry entry and does
-  not destroy the AWS stack). This pairs with a future `outfit remote destroy`
+  not destroy the AWS stack). This pairs with a future `spinloop remote destroy`
   (the inverse of bootstrap) which would tear down the AWS infra *and* remove the
   registry entry — see the `add-remote-bootstrap` design's Future work.
-- Whether `outfit show` should also surface the environment list (as it does
+- Whether `spinloop show` should also surface the environment list (as it does
   aliases) — deferred unless wanted.

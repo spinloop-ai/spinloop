@@ -1,9 +1,9 @@
-## 1. The Outfit instruction
+## 1. The Spinloop instruction
 
-- [x] 1.1 Add the `FLEET` keyword to `internal/outfit`: parse it, add `Fleet` to
+- [x] 1.1 Add the `FLEET` keyword to `internal/spinloop`: parse it, add `Fleet` to
       `Selection`, and classify the value as a path or a URL (a scheme means a
       URL)
-- [x] 1.2 Reject an Outfit naming both `FLEET` and `REMOTE`, naming both
+- [x] 1.2 Reject a Spinloop naming both `FLEET` and `REMOTE`, naming both
       instructions in the error
 - [x] 1.3 Tests: a fleet path parses, a fleet URL parses as an endpoint, the
       duplicate rule still applies, `FLEET` + `REMOTE` fails, `FLEET` + `BASEURL`
@@ -12,7 +12,7 @@
 ## 2. The daemon reports where its engine serves
 
 - [x] 2.1 Extract the engine-endpoint derivation from `scrapeTargetFor` in
-      `cmd/outfit/serve_daemon.go` into a helper yielding port, path prefix,
+      `cmd/spinloop/serve_daemon.go` into a helper yielding port, path prefix,
       loopback-only, and requires-key from the engine and its argv
 - [x] 2.2 Add the engine endpoint to `daemon.StatusResponse`, populated from a
       hook the CLI supplies alongside `BuildArgv`, omitted when no engine runs
@@ -57,7 +57,7 @@
 ## 5. Waking a node
 
 - [x] 5.1 Derive a `remote.DeployConfig` from a Selection, sharing the
-      derivation with `outfit remote deploy` rather than copying it
+      derivation with `spinloop remote deploy` rather than copying it
 - [x] 5.2 Wake a candidate: push the config on `POST /v1/start`, move to the
       next candidate on a rejected config, and treat an already-running refusal
       as a re-read rather than a failure
@@ -71,11 +71,11 @@
 ## 6. Routing the harness launch
 
 - [x] 6.1 Add `--fleet`, `--node`, `--prefer`, `--no-wake` and `--wake-timeout`
-      to `outfit harness`, with `--fleet` overriding the Outfit's `FLEET` and
+      to `spinloop harness`, with `--fleet` overriding the Spinloop's `FLEET` and
       `--prefer` overriding the fleet file's
 - [x] 6.2 Route before the apply, beside `fetchRemoteEnv`: select, wake if
       needed, and fill `sel.BaseURL` from the chosen node — skipping selection
-      when the Outfit pins a `BASEURL`, and saying so
+      when the Spinloop pins a `BASEURL`, and saying so
 - [x] 6.3 Inject `OPENAI_BASE_URL` and the node's engine key into the launched
       agent's environment without overriding what is already set, including the
       harness-specific key name lucinate reads
@@ -87,9 +87,9 @@
       `OPENAI_BASE_URL` winning, and a failed route leaving the harness config
       untouched
 
-## 7. `outfit fleet route`
+## 7. `spinloop fleet route`
 
-- [x] 7.1 Add the `route` subcommand: resolve the Outfit, fleet and preference
+- [x] 7.1 Add the `route` subcommand: resolve the Spinloop, fleet and preference
       as a launch does, accept `--prefer` and `--node`, report the node,
       endpoint, preference and reason, and change nothing
 - [x] 7.2 Report the node a launch would wake when none is serving, without
@@ -99,9 +99,9 @@
 
 ## 8. Documentation and examples
 
-- [x] 8.1 Document `FLEET` in `docs/outfit-file.md` and the new flags in
+- [x] 8.1 Document `FLEET` in `docs/spinloop-file.md` and the new flags in
       `docs/commands/harness.md`
-- [x] 8.2 Document `outfit fleet route`, the `prefer` setting, the `engine:`
+- [x] 8.2 Document `spinloop fleet route`, the `prefer` setting, the `engine:`
       block and `engineTokenEnv` in `docs/commands/fleet.md`, including when a
       fleet wants `active` rather than `idle`
 - [x] 8.3 Update `examples/fleet/fleet.yaml` with a commented `prefer`, engine

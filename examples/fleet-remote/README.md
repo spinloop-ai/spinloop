@@ -1,7 +1,7 @@
 # A fleet of remote environments
 
-`outfit fleet` observes [`outfit remote`](../../docs/commands/remote.md)
-environments the same way it observes machines running `outfit daemon`: each
+`spinloop fleet` observes [`spinloop remote`](../../docs/commands/remote.md)
+environments the same way it observes machines running `spinloop daemon`: each
 environment becomes a node. There are no bearer tokens here — the control plane
 signs each call with your AWS credentials — and the file names environments,
 never an account, so it is safe to keep under version control.
@@ -10,14 +10,14 @@ never an account, so it is safe to keep under version control.
 
 ### 1. Have some environments
 
-An environment is created and registered when you deploy into it: an `Outfit`
-that says `REMOTE <name>`, run through `outfit remote deploy`, writes that
-environment's control URLs to `~/.config/outfit/remotes/<name>/remote.json`.
-Deploying needs the shared control plane once before it — see [`outfit
+An environment is created and registered when you deploy into it: a `Spinloop`
+that says `REMOTE <name>`, run through `spinloop remote deploy`, writes that
+environment's control URLs to `~/.config/spinloop/remotes/<name>/remote.json`.
+Deploying needs the shared control plane once before it — see [`spinloop
 remote`](../../docs/commands/remote.md). List what you already have:
 
 ```sh
-outfit remote ls
+spinloop remote ls
 ```
 
 ### 2. Name them as a fleet
@@ -35,10 +35,10 @@ nodes:
 From any machine your AWS credentials reach:
 
 ```sh
-outfit fleet status        # one row per environment
-outfit fleet metrics -w    # a live dashboard
-outfit fleet start qwen    # wake a sleeping environment from zero
-outfit fleet stop qwen     # scale it back down
+spinloop fleet status        # one row per environment
+spinloop fleet metrics -w    # a live dashboard
+spinloop fleet start qwen    # wake a sleeping environment from zero
+spinloop fleet stop qwen     # scale it back down
 ```
 
 An environment that has not been deployed yet shows as `config-error` on its
@@ -47,5 +47,5 @@ fleet still renders.
 
 ## See also
 
-- [`outfit fleet`](../../docs/commands/fleet.md) — the fleet file, its node kinds, and routing
-- [`outfit remote`](../../docs/commands/remote.md) — the environments these nodes drive
+- [`spinloop fleet`](../../docs/commands/fleet.md) — the fleet file, its node kinds, and routing
+- [`spinloop remote`](../../docs/commands/remote.md) — the environments these nodes drive

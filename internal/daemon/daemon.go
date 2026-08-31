@@ -10,8 +10,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lucinate-ai/outfit/internal/metrics"
-	"github.com/lucinate-ai/outfit/internal/remote"
+	"github.com/spinloop-ai/spinloop/internal/metrics"
+	"github.com/spinloop-ai/spinloop/internal/remote"
 )
 
 // StateDir is where a daemon's own state lives: the stored deploy config and
@@ -27,7 +27,7 @@ func StateDir() (string, error) {
 
 // Daemon ties the supervisor to what it serves: it resolves the engine
 // command, persists pushed deploy configs, and answers status and metrics.
-// The engine-specific knowledge — how a deploy config or an Outfit becomes an
+// The engine-specific knowledge — how a deploy config or a Spinloop becomes an
 // argv, and which runners this host can serve — is injected by the CLI, which
 // owns the engine table.
 type Daemon struct {
@@ -35,7 +35,7 @@ type Daemon struct {
 	// Dir is the daemon's state directory; StateDir() outside tests.
 	Dir string
 	// BuildArgv turns the source of what to serve into the engine command.
-	// dc is the stored deploy config, or nil to serve from the Outfit.
+	// dc is the stored deploy config, or nil to serve from the Spinloop.
 	BuildArgv func(dc *remote.DeployConfig) ([]string, error)
 	// EngineKeyArgs turns the path of the written key file into the
 	// arguments that gate this engine, or an error when the engine has no
@@ -55,7 +55,7 @@ type Daemon struct {
 	Now func() time.Time
 	// Prewarm reads the model's files into the page cache ahead of the
 	// engine's own read, off the start's critical path. Nil — the default —
-	// means this daemon never pre-warms: a plain `outfit daemon` on a laptop
+	// means this daemon never pre-warms: a plain `spinloop daemon` on a laptop
 	// or a fleet node does not, and only a daemon launched with the option
 	// (the cloud AMI's unit passes it) wires PrewarmModel. A start's own
 	// choice (DeployConfig.Prewarm) may still disable it; it cannot enable
@@ -66,7 +66,7 @@ type Daemon struct {
 	// unless it asks not to be; the CLI sets it, and sets Sup.Logger to the
 	// same logger alongside.
 	Logger *slog.Logger
-	// Version is the outfit binary's build-time version string. Passed by the
+	// Version is the spinloop binary's build-time version string. Passed by the
 	// CLI at construction time.
 	Version string
 
@@ -228,7 +228,7 @@ func (d *Daemon) StartEngine() error {
 		d.log().Error("engine start failed", slog.String("error", err.Error()))
 		return err
 	}
-	source := "outfit"
+	source := "spinloop"
 	if dc != nil {
 		source = "deploy-config"
 	}
@@ -314,7 +314,7 @@ type StatusResponse struct {
 	// daemon predates the check. Mirrored on metrics.Stats.Ready, from the
 	// same record.
 	Ready string `json:"ready,omitempty"`
-	// Version is the outfit binary's build-time version string. Set from the
+	// Version is the spinloop binary's build-time version string. Set from the
 	// daemon's Version field, which the CLI passes at construction time.
 	Version string `json:"version"`
 }

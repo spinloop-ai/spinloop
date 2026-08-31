@@ -4,7 +4,7 @@
  * EIP is allocated at deploy, so both are available regardless of instance
  * state.
  *
- * The caller (outfit harness) uses this to inject OPENAI_API_KEY and
+ * The caller (spinloop harness) uses this to inject OPENAI_API_KEY and
  * OPENAI_BASE_URL into the agent's environment, so the user never has to
  * export anything manually.
  */

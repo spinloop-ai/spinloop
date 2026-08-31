@@ -45,13 +45,13 @@ operator has no way to see either.
 
 ## Impact
 
-- Code: `cmd/outfit/dashboard_render.go` — the in-flight case of
+- Code: `cmd/spinloop/dashboard_render.go` — the in-flight case of
   `dashTileContent`, plus two shared helpers for the report body (serving
   line, last-active line, resource bars and token counters) used by both the
   settled and in-flight tiles so the two cannot word a number differently.
   No model, refresh or action lifecycle changes: the refresh rounds already
   ran and landed during an in-flight action; only the tile's drawing changes.
-- Tests: `cmd/outfit/fleet_dashboard_test.go` — byte-stable in-flight tile
+- Tests: `cmd/spinloop/fleet_dashboard_test.go` — byte-stable in-flight tile
   cases with a landed report (measuring, early boot, failed round) and a
   model-level case of a round landing beside an in-flight action.
 - Docs: the in-flight-tile clause in AGENTS.md and the renderer/action doc

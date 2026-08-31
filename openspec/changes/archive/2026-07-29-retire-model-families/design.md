@@ -2,9 +2,9 @@
 
 The catalogue's `Family` layer (`internal/catalog/catalog.go`) groups a provider's
 example models under a name, with a `defaultModel`. It touches five call sites: the two
-block builders (`BuildProviderBlock`, `BuildPiProvider`), the Outfit format
-(`Selection.Family`, `FAMILY` keyword), the CLI flag `--model-family`/`-f`, `outfit list`
-/ `outfit export` / `outfit remove`, and shell completion. The behaviour that must survive
+block builders (`BuildProviderBlock`, `BuildPiProvider`), the Spinloop format
+(`Selection.Family`, `FAMILY` keyword), the CLI flag `--model-family`/`-f`, `spinloop list`
+/ `spinloop export` / `spinloop remove`, and shell completion. The behaviour that must survive
 the removal is: a selection still configures one model (from `MODEL`/`ALIAS`), that model
 becomes the harness default, and an `ALIAS` still keys the model. `BuildProviderBlock`
 already synthesises a model entry from `modelOverride` when it is not otherwise present,
@@ -23,7 +23,7 @@ so the single-model path already exists and is exercised by every shipped exampl
 - Any live/dynamic model discovery source (separate change).
 - Changing context/output limit handling, API-key resolution, base-URL precedence, or the
   opencode/Pi config-merge behaviour.
-- A deprecation shim for `FAMILY` — it is removed outright (no shipped Outfit uses it).
+- A deprecation shim for `FAMILY` — it is removed outright (no shipped Spinloop uses it).
 
 ## Decisions
 
@@ -33,15 +33,15 @@ parameter invites confusion; the builders become
 Callers in `internal/harness/adapters.go` pass `modelKey(sel)` as before.
 
 **Remove `MatchFamily` and let `export` name the model directly.** Export already falls
-back to `st.ModelKeys[0]` when no family matches (`cmd/outfit/main.go`); with families
+back to `st.ModelKeys[0]` when no family matches (`cmd/spinloop/main.go`); with families
 gone, that fallback becomes the only path. A config with several models under one provider
 still exports the default model (or the first) as `MODEL` — export represents one model per
-Outfit, which is the format's existing constraint.
+Spinloop, which is the format's existing constraint.
 
-**`outfit remove -p <provider>` with no model still removes the whole provider**; naming a
+**`spinloop remove -p <provider>` with no model still removes the whole provider**; naming a
 model or alias removes that one key. The family-expansion branch is deleted.
 
-**`outfit list` shows providers + plumbing only.** Losing the model hint is accepted here
+**`spinloop list` shows providers + plumbing only.** Losing the model hint is accepted here
 and addressed by the separate live-discovery change; the test assertions for `family`/
 `default:` lines are removed.
 
@@ -52,10 +52,10 @@ completion complexity).
 
 ## Risks / Trade-offs
 
-- [Breaking change: an Outfit or script using `FAMILY`/`-f` stops working] → The proposal
+- [Breaking change: a Spinloop or script using `FAMILY`/`-f` stops working] → The proposal
   and docs state the migration (`FAMILY x` → `MODEL x` or `ALIAS x`); no shipped example
   uses it; the parser error already names the accepted keywords, so the failure is legible.
-- [`outfit list` loses model suggestions] → Intentional; the follow-up live-discovery
+- [`spinloop list` loses model suggestions] → Intentional; the follow-up live-discovery
   change restores a browsable, self-updating list without curation.
 - [Coverage dip from deleting family tests] → Net code shrinks too; verify with
   `go test ./... -cover` and add a small `export`/`remove` single-model test if a package

@@ -1,6 +1,6 @@
 ## Context
 
-`outfit remote start` shows progress through two writers (`cmd/outfit/remote.go`):
+`spinloop remote start` shows progress through two writers (`cmd/spinloop/remote.go`):
 a heartbeat goroutine that repeats a line every 30s, and per-poll retry notices
 from the polling loop `remote.Start` (`internal/remote/remote.go`). The
 heartbeat's wording comes from a shared last-seen state that `Start` reports
@@ -72,7 +72,7 @@ already renders any non-`no-capacity` state as "still starting (Ns elapsed)";
 the sentinel flows through the existing `setState` and renders correctly. The
 spec pins the observable line, so if the CLI ever special-cases states
 differently, the heartbeat tests (which drive `setState` directly) catch it
-without this change touching `cmd/outfit` at all.
+without this change touching `cmd/spinloop` at all.
 
 ## Risks / Trade-offs
 

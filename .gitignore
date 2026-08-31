@@ -1,8 +1,8 @@
 # Secrets — contains the OpenRouter API key
 .env
 
-# Compiled binary (`go build -o outfit .`, or the default `go build .` name)
-/outfit
+# Compiled binary (`go build -o spinloop .`, or the default `go build .` name)
+/spinloop
 
 # GoReleaser output
 /dist/
@@ -10,9 +10,8 @@
 # The binary examples/fleet-docker/run-tests.sh builds to drive the example
 # fleet. `go test ./...` runs that script, so anyone running the suite finds a
 # 15MB executable sitting untracked in the working tree.
-/examples/fleet-docker/.outfit-test-bin
+/examples/fleet-docker/.spinloop-test-bin
 
 # Coverage artefacts
 coverage.out
 coverage.html
-examples/outfit-qwen3.8/

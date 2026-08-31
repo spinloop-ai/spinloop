@@ -1,4 +1,4 @@
-# What the fake engine serves. Only two endpoints matter to outfit: /health,
+# What the fake engine serves. Only two endpoints matter to spinloop: /health,
 # which the readiness probe hits, and /metrics, which the daemon's collector
 # scrapes and parses in llama.cpp's dialect.
 plugin: rest

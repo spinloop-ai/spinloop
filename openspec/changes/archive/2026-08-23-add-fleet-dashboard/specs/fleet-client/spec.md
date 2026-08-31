@@ -2,7 +2,7 @@
 
 ### Requirement: Fleet dashboard
 
-`outfit fleet dashboard` SHALL open an interactive, full-screen view of the fleet:
+`spinloop fleet dashboard` SHALL open an interactive, full-screen view of the fleet:
 one panel per node in the fleet file, arranged in a grid and refreshed
 continuously without operator input. It is the one place where what the fleet is
 doing and acting on it meet: unlike `fleet metrics --watch`, it takes keyboard

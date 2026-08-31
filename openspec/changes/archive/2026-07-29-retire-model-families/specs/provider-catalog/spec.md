@@ -2,7 +2,7 @@
 
 ### Requirement: Catalogue listing
 
-`outfit list` SHALL print every provider in the catalogue in stable
+`spinloop list` SHALL print every provider in the catalogue in stable
 (alphabetical) order, showing for each: its id and description, its API key
 environment variable (marked `(required)` when the key is mandatory), and the
 harnesses that support it (`opencode`, plus `pi` when the provider has a `pi`
@@ -10,7 +10,7 @@ block).
 
 #### Scenario: Listing the built-in catalogue
 
-- **WHEN** the user runs `outfit list`
+- **WHEN** the user runs `spinloop list`
 - **THEN** every embedded provider is printed with its key requirements and
   supported harnesses
 
@@ -50,7 +50,7 @@ not "a key that is missing".
 #### Scenario: Catalogue loads without external files
 
 - **WHEN** any command that needs the catalogue runs with no `--providers` flag
-  and no `OUTFIT_PROVIDERS` environment variable
+  and no `SPINLOOP_PROVIDERS` environment variable
 - **THEN** the embedded catalogue is used, with no file read from disk
 
 #### Scenario: An optional key is injected only when set

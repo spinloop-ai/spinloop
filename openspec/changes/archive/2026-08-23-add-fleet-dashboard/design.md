@@ -13,7 +13,7 @@ See proposal.md — Why. The shapes that constrain the design:
 - The one-shot `fleet start`/`fleet stop` commands (`driveOneNode`) and the
   `fleet logs -f` poll loop are the behavioural precedents: one node at a time,
   a failed node is a reported row, interruption is a clean exit.
-- The renderers in `cmd/outfit/metrics_render.go` already write the bar-format
+- The renderers in `cmd/spinloop/metrics_render.go` already write the bar-format
   block for one node's `metrics.Stats` into an `io.Writer`; the dashboard's tile
   is that block framed in a panel, so the rendering logic is reused, not
   re-invented.
@@ -73,7 +73,7 @@ and the layout becomes a pure function the tests table directly. Alternatives:
   for the env binding) is the same category of decision: the TUI framework owns
   the interactive surface end to end.
 
-### The code lives in `cmd/outfit`, in three files
+### The code lives in `cmd/spinloop`, in three files
 
 - `fleet_dashboard.go` — the cobra command (`--fleet` flag, Long text,
   completion registration like its siblings), the non-TTY guard, fleet-file
@@ -84,7 +84,7 @@ and the layout becomes a pure function the tests table directly. Alternatives:
   `metrics_render.go` helpers, drawn lipgloss-invariant (panel content is
   computed as a string from `NodeResult`, styled by lipgloss at the frame level).
 
-Following `fleet logs` (whose whole machinery lives in `cmd/outfit`), the logic
+Following `fleet logs` (whose whole machinery lives in `cmd/spinloop`), the logic
 stays beside its command instead of a new `internal/` package. Revisit if the
 model outgrows the main package's test idioms.
 

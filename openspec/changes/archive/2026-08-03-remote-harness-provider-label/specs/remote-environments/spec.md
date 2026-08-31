@@ -2,7 +2,7 @@
 
 ### Requirement: A remote harness provider is labelled distinctly
 
-When an Outfit that has a `REMOTE` is applied, the harness provider's display
+When a Spinloop that has a `REMOTE` is applied, the harness provider's display
 name SHALL be distinct from that of the local engine of the same kind, so the
 remote environment and a local provider built from the same `PROVIDER` entry are
 told apart in a harness model picker. The display name SHALL combine the
@@ -17,7 +17,7 @@ catalogue engine name, as before.
 
 #### Scenario: A remote provider is labelled with its environment
 
-- **WHEN** an Outfit states `PROVIDER llamacpp` (display name `llama.cpp`),
+- **WHEN** a Spinloop states `PROVIDER llamacpp` (display name `llama.cpp`),
   `ALIAS qwen`, and `REMOTE dev-2`, and is applied
 - **THEN** the harness config holds a provider keyed `dev-2` whose display name is
   `llama.cpp (dev-2)`, distinct from a local `llamacpp` provider's `llama.cpp`
@@ -31,12 +31,12 @@ catalogue engine name, as before.
 
 #### Scenario: An engine with no display name falls back to the environment name
 
-- **WHEN** an Outfit's `PROVIDER` catalogue entry has no display name and its
+- **WHEN** a Spinloop's `PROVIDER` catalogue entry has no display name and its
   `REMOTE` resolves to environment `dev-2`, and is applied
 - **THEN** the harness provider's display name is `dev-2`
 
 #### Scenario: A path form without an environment keeps the engine label
 
-- **WHEN** an Outfit states `PROVIDER llamacpp` and `REMOTE ./remote.json`, and
+- **WHEN** a Spinloop states `PROVIDER llamacpp` and `REMOTE ./remote.json`, and
   that `remote.json` has no `environment` field, and is applied
 - **THEN** the harness provider's display name is `llama.cpp`, as before

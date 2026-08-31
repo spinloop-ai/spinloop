@@ -1,7 +1,7 @@
 ## 1. Grid-aware selection
 
 - [x] 1.1 Replace the flat ±1 `up`/`down` cursor moves in `dashModel.Update`
-      (`cmd/outfit/dashboard_model.go`) with row moves: `cols :=
+      (`cmd/spinloop/dashboard_model.go`) with row moves: `cols :=
       dashCols(m.effWidth())`; down targets `cursor + cols`; up targets
       `cursor - cols`; drop the `j`/`k` aliases so movement is
       arrow-keys-only
@@ -23,7 +23,7 @@
 ## 2. Tests
 
 - [x] 2.1 Update `TestDashModelSelectionScroll` and
-      `TestDashModelUpNavigationClamps` (`cmd/outfit/fleet_dashboard_test.go`)
+      `TestDashModelUpNavigationClamps` (`cmd/spinloop/fleet_dashboard_test.go`)
       for row-based up/down movement in a multi-column layout
 - [x] 2.2 Add tests for left/right moving within a row and clamping (no wrap)
       at the first and last column
@@ -44,7 +44,7 @@
 ## 3. Verification
 
 - [x] 3.1 `go vet ./...`, `go test ./...` (coverage stays >= 80%), `gofmt`
-- [x] 3.2 Manually run `outfit fleet dashboard` against a fleet file with
+- [x] 3.2 Manually run `spinloop fleet dashboard` against a fleet file with
       enough nodes to wrap to a second row, and confirm all four arrow keys
       move the selection the way it looks like they should, at more than one
       terminal width, and that `j`/`k` no longer do anything

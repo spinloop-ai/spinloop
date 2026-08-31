@@ -5,7 +5,7 @@
 // panic, and a bounded timeout keeps a slow endpoint from hanging a command.
 //
 // The catalogue holds no models (see the provider-catalog spec); this is how
-// `outfit list --models` and model tab-completion learn what a provider offers,
+// `spinloop list --models` and model tab-completion learn what a provider offers,
 // live and without curation. Every discoverable provider here speaks the
 // OpenAI-compatible `GET {baseURL}/models` shape — OpenRouter, vLLM, llama.cpp,
 // the generic openai-compatible endpoint, and Ollama (whose compatibility layer
@@ -23,15 +23,15 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lucinate-ai/outfit/internal/catalog"
+	"github.com/spinloop-ai/spinloop/internal/catalog"
 )
 
-// baseURLEnv mirrors the catalogue's OUTFIT_BASE_URL override so discovery
+// baseURLEnv mirrors the catalogue's SPINLOOP_BASE_URL override so discovery
 // targets the same endpoint a selection would.
-const baseURLEnv = "OUTFIT_BASE_URL"
+const baseURLEnv = "SPINLOOP_BASE_URL"
 
 // requestTimeout bounds a single discovery request. Discovery is interactive
-// (it backs `outfit list` and tab-completion), so a few seconds is the ceiling:
+// (it backs `spinloop list` and tab-completion), so a few seconds is the ceiling:
 // a reachable endpoint answers in well under this, and an unreachable one fails
 // fast enough not to strand the command.
 const requestTimeout = 3 * time.Second
@@ -58,7 +58,7 @@ var (
 
 // ResolveBaseURL determines the base URL to query for a provider, mirroring the
 // base-URL precedence a selection uses: an explicit override, then
-// OUTFIT_BASE_URL, then the provider's optionsFromEnv `baseURL`, then its static
+// SPINLOOP_BASE_URL, then the provider's optionsFromEnv `baseURL`, then its static
 // options.baseURL, then its Pi endpoint. It returns "" when none resolves, which
 // marks the provider as not discoverable.
 func ResolveBaseURL(p *catalog.Provider, override string, resolve func(string) string) string {

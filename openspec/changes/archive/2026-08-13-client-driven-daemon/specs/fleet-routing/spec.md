@@ -9,7 +9,7 @@ the scenarios, which asserted a lookup that no longer happens.
 
 **Migration**: None for a fleet file: `engineTokenEnv` is still the variable
 naming the key, and still resolved from the environment then the adjacent
-`.env`. What changes is what outfit does with it — it sets the key rather than
+`.env`. What changes is what spinloop does with it — it sets the key rather than
 matching one — so a node whose engine was gated out of band by its own preset
 must now be gated by the client that starts it.
 
@@ -21,7 +21,7 @@ Routing SHALL resolve the engine key from the variable the node's fleet entry
 names, supply it to the node when it wakes one, and place it in the launched
 agent's environment as `OPENAI_API_KEY` — and, for a harness that reads the key
 under its own name, under that name too, as the remote path already does. A key
-already set in outfit's environment SHALL win.
+already set in spinloop's environment SHALL win.
 
 The client is therefore the one party that holds the key: it decides what the
 engine it starts is gated with, and it knows what to give the agent because it

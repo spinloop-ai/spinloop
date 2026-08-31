@@ -12,7 +12,7 @@ worked only for the cloud, and only from outside. Every stat is optional by
 design: a host with no source for one omits it rather than erroring, which is
 how a machine without `nvidia-smi` reports engine stats and no GPU figures. The
 shape is kept value-for-value compatible with what the existing
-`outfit remote metrics` formatters render.
+`spinloop remote metrics` formatters render.
 ## Requirements
 ### Requirement: Engine stats collection
 
@@ -126,7 +126,7 @@ worth seeing.
 ### Requirement: Rendering-compatible stats shape
 
 The collected metrics SHALL be expressible in the same stats shape the
-`outfit remote metrics` formatters render (state, runner, model, GPU, CPU,
+`spinloop remote metrics` formatters render (state, runner, model, GPU, CPU,
 RAM, token stats, and the engine's last-active time with the idle duration
 derived from it), so the existing bar, table, and JSON formats display
 in-process metrics without format-specific changes.

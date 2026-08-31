@@ -3,7 +3,7 @@
 - [x] 1.1 Add `LoopbackAPIAddr` constant (`"127.0.0.1:4242"`) in
       `internal/daemon/api.go` beside `DefaultAPIAddr`, with a comment tying
       it to the `--loopback` flag and the token-free loopback bind
-- [x] 1.2 In `cmdDaemon` (`cmd/outfit/serve_daemon.go`), register a boolean
+- [x] 1.2 In `cmdDaemon` (`cmd/spinloop/serve_daemon.go`), register a boolean
       `--loopback`/`-l` flag ("bind the control API to loopback, like
       `--api-addr 127.0.0.1:4242`; needs no token")
 - [x] 1.3 After parsing, resolve the address through a pure helper
@@ -15,9 +15,9 @@
 ## 2. Mirrors
 
 - [x] 2.1 Add `--loopback` and `-l` to the `daemon` entry of the completion
-      table in `cmd/outfit/complete.go` (bool; no `values` entries)
-- [x] 2.2 Update the `outfit daemon` line in `usage()` in
-      `cmd/outfit/main.go` to name `[--loopback]`
+      table in `cmd/spinloop/complete.go` (bool; no `values` entries)
+- [x] 2.2 Update the `spinloop daemon` line in `usage()` in
+      `cmd/spinloop/main.go` to name `[--loopback]`
 
 ## 3. Tests
 
@@ -31,7 +31,7 @@
       request gets an answer
 - [x] 3.3 Verify `TestCompletionCoversDispatch` and the flag-mirror test pass
       with the new flag, and that completion offers `--loopback`/`-l` for
-      `outfit daemon`
+      `spinloop daemon`
 
 ## 4. Docs
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Drives the dockerised fleet and asserts the behaviours `outfit fleet`
+# Drives the dockerised fleet and asserts the behaviours `spinloop fleet`
 # promises. This is both the CI integration test and something a maintainer can
 # run locally — there is no CI-only path that can drift from what you run by
 # hand.
@@ -14,9 +14,9 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly HERE
 REPO_ROOT="$(cd "${HERE}/../.." && pwd)"
 readonly REPO_ROOT
-# Where the built binary lands; the stack is driven by the outfit built from
+# Where the built binary lands; the stack is driven by the spinloop built from
 # this working tree, so the test covers this commit.
-readonly OUTFIT_BIN="${HERE}/.outfit-test-bin"
+readonly SPINLOOP_BIN="${HERE}/.spinloop-test-bin"
 readonly READY_TIMEOUT_SECS=90
 
 keep_stack=0
@@ -93,30 +93,30 @@ assert_equals() {
 }
 
 #######################################
-# Run `outfit fleet` against the example's fleet.yaml.
+# Run `spinloop fleet` against the example's fleet.yaml.
 # Globals:
-#   OUTFIT_BIN, HERE
+#   SPINLOOP_BIN, HERE
 # Arguments:
-#   Arguments to pass to `outfit fleet`.
+#   Arguments to pass to `spinloop fleet`.
 # Outputs:
 #   The command's stdout; stderr is discarded so assertions read cleanly.
 #######################################
 fleet() {
-  "${OUTFIT_BIN}" fleet "$@" --fleet "${HERE}/fleet.yaml" 2>/dev/null
+  "${SPINLOOP_BIN}" fleet "$@" --fleet "${HERE}/fleet.yaml" 2>/dev/null
 }
 
 #######################################
 # As fleet(), but merging stderr — for assertions about error messages, which
 # the CLI writes to stderr.
 # Globals:
-#   OUTFIT_BIN, HERE
+#   SPINLOOP_BIN, HERE
 # Arguments:
-#   Arguments to pass to `outfit fleet`.
+#   Arguments to pass to `spinloop fleet`.
 # Outputs:
 #   The command's stdout and stderr.
 #######################################
 fleet_with_stderr() {
-  "${OUTFIT_BIN}" fleet "$@" --fleet "${HERE}/fleet.yaml" 2>&1
+  "${SPINLOOP_BIN}" fleet "$@" --fleet "${HERE}/fleet.yaml" 2>&1
 }
 
 #######################################
@@ -182,19 +182,19 @@ cleanup() {
     echo
     echo "Stack left running (--keep). Try:"
     echo "  cd ${HERE} && set -a && . ./.env && set +a"
-    echo "  outfit fleet status --fleet ${HERE}/fleet.yaml"
+    echo "  spinloop fleet status --fleet ${HERE}/fleet.yaml"
     echo "Tear down with: docker compose -f ${HERE}/compose.yaml down -v"
     return
   fi
   echo
   echo "Tearing down..."
   docker compose -f "${HERE}/compose.yaml" down -v >/dev/null 2>&1 || true
-  rm -f "${OUTFIT_BIN}"
+  rm -f "${SPINLOOP_BIN}"
 }
 
 #######################################
 # Assert a node that has never been told anything cannot be started. The
-# daemon reads no Outfit, so until a client sends a config there is nothing
+# daemon reads no Spinloop, so until a client sends a config there is nothing
 # for `fleet start` to run — and it says so rather than guessing.
 #######################################
 test_untold_node_cannot_start() {
@@ -260,17 +260,17 @@ test_start_stop_one_node() {
 # published on another port outside, so it only works because fleet.yaml
 # declares a per-node `engine:` block.
 # Globals:
-#   HERE, OUTFIT_BIN
+#   HERE, SPINLOOP_BIN
 #######################################
 test_routing() {
   echo "Routing a launch at a node"
-  # The only Outfit here: the nodes hold none.
-  local outfit_file="${HERE}/client/Outfit"
+  # The only Spinloop here: the nodes hold none.
+  local spinloop_file="${HERE}/client/Spinloop"
   local out
 
   # Nothing is serving yet, so route reports what a launch would wake and
   # starts nothing itself.
-  out="$("${OUTFIT_BIN}" fleet route --fleet "${HERE}/fleet.yaml" "${outfit_file}" 2>&1)"
+  out="$("${SPINLOOP_BIN}" fleet route --fleet "${HERE}/fleet.yaml" "${spinloop_file}" 2>&1)"
   assert_contains "route says nothing is serving the model" "${out}" "is serving"
   assert_contains "route names the node a launch would wake" "${out}" "would wake"
   assert_contains "route says it started nothing" "${out}" "Nothing has been started"
@@ -300,7 +300,7 @@ STUB
   local launch
   launch="$(PATH="${sandbox}/bin:${PATH}" HOME="${sandbox}/home" \
     XDG_CONFIG_HOME="${sandbox}/home/.config" \
-    "${OUTFIT_BIN}" harness -O="${outfit_file}" -H opencode 2>&1 || true)"
+    "${SPINLOOP_BIN}" harness -O="${spinloop_file}" -H opencode 2>&1 || true)"
   assert_contains "a routed launch wakes the node" "${launch}" "Waking studio"
   assert_contains "the agent is pointed at the published engine port" "${launch}" "18080"
   assert_contains "the agent is given the key the client set" \
@@ -312,7 +312,7 @@ STUB
   fi
   rm -rf "${sandbox}"
 
-  out="$("${OUTFIT_BIN}" fleet route --fleet "${HERE}/fleet.yaml" "${outfit_file}" 2>&1)"
+  out="$("${SPINLOOP_BIN}" fleet route --fleet "${HERE}/fleet.yaml" "${spinloop_file}" 2>&1)"
   assert_contains "route picks the running node" "${out}" "Would use studio"
   assert_contains "route resolves the published engine port" "${out}" "18080"
   assert_contains "route names the preference in force" "${out}" "prefer idle"
@@ -327,7 +327,7 @@ STUB
   fi
 
   # A second node, chosen by pinning rather than by ranking.
-  out="$("${OUTFIT_BIN}" fleet route --fleet "${HERE}/fleet.yaml" --node gpu-box "${outfit_file}" 2>&1)"
+  out="$("${SPINLOOP_BIN}" fleet route --fleet "${HERE}/fleet.yaml" --node gpu-box "${spinloop_file}" 2>&1)"
   assert_contains "a pinned node is reported even when idle" "${out}" "gpu-box"
 
   # studio names an engine key, so the engine it was woken with is gated —
@@ -365,7 +365,7 @@ test_metrics() {
 
   local out
   out="$(fleet metrics)"
-  # The counters the fake engine serves, parsed by outfit's own collector.
+  # The counters the fake engine serves, parsed by spinloop's own collector.
   assert_contains "token counters reach the fleet view" "${out}" "prompt tokens"
   assert_contains "prompt token count is the engine's" "${out}" "4096"
   assert_contains "resource bars are rendered" "${out}" "RAM"
@@ -463,8 +463,8 @@ main() {
 
   trap cleanup EXIT
 
-  echo "Building outfit from the working tree..."
-  (cd "${REPO_ROOT}" && go build -o "${OUTFIT_BIN}" ./cmd/outfit)
+  echo "Building spinloop from the working tree..."
+  (cd "${REPO_ROOT}" && go build -o "${SPINLOOP_BIN}" ./cmd/spinloop)
 
   echo "Bringing the fleet up..."
   docker compose -f "${HERE}/compose.yaml" up -d --build >/dev/null 2>&1

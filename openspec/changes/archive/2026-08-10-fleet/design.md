@@ -6,22 +6,22 @@ See proposal.md — Why. What the earlier changes leave in place:
   `StatusResponse` (state, runner, model, uptime, logPath, and — since the
   daemon gained activity tracking — `lastActiveAt`/`idleSeconds`) and
   `internal/metrics.Stats` from `GET /v1/metrics`. Auth is a bearer token
-  (`OUTFIT_API_TOKEN`), constant-time compared.
-- `cmd/outfit/remote.go` renders `remote.StatsResponse` in bar/table/json via
+  (`SPINLOOP_API_TOKEN`), constant-time compared.
+- `cmd/spinloop/remote.go` renders `remote.StatsResponse` in bar/table/json via
   `formatMetricsBar/Table/JSON` (all take an `io.Writer`), and `runMetricsWatch`
   does the clear-screen redraw with a pre-rendered buffer.
   `remote.StatsResponse`'s stat sub-types are already aliases of
   `internal/metrics` types, so the daemon's `/v1/metrics` body and the remote
   Lambda's reply are the same dialect.
-- Outfit resolves adjacent `.env` via `opencode.ParseEnvFile`, with the
-  precedence environment-over-`.env` (see `applyOutfitEnv`).
-- `OUTFIT_CONFIG_DIR` (added by config-dir-override) redirects outfit's *own*
+- Spinloop resolves adjacent `.env` via `opencode.ParseEnvFile`, with the
+  precedence environment-over-`.env` (see `applySpinloopEnv`).
+- `SPINLOOP_CONFIG_DIR` (added by config-dir-override) redirects spinloop's *own*
   config directory (`config.json`, `remote.json`, the daemon state dir). It has
   no bearing on `fleet.yaml`, which is project-local — resolved from the working
-  directory or `--fleet`, like `Outfit`/`preset.ini`, not from the config dir —
+  directory or `--fleet`, like `Spinloop`/`preset.ini`, not from the config dir —
   and no bearing on token resolution, which reads the process environment and
   the `.env` beside the `fleet.yaml`.
-- Each fleet node is a machine running `outfit daemon` reachable over the
+- Each fleet node is a machine running `spinloop daemon` reachable over the
   network, so its daemon listens on a non-loopback address — which `daemon-api`
   requires a bearer token for. The cloud instance's daemon is loopback-only
   (`--api-addr 127.0.0.1:4242`, reached only via the stats Lambda over SSM), so
@@ -53,14 +53,14 @@ See proposal.md — Why. What the earlier changes leave in place:
 package: `Config`/`Node` (parsed `fleet.yaml`), a `Client` that calls one
 daemon's control API, and a `Node` interface (`Status`, `Metrics`, `Start`,
 `Stop`) with a `daemonNode` implementation. The CLI layer
-(`cmd/outfit/fleet.go`) does fan-out and rendering. Keeping the daemon-calling
+(`cmd/spinloop/fleet.go`) does fan-out and rendering. Keeping the daemon-calling
 in `internal/fleet` mirrors how `internal/remote` holds the Lambda-calling.
 
 **D2 — Reuse the metrics renderers by moving them, not copying.** The
 bar/table/json formatters and the watch loop in `remote.go` already take an
 `io.Writer` and a stats value. `fleet metrics` renders the same
 `internal/metrics.Stats` per node, so the renderers move to a shared home (a
-small `cmd/outfit` metrics-render file, or `internal/metrics` if they carry no
+small `cmd/spinloop` metrics-render file, or `internal/metrics` if they carry no
 remote-only concerns) and both callers use them. The remote-only bits (cost
 lookup, instance type) stay behind the remote caller. This is the one
 refactor of existing code; it must leave `remote metrics` output byte-identical
@@ -93,7 +93,7 @@ its engine is already running, an unservable config. Folding it into
 matters most: the box is healthy and it was the request that was refused, so
 the daemon's own message is what the user needs to see.
 
-**D5 — Token resolution reuses outfit's env precedence.** A node's
+**D5 — Token resolution reuses spinloop's env precedence.** A node's
 `tokenEnv` (env var name) is resolved from the process environment then the
 `.env` beside the `fleet.yaml`, via the same `ParseEnvFile` + getenv path the
 remote commands use — so the fleet's secrets live in `.env`, never in

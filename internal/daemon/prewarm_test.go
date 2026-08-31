@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lucinate-ai/outfit/internal/remote"
+	"github.com/spinloop-ai/spinloop/internal/remote"
 )
 
 func TestModelFilesNamesThePathItself(t *testing.T) {

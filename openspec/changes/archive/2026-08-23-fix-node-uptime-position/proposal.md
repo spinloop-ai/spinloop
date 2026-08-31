@@ -1,10 +1,10 @@
 ## Why
 
-In `outfit fleet dashboard`, a running node's uptime is appended to the end of
+In `spinloop fleet dashboard`, a running node's uptime is appended to the end of
 the serving line (`runner  modelID  (up 2h 0m 0s)`). That line is clipped to
 the tile's fixed width, so a long runner or model ID pushes the uptime past
 the cutoff and it silently disappears — the operator sees the model but not
-how long it's been up. [Issue #127](https://github.com/lucinate-ai/outfit/issues/127).
+how long it's been up. [Issue #127](https://github.com/spinloop-ai/spinloop/issues/127).
 
 ## What Changes
 
@@ -24,6 +24,6 @@ it renders on. This change sets `skip_specs: true`.
 
 ## Impact
 
-- `cmd/outfit/dashboard_render.go`: `dashTileContent`, `dashTileServingLine`
-- `cmd/outfit/fleet_dashboard_test.go`: byte-stable tile fixtures that assert
+- `cmd/spinloop/dashboard_render.go`: `dashTileContent`, `dashTileServingLine`
+- `cmd/spinloop/fleet_dashboard_test.go`: byte-stable tile fixtures that assert
   exact tile text

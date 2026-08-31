@@ -1,6 +1,6 @@
 ## Why
 
-"Report the node's outfit version in `outfit remote status`" (issue #56) shipped only halfway. The archived change `2026-08-15-remote-status-version` completed the daemon (`/v1/status` carries `version`), the CLI (status and metrics print it when present), and the fleet client, but left its section 6 unchecked: the stats Lambda only scrapes the daemon's `/v1/metrics`, so on any deployed environment the reply never contains a `version`, and `outfit remote status` / `outfit remote metrics` silently omit the line they were built to show.
+"Report the node's spinloop version in `spinloop remote status`" (issue #56) shipped only halfway. The archived change `2026-08-15-remote-status-version` completed the daemon (`/v1/status` carries `version`), the CLI (status and metrics print it when present), and the fleet client, but left its section 6 unchecked: the stats Lambda only scrapes the daemon's `/v1/metrics`, so on any deployed environment the reply never contains a `version`, and `spinloop remote status` / `spinloop remote metrics` silently omit the line they were built to show.
 
 ## What Changes
 

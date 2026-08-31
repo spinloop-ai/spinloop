@@ -5,7 +5,7 @@
 Bootstrap SHALL select the Node package manager it drives the CDK project with.
 Absent an explicit choice, it SHALL auto-detect by PATH lookup, preferring `pnpm`
 and falling back to `npm` when `pnpm` is not on the path. The user MAY override
-the selection with a `--package-manager` flag or an `OUTFIT_REMOTE_PACKAGE_MANAGER`
+the selection with a `--package-manager` flag or an `SPINLOOP_REMOTE_PACKAGE_MANAGER`
 environment variable, whose only accepted values are `pnpm` and `npm`; the flag
 SHALL take precedence over the environment variable, which SHALL take precedence
 over auto-detection. An unrecognised override value SHALL be rejected with an
@@ -32,7 +32,7 @@ yet runs correctly under either manager.
 #### Scenario: An explicit override is honoured
 
 - **WHEN** the user passes `--package-manager npm` (or sets
-  `OUTFIT_REMOTE_PACKAGE_MANAGER=npm`) while `pnpm` is also present
+  `SPINLOOP_REMOTE_PACKAGE_MANAGER=npm`) while `pnpm` is also present
 - **THEN** bootstrap uses `npm` regardless of auto-detection, and the flag wins
   if both the flag and the environment variable are set
 
@@ -63,7 +63,7 @@ location: neither keyed by reference nor pruned.
 
 #### Scenario: Sources match the binary version
 
-- **WHEN** a released `outfit` runs bootstrap with no `--ref`
+- **WHEN** a released `spinloop` runs bootstrap with no `--ref`
 - **THEN** it downloads the `remote/` sources at the tag matching its version
 
 #### Scenario: Development build falls back
@@ -125,13 +125,13 @@ other than an explicit yes as a decline that makes no changes.
 
 #### Scenario: The plan is shown before anything is deployed
 
-- **WHEN** the user runs `outfit remote bootstrap`
+- **WHEN** the user runs `spinloop remote bootstrap`
 - **THEN** the account, region, shared resources, cost caveat, and commands are
   printed before any AWS-mutating command runs
 
 #### Scenario: Dry run changes nothing
 
-- **WHEN** the user runs `outfit remote bootstrap --dry-run`
+- **WHEN** the user runs `spinloop remote bootstrap --dry-run`
 - **THEN** the plan is printed and no package-manager, `cdk`, or AWS-mutating
   command runs
 

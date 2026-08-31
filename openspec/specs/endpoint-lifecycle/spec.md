@@ -96,8 +96,8 @@ stronger guarantee always wins:
 
 1. A **retention override** — an instance marked to be retained until a stated
    time SHALL NOT be terminated automatically before it, for any reason. The
-   tag is set from the CLI via `outfit remote keep DURATION` or
-   `outfit remote start --keep DURATION`, which compute an absolute deadline
+   tag is set from the CLI via `spinloop remote keep DURATION` or
+   `spinloop remote start --keep DURATION`, which compute an absolute deadline
    from the provided duration and apply it as the `Retain-Until` EC2 tag on the
    instance. The idle sweep reads this tag and defers automatic termination
    until the deadline passes.
@@ -133,7 +133,7 @@ A manual stop SHALL take effect immediately regardless of all three.
 
 #### Scenario: Setting retention from the CLI
 
-- **WHEN** the user runs `outfit remote keep 4h` on a running instance
+- **WHEN** the user runs `spinloop remote keep 4h` on a running instance
 - **THEN** the `Retain-Until` tag is set to 4 hours from now, and the idle
   sweep defers automatic termination until that time
 
@@ -143,12 +143,12 @@ A user-initiated pause SHALL stop the instance without terminating it, preservin
 
 #### Scenario: Pause stops without terminating
 
-- **WHEN** user runs `outfit remote pause` for a running environment
+- **WHEN** user runs `spinloop remote pause` for a running environment
 - **THEN** the instance is stopped, not terminated, and the environment's URL is retained
 
 #### Scenario: Pause is distinct from stop
 
-- **WHEN** user runs `outfit remote stop`
+- **WHEN** user runs `spinloop remote stop`
 - **THEN** the instance is terminated immediately
 
 ### Requirement: Engine is stopped before the EC2 instance

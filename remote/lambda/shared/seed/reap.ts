@@ -18,7 +18,7 @@ export interface SeedReapInput {
   /**
    * When the seed last reported anything — the `lastEventTimestamp` of its log
    * stream. THIS is the progress signal, deliberately not the SSM daemon scrape
-   * the inference sweep uses: a seed instance runs no outfit daemon, so that
+   * the inference sweep uses: a seed instance runs no spinloop daemon, so that
    * scrape would fail against it and yield nothing usable.
    *
    * Undefined means nothing has been reported yet, which is normal for the

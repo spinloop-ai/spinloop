@@ -1,7 +1,7 @@
 ## Why
 
 The remote-llms account runs three environments (dev-1, dev-2, dev-3), all on
-llama.cpp serving Qwen3.8-27B with MTP. vLLM is a first-class outfit runner —
+llama.cpp serving Qwen3.8-27B with MTP. vLLM is a first-class spinloop runner —
 baked AMI, deploy, serve, metrics, fleet — but it has never actually been run
 in one of these environments. Standing up a fourth environment, `vllm-1`, that
 mirrors the qwen3.8/MTP set-up on vLLM gives an apples-to-apples comparison of
@@ -12,7 +12,7 @@ matches or beats the llama.cpp+MTP baseline.
 
 - New `vllm-1/` environment directory in `~/projects/remote-llms`, mirroring
   `dev-1/`:
-  - `Outfit`: `PROVIDER vllm`, `MODEL Qwen/Qwen3.8-27B-FP8` (the FP8
+  - `Spinloop`: `PROVIDER vllm`, `MODEL Qwen/Qwen3.8-27B-FP8` (the FP8
     checkpoint, whole-repo seed — no GGUF quant), `ALIAS qwen3.8-27b`,
     `CONTEXT 196608`, `PRESET ./preset.ini`, `REMOTE vllm-1`,
     `ENV AWS_REGION=us-east-1`.
@@ -23,7 +23,7 @@ matches or beats the llama.cpp+MTP baseline.
     defaults, and the tool-call parser flags (the twin of `jinja = 1`).
     llama.cpp-only settings (`ngl`, `fa`, `cache-type-k/v`) have no vLLM
     counterpart or use vLLM defaults and are dropped.
-- Register `vllm-1` as an outfit alias, `outfit remote deploy` it onto the
+- Register `vllm-1` as an spinloop alias, `spinloop remote deploy` it onto the
   shared layer, and start it. The first start seeds the FP8 checkpoint into
   S3 (`models/vllm/Qwen/Qwen3.8-27B-FP8/`).
 - Add `vllm-1` to `fleet.yaml` as a fourth `kind: remote` node, so all four
@@ -36,7 +36,7 @@ matches or beats the llama.cpp+MTP baseline.
   environment uses.
 
 Non-goals: changing any existing environment; switching anything to vLLM on
-the strength of this test; outfit or CDK project changes (if the test exposes
+the strength of this test; spinloop or CDK project changes (if the test exposes
 a gap, that is a separate change); context sizes beyond the mirrored
 `196608` (a 262144 probe is a follow-up, not part of this); parallelism
 tuning.
@@ -49,7 +49,7 @@ None.
 
 ### Modified Capabilities
 
-None — no outfit requirement changes. `vllm` is already a specified,
+None — no spinloop requirement changes. `vllm` is already a specified,
 first-class runner (`inference-runners`, `local-serving`,
 `endpoint-provisioning`), and everything this change does is an instance of
 existing behaviour plus files in the separate remote-llms repo. `skip_specs`
@@ -57,7 +57,7 @@ is set to `true` for this change.
 
 ## Impact
 
-- `~/projects/remote-llms`: new `vllm-1/` (Outfit + preset.ini), `fleet.yaml`
+- `~/projects/remote-llms`: new `vllm-1/` (Spinloop + preset.ini), `fleet.yaml`
   gains one node, README updated.
 - AWS: one more environment on the shared layer (Elastic IP, per-environment
   API key, S3 weights prefix `models/vllm/Qwen/Qwen3.8-27B-FP8/`, one L40S
@@ -66,12 +66,12 @@ is set to `true` for this change.
   a bootstrap re-run is expected to add the seed-job infrastructure (and to
   bake the vLLM AMI if that is missing too).
 - Per-user local state: one alias entry and one
-  `~/.config/outfit/remotes/vllm-1/remote.json` (carrying the seed endpoint
+  `~/.config/spinloop/remotes/vllm-1/remote.json` (carrying the seed endpoint
   of the shared layer).
-- Tooling: the fleet view of a `kind: remote` node and the `outfit remote
-  seed` surface need the outfit build from this branch (post-v1.24.2,
+- Tooling: the fleet view of a `kind: remote` node and the `spinloop remote
+  seed` surface need the spinloop build from this branch (post-v1.24.2,
   rebased onto main with the seeding rework); the first deploy seeds the
   FP8 checkpoint through the supervised seed job, followed via
-  `outfit remote seed status`. The account's shared layer predates the
+  `spinloop remote seed status`. The account's shared layer predates the
   seeding rework, so a bootstrap re-run adds the seed infrastructure.
-- No outfit code, spec, or CDK change is expected.
+- No spinloop code, spec, or CDK change is expected.

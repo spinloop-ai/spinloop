@@ -8,8 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.28.0] - 2026-08-24
 ### Added
-- feat(daemon): log the outfit version at startup
-- feat(remote): install outfit at boot instead of baking it into the AMI
+- feat(daemon): log the spinloop version at startup
+- feat(remote): install spinloop at boot instead of baking it into the AMI
 
 ### Fixed
 - fix(remote): zero-byte seed files and vLLM attention backend
@@ -39,7 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.25.0] - 2026-08-22
 ### Added
 - feat(fleet): drive a remote environment as a fleet node
-- feat(remote): add outfit remote restart with a forced stop option
+- feat(remote): add spinloop remote restart with a forced stop option
 - feat(remote): rework model weight seeding into a supervised job
 
 ### Changed
@@ -49,7 +49,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.24.2] - 2026-08-21
 ### Fixed
-- fix(remote): pass outfitVersion when bootstrapping a release build
+- fix(remote): pass spinloopVersion when bootstrapping a release build
 
 ## [1.24.1] - 2026-08-21
 ### Changed
@@ -75,9 +75,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.23.0] - 2026-08-17
 ### Added
 - feat(remote): carry companion weights and add deploy --reseed
-- feat: add --loopback shorthand to outfit daemon
-- feat: allow an Outfit path, alias, PRESET, and REMOTE to be a URL
-- feat: configure parallelism in Outfit files
+- feat: add --loopback shorthand to spinloop daemon
+- feat: allow an spinloop path, alias, PRESET, and REMOTE to be a URL
+- feat: configure parallelism in spinloop files
 
 ## [1.22.0] - 2026-08-15
 ### Added
@@ -90,7 +90,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.21.0] - 2026-08-13
 ### Added
 - feat(daemon): summarise every control-API request on a levelled logger
-- feat(daemon): take the engine key from the client, read no Outfit
+- feat(daemon): take the engine key from the client, read no spinloop
 - feat(fleet): route a harness launch at a fleet node (#73)
 
 ### Changed
@@ -104,25 +104,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.20.0] - 2026-08-11
 ### Added
-- feat(fleet): add outfit fleet logs and a daemon logs endpoint
+- feat(fleet): add spinloop fleet logs and a daemon logs endpoint
 
 ### Changed
-- chore(remote): bump image recipe to 3.3.3 for outfit 1.19.0 (#84)
+- chore(remote): bump image recipe to 3.3.3 for spinloop 1.19.0 (#84)
 - chore: archive the remote logs change and sync its spec (#85)
 
 ## [1.19.0] - 2026-08-10
 ### Added
-- feat(remote): add outfit remote logs to read an environment's shipped logs (#60)
-- feat: let OUTFIT_ALIAS name the Outfit every command defaults to
+- feat(remote): add spinloop remote logs to read an environment's shipped logs (#60)
+- feat: let spinloop_ALIAS name the spinloop every command defaults to
 - feat: report last-active time from the metrics views and remote status (#82)
 
 ### Changed
-- chore(remote): bump image recipe to 3.3.2 for outfit 1.18.0 (#71)
+- chore(remote): bump image recipe to 3.3.2 for spinloop 1.18.0 (#71)
 - docs(openspec): correct stale remote stats references to metrics
 
 ## [1.18.0] - 2026-08-10
 ### Added
-- feat: add outfit fleet to observe and drive engines across machines (#69)
+- feat: add spinloop fleet to observe and drive engines across machines (#69)
 
 ### Changed
 - build(deps): bump pnpm/action-setup
@@ -132,7 +132,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - docs(openspec): sync the lucinate harness specs and archive the change (#70)
 
 ### Fixed
-- fix(harness): fetch the remote API key before applying an Outfit
+- fix(harness): fetch the remote API key before applying an spinloop
 
 ## [1.17.0] - 2026-08-10
 ### Added
@@ -146,16 +146,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - refactor: rename 'shared infrastructure' to 'control plane'
 
 ### Fixed
-- fix(remote): bump image recipe to 3.3.1 and refuse an empty outfitVersion
+- fix(remote): bump image recipe to 3.3.1 and refuse an empty spinloopVersion
 
 ## [1.16.0] - 2026-08-09
 ### Added
-- feat: add OUTFIT_CONFIG_DIR to override outfit's config directory
+- feat: add spinloop_CONFIG_DIR to override spinloop's config directory
 
 ## [1.15.0] - 2026-08-09
 ### Added
 - feat(remote): ship engine and boot logs to CloudWatch (#44)
-- feat: add outfit daemon with control API and host the remote instance under it
+- feat: add spinloop daemon with control API and host the remote instance under it
 
 ## [1.14.0] - 2026-08-04
 ### Added
@@ -193,10 +193,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.12.0] - 2026-08-03
 ### Added
-- feat: add outfit remote stats command
+- feat: add spinloop remote stats command
 - feat: label a remote harness provider distinctly from the local engine
 - feat: name the harness provider after the remote environment
-- feat: respect the Outfit's local environment in remote commands
+- feat: respect the spinloop's local environment in remote commands
 
 ### Changed
 - chore: sync remote environment spec and archive the harness-provider-label change
@@ -227,10 +227,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.9.0] - 2026-07-29
 ### Added
 - feat: add a vllm provider to the catalogue
-- feat: add outfit remote deploy
+- feat: add spinloop remote deploy
 - feat: add remote command to control the cloud GPU instance
 - feat: bring the cloud GPU deployment into the repo as remote/
-- feat: find the remote config via an Outfit REMOTE instruction
+- feat: find the remote config via an spinloop REMOTE instruction
 - feat: report progress while the remote endpoint starts
 - feat: resolve API keys without writing secrets to disk
 
@@ -238,7 +238,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - build(deps): bump actions/setup-go in the github-actions group
 - chore: initialise OpenSpec and seed capability specs
 - ci: run the remote deployment's checks in their own workflow
-- docs: document outfit remote for users, and spec the change
+- docs: document spinloop remote for users, and spec the change
 - docs: restructure docs directory as a user manual
 - docs: specify the deployment and archive the change
 
@@ -247,29 +247,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.8.0] - 2026-07-28
 ### Added
-- feat: name an Outfit with alias/unalias and complete it with TAB (#18)
+- feat: name an spinloop with alias/unalias and complete it with TAB (#18)
 
 ## [1.7.0] - 2026-07-27
 ### Added
-- feat(cli): apply an Outfit before launching from `outfit harness` (#17)
+- feat(cli): apply an spinloop before launching from `spinloop harness` (#17)
 
 ## [1.6.0] - 2026-07-14
 ### Added
-- feat(cli): accept a directory as an Outfit path
+- feat(cli): accept a directory as an spinloop path
 
 ### Changed
-- docs: harness demo line, declarative wording, backticked Outfit
+- docs: harness demo line, declarative wording, backticked spinloop
 - docs: rewrite README to lead with why, not how (#14)
 
 ## [1.5.0] - 2026-06-27
 ### Added
 - feat(catalog): add Pi provider config and BuildPiProvider
 - feat(cli): add show command to report a harness's configured providers
-- feat(cli): launch the harness from `outfit harness`
+- feat(cli): launch the harness from `spinloop harness`
 - feat(cli): route commands through the active harness
 - feat: add internal/harness abstraction with opencode and pi adapters
 - feat: add internal/pi package for Pi models.json IO
-- feat: add unapply command to revert an Outfit
+- feat: add unapply command to revert an spinloop
 
 ### Changed
 - docs: document multi-harness support
@@ -278,7 +278,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.4.0] - 2026-06-25
 ### Added
 - feat: add serve command to run llama-server from a preset
-- feat: let Outfit values override the preset under serve
+- feat: let spinloop values override the preset under serve
 - feat: make MODEL provider-native and add ALIAS; derive serve without a preset
 
 ## [1.3.0] - 2026-06-24
@@ -312,14 +312,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.0.0] - 2026-06-23
 ### Added
 - feat: add --context flag to set model context window (#2)
-- feat: add declarative Outfit files for provider config
+- feat: add declarative spinloop files for provider config
 - feat: allow API base URL override via flag or env var (#1)
 
 ### Changed
 - docs: add Homebrew installation instructions
 
 ### Other
-- refactor!: rename tool, binary and module to outfit
+- refactor!: rename tool, binary and module to spinloop
 
 ## [0.2.0] - 2026-06-22
 ### Added

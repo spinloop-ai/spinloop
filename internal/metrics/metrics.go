@@ -11,7 +11,7 @@ package metrics
 // Stats is the collected state of one serving host: what is running, its
 // engine counters, and its system figures. It mirrors the stats Lambda's
 // response field-for-field (minus the Lambda's transport fields), so the
-// existing `outfit remote metrics` formats render it unchanged.
+// existing `spinloop remote metrics` formats render it unchanged.
 type Stats struct {
 	State         string      `json:"state"`
 	Runner        string      `json:"runner,omitempty"`

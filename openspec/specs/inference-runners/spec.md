@@ -73,7 +73,7 @@ is on disk, the API key, the context window, the parallelism (concurrent
 request slots), the served name, and metrics — SHALL be set by the deployment
 itself, and the configuration's remaining arguments SHALL be passed through
 unchanged. Parallelism SHALL be translated into the runner's own flag the same
-way a local `outfit serve` would (see the `local-serving` capability's
+way a local `spinloop serve` would (see the `local-serving` capability's
 Parallelism requirement), including scaling the context window for a
 `llamacpp` runner when both a context window and a parallelism value are
 stored.
@@ -126,8 +126,8 @@ machine's process list.
 - **WHEN** a stored configuration has a `llamacpp` runner, a context window,
   and a parallelism of `n`
 - **THEN** the started engine's command carries a context-size flag scaled by
-  `n` and a parallel-slots flag set to `n`, matching what a local `outfit
-  serve` of the same Outfit would produce
+  `n` and a parallel-slots flag set to `n`, matching what a local `spinloop
+  serve` of the same Spinloop would produce
 
 #### Scenario: A vllm deployment's context is unaffected by parallelism
 

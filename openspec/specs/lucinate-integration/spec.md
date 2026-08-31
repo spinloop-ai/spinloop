@@ -2,15 +2,15 @@
 
 ## Purpose
 
-How outfit reads and writes lucinate's connections store: the one managed
+How spinloop reads and writes lucinate's connections store: the one managed
 OpenAI-compatible connection it owns, the merge that leaves every sibling
 connection and unknown field untouched, and the top-level default that makes
 lucinate boot straight into the selected model.
 
 The part worth knowing is the API key. A lucinate connection has somewhere to
-put one, and outfit deliberately does not — no secret is written, to the store
+put one, and spinloop deliberately does not — no secret is written, to the store
 or to lucinate's secrets store. lucinate falls back to `LUCINATE_OPENAI_API_KEY`
-when its stored secret is empty, and `outfit harness` supplies it at launch,
+when its stored secret is empty, and `spinloop harness` supplies it at launch,
 which is the same runtime-injection idiom the other harnesses use. This also
 covers which providers map (OpenAI-compatible ones only) and what happens to
 the limits a connection cannot represent.
@@ -30,7 +30,7 @@ permissions.
 
 #### Scenario: First write creates the store
 
-- **WHEN** the user runs `outfit add -H lucinate` and no `connections.json`
+- **WHEN** the user runs `spinloop add -H lucinate` and no `connections.json`
   exists
 - **THEN** the file is created with the managed connection and owner-only
   permissions
@@ -83,17 +83,17 @@ Writes SHALL merge only the managed connection: other connections in the store,
 the ordering of unrelated entries, and any unknown fields — on the store or on
 the managed connection — SHALL round-trip untouched. When the managed connection
 already exists, its creation timestamp SHALL be preserved and only the fields
-outfit owns (`type`, `url`, `defaultModel`, `name`) SHALL be overwritten.
+spinloop owns (`type`, `url`, `defaultModel`, `name`) SHALL be overwritten.
 
 #### Scenario: Sibling connections survive
 
 - **WHEN** the store already holds another connection and the user runs
-  `outfit add -H lucinate`
+  `spinloop add -H lucinate`
 - **THEN** that connection is intact afterwards
 
 #### Scenario: Unknown fields round-trip
 
-- **WHEN** the managed connection already carries fields outfit does not own
+- **WHEN** the managed connection already carries fields spinloop does not own
   (for example a last-used timestamp or a future field)
 - **THEN** those fields are preserved after a re-apply
 
@@ -115,8 +115,8 @@ launched into.
 The adapter SHALL NOT write the resolved API key to disk — neither into
 `connections.json` nor into lucinate's secrets store. lucinate reads an
 OpenAI-compatible key from its secrets store or, when none is stored, from the
-`LUCINATE_OPENAI_API_KEY` environment variable; outfit relies on the latter, and
-`outfit harness -H lucinate` injects the active provider's resolved key as
+`LUCINATE_OPENAI_API_KEY` environment variable; spinloop relies on the latter, and
+`spinloop harness -H lucinate` injects the active provider's resolved key as
 `LUCINATE_OPENAI_API_KEY` at launch. Applying a keyed provider SHALL report to
 the user that the key is read from `LUCINATE_OPENAI_API_KEY` when lucinate runs
 and is never written to the config.
@@ -161,14 +161,14 @@ written.
 
 ### Requirement: Removing a connection
 
-Removing a provider SHALL delete the managed connection outfit created for it.
+Removing a provider SHALL delete the managed connection spinloop created for it.
 When the removed connection was the store's `defaultId`, that field SHALL be
 cleared so lucinate falls back to its own startup selection. Other connections
 SHALL be untouched. The operation SHALL report how many entries it removed.
 
 #### Scenario: Remove deletes the managed connection
 
-- **WHEN** the user runs `outfit remove -H lucinate` for a provider previously
+- **WHEN** the user runs `spinloop remove -H lucinate` for a provider previously
   applied
 - **THEN** the managed connection is gone and other connections remain
 
@@ -179,7 +179,7 @@ SHALL be untouched. The operation SHALL report how many entries it removed.
 
 ### Requirement: Reading state back
 
-The adapter SHALL read the store back for `outfit show` and `outfit export`,
+The adapter SHALL read the store back for `spinloop show` and `spinloop export`,
 reporting each managed connection as a configured provider: its model key (from
 `defaultModel`) and its base URL (from `url`). Because a lucinate connection has
 no fields for context or output limits, the adapter SHALL report none, and those
@@ -189,14 +189,14 @@ report no top-level default model.
 
 #### Scenario: Export reconstructs provider and model
 
-- **WHEN** `outfit export -H lucinate` runs against a store with a managed
+- **WHEN** `spinloop export -H lucinate` runs against a store with a managed
   connection
-- **THEN** the reconstructed Outfit names that provider, its model, and its base
+- **THEN** the reconstructed Spinloop names that provider, its model, and its base
   URL
 
 #### Scenario: Limits do not round-trip
 
 - **WHEN** a selection with a context window is applied to lucinate and then
   exported
-- **THEN** the exported Outfit carries no context or output limit, because the
+- **THEN** the exported Spinloop carries no context or output limit, because the
   connection cannot hold them

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lucinate-ai/outfit/internal/daemon"
+	"github.com/spinloop-ai/spinloop/internal/daemon"
 )
 
 // runningNode is a node result for a machine serving model, last active
@@ -144,7 +144,7 @@ func TestUnreachableNodesAreSkipped(t *testing.T) {
 	}
 }
 
-// An Outfit's ALIAS is the other name a node might be serving under.
+// A Spinloop's ALIAS is the other name a node might be serving under.
 func TestAliasMatchesWhatTheNodeReports(t *testing.T) {
 	cfg := testConfig(t, "a")
 	results := []NodeResult{runningNode("a", "qwen3", 10)}
@@ -153,7 +153,7 @@ func TestAliasMatchesWhatTheNodeReports(t *testing.T) {
 	}
 }
 
-// An Outfit naming no model wants any running engine.
+// A Spinloop naming no model wants any running engine.
 func TestNoModelMatchesAnyRunningNode(t *testing.T) {
 	cfg := testConfig(t, "a")
 	if _, err := cfg.choose([]NodeResult{runningNode("a", "whatever", 1)}, Want{}); err != nil {
@@ -390,15 +390,15 @@ func TestEngineKeyResolution(t *testing.T) {
 	}
 }
 
-// A node woken from an Outfit reports the deploy config's model id, which is
-// not the ALIAS the client asked for — an Outfit may take its model from a
+// A node woken from a Spinloop reports the deploy config's model id, which is
+// not the ALIAS the client asked for — a Spinloop may take its model from a
 // preset and state no MODEL at all. Unless that id counts as a match, a second
 // launch fails to recognise the node the first one started and has nothing
 // left to wake.
 func TestWokenNodeIsRecognisedOnASecondLaunch(t *testing.T) {
 	cfg := testConfig(t, "local")
 	// What the node reports after being woken: the resolved repo, not the
-	// friendly name the Outfit used.
+	// friendly name the Spinloop used.
 	woken := []NodeResult{runningNode("local", "Zambizi/slim-gemma-4-12b-gguf", 5)}
 
 	// The client knows only its ALIAS and the id it would have pushed.

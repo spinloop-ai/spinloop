@@ -1,9 +1,9 @@
 ## Context
 
-`dashModel` (`cmd/outfit/dashboard_model.go`) holds selection as a single flat
+`dashModel` (`cmd/spinloop/dashboard_model.go`) holds selection as a single flat
 `cursor int` over `entries []dashEntry`, in fleet-file order. There is no
 stored grid — the column count is derived at render and scroll time from
-`dashCols(w int) int` (`cmd/outfit/dashboard_render.go`), which fits as many
+`dashCols(w int) int` (`cmd/spinloop/dashboard_render.go`), which fits as many
 tiles per row as the current terminal width allows, and `dashGridRows` chunks
 the flat tile slice into rows of that width for drawing. `up`/`down` (aliased
 to `k`/`j`) currently move `cursor` by ±1; there is no `left`/`right` case.

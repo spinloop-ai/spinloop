@@ -64,7 +64,7 @@ func envMap(m map[string]string) func(string) string {
 
 func TestConfigPath(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", "/tmp/xdg")
-	if got, want := must1(ConfigPath()), "/tmp/xdg/outfit/remote.json"; got != want {
+	if got, want := must1(ConfigPath()), "/tmp/xdg/spinloop/remote.json"; got != want {
 		t.Errorf("ConfigPath() = %q, want %q", got, want)
 	}
 }
@@ -89,8 +89,8 @@ func TestLoadConfig_EnvOverrides(t *testing.T) {
 	isolateConfig(t)
 	writeConfig(t, Config{StartURL: "https://old/", StopURL: "https://old-stop/", Region: "us-east-1"})
 	cfg, err := LoadConfig(envMap(map[string]string{
-		"OUTFIT_REMOTE_START_URL": "https://new/",
-		"OUTFIT_REMOTE_REGION":    "eu-west-2",
+		"SPINLOOP_REMOTE_START_URL": "https://new/",
+		"SPINLOOP_REMOTE_REGION":    "eu-west-2",
 	}))
 	if err != nil {
 		t.Fatal(err)
@@ -603,7 +603,7 @@ func TestRestart_WakeFailureNamesRecovery(t *testing.T) {
 		t.Fatal("expected a wake failure")
 	}
 	if !strings.Contains(err.Error(), "stopped") ||
-		!strings.Contains(err.Error(), "outfit remote start") {
+		!strings.Contains(err.Error(), "spinloop remote start") {
 		t.Errorf("expected the recovery hint in the error, got %v", err)
 	}
 	if len(calls) != 2 || calls[0] != "stop" || calls[1] != "wake" {
@@ -771,7 +771,7 @@ func TestDeploy_Success(t *testing.T) {
 	}
 }
 
-func TestDeploy_OutfitVersionReachesTheRequest(t *testing.T) {
+func TestDeploy_SpinloopVersionReachesTheRequest(t *testing.T) {
 	stubAWSEnv(t)
 	var gotBody []byte
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -781,18 +781,18 @@ func TestDeploy_OutfitVersionReachesTheRequest(t *testing.T) {
 	defer server.Close()
 
 	cfg := Config{DeployURL: server.URL, Region: "eu-west-1"}
-	dc := DeployConfig{Runner: "vllm", ModelID: "org/model", OutfitVersion: "1.26.1"}
+	dc := DeployConfig{Runner: "vllm", ModelID: "org/model", SpinloopVersion: "1.26.1"}
 	if _, err := Deploy(context.Background(), cfg, dc, "", false); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(gotBody), `"outfitVersion":"1.26.1"`) {
-		t.Errorf("outfitVersion did not reach the request body: %s", gotBody)
+	if !strings.Contains(string(gotBody), `"spinloopVersion":"1.26.1"`) {
+		t.Errorf("spinloopVersion did not reach the request body: %s", gotBody)
 	}
 }
 
 // An unpinned deploy sends exactly the body a control plane predating the pin
 // expects — the field is absent, not null or "latest".
-func TestDeploy_OutfitVersionOmittedWhenUnpinned(t *testing.T) {
+func TestDeploy_SpinloopVersionOmittedWhenUnpinned(t *testing.T) {
 	stubAWSEnv(t)
 	var gotBody []byte
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -806,8 +806,8 @@ func TestDeploy_OutfitVersionOmittedWhenUnpinned(t *testing.T) {
 	if _, err := Deploy(context.Background(), cfg, dc, "", false); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(gotBody), "outfitVersion") {
-		t.Errorf("outfitVersion should be omitted when empty: %s", gotBody)
+	if strings.Contains(string(gotBody), "spinloopVersion") {
+		t.Errorf("spinloopVersion should be omitted when empty: %s", gotBody)
 	}
 }
 
@@ -883,7 +883,7 @@ func TestLoadConfigFile(t *testing.T) {
 		t.Errorf("unexpected config: %+v", cfg)
 	}
 
-	cfg, err = LoadConfigFile(path, envMap(map[string]string{"OUTFIT_REMOTE_REGION": "eu-west-2"}))
+	cfg, err = LoadConfigFile(path, envMap(map[string]string{"SPINLOOP_REMOTE_REGION": "eu-west-2"}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1064,7 +1064,7 @@ func TestLoadConfig_EnvURLOverride(t *testing.T) {
 	isolateConfig(t)
 	writeConfig(t, Config{StartURL: "https://start/", StopURL: "https://stop/", EnvURL: "https://old-env/", Region: "eu-west-1"})
 	cfg, err := LoadConfig(envMap(map[string]string{
-		"OUTFIT_REMOTE_ENV_URL": "https://new-env/",
+		"SPINLOOP_REMOTE_ENV_URL": "https://new-env/",
 	}))
 	if err != nil {
 		t.Fatal(err)

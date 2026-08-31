@@ -1,6 +1,6 @@
 ## Context
 
-`cmd/outfit/remote_bootstrap.go` drives the `remote/` CDK project through `pnpm`,
+`cmd/spinloop/remote_bootstrap.go` drives the `remote/` CDK project through `pnpm`,
 hardcoded in three places:
 
 - `runBootstrapSequence` runs `pnpm install`, `pnpm cdk bootstrap`,
@@ -22,7 +22,7 @@ differs. There is no structured logger here — the file uses `fmt` to stderr/st
 - Run bootstrap with either `pnpm` or `npm`, preferring `pnpm` when
   auto-detecting.
 - Let the user pin the manager with a `--package-manager` flag or an
-  `OUTFIT_REMOTE_PACKAGE_MANAGER` env var (flag > env var > auto-detect).
+  `SPINLOOP_REMOTE_PACKAGE_MANAGER` env var (flag > env var > auto-detect).
 - Fail the preflight only when the required manager is not present — the pinned
   one if pinned, otherwise either; keep the Node 22+ check.
 - Log the selected manager once, before the steps run.
@@ -81,7 +81,7 @@ a linear list of steps.
 ### Override, resolution, and preflight
 
 Selection has three sources, highest precedence first: the `--package-manager`
-flag, the `OUTFIT_REMOTE_PACKAGE_MANAGER` env var, then PATH auto-detection. The
+flag, the `SPINLOOP_REMOTE_PACKAGE_MANAGER` env var, then PATH auto-detection. The
 flag and env var accept only `pnpm` or `npm`.
 
 - `resolvePackageManagerName(flagVal string) (name string, pinned bool, err error)`
@@ -101,7 +101,7 @@ flag and env var accept only `pnpm` or `npm`.
 Because the flag lives on the flag set parsed inside `cmdRemoteBootstrap`, the
 resolved name is threaded to the preflight seam rather than the seam reading the
 flag itself; the env var is read via `os.Getenv` consistent with the other
-`OUTFIT_REMOTE_*` lookups.
+`SPINLOOP_REMOTE_*` lookups.
 
 `runBootstrapSequence` and `renderBootstrapPlan` take the resolved
 `packageManager` so the plan and the steps agree. For `--dry-run`, which skips

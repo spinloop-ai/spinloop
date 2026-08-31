@@ -20,20 +20,20 @@ show one implying the endpoint has been quiet since it started.
 
 #### Scenario: A working endpoint reports its last activity
 
-- **WHEN** the user runs `outfit remote metrics` against a running endpoint
+- **WHEN** the user runs `spinloop remote metrics` against a running endpoint
   whose engine has served work
 - **THEN** the report shows how long ago that work happened, labelled "last
   active"
 
 #### Scenario: Every format carries the figure
 
-- **WHEN** the user runs `outfit remote metrics` with `--format=bar`,
+- **WHEN** the user runs `spinloop remote metrics` with `--format=bar`,
   `--format=table`, or `--format=json`
 - **THEN** each output carries the last-active figure in its own idiom
 
 #### Scenario: An endpoint that has done nothing omits the figure
 
-- **WHEN** the user runs `outfit remote metrics` against an endpoint whose
+- **WHEN** the user runs `spinloop remote metrics` against an endpoint whose
   engine has not yet done any work
 - **THEN** the report shows no last-active figure
 
@@ -48,7 +48,7 @@ show one implying the endpoint has been quiet since it started.
 
 ### Requirement: Stats subcommand
 
-The system SHALL provide a `metrics` subcommand (`outfit remote metrics`) that reports the current state of a remote inference instance. It SHALL accept the same Outfit resolution as `start`, `stop`, and `deploy` — an optional positional Outfit path, defaulting to `./Outfit` when present — and SHALL require the Outfit to name a `REMOTE` environment.
+The system SHALL provide a `metrics` subcommand (`spinloop remote metrics`) that reports the current state of a remote inference instance. It SHALL accept the same Spinloop resolution as `start`, `stop`, and `deploy` — an optional positional Spinloop path, defaulting to `./Spinloop` when present — and SHALL require the Spinloop to name a `REMOTE` environment.
 
 A stopped instance SHALL still report when its engine last did work, when that
 is known — the question "how long has this been doing nothing?" is most worth
@@ -56,21 +56,21 @@ answering about something that is not running.
 
 #### Scenario: Stats with a running instance
 
-- **WHEN** the user runs `outfit remote metrics` with a running instance
+- **WHEN** the user runs `spinloop remote metrics` with a running instance
 - **THEN** the command reports the instance state, runner, model, GPU info, CPU/RAM usage, token counts, request counts, and when the engine was last active
 
 #### Scenario: Stats with a stopped instance
 
-- **WHEN** the user runs `outfit remote metrics` and the instance is stopped
+- **WHEN** the user runs `spinloop remote metrics` and the instance is stopped
 - **THEN** the command reports `state: stopped` and no resource or token
   metrics, showing the last-active figure when one is known
 
-#### Scenario: Stats resolves the Outfit
+#### Scenario: Stats resolves the Spinloop
 
-- **WHEN** the user runs `outfit remote metrics` in a directory with an `Outfit` that has a `REMOTE` instruction
-- **THEN** the command uses that Outfit's remote environment without an explicit path argument
+- **WHEN** the user runs `spinloop remote metrics` in a directory with an `Spinloop` that has a `REMOTE` instruction
+- **THEN** the command uses that Spinloop's remote environment without an explicit path argument
 
-#### Scenario: Stats with explicit Outfit path
+#### Scenario: Stats with explicit Spinloop path
 
-- **WHEN** the user runs `outfit remote metrics ./some/Outfit`
-- **THEN** the command uses that Outfit's `REMOTE` environment
+- **WHEN** the user runs `spinloop remote metrics ./some/Spinloop`
+- **THEN** the command uses that Spinloop's `REMOTE` environment

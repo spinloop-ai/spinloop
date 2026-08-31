@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Define how `outfit` reads and writes opencode's global config: which file it
+Define how `spinloop` reads and writes opencode's global config: which file it
 targets, the in-place JSONC merge that preserves everything the user already
 has, default-model handling, secret handling, and the state read back for
 `show` and `export`.
@@ -19,7 +19,7 @@ never left alongside one the user already has, and falling back to creating
 
 #### Scenario: Existing JSONC file is reused
 
-- **WHEN** the user has only `opencode.jsonc` and runs `outfit add`
+- **WHEN** the user has only `opencode.jsonc` and runs `spinloop add`
 - **THEN** that file is updated and no `opencode.json` is created
 
 ### Requirement: In-place JSONC merge
@@ -35,13 +35,13 @@ none exists. Applying the same selection twice SHALL be idempotent.
 #### Scenario: Comments survive
 
 - **WHEN** the config holds comments and an unrelated provider, and the user
-  runs `outfit add`
+  runs `spinloop add`
 - **THEN** after the write the comments and the unrelated provider are intact
 
 #### Scenario: User extras inside the managed block survive
 
 - **WHEN** the user has hand-added a setting inside the managed provider's
-  block and re-runs the same `outfit add`
+  block and re-runs the same `spinloop add`
 - **THEN** the setting is still there afterwards
 
 #### Scenario: Idempotent apply
@@ -73,7 +73,7 @@ environment-variable reference in opencode's `{env:VAR}` form, naming the
 provider's key variable — never the resolved secret, so no secret is written to
 disk. The reference SHALL be written even when the variable is currently unset,
 because opencode substitutes it when it reads the config, so the key may be set
-after the Outfit is applied. The option SHALL be omitted entirely when the
+after the Spinloop is applied. The option SHALL be omitted entirely when the
 provider declares no key variable, or when its key variable is declared
 optional and the provider's endpoint is a local address — a local server needs
 no key, and naming a variable nobody will set would only mislead.
@@ -90,7 +90,7 @@ the user's providers and endpoints.
 
 #### Scenario: A key set after applying still works
 
-- **WHEN** an Outfit is applied with the key variable unset, and the variable is
+- **WHEN** a Spinloop is applied with the key variable unset, and the variable is
   set before opencode runs
 - **THEN** opencode resolves the reference to that value
 
@@ -102,7 +102,7 @@ the user's providers and endpoints.
 
 #### Scenario: Permissions enforced on existing file
 
-- **WHEN** the config file exists with permissive mode and `outfit add` writes
+- **WHEN** the config file exists with permissive mode and `spinloop add` writes
   it
 - **THEN** the file's mode is owner-only afterwards
 
@@ -111,7 +111,7 @@ the user's providers and endpoints.
 The adapter SHALL read back each configured provider — its model keys
 (sorted), `options.baseURL`, and each model's `limit.context`/`limit.output`
 when set — plus the top-level default model. This state SHALL be sufficient
-for `outfit show` and `outfit export` to reconstruct what is configured.
+for `spinloop show` and `spinloop export` to reconstruct what is configured.
 
 #### Scenario: Export sees what add wrote
 

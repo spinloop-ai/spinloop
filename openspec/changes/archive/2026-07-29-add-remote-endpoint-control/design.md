@@ -15,11 +15,11 @@ first-class commands rather than something the user is trusted to remember.
 
 **Goals:**
 
-- One declaration. The Outfit that describes a model locally describes the same
+- One declaration. The Spinloop that describes a model locally describes the same
   model remotely, so the name a coding agent asks for and the name the endpoint
   serves cannot drift apart.
 - Keep the AWS dependency confined to one package and one command group.
-- Require no credentials of outfit's own: use the caller's AWS chain, and the
+- Require no credentials of spinloop's own: use the caller's AWS chain, and the
   narrowest permission that works.
 - Fail loudly and early. A misconfigured deployment should be a clear error
   before anything is launched, not a server that boots and then cannot serve.
@@ -27,7 +27,7 @@ first-class commands rather than something the user is trusted to remember.
 **Non-Goals:**
 
 - Provisioning. This creates no infrastructure; the endpoint is deployed by its
-  own project, and outfit only tells it what to serve.
+  own project, and spinloop only tells it what to serve.
 - Being a general AWS or cloud client. It calls three URLs.
 - Modelling the endpoint's storage. Where weights live and how they get there
   is the endpoint's business.
@@ -36,11 +36,11 @@ first-class commands rather than something the user is trusted to remember.
 
 ## Decisions
 
-**`PROVIDER` names the engine; there is no `RUNNER` keyword.** An Outfit
-already says `llamacpp`, and `outfit serve` already runs llama.cpp from it. The
+**`PROVIDER` names the engine; there is no `RUNNER` keyword.** A Spinloop
+already says `llamacpp`, and `spinloop serve` already runs llama.cpp from it. The
 remote case is the same statement pointed elsewhere, so the engine is read from
 `PROVIDER` and the command decides local or remote. The alternative — a new
-keyword — would let an Outfit say `PROVIDER llamacpp` with `RUNNER vllm`, a
+keyword — would let a Spinloop say `PROVIDER llamacpp` with `RUNNER vllm`, a
 contradiction worth making unrepresentable. The cost is that a provider which
 is not a self-hosted engine cannot be deployed; that is an error, not a gap.
 
@@ -48,7 +48,7 @@ is not a self-hosted engine cannot be deployed; that is an error, not a gap.
 engine, model, quantisation, context, served name and engine flags — and
 deliberately no storage location. The endpoint derives its own layout and
 fetches the weights when they are missing. This keeps a storage-layout change
-on the endpoint's side from becoming an outfit release, and means a caller
+on the endpoint's side from becoming an spinloop release, and means a caller
 cannot point a deployment at the wrong place.
 
 **The preset is the single source of serving detail.** Rather than a second
@@ -92,7 +92,7 @@ source and identify the running stack, so changing them would orphan it.
 
 **Progress belongs on stderr, results on stdout.** `start` blocks for minutes
 while the model loads, so it has to report; but its useful output is two shell
-exports. Splitting them means `eval "$(outfit remote start)"` works while the
+exports. Splitting them means `eval "$(spinloop remote start)"` works while the
 person watching still sees progress. The alternative — progress on stdout, as it
 was — forced a `grep` in the documented idiom and threw the progress away.
 
@@ -106,17 +106,17 @@ genuinely resolved later.
 ## Risks / Trade-offs
 
 - **A network- and credential-bearing dependency in an otherwise offline tool.**
-  → It is confined to `internal/remote` and reached only by `outfit remote`;
+  → It is confined to `internal/remote` and reached only by `spinloop remote`;
   every other command still runs with no credentials and no network.
 - **Deploying is not starting, so a deployment can be "live" while its weights
   are still being fetched.** → The response says whether a fetch was started,
   and the command tells the user to wait before starting.
-- **The Outfit's context wins over the preset's, and human-friendly sizes are
-  decimal — `128k` is 128000, not 131072.** → Consistent with `outfit serve`,
+- **The Spinloop's context wins over the preset's, and human-friendly sizes are
+  decimal — `128k` is 128000, not 131072.** → Consistent with `spinloop serve`,
   where the same precedence already applies, so the two cannot disagree; the
   exact value can always be written out in full.
-- **Only one endpoint per Outfit.** → Deliberate: an Outfit describes one
-  selection, and a second endpoint is a second Outfit.
+- **Only one endpoint per Spinloop.** → Deliberate: a Spinloop describes one
+  selection, and a second endpoint is a second Spinloop.
 - **The catalogue is embedded at build time**, so a stale binary applies an old
   catalogue and appears to ignore a fix. → Documented as a trap in AGENTS.md;
   the runtime override reads a file instead.
@@ -124,12 +124,12 @@ genuinely resolved later.
   example could disclose a real account. → The identifier check runs first in
   CI, and its patterns were verified against real samples of each class.
 - **The keys the launched agent receives are wider than one provider's.** →
-  Only variables outfit can already resolve are passed, never invented, and
+  Only variables spinloop can already resolve are passed, never invented, and
   anything already in the environment is left as it is.
 
 ## Migration Plan
 
-Additive throughout: an Outfit with no `REMOTE` behaves exactly as before, and
+Additive throughout: a Spinloop with no `REMOTE` behaves exactly as before, and
 no existing command changes behaviour. Rollback is dropping the command group;
 nothing persists on the user's machine beyond the configuration file they
 wrote.
@@ -140,4 +140,4 @@ wrote.
   can return it) or stay a liveness check.
 - Whether a future harness-facing command should read the served model name
   back from the endpoint rather than trusting `ALIAS`, once more than one
-  Outfit can target the same endpoint.
+  Spinloop can target the same endpoint.

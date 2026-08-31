@@ -15,7 +15,7 @@
 - [x] 2.2 Grant IAM permissions: SSM SendCommand (tag-scoped), SecretsManager GetSecretValue (env-scoped), EC2 DescribeInstances (tag-scoped)
 - [x] 2.3 Add Function URL with IAM auth (`addFunctionUrl`)
 - [x] 2.4 Add CDK output for `StatsUrl`
-- [x] 2.5 Include `StatsUrl` in the `OutfitRemoteConfig` JSON output (or add `stats_url` to `remote.Config`)
+- [x] 2.5 Include `StatsUrl` in the `SpinloopRemoteConfig` JSON output (or add `stats_url` to `remote.Config`)
 
 ## 3. Go client: remote package
 
@@ -27,12 +27,12 @@
 
 ## 4. CLI: stats command
 
-- [x] 4.1 Add `stats` case to `cmdRemote` dispatch in `cmd/outfit/remote.go`
+- [x] 4.1 Add `stats` case to `cmdRemote` dispatch in `cmd/spinloop/remote.go`
 - [x] 4.2 Implement `cmdRemoteStats`: parse `--cost` flag, call `remote.Stats`, render tabular output
 - [x] 4.3 Format output: key-value table with aligned columns, per-GPU lines, aggregate for multi-GPU
 - [x] 4.4 Handle stopped instance — show environment and state, no metrics
-- [x] 4.5 Add `stats` to `cmd/outfit/complete.go` completions for `remote` subcommand
-- [x] 4.6 Add tests in `cmd/outfit/remote_test.go` for dispatch and output formatting
+- [x] 4.5 Add `stats` to `cmd/spinloop/complete.go` completions for `remote` subcommand
+- [x] 4.6 Add tests in `cmd/spinloop/remote_test.go` for dispatch and output formatting
 
 ## 5. Integration & verification
 

@@ -6,7 +6,7 @@ are clipped to what fits the bar-format block. There is no way to look closely
 at one node without leaving the dashboard for `fleet logs <node>` in another
 terminal. `<enter>` on the selected node should open a full-screen view of that
 one node — metrics, logs, and the keys that work there — and `<esc>` should
-return to the grid (lucinate-ai/outfit#125).
+return to the grid (spinloop-ai/spinloop#125).
 
 ## What Changes
 
@@ -54,7 +54,7 @@ None.
 
 ## Impact
 
-- `cmd/outfit`: the dashboard model (`dashboard_model.go`) gains the detail
+- `cmd/spinloop`: the dashboard model (`dashboard_model.go`) gains the detail
   view's state (which node, its log content and cursor) and the `<enter>`/
   `<esc>` transitions; `dashboard_render.go` gains the full-screen renderer.
   No new files are required by the proposal, though the implementation may

@@ -7,7 +7,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/lucinate-ai/outfit/internal/catalog"
+	"github.com/spinloop-ai/spinloop/internal/catalog"
 )
 
 func noEnv(string) string { return "" }
@@ -147,13 +147,13 @@ func TestResolveBaseURL_Precedence(t *testing.T) {
 		t.Errorf("override should win, got %q", got)
 	}
 	env := func(n string) string {
-		if n == "OUTFIT_BASE_URL" {
+		if n == "SPINLOOP_BASE_URL" {
 			return "http://env/v1"
 		}
 		return ""
 	}
 	if got := ResolveBaseURL(p, "", env); got != "http://env/v1" {
-		t.Errorf("OUTFIT_BASE_URL should win over catalogue, got %q", got)
+		t.Errorf("SPINLOOP_BASE_URL should win over catalogue, got %q", got)
 	}
 	ofe := func(n string) string {
 		if n == "MYURL" {

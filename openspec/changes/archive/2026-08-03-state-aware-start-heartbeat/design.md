@@ -1,7 +1,7 @@
 ## Context
 
-`outfit remote start` runs two independent output paths that both write through
-`startProgress.line` (`cmd/outfit/remote.go`):
+`spinloop remote start` runs two independent output paths that both write through
+`startProgress.line` (`cmd/spinloop/remote.go`):
 
 1. A **heartbeat goroutine** (`newStartProgress`) with its own 30s `time.Ticker`
    that prints `still starting (Ns elapsed)`. It knows only a start timestamp —
@@ -62,7 +62,7 @@ callback untouched:
 
 - Have `cmdRemoteStart` set the last-seen state from within the progress
   callback it already passes (parsing avoided by having the callback receive the
-  state) — preferred if it stays a display concern in `cmd/outfit`.
+  state) — preferred if it stays a display concern in `cmd/spinloop`.
 - Or add a small, optional state-observer hook alongside the existing progress
   callback. Only if the first proves awkward.
 

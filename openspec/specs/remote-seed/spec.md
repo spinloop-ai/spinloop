@@ -9,9 +9,9 @@ or which compute is running them.
 ## Requirements
 ### Requirement: A seed is startable from the CLI
 
-`outfit remote seed start` SHALL request a seed for the weights an Outfit names,
+`spinloop remote seed start` SHALL request a seed for the weights a Spinloop names,
 resolving what to seed by the same rules the other remote subcommands use — an
-explicit Outfit path or alias, else `./Outfit`, else the default environment — so
+explicit Spinloop path or alias, else `./Spinloop`, else the default environment — so
 that seeding and deploying in the same directory always speak about the same
 model.
 
@@ -23,9 +23,9 @@ It SHALL be able to seed weights that are already stored when explicitly asked
 to, which is the supported way to replace weights in place; nothing outside the
 CLI SHALL be needed for that.
 
-#### Scenario: Starting a seed for the current Outfit
+#### Scenario: Starting a seed for the current Spinloop
 
-- **WHEN** the operator runs `outfit remote seed start` where `outfit remote
+- **WHEN** the operator runs `spinloop remote seed start` where `spinloop remote
   deploy` would deploy a model
 - **THEN** a seed for that model's weights is requested, and its identity is
   printed
@@ -43,7 +43,7 @@ CLI SHALL be needed for that.
 
 ### Requirement: A seed's state is readable from the CLI
 
-`outfit remote seed status` SHALL report a seed's phase, how far it has got, and
+`spinloop remote seed status` SHALL report a seed's phase, how far it has got, and
 its outcome once it has one, without the operator naming a log group or stream,
 opening the provider's console, or connecting to any instance.
 
@@ -68,7 +68,7 @@ reported as failed, not as in progress.
 
 ### Requirement: Seeds in flight are listable
 
-`outfit remote seed ls` SHALL list the seeds currently in flight across the
+`spinloop remote seed ls` SHALL list the seeds currently in flight across the
 account, each with its identity, what it is seeding, how long it has been
 running and its phase, so an operator can see what is costing money without
 querying each seed by name.
@@ -89,7 +89,7 @@ seeds are running" is distinguishable from a command that failed quietly.
 
 ### Requirement: A seed is stoppable from the CLI
 
-`outfit remote seed stop` SHALL stop a named seed, ceasing its compute, and the
+`spinloop remote seed stop` SHALL stop a named seed, ceasing its compute, and the
 stopped outcome SHALL be recorded so that a later status reports it as stopped
 rather than as failed or as still running.
 
@@ -118,7 +118,7 @@ not re-run a deployment's work.
 
 #### Scenario: A deploy that seeds says how to follow it
 
-- **WHEN** `outfit remote deploy` starts a seed because the weights were absent
+- **WHEN** `spinloop remote deploy` starts a seed because the weights were absent
 - **THEN** its output names the seed and the command that reports on it
 
 #### Scenario: Progress is not read through deploy

@@ -20,7 +20,7 @@ response shapes are three structs with JSON tags: `daemon.StatusResponse`,
 
 - One machine-readable contract for the control API, covering every route.
 - The contract cannot silently fall behind the code — a test fails first.
-- Consumers can pin the contract to an outfit version.
+- Consumers can pin the contract to an spinloop version.
 
 **Non-Goals:**
 

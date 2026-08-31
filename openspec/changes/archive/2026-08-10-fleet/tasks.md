@@ -26,7 +26,7 @@
 - [x] 2.4 Tests against an `httptest` daemon: ok, connection-refused →
       unreachable, 401 → unauthorized, unset token → config-error
 
-## 3. Fleet command (`cmd/outfit/fleet.go`)
+## 3. Fleet command (`cmd/spinloop/fleet.go`)
 
 - [x] 3.1 Add the `fleet` subcommand group and dispatch
       (`status`/`metrics`/`start`/`stop`), plus `main.go` usage and the
@@ -47,7 +47,7 @@
 
 - [x] 4.1 Move the bar/table/json metrics renderers (and the watch redraw) to
       a shared location so `remote metrics` and `fleet metrics` share them;
-      verify `outfit remote metrics` output is byte-identical
+      verify `spinloop remote metrics` output is byte-identical
 - [x] 4.2 `fleet metrics`: render each node's `internal/metrics.Stats` in the
       selected `--format`, node name as heading; unreachable nodes reported
       not omitted; json labelled by node including errors

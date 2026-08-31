@@ -1,12 +1,12 @@
 ## Context
 
-`dashTileContent` (`cmd/outfit/dashboard_render.go`) builds each panel as a
+`dashTileContent` (`cmd/spinloop/dashboard_render.go`) builds each panel as a
 plain-text block with four mutually exclusive shapes (action in flight, no
 refresh yet, failed outcome, settled answer). The only colour on a tile
 today is its border, via `lipgloss.Color`, and it encodes selection (214 lit,
 240 dim), not health.
 
-Resource bars inside a tile (`renderBar` in `cmd/outfit/remote.go`) already
+Resource bars inside a tile (`renderBar` in `cmd/spinloop/remote.go`) already
 carry colour, but through raw ANSI escapes concatenated into the plain-text
 block, not `lipgloss.Color` — the whole tile body is one string handed to a
 single `lipgloss.NewStyle().Render()` call at the border, so per-character
@@ -160,7 +160,7 @@ moment it's set, alongside each start (`serve_daemon.go`, `SetScrape`).
 
 - [Byte-stable tests assert exact tile text and will need the glyph and its
   ANSI colour added to every fixture] → Update
-  `cmd/outfit/fleet_dashboard_test.go`'s expected strings as part of this
+  `cmd/spinloop/fleet_dashboard_test.go`'s expected strings as part of this
   change; `dashTileExpected`/`lipgloss.Width` already handle ANSI-aware
   padding, so no test-helper changes are needed.
 - [Adding two columns ("● ") to the name line shrinks the room for a long

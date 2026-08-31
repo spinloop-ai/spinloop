@@ -1,25 +1,25 @@
 # fleet-client Specification
 
 ## Purpose
-Define the `outfit fleet` command family: the client that reads `fleet.yaml`,
+Define the `spinloop fleet` command family: the client that reads `fleet.yaml`,
 polls each node's daemon control API, and renders the cluster — observing every
 engine and driving individual ones, degrading gracefully when a node cannot be
 reached.
 ## Requirements
 ### Requirement: Fleet status
 
-`outfit fleet status` SHALL query every node's daemon status endpoint and render one row per node: the node name, its engine state (`idle`/`running`/`stopped`/`crashed`), what it is serving (runner and model when known), the outfit version of the daemon on that node, and its reachability. Nodes SHALL be queried concurrently so the command's latency is that of the slowest reachable node, not their sum.
+`spinloop fleet status` SHALL query every node's daemon status endpoint and render one row per node: the node name, its engine state (`idle`/`running`/`stopped`/`crashed`), what it is serving (runner and model when known), the spinloop version of the daemon on that node, and its reachability. Nodes SHALL be queried concurrently so the command's latency is that of the slowest reachable node, not their sum.
 
 A node SHALL also report how long it has been since its engine last did work, taken from the activity its daemon tracks — "which of my nodes is doing nothing?" is a question a fleet view exists to answer, and the daemon already knows. That figure SHALL NOT be labelled in a way that collides with the `idle` engine state, which means something different. A node whose daemon reports no activity yet SHALL omit the figure rather than imply an engine has sat unused since it started.
 
 #### Scenario: Mixed fleet renders every node
 
-- **WHEN** `outfit fleet status` runs against a fleet of several nodes
+- **WHEN** `spinloop fleet status` runs against a fleet of several nodes
 - **THEN** the output has one row per node showing its state, version, and what it serves
 
 #### Scenario: A node reports how long since it last did work
 
-- **WHEN** `outfit fleet status` runs against a node whose daemon reports a last-active time
+- **WHEN** `spinloop fleet status` runs against a node whose daemon reports a last-active time
 - **THEN** that node's row shows how long ago that was, labelled so it is not confused with the `idle` engine state
 
 #### Scenario: A node with no recorded activity omits the figure
@@ -29,8 +29,8 @@ A node SHALL also report how long it has been since its engine last did work, ta
 
 #### Scenario: Version is shown per node
 
-- **WHEN** `outfit fleet status` runs against a fleet of running nodes
-- **THEN** each node's row includes the outfit version string from its daemon
+- **WHEN** `spinloop fleet status` runs against a fleet of running nodes
+- **THEN** each node's row includes the spinloop version string from its daemon
 
 #### Scenario: Version is omitted for unreachable nodes
 
@@ -55,7 +55,7 @@ render, and the command SHALL succeed.
 
 #### Scenario: One node down, the rest still shown
 
-- **WHEN** `outfit fleet status` runs and one node's daemon is unreachable
+- **WHEN** `spinloop fleet status` runs and one node's daemon is unreachable
 - **THEN** that node's row reads `unreachable` with its reason, the other nodes
   render normally, and the command exits successfully
 
@@ -73,9 +73,9 @@ render, and the command SHALL succeed.
 
 ### Requirement: Fleet metrics
 
-`outfit fleet metrics` SHALL query every node's metrics endpoint and render
+`spinloop fleet metrics` SHALL query every node's metrics endpoint and render
 each node's engine and system metrics using the same bar, table, and json
-formats `outfit remote metrics` provides, selected by `--format`. Unreachable
+formats `spinloop remote metrics` provides, selected by `--format`. Unreachable
 nodes SHALL be reported as in status rather than omitted. The command SHALL
 support a `--watch`/`-w` mode that refreshes on an interval, clearing and
 redrawing the screen in place with no scrollback accumulation, and exiting
@@ -83,24 +83,24 @@ cleanly on interrupt.
 
 #### Scenario: Bar format per node
 
-- **WHEN** `outfit fleet metrics` runs without `--format`
+- **WHEN** `spinloop fleet metrics` runs without `--format`
 - **THEN** each reachable node's metrics render in bar format under its name
 
 #### Scenario: JSON aggregates the fleet
 
-- **WHEN** `outfit fleet metrics --format=json` runs
+- **WHEN** `spinloop fleet metrics --format=json` runs
 - **THEN** the output is valid JSON keyed or labelled by node, including
   unreachable nodes with their error
 
 #### Scenario: Watch redraws in place
 
-- **WHEN** `outfit fleet metrics --watch` runs
+- **WHEN** `spinloop fleet metrics --watch` runs
 - **THEN** each refresh clears the screen and redraws the fleet, and Ctrl+C
   exits cleanly
 
 ### Requirement: Driving one node
 
-`outfit fleet start <node>` and `outfit fleet stop <node>` SHALL call the named
+`spinloop fleet start <node>` and `spinloop fleet stop <node>` SHALL call the named
 node's daemon start and stop endpoints. Start and stop SHALL require a node
 name: invoked without one they SHALL fail and list the available nodes, rather
 than acting on the whole fleet. An unknown node name SHALL fail, naming the
@@ -110,18 +110,18 @@ idempotent.
 
 #### Scenario: Start a named node
 
-- **WHEN** `outfit fleet start gpu-box` runs and that node is idle
+- **WHEN** `spinloop fleet start gpu-box` runs and that node is idle
 - **THEN** the client calls that node's daemon start endpoint and reports the
   resulting state
 
 #### Scenario: Start with no node names the fleet
 
-- **WHEN** `outfit fleet start` runs with no node argument
+- **WHEN** `spinloop fleet start` runs with no node argument
 - **THEN** it fails, listing the nodes, and starts nothing
 
 #### Scenario: Unknown node
 
-- **WHEN** `outfit fleet stop nope` runs and no node is named `nope`
+- **WHEN** `spinloop fleet stop nope` runs and no node is named `nope`
 - **THEN** it fails, naming the known nodes, and stops nothing
 
 ### Requirement: Authenticated fan-out
@@ -140,7 +140,7 @@ aborting the rest of the fleet.
 
 ### Requirement: Fleet logs
 
-`outfit fleet logs` SHALL read the engine output of the fleet's nodes through
+`spinloop fleet logs` SHALL read the engine output of the fleet's nodes through
 each node's daemon, so "what did that engine say?" is answerable from the same
 place as "what is it doing?" — without shell access to any machine. With no node
 named it SHALL read every node in the fleet; naming a node SHALL restrict it to
@@ -149,7 +149,7 @@ the slowest reachable node rather than their sum.
 
 #### Scenario: Reading the whole fleet
 
-- **WHEN** the operator runs `outfit fleet logs` with no node named
+- **WHEN** the operator runs `spinloop fleet logs` with no node named
 - **THEN** every node's engine output is read and printed
 
 #### Scenario: Reading one node
@@ -160,7 +160,7 @@ the slowest reachable node rather than their sum.
 
 #### Scenario: A crashed node's output is readable
 
-- **WHEN** a node's engine has crashed, as `outfit fleet status` reports
+- **WHEN** a node's engine has crashed, as `spinloop fleet status` reports
 - **THEN** its output up to the crash is printed, explaining what status can
   only report
 
@@ -189,7 +189,7 @@ than merged into a false chronology.
 
 ### Requirement: Fleet logs can be followed
 
-`outfit fleet logs` SHALL be able to keep running and print output as nodes
+`spinloop fleet logs` SHALL be able to keep running and print output as nodes
 produce it, rather than exiting after one read. Following SHALL resume each node
 from the position that node last returned, so a line already printed is never
 printed twice. Interrupting SHALL exit cleanly, without reporting an error.
@@ -239,8 +239,8 @@ answer.
 
 ### Requirement: Explaining a route
 
-`outfit fleet route` SHALL report the node a harness launch would choose for a
-given Outfit, the endpoint that node resolves to, and why it was chosen — and
+`spinloop fleet route` SHALL report the node a harness launch would choose for a
+given Spinloop, the endpoint that node resolves to, and why it was chosen — and
 SHALL change nothing: it SHALL never push a config, start an engine, or write a
 harness config. It is how a routing decision is checked before an agent depends
 on it, and how an unexpected choice is diagnosed after one.
@@ -249,42 +249,42 @@ When no node would be chosen, it SHALL report each node's state and the reason
 it was passed over, and SHALL name what would happen on a real launch: which
 node would be woken, or that none could serve it.
 
-The Outfit and the fleet file SHALL resolve as they do for a launch: the Outfit
-path defaults to `./Outfit`, and `--fleet` overrides the Outfit's `FLEET`. It
+The Spinloop and the fleet file SHALL resolve as they do for a launch: the Spinloop
+path defaults to `./Spinloop`, and `--fleet` overrides the Spinloop's `FLEET`. It
 SHALL accept `--prefer` and `--node` as a launch does, and SHALL name the
 activity preference in force — comparing the two preferences on a live fleet is
 the cheapest way to decide which one a fleet should be run with.
 
 #### Scenario: The chosen node is explained
 
-- **WHEN** `outfit fleet route` runs against a fleet with a node serving the
-  Outfit's model
+- **WHEN** `spinloop fleet route` runs against a fleet with a node serving the
+  Spinloop's model
 - **THEN** it prints that node, its resolved engine endpoint, and why it was
   chosen
 
 #### Scenario: Routing changes nothing
 
-- **WHEN** `outfit fleet route` runs against a fleet where no node is serving
-  the Outfit's model
+- **WHEN** `spinloop fleet route` runs against a fleet where no node is serving
+  the Spinloop's model
 - **THEN** no engine is started, no config is pushed, and no harness config is
   written
 
 #### Scenario: The two preferences can be compared
 
-- **WHEN** `outfit fleet route --prefer active` runs against a fleet whose file
+- **WHEN** `spinloop fleet route --prefer active` runs against a fleet whose file
   declares `prefer: idle`
 - **THEN** it reports the node `active` would choose and names that preference,
   without changing the fleet file
 
 #### Scenario: A launch that would wake a node says so
 
-- **WHEN** `outfit fleet route` runs and no node is serving the model but one
+- **WHEN** `spinloop fleet route` runs and no node is serving the model but one
   could
 - **THEN** it names the node a launch would wake, and does not wake it
 
 ### Requirement: Fleet dashboard
 
-`outfit fleet dashboard` SHALL open an interactive, full-screen view of the fleet:
+`spinloop fleet dashboard` SHALL open an interactive, full-screen view of the fleet:
 one panel per node in the fleet file, arranged in a grid and refreshed
 continuously without operator input. It is the one place where what the fleet is
 doing and acting on it meet: unlike `fleet metrics --watch`, it takes keyboard
@@ -604,7 +604,7 @@ section SHALL update on the node's normal refresh cadence, exactly as the
 tile does.
 
 The log section SHALL show the node's engine log, tailing and following it
-the same way `outfit fleet logs -f <node>` follows one node's log, so new
+the same way `spinloop fleet logs -f <node>` follows one node's log, so new
 output appears while the view is open without the operator asking for it. A
 node whose engine has not run yet, or that cannot supply its log, SHALL show
 the same explanation the `fleet logs` command gives for it, rather than an

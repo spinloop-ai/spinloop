@@ -4,22 +4,22 @@ See proposal.md — Why. The constraints that shape the approach:
 
 - `Daemon.Handler(token)` returns `authenticated(token, mux)` and is the single
   place both API hosts build their handler: `cmdDaemon` and
-  `runServeForegroundAPI` in `cmd/outfit/serve_daemon.go`. Anything wrapped
+  `runServeForegroundAPI` in `cmd/spinloop/serve_daemon.go`. Anything wrapped
   there covers both commands with no per-command wiring, which is the whole
   reason this change can be small.
 - `Supervisor` already owns the moments worth recording. `Start` launches the
   process, and a goroutine on `cmd.Wait()` classifies the exit as `stopped` or
   `crashed`. Today that classification is only observable by polling
   `/v1/status` — nothing announces it.
-- outfit has no logger at all. Every user-facing line is `fmt.Printf` to stdout,
-  including `outfit daemon`'s three startup lines and serve's narration of the
+- spinloop has no logger at all. Every user-facing line is `fmt.Printf` to stdout,
+  including `spinloop daemon`'s three startup lines and serve's narration of the
   command it is about to run. There is no convention to follow, so this change
   sets one.
 - The dependency rule in AGENTS.md: no runtime dependencies. `log/slog` is
   stdlib, so this stays inside it.
-- `internal/daemon` is imported by `cmd/outfit/serve.go` already (for
+- `internal/daemon` is imported by `cmd/spinloop/serve.go` already (for
   `DefaultAPIAddr`), so both commands can reach a level parser that lives there.
-- `cmd/outfit/serve_daemon_test.go` finds the API's port by regexing
+- `cmd/spinloop/serve_daemon_test.go` finds the API's port by regexing
   `control API on (…)` out of a redirected `os.Stdout`. Anything that moves that
   line has to move the helper with it, or the suite waits ten seconds and fails.
 
@@ -33,13 +33,13 @@ See proposal.md — Why. The constraints that shape the approach:
   traffic before it drops failures.
 - A logger that is injected, so tests are silent by default and there is one
   place that decides where output goes.
-- Establish the level flag and `OUTFIT_LOG_LEVEL` as outfit's convention, so a
+- Establish the level flag and `SPINLOOP_LOG_LEVEL` as spinloop's convention, so a
   later change adding logging elsewhere does not invent a second one.
 
 **Non-Goals:**
 
 - JSON output. `slog` makes it a one-line handler swap later
-  (`OUTFIT_LOG_FORMAT=json`); adding it now means specifying a second output
+  (`SPINLOOP_LOG_FORMAT=json`); adding it now means specifying a second output
   contract with no caller asking for it.
 - Log rotation or a log file. Records go to stderr; whoever runs the process
   (systemd, launchd, tmux, docker) decides where that lands. The engine's own
@@ -101,15 +101,15 @@ is a rename.
 
 Parsing is an explicit switch over `debug|info|warn|error`, case-insensitive,
 rather than `slog.Level.UnmarshalText`. `UnmarshalText` would also accept
-`INFO+2` and would report an error that does not name what outfit accepts; the
+`INFO+2` and would report an error that does not name what spinloop accepts; the
 spec requires a mistyped level to fail at startup naming the accepted values,
 because a typo that silently logged at the default would be discovered only when
 the log was needed.
 
-Precedence is flag > `OUTFIT_LOG_LEVEL` > `info`, matching the precedence rule
-outfit already uses for `--harness`/`OUTFIT_HARNESS` and
-`--providers`/`OUTFIT_PROVIDERS`. Both `outfit daemon` and `outfit serve` take
-the flag. On a plain `outfit serve` with no `--api` there is no API to
+Precedence is flag > `SPINLOOP_LOG_LEVEL` > `info`, matching the precedence rule
+spinloop already uses for `--harness`/`SPINLOOP_HARNESS` and
+`--providers`/`SPINLOOP_PROVIDERS`. Both `spinloop daemon` and `spinloop serve` take
+the flag. On a plain `spinloop serve` with no `--api` there is no API to
 summarise, and the flag governs only the engine-lifecycle records — accepted
 rather than rejected, so the same command line works with and without `--api`.
 
@@ -149,11 +149,11 @@ inside a start handler, so it is an API event that today lands on the daemon's
 stdout with no timestamp and no level.
 
 Stays as it is: the formatted engine command, `Using preset …`, `Serving … from
-<Outfit>`, and everything `--dry-run` prints. These are read by a person, are
+<Spinloop>`, and everything `--dry-run` prints. These are read by a person, are
 asserted on by the serve tests, and have no business behind a level control.
 
 Consequence to handle rather than discover: `apiAddrFromStdout` in
-`cmd/outfit/serve_daemon_test.go` becomes `apiAddrFromStderr`. It is a test
+`cmd/spinloop/serve_daemon_test.go` becomes `apiAddrFromStderr`. It is a test
 helper, but leaving it is a ten-second hang followed by a confusing failure, so
 it is a task in its own right.
 
@@ -167,7 +167,7 @@ deploy config can carry serve arguments with credentials in them, and the logs
 endpoint's response is engine output that may contain prompts and model text.
 
 `r.RemoteAddr` is logged as-is, host and port. Behind a reverse proxy that is
-the proxy's address; outfit does not trust `X-Forwarded-For` and does not
+the proxy's address; spinloop does not trust `X-Forwarded-For` and does not
 pretend to, since the API is meant to be reached directly.
 
 ### The crash record comes from the supervisor's own wait
@@ -182,11 +182,11 @@ by morning is a state string that says `crashed` with no timestamp.
 - [A busy fleet at the default level writes a summary per poll per node, and
   nothing rotates stderr] → the level control is the answer and the docs lead
   with it; `--log-level warn` is named in `docs/commands/serve.md` as the
-  setting for a polled node. outfit does not own the destination of stderr, so
+  setting for a polled node. spinloop does not own the destination of stderr, so
   rotation stays the service manager's job.
 - [Severity grading means `warn` does not silence *all* summaries] → intended,
   and documented explicitly so it is not a surprise. `error` is available for
-  an operator who wants only outfit's own failures.
+  an operator who wants only spinloop's own failures.
 - [The `ResponseWriter` wrapper drops `Flusher`/`Hijacker`] → no endpoint needs
   them today; called out above and in a code comment so the person who adds
   streaming finds it before it bites.
@@ -199,7 +199,7 @@ by morning is a state string that says `crashed` with no timestamp.
   address is normally chosen by the operator via `--api-addr`. The one consumer
   in the repo is a test helper, which moves with it.
 - [Two log destinations under `serve --api`: engine output on the inherited
-  stdio, outfit's records on stderr] → this is the existing behaviour of the
+  stdio, spinloop's records on stderr] → this is the existing behaviour of the
   command, not a new split; the engine's stream stays byte-for-byte what it was.
 
 ## Migration Plan
@@ -213,9 +213,9 @@ passing untouched is the check that this stayed on its own side of the line.
 
 ## Open Questions
 
-- Whether `outfit remote`'s control commands should share the same flag and
+- Whether `spinloop remote`'s control commands should share the same flag and
   variable once they have anything to log. Deferring costs nothing: the parser
   and the precedence rule are set here and a later change reuses them.
 - Whether a JSON handler should be selected automatically when stderr is not a
-  terminal, rather than by an explicit `OUTFIT_LOG_FORMAT`. Either can be added
+  terminal, rather than by an explicit `SPINLOOP_LOG_FORMAT`. Either can be added
   later without changing what the records contain.
