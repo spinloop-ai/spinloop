@@ -196,14 +196,18 @@ spinloop harness [<spinloop>] [-H <name>] [--spinloop[=<path>]] [args...]
                                          # launch the harness (a leading Spinloop or alias is
                                          #   applied first; --get shows it; --set stores it)
 spinloop completion <shell>                # tab completion (bash, zsh, powershell)
-spinloop remote <bootstrap|start|pause|stop|status|metrics|logs|deploy|env|ls|keep> [path]
+spinloop remote <bootstrap|start|pause|stop|restart|status|metrics|logs|deploy|env|ls|keep|seed> [path]
                                          # control the remote GPU inference instance
                                          #   (bootstrap does the once-per-account setup;
                                          #    deploy sets what it serves, from the Spinloop;
                                          #    pause stops it while keeping it re-wakeable;
+                                         #    restart gives a fresh engine at the same address;
                                          #    keep holds it against the idle sweep;
                                          #    logs reads the shipped logs, alive or not;
-                                         #    env prints the running endpoint's env vars)
+                                         #    env prints the running endpoint's env vars;
+                                         #    seed fetches model weights into S3 as a
+                                         #      supervised job — start, status, ls, stop)
+spinloop version                           # the version of spinloop you are running
 ```
 
 Short flags: `-p` (provider), `-m` (model), `-a` (alias), `-c` (context), `-o` (output), `-u` (base-url), `-H` (harness), `-O` (spinloop), and under `alias`: `-n` (name), `-l` (list), `-F` (force).
@@ -256,7 +260,9 @@ MODEL    deepseek/deepseek-v4-pro   # the provider-native model ref
 ALIAS    deepseek                   # optional; friendly name for the model
 CONTEXT  128k                       # optional; context window
 OUTPUT   32k                        # optional; max output tokens
+PARALLEL 2                          # optional; concurrent slots when serving
 BASEURL  https://gateway/v1         # optional; API base URL override
+FLEET    ./fleet.yaml               # optional; route the launch to a node
 ```
 
 ```sh
@@ -269,7 +275,10 @@ spinloop export > Spinloop    # capture your current setup as a Spinloop
 ```
 
 A `Spinloop` describes one provider selection and applies exactly like the
-equivalent `add`. Full syntax is in [`docs/spinloop-file.md`](docs/spinloop-file.md),
+equivalent `add`. The full keyword set is `PROVIDER`, `MODEL`, `ALIAS`,
+`CONTEXT`, `OUTPUT`, `PARALLEL`, `BASEURL`, `PRESET`, `REMOTE`, `FLEET` and
+`ENV` — `FLEET` and `REMOTE` are mutually exclusive, being two different answers
+to where the model runs. Full syntax is in [`docs/spinloop-file.md`](docs/spinloop-file.md),
 and ready-to-use examples live under [`examples/`](examples/), including
 [fetching one from a URL](examples/remote-spinloop/).
 
@@ -404,6 +413,8 @@ With a daemon on each machine, `spinloop fleet` observes them all. A
 token by environment-variable name:
 
 ```yaml
+prefer: idle            # which node wins when several could serve you
+
 nodes:
   - name: studio
     host: studio.local
@@ -411,7 +422,17 @@ nodes:
   - name: gpu-box
     host: 198.51.100.7    # e.g. a tailscale address
     tokenEnv: GPU_BOX_TOKEN
+    engine:
+      port: 18080         # only when the daemon cannot report the engine's address
+  - name: qwen
+    kind: remote          # a `spinloop remote` environment, driven as a fleet node
 ```
+
+A node's `host`/`port` name its **daemon**, which is a different port from the
+engine it supervises; the daemon reports the engine's address, so most nodes
+need no `engine` block. A node whose engine needs its own key names it with
+`engineTokenEnv` — driving the node and using its engine are different
+credentials.
 
 ```sh
 spinloop fleet status          # one row per node: state and what it serves
@@ -437,6 +458,29 @@ offline  unreachable   dial tcp 10.0.0.9:4242: connect: connection refused
 A node that cannot be reached is a row, not a failure — one bad box never
 blanks the view, and "last active" answers the question you actually opened the
 thing for: which machine is doing nothing?
+
+#### Launching against the fleet
+
+A fleet is also where `spinloop harness` sends the agent. A Spinloop naming a
+`FLEET` picks a node and launches against its engine, so the machine you are
+sitting at needs no addresses of its own:
+
+```sh
+spinloop harness my-spinloop        # picks a node, launches the agent against it
+spinloop harness --fleet f.yaml     # overrides the Spinloop's FLEET
+spinloop fleet route my-spinloop    # which node would I get? (launches nothing)
+```
+
+The chosen node's engine becomes the applied provider's base URL and reaches
+the launched agent as `OPENAI_BASE_URL`. `prefer` decides who wins when several
+nodes could serve you — `idle` (the default) gives you the machine quiet
+longest, spreading work across the fleet; `active` consolidates onto the most
+recently used one and leaves the rest free to be woken for another model, or
+left asleep. `--prefer <value>` overrides the file for one command, which is
+the cheap way to see what the other setting would do.
+
+A Spinloop that pins a `BASEURL` is never routed: the pinned address wins, and
+`spinloop` says so rather than silently ignoring one of them.
 
 No spare machines to hand? [`examples/fleet-docker/`](examples/fleet-docker/)
 brings up a three-node fleet in containers — real daemons, real auth, a fake
