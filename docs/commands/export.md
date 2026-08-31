@@ -1,18 +1,18 @@
-# outfit export
+# spinloop export
 
-Print the active harness's configuration as an [`Outfit` file](../outfit-file.md),
+Print the active harness's configuration as an [`Spinloop` file](../spinloop-file.md),
 so you can save a setup you built by hand:
 
 ```sh
-outfit export > Outfit
-outfit export --harness pi > Outfit   # read Pi's config instead
+spinloop export > Spinloop
+spinloop export --harness pi > Spinloop   # read Pi's config instead
 ```
 
 By default it exports the provider behind your default model (or the only
 configured provider). If you have several, choose one with `-p`:
 
 ```sh
-outfit export -p openrouter > Outfit
+spinloop export -p openrouter > Spinloop
 ```
 
 ## Flags
@@ -20,7 +20,7 @@ outfit export -p openrouter > Outfit
 | Flag | Meaning |
 | ---- | ------- |
 | `-p`, `--provider` | Which configured provider to export |
-| `-H`, `--harness` | Which harness to read (or set `OUTFIT_HARNESS`) |
+| `-H`, `--harness` | Which harness to read (or set `SPINLOOP_HARNESS`) |
 | `--providers` | Path to a custom catalogue |
 
 ## Notes
@@ -32,5 +32,5 @@ outfit export -p openrouter > Outfit
 
 ## See also
 
-- [`outfit apply`](apply.md) — the round trip back
-- [`outfit show`](show.md) — a readable view of the same state
+- [`spinloop apply`](apply.md) — the round trip back
+- [`spinloop show`](show.md) — a readable view of the same state

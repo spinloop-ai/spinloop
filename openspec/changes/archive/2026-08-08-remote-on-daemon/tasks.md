@@ -11,11 +11,11 @@
       config with runner `vllm` accepted by the daemon and built into a
       `vllm serve` command with the model positional
 
-## 2. Bake outfit into the AMIs (remote/)
+## 2. Bake spinloop into the AMIs (remote/)
 
-- [x] 2.1 Add `outfitVersion` to `remote/lib/config.ts`, pinned like the
+- [x] 2.1 Add `spinloopVersion` to `remote/lib/config.ts`, pinned like the
       runner versions
-- [x] 2.2 Extend both Image Builder components to install the pinned outfit
+- [x] 2.2 Extend both Image Builder components to install the pinned spinloop
       binary (checksum-verified) and the `vllm` PATH symlink; bake the
       crash-nudge timer unit and the updated logrotate config (daemon engine
       log path); bump recipe versions
@@ -26,8 +26,8 @@
 - [x] 3.1 Rewrite the runner-unit section of `buildUserData`: render the
       daemon's `deploy-config.json` from the stored deploy config (local
       weights path as the model, cloud-owned flags into serveArgs, API-key
-      delivery per runner), write `outfit-daemon.service`
-      (`outfit daemon --api-addr 127.0.0.1:4242`), enable it and the nudge
+      delivery per runner), write `spinloop-daemon.service`
+      (`spinloop daemon --api-addr 127.0.0.1:4242`), enable it and the nudge
       timer, then POST `/v1/start` on loopback, retrying until the daemon
       answers
 - [x] 3.2 Delete `buildServeCommand` and the per-runner unit builders once
@@ -67,7 +67,7 @@
 
 - [x] 6.1 `go test ./... -cover` >= 80% and `gofmt` clean; `pnpm test` green
       in `remote/`
-- [x] 6.2 Verify `outfit remote metrics` renders a stubbed daemon-shaped
+- [x] 6.2 Verify `spinloop remote metrics` renders a stubbed daemon-shaped
       reply identically in bar, table and JSON formats
 - [x] 6.3 Update `remote/README.md`/docs and AGENTS.md for the daemon-hosted
       instance and the deleted collectors

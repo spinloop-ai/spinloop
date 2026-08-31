@@ -8,8 +8,8 @@ straight from the catalogue.
 The visible symptom was that per-provider endpoint variables did nothing under
 Pi. `OLLAMA_BASE_URL`, `LLAMACPP_BASE_URL`, `OMLX_BASE_URL`, `VLLM_BASE_URL` and
 `OPENAI_BASE_URL` were silently dropped, so `models.json` kept pointing at
-`localhost` while the same Outfit under opencode pointed at the right server.
-Only the generic `OUTFIT_BASE_URL` worked, because it arrives by a different
+`localhost` while the same Spinloop under opencode pointed at the right server.
+Only the generic `SPINLOOP_BASE_URL` worked, because it arrives by a different
 parameter.
 
 The dropped URL was not the damaging part. `IsLocalEndpoint` then still saw
@@ -51,4 +51,4 @@ correct, and its behaviour is unchanged.
 - Behaviour change: a Pi user who set a per-provider endpoint variable was
   previously served a `localhost` entry; they will now get the endpoint they
   asked for. Anyone who worked around the bug by *also* setting
-  `OUTFIT_BASE_URL` is unaffected, since the explicit override still wins.
+  `SPINLOOP_BASE_URL` is unaffected, since the explicit override still wins.

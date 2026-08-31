@@ -71,7 +71,7 @@ one member that fails SHALL NOT stop the rest of the set from being observed.
 
 The remote status view and the fleet status view SHALL derive their overlapping facts —
 the endpoint's or node's state, what it is serving, how long since it last did work, and
-its outfit version — from a single shared source, so no fact is computed differently or
+its spinloop version — from a single shared source, so no fact is computed differently or
 worded differently by the two. Where a view carries facts the other does not, it SHALL
 still render them without changing the shared ones: the remote view keeps the endpoint's
 address and health, and the fleet view keeps its one-node-per-row table.

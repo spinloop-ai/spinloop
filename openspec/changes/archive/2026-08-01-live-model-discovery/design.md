@@ -1,6 +1,6 @@
 ## Context
 
-`outfit` currently has no code that fetches model metadata over the network; the only HTTP
+`spinloop` currently has no code that fetches model metadata over the network; the only HTTP
 client (`internal/remote/remote.go`, a 10-minute-timeout client for AWS Lambda control) is
 unrelated. After `retire-model-families`, the catalogue is provider plumbing only, so there
 is no static list of models to browse. Each provider, however, exposes its own model list
@@ -15,13 +15,13 @@ change adds a small, best-effort discovery layer that reads it.
 - Per-provider protocol handling (OpenAI-compatible `data[].id`; Ollama `models[].name`).
 - Short-TTL in-process caching and a bounded per-request timeout.
 - Best-effort semantics: any failure means "no models", never a command failure.
-- Surfacing via `outfit list --models <provider>` and model tab-completion.
+- Surfacing via `spinloop list --models <provider>` and model tab-completion.
 
 **Non-Goals:**
 - Amazon Bedrock discovery (`ListFoundationModels`) — deferred; it needs the AWS SDK path.
 - Fetching pricing, context windows, or other metadata — only model ids/names here.
 - Persisting a discovery cache across processes.
-- Making plain `outfit list` hit the network — discovery is opt-in via `--models`, and
+- Making plain `spinloop list` hit the network — discovery is opt-in via `--models`, and
   completion (already latency-sensitive and failure-tolerant) sources it on demand.
 
 ## Decisions
@@ -35,7 +35,7 @@ path covers every discoverable provider. This removed the need for a separate Ol
 no base URL, so it is not discoverable (its SDK `ListFoundationModels` is out of scope).
 
 **Reuse the base-URL and key resolution the selection path already uses.** Discovery calls
-the same `resolve` closure (`.env` beside the Outfit / working dir, then environment) and
+the same `resolve` closure (`.env` beside the Spinloop / working dir, then environment) and
 the same base-URL precedence, so a provider that applies also discovers, with no new config
 surface. The key is sent as an `Authorization: Bearer` header (or Ollama's keyless call)
 and never written anywhere.
@@ -79,6 +79,6 @@ on discovery.
 - Resolved during implementation: no `discovery:` field or protocol switch is needed —
   every discoverable provider answers `GET {baseURL}/models`, and discoverability reduces
   to whether a base URL resolves.
-- Should `outfit list` (no flag) opportunistically show discovered models for *local*
+- Should `spinloop list` (no flag) opportunistically show discovered models for *local*
   providers only (llama.cpp/Ollama/vLLM on localhost), where the call is cheap and offline
   is the norm? Left out for now to keep plain `list` network-free; `--models` is explicit.

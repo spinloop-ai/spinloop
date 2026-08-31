@@ -10,8 +10,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/lucinate-ai/outfit/internal/metrics"
-	"github.com/lucinate-ai/outfit/internal/remote"
+	"github.com/spinloop-ai/spinloop/internal/metrics"
+	"github.com/spinloop-ai/spinloop/internal/remote"
 )
 
 // fakeHealth is a stand-in engine health endpoint whose status the test

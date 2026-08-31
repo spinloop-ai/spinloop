@@ -2,16 +2,16 @@
 
 ### Requirement: Control endpoints
 
-The API SHALL provide JSON endpoints to: report status (engine state, what is being served, the engine log path, when the engine was last active, and the daemon's outfit version); start the engine; stop the engine; return collected metrics; and accept a deploy config. Start SHALL accept an optional deploy config in its request body — validated and persisted exactly as a config push, then started — so a client can say what to run and run it in one call; without a body, start uses the stored config or the Outfit. Start SHALL fail when an engine is already running, changing nothing — a body sent with a rejected start SHALL NOT be stored. Stop SHALL succeed when nothing is running (idempotent), and stopping the engine SHALL never terminate `outfit daemon` — the API keeps answering. Errors SHALL be returned as JSON with a message and a meaningful HTTP status.
+The API SHALL provide JSON endpoints to: report status (engine state, what is being served, the engine log path, when the engine was last active, and the daemon's spinloop version); start the engine; stop the engine; return collected metrics; and accept a deploy config. Start SHALL accept an optional deploy config in its request body — validated and persisted exactly as a config push, then started — so a client can say what to run and run it in one call; without a body, start uses the stored config or the Spinloop. Start SHALL fail when an engine is already running, changing nothing — a body sent with a rejected start SHALL NOT be stored. Stop SHALL succeed when nothing is running (idempotent), and stopping the engine SHALL never terminate `spinloop daemon` — the API keeps answering. Errors SHALL be returned as JSON with a message and a meaningful HTTP status.
 
 Status SHALL report the engine's last-active time as an RFC 3339 timestamp and the idle duration derived from it in seconds, so a caller can judge idleness from a decision the daemon has already made rather than from raw counters it would have to compare itself. Both SHALL be omitted when no engine has ever run, and neither SHALL be inferred by the caller from any other field.
 
-Status SHALL also report the daemon's outfit version as a string, set from the binary's build-time version variable. This enables remote callers to verify which outfit release the node is running without SSH access.
+Status SHALL also report the daemon's spinloop version as a string, set from the binary's build-time version variable. This enables remote callers to verify which spinloop release the node is running without SSH access.
 
 #### Scenario: Status reports the supervised state
 
 - **WHEN** a status request is made
-- **THEN** the response reports the engine state, the model/runner being served (when known), the engine log path, and the outfit version
+- **THEN** the response reports the engine state, the model/runner being served (when known), the engine log path, and the spinloop version
 
 #### Scenario: Status reports engine activity
 
@@ -50,7 +50,7 @@ Status SHALL also report the daemon's outfit version as a string, set from the b
 
 #### Scenario: Stop never ends the daemon
 
-- **WHEN** a stop request stops the engine under `outfit daemon`
+- **WHEN** a stop request stops the engine under `spinloop daemon`
 - **THEN** the daemon and its API keep running, and a later start request succeeds
 
 #### Scenario: Metrics endpoint returns collected stats

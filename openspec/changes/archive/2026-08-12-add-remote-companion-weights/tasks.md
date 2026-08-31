@@ -64,20 +64,20 @@
   once a companion is added — the regression that would otherwise boot an
   instance pointing at a file that was never synced
 
-## 5. The `outfit` side
+## 5. The `spinloop` side
 
 - [x] 5.1 Add `spec-draft-model`/`md`/`model-draft` aliases to
   `internal/preset`'s canonical map so every spelling resolves to one name
   (`mm` → `mmproj` already exists), with tests
 - [x] 5.2 Add `spec-draft-model` and `mmproj` to `cloudOwnedFlags` in
-  `cmd/outfit/remote.go`, so a locally-meaningful path is dropped from
+  `cmd/spinloop/remote.go`, so a locally-meaningful path is dropped from
   `serveArgs`
 - [x] 5.3 In `deployConfigFor`, read those preset keys and populate
   `dc.Companions` with `filepath.Base` of each value, before the cloud-owned
   drop is applied
 - [x] 5.4 Add the `Companions` field to the Go-side `remote.DeployConfig` and
   include it in the deploy request body
-- [x] 5.5 Print named companions in `outfit remote deploy`'s summary output
+- [x] 5.5 Print named companions in `spinloop remote deploy`'s summary output
   (beside runner/model/context), so the user can see the drafter was picked up
 - [x] 5.6 Test `deployConfigFor`: a preset with a drafter yields the companion
   and no `--spec-draft-model` in `serveArgs`; a preset without one yields an
@@ -93,7 +93,7 @@
 - [x] 6.3 Update `remote/README.md`'s deploy-config description to cover
   companions
 - [x] 6.4 Run the full test suite plus `pnpm -C remote test`, and verify
-  `outfit remote deploy --dry-run` against the example shows the drafter
+  `spinloop remote deploy --dry-run` against the example shows the drafter
 
 ## 7. End-to-end verification
 

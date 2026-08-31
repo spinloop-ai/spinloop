@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lucinate-ai/outfit/internal/daemon"
+	"github.com/spinloop-ai/spinloop/internal/daemon"
 )
 
 // stubLogsDaemon serves /v1/logs, echoing back the query it was asked so the

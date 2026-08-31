@@ -7,7 +7,7 @@ See proposal.md for motivation. Current state that shapes the approach:
   (`spec-type draft-mtp`, `spec-draft-n-max 4`), `CONTEXT 196608`, the Qwen
   thinking-mode sampling defaults, `jinja = 1` for tool calling, and a q8 KV
   cache.
-- `vllm` is already a first-class, specified outfit runner, and the work is
+- `vllm` is already a first-class, specified spinloop runner, and the work is
   merged to main: baked AMI (vLLM 0.26.0 in a venv, engine booted with
   `--gpu-memory-utilization 0.92`, the API key delivered through a
   `VLLM_API_KEY` env file rather than a key file), whole-checkpoint seeding
@@ -19,7 +19,7 @@ See proposal.md for motivation. Current state that shapes the approach:
   keys). The `VLLM` preset dialect passes long-form keys through unchanged,
   and the parser already handles JSON-looking values (it splits on the first
   `=`, and `#`/`;` only start a comment after whitespace).
-- The fleet view of `kind: remote` nodes needs the outfit build from this
+- The fleet view of `kind: remote` nodes needs the spinloop build from this
   branch (five commits past v1.24.2); deploy/start/status work on any recent
   build.
 - Weight seeding was reworked on main into a supervised job (today): a real
@@ -28,7 +28,7 @@ See proposal.md for motivation. Current state that shapes the approach:
   writes a `_seed.json` manifest as its final step (which also replaces the
   vLLM runner's `config.json` sentinel — the vLLM seed selection is still the
   whole checkpoint). Deploying with absent weights starts a seed and returns a
-  seed *handle*; `outfit remote seed start|status|ls|stop` follows it, and a
+  seed *handle*; `spinloop remote seed start|status|ls|stop` follows it, and a
   wake before the seed reaches `succeeded` would sync an incomplete prefix, so
   the first start waits on the seed. The account's shared layer was
   bootstrapped before this rework, so it needs a bootstrap re-run to gain the
@@ -47,7 +47,7 @@ See proposal.md for motivation. Current state that shapes the approach:
 
 **Non-Goals:**
 
-- No outfit or CDK project changes (a gap found in testing becomes a separate
+- No spinloop or CDK project changes (a gap found in testing becomes a separate
   change).
 - No changes to the existing `dev-N` environments.
 - No context above the mirrored 196608 (a 262144 probe is a follow-up), and
@@ -78,7 +78,7 @@ differences. A 262144 probe is a follow-up once the mirror is green.
 **4. MTP, sampling and tool calling go in a vLLM preset.** The README's
 "drops PRESET" vLLM form cannot express MTP, and the preset is the only flag
 route to a cloud engine (and, per this repo's convention, the same file also
-runs locally under `outfit serve`). Draft `vllm-1/preset.ini`:
+runs locally under `spinloop serve`). Draft `vllm-1/preset.ini`:
 
 ```ini
 ; vLLM preset for Qwen3.8-27B. The vllm dialect passes long-form keys through
@@ -149,16 +149,16 @@ node, keeping "one fleet, side-by-side rows" the comparison surface
 the environment through its start Lambda (only the route-with-a-new-config
 form is refused for remote nodes).
 
-**8. Tooling.** Use an outfit built from this branch, *after* the rebase onto
-main, for everything (`go build -o outfit ./cmd/outfit`): the fleet
-remote-node view and the `outfit remote seed` surface both need the new
+**8. Tooling.** Use an spinloop built from this branch, *after* the rebase onto
+main, for everything (`go build -o spinloop ./cmd/spinloop`): the fleet
+remote-node view and the `spinloop remote seed` surface both need the new
 commits, and one binary keeps deploy/start/fleet behaviour consistent.
 
 ## Risks / Trade-offs
 
 - **vLLM 0.26.0 may not register an MTP speculative method for this model
   family** → the engine log at first start shows the spec-decoder decision
-  (`outfit remote logs vllm-1`); if absent, vllm-1 runs without
+  (`spinloop remote logs vllm-1`); if absent, vllm-1 runs without
   `speculative-config` and the comparison records the gap as a finding
   rather than failing.
 - **The tool-call parser name may differ in vLLM 0.26.0** (or be absent for
@@ -174,16 +174,16 @@ commits, and one binary keeps deploy/start/fleet behaviour consistent.
   before deploying; a failed seed fails loudly with the name, but the first
   seed is a ~28 GB whole-checkpoint copy into S3, so a typo costs a long job.
 - **Long first seed** (whole FP8 checkpoint, ~28 GB, Hugging Face → S3) →
-  expected; it is now a supervised job: `outfit remote seed status` reports
+  expected; it is now a supervised job: `spinloop remote seed status` reports
   phase and progress, a seed whose box dies is reported failed rather than
   stuck in progress, and a 60-minute cap bounds its life. The instance pull
   and model load still follow the seed.
 - **Billing while up** → the environment scales to zero on the idle timer;
-  keep the comparison window deliberate, and `outfit remote stop`
+  keep the comparison window deliberate, and `spinloop remote stop`
   terminates when the test is done for the day.
 - **Preset boolean idiom is easy to break** (`flag = 1` reaches the engine
   and breaks argparse) → the booleans above are written with empty values;
-  a local `outfit serve vllm-1 --dry-run` check catches a regression before
+  a local `spinloop serve vllm-1 --dry-run` check catches a regression before
   anything deploys.
 - **README drift** → the remote-llms README currently documents the
   preset-less vLLM form; this change updates it to the preset-carrying form
@@ -193,14 +193,14 @@ commits, and one binary keeps deploy/start/fleet behaviour consistent.
 
 Additive only; nothing existing changes:
 
-1. Add `vllm-1/` to remote-llms (Outfit + preset.ini), update `fleet.yaml`
+1. Add `vllm-1/` to remote-llms (Spinloop + preset.ini), update `fleet.yaml`
    and the README; commit in that repo.
-2. `outfit alias -n vllm-1 vllm-1/Outfit`; `outfit remote deploy vllm-1`
-   (starts the seed, returns its handle); follow `outfit remote seed status`
-   to `succeeded`; `outfit remote start vllm-1`; verify and compare.
+2. `spinloop alias -n vllm-1 vllm-1/Spinloop`; `spinloop remote deploy vllm-1`
+   (starts the seed, returns its handle); follow `spinloop remote seed status`
+   to `succeeded`; `spinloop remote start vllm-1`; verify and compare.
 
-Rollback: `outfit remote stop vllm-1` (terminate), `outfit unalias vllm-1`,
-remove `~/.config/outfit/remotes/vllm-1/`, revert the remote-llms commit. The
+Rollback: `spinloop remote stop vllm-1` (terminate), `spinloop unalias vllm-1`,
+remove `~/.config/spinloop/remotes/vllm-1/`, revert the remote-llms commit. The
 S3 seed can stay (harmless, reusable) or be deleted. No shared-layer change is
 made by this environment; the one exception is a bootstrap run if the account
 predates the vLLM AMI bake — that is itself additive and idempotent.

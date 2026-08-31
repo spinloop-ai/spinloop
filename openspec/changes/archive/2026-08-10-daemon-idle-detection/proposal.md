@@ -29,7 +29,7 @@ can sample far more often than any external caller.
 - **BREAKING (deployment ordering)**: the control plane no longer understands a
   daemon that reports no `lastActiveAt`, and treats one as showing no activity
   — the same way it already treats an unreachable daemon. The runtime AMIs must
-  therefore be re-baked with the new outfit *before* the stop Lambda is
+  therefore be re-baked with the new spinloop *before* the stop Lambda is
   deployed. There is no wire-format break: `/v1/status` only gains fields.
 - The SSM `idle-state` parameter, its seeding, and the start Lambda's
   `last_wake_at` write are removed with the counter path. Nothing reads them
@@ -63,9 +63,9 @@ can sample far more often than any external caller.
   last-active state, idle duration), reusing `metrics.ScrapeTokenStats` and the
   daemon's existing `ScrapeTarget`.
 - **Changed code**: `internal/daemon/daemon.go` (`StatusResponse` gains the two
-  fields; engine start marks activity), `cmd/outfit/serve_daemon.go` (start and
-  stop the sampler alongside the API listener, for both `outfit daemon` and
-  `outfit serve --api`).
+  fields; engine start marks activity), `cmd/spinloop/serve_daemon.go` (start and
+  stop the sampler alongside the API listener, for both `spinloop daemon` and
+  `spinloop serve --api`).
 - **Changed code (control plane)**: `remote/lambda/shared/daemon.ts` (a status
   type and its SSM curl command), `remote/lambda/shared/idle.ts` (take a
   daemon-reported idle duration; the counter comparison, `IdleState` and the

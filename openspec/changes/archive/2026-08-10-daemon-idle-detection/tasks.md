@@ -20,7 +20,7 @@
 
 - [x] 2.1 Add `func (d *Daemon) SampleActivity(ctx context.Context)` — a
   ticker loop following the `startProgress`/`runMetricsWatch` idiom in
-  `cmd/outfit/remote.go`: `defer ticker.Stop()`, `select` on `ctx.Done()` and
+  `cmd/spinloop/remote.go`: `defer ticker.Stop()`, `select` on `ctx.Done()` and
   the tick, returning cleanly on cancellation.
 - [x] 2.2 Each tick: skip unless `d.Sup.Status()` reports `StateRunning` and
   the copied `d.scrape.BaseURL` is non-empty; otherwise call
@@ -47,13 +47,13 @@
 - [x] 4.3 Verify `GET /v1/status` needs no handler change (it already writes
   `d.Status()`).
 
-## 5. Daemon lifecycle (`cmd/outfit`)
+## 5. Daemon lifecycle (`cmd/spinloop`)
 
-- [x] 5.1 In `cmdDaemon` (`cmd/outfit/serve_daemon.go`), create a
+- [x] 5.1 In `cmdDaemon` (`cmd/spinloop/serve_daemon.go`), create a
   `context.WithCancel`, start `go d.SampleActivity(ctx)` next to
   `go srv.Serve(ln)`, and cancel it in the signal-shutdown path before
   `srv.Shutdown`.
-- [x] 5.2 Do the same in `runServeForegroundAPI`, so `outfit serve --api`
+- [x] 5.2 Do the same in `runServeForegroundAPI`, so `spinloop serve --api`
   reports activity too.
 
 ## 6. Go tests

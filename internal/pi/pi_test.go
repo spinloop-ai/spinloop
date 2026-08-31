@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/lucinate-ai/outfit/internal/catalog"
+	"github.com/spinloop-ai/spinloop/internal/catalog"
 )
 
 // readModels reads and unmarshals models.json for assertions.

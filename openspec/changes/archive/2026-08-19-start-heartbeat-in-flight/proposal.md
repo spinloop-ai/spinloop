@@ -1,6 +1,6 @@
 ## Why
 
-When `outfit remote start` hits a `no-capacity` reply and retries, the next
+When `spinloop remote start` hits a `no-capacity` reply and retries, the next
 attempt — the one that finally finds capacity — holds its request open while
 the instance boots, and reports no state until it is ready. The CLI's periodic
 progress line keys off the most recently *reported* state, so it keeps saying
@@ -40,7 +40,7 @@ change accepted this as a one-tick lag; in practice it lasts until ready.
   call at the start of each attempt.
 - `internal/remote/remote_test.go` — the onState contract test updates to the
   new sequence, and gains coverage for the capacity-wait-then-boot sequence.
-- `cmd/outfit/remote.go` — no change expected (the heartbeat already renders
+- `cmd/spinloop/remote.go` — no change expected (the heartbeat already renders
   the sentinel correctly); verified by the existing heartbeat tests.
 - No change to the Lambda, the retry cadence, the retry-notice wording, the
   stdout exports, or any other command.

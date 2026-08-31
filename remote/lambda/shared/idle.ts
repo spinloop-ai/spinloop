@@ -13,7 +13,7 @@ import type { DaemonStatus } from './daemon';
 
 // The idle signal the check runs on: how long the daemon says its engine has
 // been idle. ok: false means nothing was observed — the daemon was
-// unreachable, or answered without a last-active time (an outfit older than
+// unreachable, or answered without a last-active time (an spinloop older than
 // daemon-owned idle detection). Both are treated as "no activity observed", so
 // a wedged or mismatched instance still stops at the threshold rather than
 // burning GPU-hours.

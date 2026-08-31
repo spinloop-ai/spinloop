@@ -5,11 +5,11 @@
 //
 // lucinate's file is plain JSON of the form
 // {"defaultId": "<id>", "connections": [{id, name, type, url, defaultModel, …}]}.
-// outfit manages one connection per provider, keyed by a deterministic id
-// (outfit:<providerId>), and points defaultId at it so lucinate launches
+// spinloop manages one connection per provider, keyed by a deterministic id
+// (spinloop:<providerId>), and points defaultId at it so lucinate launches
 // straight into the configured model. No API key is written: lucinate reads an
 // OpenAI-compatible key from LUCINATE_OPENAI_API_KEY at run time, which
-// `outfit harness` supplies — so, as with the other harnesses, no secret lands
+// `spinloop harness` supplies — so, as with the other harnesses, no secret lands
 // on disk.
 package lucinate
 
@@ -25,13 +25,13 @@ import (
 // DataDirEnv is lucinate's data-directory override, matching lucinate itself.
 const DataDirEnv = "LUCINATE_DATA_DIR"
 
-// managedIDPrefix namespaces the connection ids outfit owns, so a re-apply
+// managedIDPrefix namespaces the connection ids spinloop owns, so a re-apply
 // updates the same entry, Remove can target it, and State can recover the
 // provider id. lucinate's own ids are random hex and contain no colon, so the
 // namespaces cannot collide.
-const managedIDPrefix = "outfit:"
+const managedIDPrefix = "spinloop:"
 
-// connectionType is the lucinate connection type outfit writes: an
+// connectionType is the lucinate connection type spinloop writes: an
 // OpenAI-compatible endpoint.
 const connectionType = "openai"
 
@@ -46,7 +46,7 @@ type ProviderState struct {
 	Outputs   map[string]int
 }
 
-// Connection is the managed connection outfit writes for a provider.
+// Connection is the managed connection spinloop writes for a provider.
 type Connection struct {
 	URL          string
 	DefaultModel string
@@ -76,13 +76,13 @@ func ConfigPath() (string, error) {
 	return filepath.Join(dir, "connections.json"), nil
 }
 
-// ManagedID returns the deterministic connection id outfit uses for a provider.
+// ManagedID returns the deterministic connection id spinloop uses for a provider.
 func ManagedID(providerID string) string {
 	return managedIDPrefix + providerID
 }
 
 // providerIDFromManaged returns the provider id encoded in a managed connection
-// id, and false when the id is not one outfit owns.
+// id, and false when the id is not one spinloop owns.
 func providerIDFromManaged(id string) (string, bool) {
 	if !strings.HasPrefix(id, managedIDPrefix) {
 		return "", false
@@ -136,7 +136,7 @@ func connectionsArray(root map[string]any) []any {
 // Write merges the managed connection for providerID into connections.json,
 // preserving every other connection and any unknown fields, and points the
 // store's defaultId at it. An existing managed connection keeps its creation
-// timestamp and any unknown fields; only the fields outfit owns (type, url,
+// timestamp and any unknown fields; only the fields spinloop owns (type, url,
 // defaultModel, name) are overwritten.
 func Write(providerID string, conn Connection) error {
 	path, err := ConfigPath()
@@ -171,7 +171,7 @@ func Write(providerID string, conn Connection) error {
 	return write(path, root)
 }
 
-// applyConnFields writes the outfit-owned fields onto a connection entry,
+// applyConnFields writes the spinloop-owned fields onto a connection entry,
 // preserving its creation timestamp when present and stamping one when not.
 func applyConnFields(el map[string]any, id string, conn Connection) {
 	el["id"] = id
@@ -240,7 +240,7 @@ func Remove(providerID string, modelKeys []string) (int, error) {
 
 // State reads connections.json and reports each managed connection as a
 // provider: its model (from defaultModel) and base URL (from url). Connections
-// outfit does not own are ignored. Context and output limits are always empty —
+// spinloop does not own are ignored. Context and output limits are always empty —
 // a lucinate connection cannot hold them.
 func State() (map[string]ProviderState, error) {
 	path, err := ConfigPath()
@@ -273,9 +273,9 @@ func State() (map[string]ProviderState, error) {
 }
 
 // DefaultProviderID returns the provider behind the store's default connection,
-// when that connection is one outfit manages. It lets the launch path inject the
+// when that connection is one spinloop manages. It lets the launch path inject the
 // right key for the model lucinate will boot into. Returns false when there is
-// no default, the file is unreadable, or the default is not an outfit-managed
+// no default, the file is unreadable, or the default is not an spinloop-managed
 // connection.
 func DefaultProviderID() (string, bool) {
 	path, err := ConfigPath()

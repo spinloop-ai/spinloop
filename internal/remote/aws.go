@@ -35,7 +35,7 @@ func CallerIdentity(ctx context.Context, cfg aws.Config) (string, error) {
 }
 
 // ControlPlaneStackDeployed reports whether the named CloudFormation stack exists in
-// the account and region — i.e. whether `outfit remote bootstrap` has already
+// the account and region — i.e. whether `spinloop remote bootstrap` has already
 // run. A stack that does not exist is reported as false, not an error.
 func ControlPlaneStackDeployed(ctx context.Context, cfg aws.Config, stackName string) (bool, error) {
 	_, err := cloudformation.NewFromConfig(cfg).DescribeStacks(ctx, &cloudformation.DescribeStacksInput{
@@ -50,7 +50,7 @@ func ControlPlaneStackDeployed(ctx context.Context, cfg aws.Config, stackName st
 	return true, nil
 }
 
-// ControlPlane is what `outfit remote bootstrap` deployed once for the account:
+// ControlPlane is what `spinloop remote bootstrap` deployed once for the account:
 // the control URLs every environment shares, plus the weights bucket. It is
 // discovered from the control-plane stack's CloudFormation outputs, so it reflects
 // what is actually deployed and works from any machine with account access.
@@ -68,7 +68,7 @@ func DiscoverControlPlane(ctx context.Context, cfg aws.Config, stackName string)
 	if err != nil {
 		if strings.Contains(err.Error(), "does not exist") {
 			return ControlPlane{}, fmt.Errorf(
-				"the control plane (stack %q) is not deployed in this account and region — run `outfit remote bootstrap` first",
+				"the control plane (stack %q) is not deployed in this account and region — run `spinloop remote bootstrap` first",
 				stackName)
 		}
 		return ControlPlane{}, err
@@ -105,7 +105,7 @@ func controlPlaneFromOutputs(stackName string, outputs map[string]string) (Contr
 	// existed; the subcommands that need them say so themselves.
 	if layer.Config.StartURL == "" || layer.Config.StopURL == "" || layer.Config.DeployURL == "" {
 		return ControlPlane{}, fmt.Errorf(
-			"stack %q is missing its control-URL outputs — re-run `outfit remote bootstrap` to update it",
+			"stack %q is missing its control-URL outputs — re-run `spinloop remote bootstrap` to update it",
 			stackName)
 	}
 	return layer, nil

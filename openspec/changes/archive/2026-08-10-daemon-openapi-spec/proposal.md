@@ -27,7 +27,7 @@ code.
   schema cannot express (what a 409 means, why stopping the engine does not end
   the daemon).
 - Attach `docs/openapi.yaml` to each GitHub release, so a consumer can fetch the
-  contract for a specific outfit version rather than reading whatever is
+  contract for a specific spinloop version rather than reading whatever is
   currently on the default branch.
 
 ## Capabilities

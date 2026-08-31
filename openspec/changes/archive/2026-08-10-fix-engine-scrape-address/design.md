@@ -2,14 +2,14 @@
 
 See proposal.md — Why. What shapes the fix:
 
-- `scrapeTargetFor` (`cmd/outfit/serve_daemon.go`) already parses the engine's
+- `scrapeTargetFor` (`cmd/spinloop/serve_daemon.go`) already parses the engine's
   argv — it lifts `--api-key`, and reads `--api-key-file` off disk. It just
   never looked at `--host`/`--port` in that same argv, taking the address from
-  the Outfit's `BASEURL` or the engine table's `defaultBaseURL` instead.
+  the Spinloop's `BASEURL` or the engine table's `defaultBaseURL` instead.
 - `defaultBaseURL` is `http://127.0.0.1:8080` for llama.cpp and
   `http://127.0.0.1:8000` for vLLM. The cloud starts both on `:8000`, which is
   why only llama.cpp was visibly broken.
-- The daemon on a cloud instance has no Outfit. It is driven by a deploy
+- The daemon on a cloud instance has no Spinloop. It is driven by a deploy
   config whose `serveArgs` carry the bind, so `BASEURL` is empty and the
   fallback was always reached.
 - `ScrapeTokenStats` strips a trailing `/v1` and appends `/metrics`, so a bare
@@ -36,12 +36,12 @@ See proposal.md — Why. What shapes the fix:
 Precedence becomes argv bind → configured `BASEURL` → engine default.
 
 `BASEURL` is a *client-facing* address: it may name a public IP or a proxy, and
-an Outfit may state it while the engine binds somewhere else entirely. The
+a Spinloop may state it while the engine binds somewhere else entirely. The
 argv is the only source that describes what the process did. Since the scrape
 is always local, the argv is both more accurate and more specific.
 
 Alternative considered: keep `BASEURL` first and use the argv only as a
-fallback. Rejected — that preserves the failure mode wherever an Outfit states
+fallback. Rejected — that preserves the failure mode wherever a Spinloop states
 a public `BASEURL` for an engine bound to loopback, which is a normal remote
 setup.
 
@@ -70,7 +70,7 @@ appeared, and an engine that has served nothing looks exactly the same.
 
 - **Existing deployments start reporting an error they did not before** —
   anything whose scrape was already failing now says so, on stderr, in
-  `outfit remote metrics` and `outfit fleet metrics`. → That is the point, and
+  `spinloop remote metrics` and `spinloop fleet metrics`. → That is the point, and
   it is the correct reading of a broken collector. It is a visible change for
   anyone currently broken, which is worth calling out in a release note.
 
@@ -82,7 +82,7 @@ appeared, and an engine that has served nothing looks exactly the same.
 - **`BASEURL` demotion could surprise** someone who set it specifically to
   redirect collection. → No such use is documented, and the field is described
   as where clients reach the engine. The argv only wins when it states an
-  address, so an Outfit-only setup is unaffected.
+  address, so a Spinloop-only setup is unaffected.
 
 ## Migration Plan
 
@@ -91,5 +91,5 @@ scraping the right address is unaffected; a broken one starts working, and
 says so if it still cannot reach the engine.
 
 Reaching a cloud instance requires the usual path — a published release, an
-AMI rebake, and a fresh instance — because the instance's outfit binary is
+AMI rebake, and a fresh instance — because the instance's spinloop binary is
 pinned into the AMI.

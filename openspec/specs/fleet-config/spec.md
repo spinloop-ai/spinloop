@@ -1,7 +1,7 @@
 # fleet-config Specification
 
 ## Purpose
-Define `fleet.yaml`: the file that names the machines an `outfit fleet` client
+Define `fleet.yaml`: the file that names the machines a `spinloop fleet` client
 observes and how to reach each one's daemon control API — the fleet's single
 source of what nodes exist, kept separate from the per-node secrets.
 ## Requirements
@@ -30,7 +30,7 @@ A node MAY reference the bearer token its daemon requires by naming an
 environment variable that holds it; the token value SHALL NOT be written in
 `fleet.yaml`. The client SHALL resolve the reference from the process
 environment, including a `.env` beside the `fleet.yaml`, following the same
-precedence outfit uses elsewhere (environment over `.env`). A node with no
+precedence spinloop uses elsewhere (environment over `.env`). A node with no
 token reference SHALL be contacted without authentication (valid for a
 loopback-only daemon).
 
@@ -47,25 +47,25 @@ loopback-only daemon).
 
 ### Requirement: Fleet file resolution
 
-The `outfit fleet` commands SHALL resolve the fleet file from an explicit
+The `spinloop fleet` commands SHALL resolve the fleet file from an explicit
 `--fleet <path>` when given, otherwise `./fleet.yaml` in the working
 directory. A missing file when one is required SHALL fail with a message
 naming the expected path and how to create one.
 
 #### Scenario: Default resolution
 
-- **WHEN** an `outfit fleet` command runs in a directory containing
+- **WHEN** a `spinloop fleet` command runs in a directory containing
   `fleet.yaml` with no `--fleet` flag
 - **THEN** that file is used
 
 #### Scenario: Explicit path
 
-- **WHEN** `outfit fleet status --fleet ./cluster.yaml` runs
+- **WHEN** `spinloop fleet status --fleet ./cluster.yaml` runs
 - **THEN** that file is used
 
 #### Scenario: Missing file
 
-- **WHEN** an `outfit fleet` command runs with no fleet file at the resolved
+- **WHEN** a `spinloop fleet` command runs with no fleet file at the resolved
   path
 - **THEN** it fails, naming the expected path
 

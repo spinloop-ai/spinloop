@@ -164,7 +164,7 @@ func DownloadRemote(ctx context.Context, ref, destDir string) error {
 	if err := os.MkdirAll(destDir, 0o755); err != nil {
 		return err
 	}
-	url := "https://codeload.github.com/lucinate-ai/outfit/tar.gz/" + ref
+	url := "https://codeload.github.com/spinloop-ai/spinloop/tar.gz/" + ref
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return err

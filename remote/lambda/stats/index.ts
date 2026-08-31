@@ -30,12 +30,12 @@ function envFilter(env: string) {
 }
 
 /**
- * The stats Lambda called by `outfit remote metrics`. The control plane
+ * The stats Lambda called by `spinloop remote metrics`. The control plane
  * contributes what only it knows — environment, instance id/type, uptime
  * since launch — and everything measured (engine token counters, GPU, CPU,
- * RAM) comes from the on-instance outfit daemon's /v1/metrics, fetched with
+ * RAM) comes from the on-instance spinloop daemon's /v1/metrics, fetched with
  * one SSM curl; the daemon's version rides along from /v1/status in a
- * parallel second. Collection itself lives in outfit's internal/metrics.
+ * parallel second. Collection itself lives in spinloop's internal/metrics.
  */
 export async function handler(event: LambdaFunctionURLEvent): Promise<LambdaFunctionURLResult> {
   let env: string;
@@ -51,7 +51,7 @@ export async function handler(event: LambdaFunctionURLEvent): Promise<LambdaFunc
     deployConfig = await readDeployConfig(deployConfigParam(env));
   } catch (err) {
     return jsonResponse(400, {
-      error: `cannot read deploy config: ${(err as Error).message}. Run \`outfit remote deploy\` first.`,
+      error: `cannot read deploy config: ${(err as Error).message}. Run \`spinloop remote deploy\` first.`,
     });
   }
 
@@ -123,7 +123,7 @@ export async function handler(event: LambdaFunctionURLEvent): Promise<LambdaFunc
 }
 
 /**
- * Ask the instance's daemon which outfit build it runs, for the report's
+ * Ask the instance's daemon which spinloop build it runs, for the report's
  * version line. Every failure — SSM error, unreachable daemon, an older
  * daemon without the field — yields undefined, so a working metrics reply
  * never degrades because the version is an add-on, not a health signal.

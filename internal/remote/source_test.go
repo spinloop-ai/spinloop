@@ -58,10 +58,10 @@ func makeTarGz(t *testing.T, files map[string]string) []byte {
 func TestExtractRemote(t *testing.T) {
 	dest := t.TempDir()
 	archive := makeTarGz(t, map[string]string{
-		"outfit-1.10.0/README.md":                    "top-level, skip",
-		"outfit-1.10.0/remote/package.json":          `{"name":"cloud-vm-llm"}`,
-		"outfit-1.10.0/remote/lib/config.ts":         "export const x = 1",
-		"outfit-1.10.0/remote/node_modules/dep/i.js": "should be skipped",
+		"spinloop-1.10.0/README.md":                    "top-level, skip",
+		"spinloop-1.10.0/remote/package.json":          `{"name":"cloud-vm-llm"}`,
+		"spinloop-1.10.0/remote/lib/config.ts":         "export const x = 1",
+		"spinloop-1.10.0/remote/node_modules/dep/i.js": "should be skipped",
 	})
 	if err := ExtractRemote(bytes.NewReader(archive), dest); err != nil {
 		t.Fatal(err)
@@ -83,11 +83,11 @@ func TestExtractRemote(t *testing.T) {
 func TestExtractRemoteSkipsGeneratedFiles(t *testing.T) {
 	dest := t.TempDir()
 	archive := makeTarGz(t, map[string]string{
-		"outfit-1.10.0/remote/package.json":      `{"name":"cloud-vm-llm"}`,
-		"outfit-1.10.0/remote/.env":              "SECRET=1",
-		"outfit-1.10.0/remote/remote.json":       "{}",
-		"outfit-1.10.0/remote/cdk-outputs.json":  "{}",
-		"outfit-1.10.0/remote/cdk.out/tree.json": "build output",
+		"spinloop-1.10.0/remote/package.json":      `{"name":"cloud-vm-llm"}`,
+		"spinloop-1.10.0/remote/.env":              "SECRET=1",
+		"spinloop-1.10.0/remote/remote.json":       "{}",
+		"spinloop-1.10.0/remote/cdk-outputs.json":  "{}",
+		"spinloop-1.10.0/remote/cdk.out/tree.json": "build output",
 	})
 	if err := ExtractRemote(bytes.NewReader(archive), dest); err != nil {
 		t.Fatal(err)
@@ -111,7 +111,7 @@ func TestExtractRemoteRejectsBadGzip(t *testing.T) {
 func TestExtractRemoteRejectsTraversal(t *testing.T) {
 	dest := t.TempDir()
 	archive := makeTarGz(t, map[string]string{
-		"outfit-1.10.0/remote/../../evil": "escape",
+		"spinloop-1.10.0/remote/../../evil": "escape",
 	})
 	if err := ExtractRemote(bytes.NewReader(archive), dest); err == nil {
 		t.Fatal("expected a path-traversal error")
@@ -154,8 +154,8 @@ func TestDownloadRemoteHTTPError(t *testing.T) {
 
 func TestDownloadRemoteExtracts(t *testing.T) {
 	archive := makeTarGz(t, map[string]string{
-		"outfit-v1.13.0/README.md":           "skip",
-		"outfit-v1.13.0/remote/package.json": `{"name":"cloud-vm-llm"}`,
+		"spinloop-v1.13.0/README.md":           "skip",
+		"spinloop-v1.13.0/remote/package.json": `{"name":"cloud-vm-llm"}`,
 	})
 	stubTransport(t, func(_ *http.Request) (*http.Response, error) {
 		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(bytes.NewReader(archive)), Header: make(http.Header)}, nil

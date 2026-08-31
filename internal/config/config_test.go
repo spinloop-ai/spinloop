@@ -69,8 +69,8 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 	dir := isolate(t)
 
 	f := &File{Harness: "pi"}
-	f.SetAlias("qwen3.6-27b", "/models/qwen/Outfit")
-	f.SetAlias("gemma4", "/models/gemma/Outfit")
+	f.SetAlias("qwen3.6-27b", "/models/qwen/Spinloop")
+	f.SetAlias("gemma4", "/models/gemma/Spinloop")
 	if err := f.Save(); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
@@ -82,7 +82,7 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 	if got.Harness != "pi" {
 		t.Errorf("Harness = %q, want pi", got.Harness)
 	}
-	if path, ok := got.Alias("qwen3.6-27b"); !ok || path != "/models/qwen/Outfit" {
+	if path, ok := got.Alias("qwen3.6-27b"); !ok || path != "/models/qwen/Spinloop" {
 		t.Errorf("Alias = %q, %v", path, ok)
 	}
 	if want := []string{"gemma4", "qwen3.6-27b"}; !reflect.DeepEqual(got.AliasNames(), want) {
@@ -96,7 +96,7 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 	if perm := info.Mode().Perm(); perm != 0o600 {
 		t.Errorf("config file mode = %v, want 0600", perm)
 	}
-	dirInfo, err := os.Stat(filepath.Join(dir, "outfit"))
+	dirInfo, err := os.Stat(filepath.Join(dir, "spinloop"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +111,7 @@ func TestSaveOmitsEmptyKeys(t *testing.T) {
 	isolate(t)
 
 	f := &File{}
-	f.SetAlias("q3", "/models/qwen/Outfit")
+	f.SetAlias("q3", "/models/qwen/Spinloop")
 	if err := f.Save(); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
@@ -139,7 +139,7 @@ func TestSaveOmitsEmptyKeys(t *testing.T) {
 func TestUpdatePreservesUnknownKeys(t *testing.T) {
 	dir := isolate(t)
 
-	if err := os.MkdirAll(filepath.Join(dir, "outfit"), 0o700); err != nil {
+	if err := os.MkdirAll(filepath.Join(dir, "spinloop"), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(testPath(t), []byte(`{"harness":"pi","future":{"x":1}}`), 0o600); err != nil {
@@ -147,7 +147,7 @@ func TestUpdatePreservesUnknownKeys(t *testing.T) {
 	}
 
 	if err := Update(func(f *File) error {
-		f.SetAlias("q3", "/models/qwen/Outfit")
+		f.SetAlias("q3", "/models/qwen/Spinloop")
 		return nil
 	}); err != nil {
 		t.Fatalf("Update: %v", err)
@@ -175,7 +175,7 @@ func TestUpdateIsReadModifyWrite(t *testing.T) {
 		t.Fatalf("Update: %v", err)
 	}
 	if err := Update(func(f *File) error {
-		f.SetAlias("q3", "/models/qwen/Outfit")
+		f.SetAlias("q3", "/models/qwen/Spinloop")
 		return nil
 	}); err != nil {
 		t.Fatalf("Update: %v", err)
@@ -199,7 +199,7 @@ func TestUpdateStopsOnMutateError(t *testing.T) {
 
 	wantErr := os.ErrInvalid
 	if err := Update(func(f *File) error {
-		f.SetAlias("q3", "/models/qwen/Outfit")
+		f.SetAlias("q3", "/models/qwen/Spinloop")
 		return wantErr
 	}); err != wantErr {
 		t.Fatalf("Update error = %v, want %v", err, wantErr)
@@ -213,8 +213,8 @@ func TestUpdateStopsOnMutateError(t *testing.T) {
 // nil map a fresh File carries.
 func TestSetRemoveAlias(t *testing.T) {
 	f := &File{}
-	f.SetAlias("q3", "/a/Outfit")
-	if path, ok := f.Alias("q3"); !ok || path != "/a/Outfit" {
+	f.SetAlias("q3", "/a/Spinloop")
+	if path, ok := f.Alias("q3"); !ok || path != "/a/Spinloop" {
 		t.Errorf("Alias = %q, %v", path, ok)
 	}
 	if f.RemoveAlias("nope") {
@@ -240,7 +240,7 @@ func TestValidAliasName(t *testing.T) {
 			t.Errorf("NameShaped(%q) = true, want false", name)
 		}
 	}
-	good := []string{"qwen3.6-27b", "gemma_4", "Outfit", "a.b.c"}
+	good := []string{"qwen3.6-27b", "gemma_4", "Spinloop", "a.b.c"}
 	for _, name := range good {
 		if err := ValidAliasName(name); err != nil {
 			t.Errorf("ValidAliasName(%q) = %v, want nil", name, err)
@@ -255,7 +255,7 @@ func TestValidAliasName(t *testing.T) {
 func TestLoadMalformedJSON(t *testing.T) {
 	dir := isolate(t)
 
-	if err := os.MkdirAll(filepath.Join(dir, "outfit"), 0o700); err != nil {
+	if err := os.MkdirAll(filepath.Join(dir, "spinloop"), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(testPath(t), []byte("{not json"), 0o600); err != nil {
@@ -276,7 +276,7 @@ func TestLoadMalformedJSON(t *testing.T) {
 func TestLoadWrongAliasType(t *testing.T) {
 	dir := isolate(t)
 
-	if err := os.MkdirAll(filepath.Join(dir, "outfit"), 0o700); err != nil {
+	if err := os.MkdirAll(filepath.Join(dir, "spinloop"), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(testPath(t), []byte(`{"aliases":["q3"]}`), 0o600); err != nil {
@@ -289,15 +289,15 @@ func TestLoadWrongAliasType(t *testing.T) {
 
 // TestDirResolution covers the precedence and the loud failure of Dir.
 func TestDirResolution(t *testing.T) {
-	t.Run("override wins verbatim, no outfit segment appended", func(t *testing.T) {
+	t.Run("override wins verbatim, no spinloop segment appended", func(t *testing.T) {
 		t.Setenv("XDG_CONFIG_HOME", "/xdg")
-		t.Setenv(DirEnvVar, "/var/lib/outfit")
+		t.Setenv(DirEnvVar, "/var/lib/spinloop")
 		got, err := Dir()
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got != "/var/lib/outfit" {
-			t.Errorf("Dir() = %q, want /var/lib/outfit (verbatim)", got)
+		if got != "/var/lib/spinloop" {
+			t.Errorf("Dir() = %q, want /var/lib/spinloop (verbatim)", got)
 		}
 	})
 
@@ -308,8 +308,8 @@ func TestDirResolution(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got != filepath.Join("/xdg", "outfit") {
-			t.Errorf("Dir() = %q, want /xdg/outfit", got)
+		if got != filepath.Join("/xdg", "spinloop") {
+			t.Errorf("Dir() = %q, want /xdg/spinloop", got)
 		}
 	})
 
@@ -321,8 +321,8 @@ func TestDirResolution(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got != filepath.Join("/home/someone", ".config", "outfit") {
-			t.Errorf("Dir() = %q, want /home/someone/.config/outfit", got)
+		if got != filepath.Join("/home/someone", ".config", "spinloop") {
+			t.Errorf("Dir() = %q, want /home/someone/.config/spinloop", got)
 		}
 	})
 

@@ -116,7 +116,7 @@
   asset; grant the seed role read on it.
 - [x] 7.2 Add the `/cloud-vm-llm/seed` log group with `seedLogRetentionDays`.
 - [x] 7.3 Add `SeedFn` with an IAM Function URL, plus the `SeedUrl` output and its
-  entry in `OutfitRemoteConfig`.
+  entry in `SpinloopRemoteConfig`.
 - [x] 7.4 IAM: seed role gets bucket read/write under `models/*`, the HF secret,
   the bundle asset, and `logs:CreateLogStream`/`PutLogEvents` on the seed group
   only. `SeedFn` gets `RunInstances`/`CreateTags`/`TerminateInstances` (seed
@@ -133,18 +133,18 @@
 
 - [x] 8.1 Change `DeployFn`'s reply to carry `seedId` in place of
   `seedInstanceId`, keeping auto-seed on a missing-weights deploy.
-- [x] 8.2 Update the Go `DeployResponse` accordingly and have `outfit remote deploy`
+- [x] 8.2 Update the Go `DeployResponse` accordingly and have `spinloop remote deploy`
   print the follow-up command rather than a wait estimate.
 
 ## 9. Go client and CLI
 
-- [x] 9.1 Add `SeedURL` to `remote.Config` with an `OUTFIT_REMOTE_SEED_URL`
+- [x] 9.1 Add `SeedURL` to `remote.Config` with an `SPINLOOP_REMOTE_SEED_URL`
   override, optional in the same way as `EnvURL`, and a clear error naming the
   value to add when a seed command runs without it.
 - [x] 9.2 Add the seed calls to `internal/remote`: start (with force and revision),
   status, list, stop.
-- [x] 9.3 Add `outfit remote seed <start|status|ls|stop>` to the dispatch in
-  `cmd/outfit/remote.go`, resolving what to seed from the Outfit the same way
+- [x] 9.3 Add `spinloop remote seed <start|status|ls|stop>` to the dispatch in
+  `cmd/spinloop/remote.go`, resolving what to seed from the Spinloop the same way
   `deploy` does, and update the `remote` usage string and the unknown-subcommand
   error.
 - [x] 9.4 Output: `start` says whether it started or joined; `status` prints phase,
@@ -158,7 +158,7 @@
 - [x] 10.1 Delete `remote/scripts/seed-model.mjs` and its `seed-model` package
   script.
 - [x] 10.2 Update `remote/README.md` and `remote/docs/architecture.md`: the seed
-  lifecycle and its control surface, `outfit remote seed` in place of
+  lifecycle and its control surface, `spinloop remote seed` in place of
   `pnpm seed-model`, the manifest in place of the sentinel, the seed log group, and
   the new config knobs. Refresh the architecture diagrams that show the seed as a
   one-way arrow.

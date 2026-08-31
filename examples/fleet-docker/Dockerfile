@@ -1,10 +1,10 @@
-# A fleet node: a real `outfit daemon` supervising a fake engine.
+# A fleet node: a real `spinloop daemon` supervising a fake engine.
 #
 # The engine is Imposter's native engine standing in for llama-server, so the
 # stack needs no GPU and no model. It is a real process the daemon starts and
 # supervises — see shim/llama-server for why that matters.
 
-# Build outfit from the working tree, so the stack tests THIS commit rather
+# Build spinloop from the working tree, so the stack tests THIS commit rather
 # than a published artifact.
 FROM golang:1.24-alpine AS build
 WORKDIR /src
@@ -14,7 +14,7 @@ RUN go mod download
 # the tree and rebuilds stay cheap.
 COPY cmd ./cmd
 COPY internal ./internal
-RUN CGO_ENABLED=0 go build -o /out/outfit ./cmd/outfit
+RUN CGO_ENABLED=0 go build -o /out/spinloop ./cmd/spinloop
 
 FROM alpine:3.20
 ARG TARGETARCH
@@ -38,18 +38,18 @@ RUN curl -fsSL -o /tmp/imposter.tar.gz \
  && chmod +x /usr/local/bin/imposter-go \
  && rm -f /tmp/imposter.tar.gz /tmp/checksums.txt
 
-COPY --from=build /out/outfit /usr/local/bin/outfit
+COPY --from=build /out/spinloop /usr/local/bin/spinloop
 COPY examples/fleet-docker/shim/llama-server /usr/local/bin/llama-server
 COPY examples/fleet-docker/engine /opt/engine
 RUN chmod +x /usr/local/bin/llama-server
 
-# A container has no useful $HOME, so pin outfit's config directory — the same
+# A container has no useful $HOME, so pin spinloop's config directory — the same
 # reason the cloud instance's daemon unit pins it.
-ENV OUTFIT_CONFIG_DIR=/var/lib/outfit
+ENV SPINLOOP_CONFIG_DIR=/var/lib/spinloop
 WORKDIR /opt/node
 
 EXPOSE 4242
 # Bind the control API on all interfaces so other containers can reach it; a
-# token is required for that, supplied per-node by compose. No Outfit and no
+# token is required for that, supplied per-node by compose. No Spinloop and no
 # arguments: the daemon runs what a start request tells it to.
-CMD ["outfit", "daemon", "--api-addr", "0.0.0.0:4242"]
+CMD ["spinloop", "daemon", "--api-addr", "0.0.0.0:4242"]

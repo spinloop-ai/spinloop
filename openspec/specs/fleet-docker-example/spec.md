@@ -2,21 +2,21 @@
 
 ## Purpose
 Define the dockerised fleet example: a multi-node fleet anyone can run on one
-machine, where each node is a real `outfit daemon` supervising a real engine
+machine, where each node is a real `spinloop daemon` supervising a real engine
 process — and the fleet behaviours its test run asserts, so the example is
 verified rather than merely documented.
 ## Requirements
 ### Requirement: A runnable multi-node fleet
 
 The repository SHALL provide an example that brings up several nodes on one
-machine with a single command, each node running a real `outfit daemon` serving
+machine with a single command, each node running a real `spinloop daemon` serving
 its control API, addressed by a `fleet.yaml` shipped beside it. Bringing the
 example up SHALL require no GPU, no cloud account, and no inference engine
 installed on the host.
 
 #### Scenario: A user brings up a fleet
 
-- **WHEN** a user runs the example's compose stack and then `outfit fleet status`
+- **WHEN** a user runs the example's compose stack and then `spinloop fleet status`
   against its `fleet.yaml`
 - **THEN** every node in the file is reported, each showing the state of a real
   daemon
@@ -26,8 +26,8 @@ installed on the host.
 Each node's engine SHALL be a real process the daemon starts and supervises —
 not a stub served by the daemon itself and not a separate container — so that
 starting, stopping, log capture, and crash detection are genuinely exercised.
-The engine SHALL serve the metrics endpoint outfit scrapes, in the dialect
-outfit parses, so token statistics are produced end to end rather than faked.
+The engine SHALL serve the metrics endpoint spinloop scrapes, in the dialect
+spinloop parses, so token statistics are produced end to end rather than faked.
 
 #### Scenario: The engine is a child of the daemon
 
@@ -37,25 +37,25 @@ outfit parses, so token statistics are produced end to end rather than faked.
 
 #### Scenario: Token statistics come from the engine
 
-- **WHEN** `outfit fleet metrics` runs against a node whose engine is running
+- **WHEN** `spinloop fleet metrics` runs against a node whose engine is running
 - **THEN** the reported token and request counters are those the engine's
-  metrics endpoint served, parsed by outfit's own collector
+  metrics endpoint served, parsed by spinloop's own collector
 
 ### Requirement: Usable from cold
 
 The example SHALL be usable when no engine is running: bringing the stack up
 SHALL leave each node's daemon answering with nothing started, and a user SHALL
-be able to start a node's engine through `outfit fleet` without editing
+be able to start a node's engine through `spinloop fleet` without editing
 configuration or restarting a container.
 
 #### Scenario: Nothing running is still a usable fleet
 
 - **WHEN** the stack is up and no engine has been started
-- **THEN** `outfit fleet status` reports every node as `idle` and succeeds
+- **THEN** `spinloop fleet status` reports every node as `idle` and succeeds
 
 #### Scenario: Starting a node from cold
 
-- **WHEN** `outfit fleet start <node>` runs against a node whose engine has
+- **WHEN** `spinloop fleet start <node>` runs against a node whose engine has
   never been started
 - **THEN** that node's daemon starts its engine and subsequently reports
   `running`
@@ -74,7 +74,7 @@ continuous integration — so the example cannot silently stop working.
 
 #### Scenario: A stopped node degrades the view without failing it
 
-- **WHEN** one node's container is stopped and `outfit fleet status` runs
+- **WHEN** one node's container is stopped and `spinloop fleet status` runs
 - **THEN** that node is reported as `unreachable` with a reason, every other
   node still reports normally, and the command succeeds
 
@@ -86,12 +86,12 @@ continuous integration — so the example cannot silently stop working.
 #### Scenario: A crashed engine is reported and recoverable
 
 - **WHEN** a node's engine process is killed abnormally
-- **THEN** that node reports `crashed`, and `outfit fleet start <node>` returns
+- **THEN** that node reports `crashed`, and `spinloop fleet start <node>` returns
   it to `running`
 
 #### Scenario: Driving one node
 
-- **WHEN** `outfit fleet start <node>` and `outfit fleet stop <node>` run
+- **WHEN** `spinloop fleet start <node>` and `spinloop fleet stop <node>` run
   against a node in the stack
 - **THEN** that node's engine starts and stops accordingly, and no other node
   is affected

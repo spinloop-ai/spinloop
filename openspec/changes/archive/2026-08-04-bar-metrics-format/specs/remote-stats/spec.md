@@ -13,32 +13,32 @@ The stats output SHALL support three formats via the `--format` flag: `bar` (def
 
 #### Scenario: Default format is bar
 
-- **WHEN** the user runs `outfit remote metrics` without `--format`
+- **WHEN** the user runs `spinloop remote metrics` without `--format`
 - **THEN** the output is in bar format
 
 #### Scenario: Table format is explicit
 
-- **WHEN** the user runs `outfit remote metrics --format=table`
+- **WHEN** the user runs `spinloop remote metrics --format=table`
 - **THEN** the output is in table format
 
 #### Scenario: Bar format is explicit
 
-- **WHEN** the user runs `outfit remote metrics --format=bar`
+- **WHEN** the user runs `spinloop remote metrics --format=bar`
 - **THEN** the output is in bar format with progress bars for resource metrics
 
 #### Scenario: JSON format
 
-- **WHEN** the user runs `outfit remote metrics --format=json`
+- **WHEN** the user runs `spinloop remote metrics --format=json`
 - **THEN** the output is valid JSON containing the instance state, runner, model, GPU info, CPU/RAM usage, and token counts
 
 #### Scenario: JSON format with cost
 
-- **WHEN** the user runs `outfit remote metrics --format=json --cost` with a running instance
+- **WHEN** the user runs `spinloop remote metrics --format=json --cost` with a running instance
 - **THEN** the JSON output includes a cost estimate field
 
 #### Scenario: Invalid format errors
 
-- **WHEN** the user runs `outfit remote metrics --format=csv`
+- **WHEN** the user runs `spinloop remote metrics --format=csv`
 - **THEN** the command exits with an error and usage message
 
 ### Requirement: Watch mode
@@ -47,25 +47,25 @@ The system SHALL support a `--watch`/`-w` flag that repeatedly queries metrics e
 
 #### Scenario: Watch mode repeats output
 
-- **WHEN** the user runs `outfit remote metrics --watch`
+- **WHEN** the user runs `spinloop remote metrics --watch`
 - **THEN** the command prints metrics, waits 60 seconds, clears the screen, and prints updated metrics
 
 #### Scenario: Watch redraws in place
 
-- **WHEN** the user runs `outfit remote metrics -w`
+- **WHEN** the user runs `spinloop remote metrics -w`
 - **THEN** each refresh after the first clears the screen before displaying new output, with no separator lines
 
 #### Scenario: Watch with JSON format
 
-- **WHEN** the user runs `outfit remote metrics --watch --format=json`
+- **WHEN** the user runs `spinloop remote metrics --watch --format=json`
 - **THEN** each refresh clears the screen and outputs a JSON object
 
 #### Scenario: Watch with cost
 
-- **WHEN** the user runs `outfit remote metrics --watch --cost`
+- **WHEN** the user runs `spinloop remote metrics --watch --cost`
 - **THEN** each refresh includes the cost estimate
 
 #### Scenario: Watch stops on interrupt
 
-- **WHEN** the user runs `outfit remote metrics -w` and presses Ctrl+C
+- **WHEN** the user runs `spinloop remote metrics -w` and presses Ctrl+C
 - **THEN** the command exits cleanly without error

@@ -1,9 +1,9 @@
 /**
  * The stats response types the control plane speaks. Collection itself lives
- * in the on-instance outfit daemon (outfit's internal/metrics — the Go port
+ * in the on-instance spinloop daemon (spinloop's internal/metrics — the Go port
  * of the parsers that used to live here); the stats Lambda merges the
  * daemon's reply with what only the control plane knows. These shapes are
- * value-compatible with the Go side, so `outfit remote metrics` renders them
+ * value-compatible with the Go side, so `spinloop remote metrics` renders them
  * unchanged.
  */
 
@@ -69,7 +69,7 @@ export interface StatsResult {
   /** Seconds since `lastActiveAt`. Absent when that is, and absent at zero. */
   idleSeconds?: number;
   /**
-   * The outfit binary's build-time version string, relayed verbatim from the
+   * The spinloop binary's build-time version string, relayed verbatim from the
    * daemon's /v1/status. Absent when the daemon was unreachable or predates
    * the field — the formatters simply omit the line.
    */

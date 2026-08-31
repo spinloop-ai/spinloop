@@ -5,7 +5,7 @@ better placed to decide, and the split shows up as behaviour nobody would
 choose deliberately.
 
 **The engine's key comes from whichever end happens to supply it.** A daemon
-started from its own Outfit gates its engine with whatever that machine's
+started from its own Spinloop gates its engine with whatever that machine's
 preset says; a node woken by routing gets no key at all, because the derivation
 drops `api-key` — so a preset that says "gate this engine" is silently ignored.
 Meanwhile the client, which needs the key to hand to the agent, learns it from
@@ -13,12 +13,12 @@ a third place: `engineTokenEnv` in its own `fleet.yaml`. Two ends hold the same
 secret independently and nothing reconciles them, so a mismatch surfaces as a
 401 on the agent's first request.
 
-**A node holds workload configuration it has no business holding.** `outfit
-daemon` resolves an Outfit (and its preset, and `OUTFIT_ALIAS`) so it can serve
+**A node holds workload configuration it has no business holding.** `spinloop
+daemon` resolves a Spinloop (and its preset, and `SPINLOOP_ALIAS`) so it can serve
 something without being asked. Nothing in production uses this: the cloud runs
-`outfit daemon --api-addr 127.0.0.1:4242` with no path and is driven entirely by
-pushed configs. What it does produce is confusion — a node's Outfit and a
-client's Outfit are different documents with different jobs, and the fleet
+`spinloop daemon --api-addr 127.0.0.1:4242` with no path and is driven entirely by
+pushed configs. What it does produce is confusion — a node's Spinloop and a
+client's Spinloop are different documents with different jobs, and the fleet
 examples had to grow a paragraph explaining why they cannot be the same file.
 
 The remote path already resolved both of these: the control plane holds the key,
@@ -42,16 +42,16 @@ fleet node work the same way, with the client in the control plane's seat.
   out of band" and starts meaning "where the client looks up the key it will
   set" — the same field, now purely client-side, and the seam for resolving keys
   from something better than an environment variable later.
-- **`outfit daemon` becomes a worker: it reads no Outfit and no preset**, and
-  takes no Outfit path. It serves what a start request carries or what was
+- **`spinloop daemon` becomes a worker: it reads no Spinloop and no preset**, and
+  takes no Spinloop path. It serves what a start request carries or what was
   pushed and stored, and a start with neither fails saying so. **BREAKING**:
-  `outfit daemon ./Outfit` and `OUTFIT_ALIAS`-driven daemons stop working.
+  `spinloop daemon ./Spinloop` and `SPINLOOP_ALIAS`-driven daemons stop working.
 - It reads no `fleet.yaml` either. That file is the *client's* map of the fleet;
   a node has no use for its peers' addresses, and handing every node the map
   widens what one compromised node exposes.
 - **The control-API bearer token gains two more sources**: `--api-token-file`
-  and `--api-token`, beside the existing `OUTFIT_API_TOKEN`. The daemon no
-  longer loads an Outfit's `.env`, so the environment alone would leave a
+  and `--api-token`, beside the existing `SPINLOOP_API_TOKEN`. The daemon no
+  longer loads a Spinloop's `.env`, so the environment alone would leave a
   hand-started LAN daemon with nowhere convenient to put it. See "Two
   credentials, two rules" below for why a literal flag is allowed here and
   refused for the engine's key.
@@ -66,7 +66,7 @@ fleet node work the same way, with the client in the control plane's seat.
 ### Modified Capabilities
 - `daemon-api`: the start request carries an engine key; the bearer token may
   come from a file or a flag as well as the environment.
-- `serve-daemon`: the daemon takes no Outfit path and resolves no Outfit or
+- `serve-daemon`: the daemon takes no Spinloop path and resolves no Spinloop or
   preset; what it serves comes from the request or the stored config alone.
 - `fleet-routing`: the requirement that resolved a key the node was already
   gated with is replaced by one where the wake supplies the key it will hand to
@@ -78,14 +78,14 @@ fleet node work the same way, with the client in the control plane's seat.
 
 - `internal/daemon`: start accepts a key; the key is written 0600 and passed as
   `--api-key-file`; token resolution gains the file and flag forms.
-- `cmd/outfit`: `daemon` loses its Outfit path and its Outfit/preset
+- `cmd/spinloop`: `daemon` loses its Spinloop path and its Spinloop/preset
   resolution, and gains `--api-token`/`--api-token-file`; the routing wake sends
   the key it resolved.
 - `internal/fleet`: the wake pushes a key; `engineKeyFor` becomes "resolve the
   key to set" rather than "resolve the key the node needs".
 - `docs/openapi.yaml`, `docs/commands/{fleet,serve}.md`, `docs/env-vars.md`, and
   both fleet examples — `examples/fleet-local` currently documents starting the
-  daemon beside an Outfit, and `examples/fleet-docker` ships a `node/Outfit` and
+  daemon beside a Spinloop, and `examples/fleet-docker` ships a `node/Spinloop` and
   a `CMD` that passes it.
 - **Depends on `fleet-harness-routing`** landing first: this modifies
   `fleet-routing` and `fleet-config`, which that change introduces.

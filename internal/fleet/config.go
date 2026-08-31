@@ -1,10 +1,10 @@
-// Package fleet observes a set of machines each running `outfit daemon`: it
+// Package fleet observes a set of machines each running `spinloop daemon`: it
 // parses the fleet.yaml naming them, resolves each node's bearer token, and
 // calls the nodes' control APIs.
 //
 // The file names nodes and how to reach them; it never holds a secret. A node
 // that needs a token names the environment variable holding it, resolved the
-// way outfit resolves every other secret — the process environment first, then
+// way spinloop resolves every other secret — the process environment first, then
 // a .env beside the file.
 package fleet
 
@@ -16,22 +16,22 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/lucinate-ai/outfit/internal/daemon"
-	"github.com/lucinate-ai/outfit/internal/opencode"
-	"github.com/lucinate-ai/outfit/internal/remote"
+	"github.com/spinloop-ai/spinloop/internal/daemon"
+	"github.com/spinloop-ai/spinloop/internal/opencode"
+	"github.com/spinloop-ai/spinloop/internal/remote"
 )
 
 // DefaultFile is the fleet file consulted when no --fleet is given, resolved
-// from the working directory the way ./Outfit is.
+// from the working directory the way ./Spinloop is.
 const DefaultFile = "fleet.yaml"
 
 // The kinds a node entry can name. The default is daemon; a node with no
 // `kind:` is one. Each names how the fleet reaches and drives that node.
 const (
-	// KindDaemon is a machine running `outfit daemon`, reached over its
+	// KindDaemon is a machine running `spinloop daemon`, reached over its
 	// control API. Addressed by its `host`.
 	KindDaemon = "daemon"
-	// KindRemote is an `outfit remote` environment, driven through its cloud
+	// KindRemote is an `spinloop remote` environment, driven through its cloud
 	// control plane. Addressed by the registered environment it names.
 	KindRemote = "remote"
 )
@@ -84,7 +84,7 @@ type NodeConfig struct {
 	// Name identifies the node in output and to `fleet start|stop <node>`. For
 	// a kind-remote node it is also the key of the registered environment it
 	// drives, <config-dir>/remotes/<name>/remote.json — the environment is
-	// already user-named at `outfit remote deploy`, so a remote node has no
+	// already user-named at `spinloop remote deploy`, so a remote node has no
 	// separate address to give. The control URLs live in that env's remote.json
 	// anyway, so nothing identifying a deployment is written into the fleet file.
 	Name string `yaml:"name"`
@@ -249,7 +249,7 @@ func (c *Config) Names() []string {
 }
 
 // Token resolves a node's bearer token: the process environment first, then
-// the .env beside the fleet file — the precedence outfit uses everywhere, so
+// the .env beside the fleet file — the precedence spinloop uses everywhere, so
 // an exported value wins and the .env only fills a gap. A node naming no
 // variable needs no token. A node naming one that is set nowhere is a
 // configuration error, reported against that node rather than surfacing later
@@ -269,7 +269,7 @@ func (c *Config) EngineToken(n NodeConfig) (string, error) {
 
 // resolveTokenEnv reads one of a node's token references: the process
 // environment first, then the .env beside the fleet file — the precedence
-// outfit uses everywhere, so an exported value wins and the .env only fills a
+// spinloop uses everywhere, so an exported value wins and the .env only fills a
 // gap. A node naming no variable needs no token. A node naming one that is set
 // nowhere is a configuration error, reported against that node rather than
 // surfacing later as an authentication failure.

@@ -1,10 +1,10 @@
 All tasks are already implemented on the `feat/remote` branch; this change
 records the specification delta that work introduced, so the boxes are ticked.
 
-## 1. Outfit format
+## 1. Spinloop format
 
-- [x] 1.1 Add the `REMOTE` keyword to the Outfit parser and `Selection`, keeping it out of `apply`'s business
-- [x] 1.2 Render `REMOTE` in `Format` so `outfit export` round-trips it
+- [x] 1.1 Add the `REMOTE` keyword to the Spinloop parser and `Selection`, keeping it out of `apply`'s business
+- [x] 1.2 Render `REMOTE` in `Format` so `spinloop export` round-trips it
 - [x] 1.3 Cover the new keyword in the parser tests, including the duplicate and unknown-keyword paths
 
 ## 2. Remote transport
@@ -17,8 +17,8 @@ records the specification delta that work introduced, so the boxes are ticked.
 
 ## 3. Command group
 
-- [x] 3.1 Add the `remote` dispatch with `start`/`stop`/`status`, resolving the configuration from an Outfit's `REMOTE` or the per-user file
-- [x] 3.2 Add `deploy`, mapping the Outfit and its preset to a deployment: provider to engine, model or preset `hf` to weights, context, alias, and the remaining preset flags
+- [x] 3.1 Add the `remote` dispatch with `start`/`stop`/`status`, resolving the configuration from a Spinloop's `REMOTE` or the per-user file
+- [x] 3.2 Add `deploy`, mapping the Spinloop and its preset to a deployment: provider to engine, model or preset `hf` to weights, context, alias, and the remaining preset flags
 - [x] 3.3 Drop the settings the endpoint owns, matching on canonical flag names, and layer the preset's `[*]` defaults under the chosen section
 - [x] 3.4 Add `--dry-run`, and report whether the endpoint has to fetch weights before it can serve
 - [x] 3.5 Test the mapping, its rejections, and that a deployment is posted and signed
@@ -34,7 +34,7 @@ records the specification delta that work introduced, so the boxes are ticked.
 
 - [x] 5.1 Teach the completion table about subcommands and add `remote`, satisfying the dispatch-coverage test
 - [x] 5.2 Document the `REMOTE` instruction in the user documentation
-- [x] 5.3 Give `outfit remote` a page in the user manual and list it in the index
+- [x] 5.3 Give `spinloop remote` a page in the user manual and list it in the index
 - [x] 5.4 Update AGENTS.md with the new packages, and record the traps found along the way
 
 ## 6. Usable output
@@ -48,8 +48,8 @@ records the specification delta that work introduced, so the boxes are ticked.
 - [x] 7.1 Warn when a config is written with no resolvable key for a non-local endpoint
 - [x] 7.2 Write opencode's key as an `{env:VAR}` reference so no secret reaches disk
 - [x] 7.3 Keep Pi's reference for a remote endpoint, since a placeholder cannot be repaired later
-- [x] 7.4 Pass the keys outfit can resolve to the agent it launches
-- [x] 7.5 Resolve `.env` beside the Outfit, falling back to the working directory when there is none
+- [x] 7.4 Pass the keys spinloop can resolve to the agent it launches
+- [x] 7.5 Resolve `.env` beside the Spinloop, falling back to the working directory when there is none
 
 ## 8. The deployment
 

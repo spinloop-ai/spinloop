@@ -6,14 +6,14 @@ Two facts shape the approach. A remote endpoint's API key exists only in
 Secrets Manager and is handed out by the env Lambda, so nothing on disk can
 supply it; and no harness stores a secret itself — opencode substitutes
 `{env:VAR}`, Pi resolves `$VAR`, lucinate reads `LUCINATE_OPENAI_API_KEY` —
-so the key reaches the agent through the environment of the process outfit
+so the key reaches the agent through the environment of the process spinloop
 launches, and nowhere else.
 
-`outfit harness` therefore does two things that both need the key and did not
-know about each other: it applies the Outfit (writing the harness config, and
+`spinloop harness` therefore does two things that both need the key and did not
+know about each other: it applies the Spinloop (writing the harness config, and
 deciding whether to warn that no key is set), and it builds the launched
 agent's environment. The apply ran first, against `opencode.EnvResolver` — the
-process environment and the `.env` beside the Outfit — neither of which can
+process environment and the `.env` beside the Spinloop — neither of which can
 hold a key the control plane has not been asked for yet.
 
 ## Goals / Non-Goals
@@ -24,14 +24,14 @@ hold a key the control plane has not been asked for yet.
   is only ever printed about a key that will genuinely be absent.
 - A fetch that fails is visible, and stops the command when continuing could
   only produce an agent that cannot authenticate.
-- `outfit remote env` stdout stays evaluable by a shell.
+- `spinloop remote env` stdout stays evaluable by a shell.
 
 **Non-Goals:**
 
 - Changing how the key reaches the agent. It is injected into the launched
   process's environment and still never written to a harness config.
 - Caching or persisting the fetched key anywhere.
-- Changing `outfit apply` or `outfit add`, which do not launch anything and so
+- Changing `spinloop apply` or `spinloop add`, which do not launch anything and so
   have no fetched key to reason about.
 
 ## Decisions
@@ -51,8 +51,8 @@ the launch environment and lucinate's launch key all take the same function, so
 they cannot disagree. Threading a `*remote.Response` into each of those call
 sites instead would put the precedence rule (local wins) in three places.
 
-An alternative was to inject the fetched key into outfit's own process
-environment and let the existing lookups find it. Rejected: outfit does not
+An alternative was to inject the fetched key into spinloop's own process
+environment and let the existing lookups find it. Rejected: spinloop does not
 mutate its own environment on the launch path, deliberately, so that `ENV`
 instructions and `.env` values shape only the child.
 
@@ -64,12 +64,12 @@ then only a convenience. Never failing is wrong when nothing supplies a key,
 because the agent starts and collects 401s with no explanation. The condition
 is therefore the availability of a key, not the fact of the failure.
 
-`ENV` counts as a source, and is read straight from the parsed Outfit rather
+`ENV` counts as a source, and is read straight from the parsed Spinloop rather
 than the process environment, because `overlayLocalEnv` applies it to the child
 last and it overrides everything else there.
 
 **The alias note moves to stderr, rather than being suppressed for one
-command.** `readOutfit` is the single choke point every path-taking command
+command.** `readSpinloop` is the single choke point every path-taking command
 shares, and the note is prose about how the command resolved its argument, not
 its result. Giving `remote env` a quiet mode would have left the same trap for
 the next command whose stdout is consumed by something other than a human.

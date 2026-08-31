@@ -21,24 +21,24 @@
 - [x] 3.3 Classify a 404 from a node as "this daemon predates the endpoint, upgrade it" rather than a generic failure
 - [x] 3.4 Test the client and fan-out against a stub node: success, unreachable, unauthorised, no-log, and the too-old-daemon case
 
-## 4. The `outfit fleet logs` subcommand
+## 4. The `spinloop fleet logs` subcommand
 
-- [x] 4.1 Create `cmd/outfit/fleet_logs.go` with `cmdFleetLogs`, parsing the optional node argument, `--follow`/`-f`, `--limit`, `--format` and the existing `--fleet` path flag
+- [x] 4.1 Create `cmd/spinloop/fleet_logs.go` with `cmdFleetLogs`, parsing the optional node argument, `--follow`/`-f`, `--limit`, `--format` and the existing `--fleet` path flag
 - [x] 4.2 Render text output: node prefix only when more than one node's output is printed, each node's lines kept in their own order and never interleaved by a fabricated time order
 - [x] 4.3 Render `--format json`, carrying the node, the content and the offset
 - [x] 4.4 Implement the follow loop: hold a per-node offset, poll each node from its own cursor, exit cleanly on SIGINT/SIGTERM
 - [x] 4.5 Report per-node failures alongside the output that did arrive, without failing the command
-- [x] 4.6 Add the `logs` case to `cmdFleet`, its usage string and the unknown-subcommand error, and add it to the fleet subcommand list in `cmd/outfit/complete.go`
+- [x] 4.6 Add the `logs` case to `cmdFleet`, its usage string and the unknown-subcommand error, and add it to the fleet subcommand list in `cmd/spinloop/complete.go`
 - [x] 4.7 Test the command against a stub fan-out: single node unlabelled, several nodes labelled, json output, follow without duplicates, clean exit on cancel, and a mixed fleet where one node fails
 
 ## 5. Extracting the shared rendering
 
-- [x] 5.1 Lift the small pieces `outfit remote logs` and `outfit fleet logs` genuinely share — the "label only when origins are mixed" rule and the follow loop's cancel-and-exit shape — into one place both call, without building an abstraction over the two dissimilar fetches
-- [x] 5.2 Confirm `outfit remote logs` behaviour is unchanged by the extraction: its existing tests must pass untouched
+- [x] 5.1 Lift the small pieces `spinloop remote logs` and `spinloop fleet logs` genuinely share — the "label only when origins are mixed" rule and the follow loop's cancel-and-exit shape — into one place both call, without building an abstraction over the two dissimilar fetches
+- [x] 5.2 Confirm `spinloop remote logs` behaviour is unchanged by the extraction: its existing tests must pass untouched
 
 ## 6. Documentation
 
-- [x] 6.1 Document `outfit fleet logs` and its flags in `docs/commands/fleet.md`, in that file's existing voice
+- [x] 6.1 Document `spinloop fleet logs` and its flags in `docs/commands/fleet.md`, in that file's existing voice
 - [x] 6.2 Document the `/v1/logs` endpoint in `docs/http-api.md`, including the cursor and the bounding rules
 - [x] 6.3 Note that log content crosses the network to whoever holds the fleet token, since engine output can carry prompts and model output
 - [x] 6.4 Say plainly that the daemon does not rotate the engine log, so an operator knows what they are accumulating

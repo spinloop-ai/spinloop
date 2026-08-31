@@ -4,17 +4,17 @@ When running a remote instance there's no visibility into what it's doing or how
 
 ## What Changes
 
-- Add `outfit remote stats` subcommand that reports instance state, token usage, CPU/RAM/GPU utilization, and optionally cost
+- Add `spinloop remote stats` subcommand that reports instance state, token usage, CPU/RAM/GPU utilization, and optionally cost
 - Add a new Lambda (`lambda/stats`) that runs shell commands on the instance via SSM to scrape `/metrics`, `nvidia-smi`, and `vmstat`
 - Wire the new Function URL into the CDK stack (`llm-stack.ts`) and expose it as a stack output
-- Add the Go client (`internal/remote`) and CLI handler (`cmd/outfit/remote.go`)
+- Add the Go client (`internal/remote`) and CLI handler (`cmd/spinloop/remote.go`)
 - Add `--cost` flag to `stats` that invokes the AWS Price List API to compute an estimated cost for the current running session
 
 ## Capabilities
 
 ### New Capabilities
 
-- `remote-stats`: The `outfit remote stats` command — Lambda relay, metric parsing, tabular output, per-GPU reporting, optional cost estimation
+- `remote-stats`: The `spinloop remote stats` command — Lambda relay, metric parsing, tabular output, per-GPU reporting, optional cost estimation
 
 ### Modified Capabilities
 
@@ -22,8 +22,8 @@ When running a remote instance there's no visibility into what it's doing or how
 
 ## Impact
 
-- `cmd/outfit/remote.go` — new `cmdRemoteStats`, `stats` case in dispatch switch
-- `cmd/outfit/complete.go` — new `remote stats` completion entries
+- `cmd/spinloop/remote.go` — new `cmdRemoteStats`, `stats` case in dispatch switch
+- `cmd/spinloop/complete.go` — new `remote stats` completion entries
 - `internal/remote/remote.go` — new `Stats` client function
 - `remote/lambda/stats/` — new Lambda (TypeScript)
 - `remote/lib/llm-stack.ts` — new Function URL, IAM policy, CDK output

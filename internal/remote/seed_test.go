@@ -245,7 +245,7 @@ func TestSeedCalls_NameTheMissingSeedURL(t *testing.T) {
 			continue
 		}
 		// The message must say what to add and where it comes from.
-		for _, want := range []string{"seed_url", "SeedUrl", "OUTFIT_REMOTE_SEED_URL"} {
+		for _, want := range []string{"seed_url", "SeedUrl", "SPINLOOP_REMOTE_SEED_URL"} {
 			if !strings.Contains(err.Error(), want) {
 				t.Errorf("%s: the error should name %q, got: %v", name, want, err)
 			}
@@ -309,7 +309,7 @@ func TestConfig_SeedURLOverride(t *testing.T) {
 	isolateConfig(t)
 	writeConfig(t, Config{StartURL: "http://start", StopURL: "http://stop", Region: "eu-west-1"})
 	cfg, err := LoadConfig(func(k string) string {
-		if k == "OUTFIT_REMOTE_SEED_URL" {
+		if k == "SPINLOOP_REMOTE_SEED_URL" {
 			return "http://override"
 		}
 		return ""
@@ -324,7 +324,7 @@ func TestConfig_SeedURLOverride(t *testing.T) {
 
 // The regression this guards: SeedUrl was added as a stack output and to
 // Config, but the discovery that maps outputs onto Config did not read it — so
-// `outfit remote seed` reported "no seed_url configured" against every real
+// `spinloop remote seed` reported "no seed_url configured" against every real
 // deployment while the stubbed CLI tests passed.
 func TestControlPlaneFromOutputs_CarriesEveryURL(t *testing.T) {
 	layer, err := controlPlaneFromOutputs("cloud-vm-llm", map[string]string{

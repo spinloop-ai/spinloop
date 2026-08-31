@@ -71,13 +71,13 @@ function bundleSeeder(): string {
 }
 
 /**
- * The account-level control plane — deployed once by `outfit remote bootstrap`,
+ * The account-level control plane — deployed once by `spinloop remote bootstrap`,
  * analogous to `cdk bootstrap`. It holds what every environment reuses: the
  * weights bucket, the VPC, the shared IAM roles, and the environment-aware
  * lifecycle Lambdas (start/stop/deploy). It creates NO Elastic IP and NO
  * instance: an environment — its EIP, security group (per-env allowed CIDR),
  * API-key secret and SSM state — is created on demand by the deploy Lambda
- * when `outfit remote deploy` names it, and the same shared Lambdas then
+ * when `spinloop remote deploy` names it, and the same shared Lambdas then
  * start, stop and idle-monitor every environment's instance in the account.
  */
 export class LlmStack extends cdk.Stack {
@@ -347,7 +347,7 @@ export class LlmStack extends cdk.Stack {
       runtime: lambda.Runtime.NODEJS_22_X,
       architecture: lambda.Architecture.ARM_64,
       // 15 min (Lambda max) so a cold wake — S3 sync + weight load — can return
-      // "ready" in one call rather than making outfit poll through a 503.
+      // "ready" in one call rather than making spinloop poll through a 503.
       timeout: cdk.Duration.seconds(900),
       memorySize: 256,
       logGroup: lambdaLogGroup('StartFnLogGroup', 'start'),
@@ -474,10 +474,10 @@ export class LlmStack extends cdk.Stack {
     stopFn.addToRolePolicy(seedTerminateStatement());
     seedLogStatements().forEach((s) => stopFn.addToRolePolicy(s));
 
-    // The control plane `outfit remote deploy` calls: it creates the named
+    // The control plane `spinloop remote deploy` calls: it creates the named
     // environment's resources (EIP, security group, API key, SSM state) if
     // absent, seeds the weights if missing, and writes the environment's
-    // deploy-config. outfit needs only Lambda invoke (SigV4), no SSM/EC2 perms
+    // deploy-config. spinloop needs only Lambda invoke (SigV4), no SSM/EC2 perms
     // of its own.
     const deployFn = new nodejs.NodejsFunction(this, 'DeployFn', {
       description: 'Creates an environment (EIP/SG/key/state) and sets what it serves',
@@ -662,7 +662,7 @@ export class LlmStack extends cdk.Stack {
       targets: [new targets.LambdaFunction(stopFn)],
     });
 
-    // Discovery: `outfit remote deploy` reads these stack outputs (by the
+    // Discovery: `spinloop remote deploy` reads these stack outputs (by the
     // well-known stack name) to find the control plane from any machine with
     // account access — no local file carries them.
     new cdk.CfnOutput(this, 'StartUrl', { value: startUrl.url });
@@ -683,9 +683,9 @@ export class LlmStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'SeedSecurityGroupId', { value: seedSg.securityGroupId });
     new cdk.CfnOutput(this, 'HfTokenSecretArn', { value: hfSecret?.secretArn ?? '' });
     // The control URLs shared by every environment. No base_url here: an
-    // environment's address is its own EIP, allocated at `outfit remote
+    // environment's address is its own EIP, allocated at `spinloop remote
     // deploy` and returned by it.
-    new cdk.CfnOutput(this, 'OutfitRemoteConfig', {
+    new cdk.CfnOutput(this, 'SpinloopRemoteConfig', {
       value: `{"start_url":"${startUrl.url}","stop_url":"${stopUrl.url}","deploy_url":"${deployUrl.url}","stats_url":"${statsUrl.url}","env_url":"${envUrl.url}","seed_url":"${seedUrl.url}","update_url":"${updateUrl.url}","region":"${this.region}"}`,
     });
   }

@@ -23,23 +23,23 @@ design has to absorb, and one way it deliberately does not.
 
 ### Engine selection comes from PROVIDER
 
-The alternatives were a new `ENGINE` Outfit keyword or a `--engine` flag on `serve`.
+The alternatives were a new `ENGINE` Spinloop keyword or a `--engine` flag on `serve`.
 
 `PROVIDER` wins because the codebase already committed to it: `runnerFor` maps `PROVIDER`
 to a cloud runner and documents that `serve` does the same locally. Adding a keyword would
-create a second source of truth for a question already answered, and `internal/outfit`
-errors on unknown keywords, so every Outfit stating `ENGINE` would break on older
+create a second source of truth for a question already answered, and `internal/spinloop`
+errors on unknown keywords, so every Spinloop stating `ENGINE` would break on older
 binaries. A flag would be worse still — it is per-invocation, so it could not travel with
-the Outfit.
+the Spinloop.
 
 The cost is the breaking change: `serve` now rejects providers that are not local engines.
-That is a fix, not a regression. The previous behaviour ran `llama-server` for an Outfit
-saying `PROVIDER ollama`, which is a command the Outfit never asked for.
+That is a fix, not a regression. The previous behaviour ran `llama-server` for a Spinloop
+saying `PROVIDER ollama`, which is a command the Spinloop never asked for.
 
 `engineFor` mirrors `runnerFor` deliberately: a hard-coded switch in Go, not a catalogue
 field. Putting engine metadata in `providers.yaml` would be a single source of truth
 across `serve`/`deploy`/`list`, but it would also mean a user-supplied `--providers` file
-could name an arbitrary binary for `outfit serve` to execute. The allow-list stays in the
+could name an arbitrary binary for `spinloop serve` to execute. The allow-list stays in the
 binary.
 
 ### Dialects, not a second parser
@@ -56,14 +56,14 @@ The package-level `Flags`, `CanonicalKey`, `Preset.Args` and `Preset.Command` ar
 `LlamaCpp` wrappers rather than removed. This is not politeness to callers: `remote.go`'s
 `isCloudOwned` compares preset keys through `preset.CanonicalKey` to decide which flags
 the cloud owns, so changing that function's meaning would silently change what
-`outfit remote deploy` strips from a preset.
+`spinloop remote deploy` strips from a preset.
 
 **The trap this closes**: an oMLX preset read in llama.cpp's dialect parses without error
 and produces a wrong command — `m` becomes `--model`, `c` becomes `--ctx-size`, and a
 `key = 0` for a name in llama.cpp's boolean table vanishes. The dialect therefore comes
 from the engine `PROVIDER` names, never from inspecting the file.
 
-### What an Outfit means for oMLX
+### What a Spinloop means for oMLX
 
 Only `BASEURL` becomes a launch flag, via the already engine-neutral `hostPortFromURL`.
 `MODEL` and `ALIAS` keep their existing meaning — the id the harness requests — because
@@ -83,12 +83,12 @@ to an engine that needs neither.
 a resolved key would put it on the terminal and in `ps` output — a sharper failure than
 the config-file secrets the rest of the codebase is careful to avoid, since those at least
 stay `0600` on disk. Auth on the server is configured in oMLX. The catalogue path is
-unaffected: `outfit add`/`apply` still writes an `{env:OPENAI_API_KEY}` reference for the
+unaffected: `spinloop add`/`apply` still writes an `{env:OPENAI_API_KEY}` reference for the
 harness when a key is set.
 
 ### Serve moves to its own file
 
-`cmd/outfit/serve.go` is partly cohesion and partly a constraint:
+`cmd/spinloop/serve.go` is partly cohesion and partly a constraint:
 `TestCompletionCoversDispatch` scans `main.go` for `case "…":` at one tab of indentation to
 prove every dispatched command is completable. `engineFor`'s switch matches that shape, so
 leaving it in `main.go` reports `llamacpp` and `omlx` as uncompletable commands.

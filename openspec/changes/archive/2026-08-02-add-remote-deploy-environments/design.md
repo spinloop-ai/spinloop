@@ -1,12 +1,12 @@
 ## Context
 
-`outfit remote bootstrap` deploys the shared, account-level layer (Image Builder
+`spinloop remote bootstrap` deploys the shared, account-level layer (Image Builder
 + AMIs, the lifecycle Lambdas, the shared bucket/roles/VPC) and publishes it as
-CloudFormation stack outputs. This change makes `outfit remote deploy` the step
+CloudFormation stack outputs. This change makes `spinloop remote deploy` the step
 that stands up an actual endpoint on top: an **environment** with its own Elastic
 IP and EC2 instance, registered so the other `remote` commands can drive it.
 
-Today `deploy` derives what to serve from the Outfit + preset and sends it to a
+Today `deploy` derives what to serve from the Spinloop + preset and sends it to a
 single pre-existing endpoint. That derivation is kept; what is added is the
 environment's lifecycle boundary — discover the shared layer, provision the
 per-environment resources, register the environment, and let the shared,
@@ -18,7 +18,7 @@ keys the Lambdas by environment.
 
 **Goals:**
 
-- `outfit remote deploy <env>` creates a named environment on the shared layer:
+- `spinloop remote deploy <env>` creates a named environment on the shared layer:
   its own EIP, instance config, per-env API key, per-env allowed CIDR, and per-env
   SSM state.
 - Discover the shared layer from stack outputs, so nothing per-account is
@@ -31,7 +31,7 @@ keys the Lambdas by environment.
 **Non-Goals:**
 
 - Deploying the shared layer (that is `bootstrap`).
-- Changing how what-to-serve is derived from the Outfit/preset — that logic is
+- Changing how what-to-serve is derived from the Spinloop/preset — that logic is
   unchanged; this change wraps environment creation around it.
 - A Go rewrite of the CDK.
 
@@ -42,7 +42,7 @@ keys the Lambdas by environment.
 Deploy reads the bootstrap stack's outputs (well-known stack name) with
 `DescribeStacks` to get the lifecycle Lambda URLs, weights bucket, shared roles
 and region. If the stack is absent, deploy fails telling the user to run
-`outfit remote bootstrap` first. This reuses the `service/cloudformation` client
+`spinloop remote bootstrap` first. This reuses the `service/cloudformation` client
 the bootstrap change adds.
 
 ### Per-environment resources, keyed by name
@@ -51,7 +51,7 @@ Creating an environment provisions, tagged by the environment name: an Elastic
 IP; the EC2 instance configuration (launched later by `start`); a per-environment
 API-key secret; a per-environment allowed-CIDR security-group rule; and
 per-environment SSM parameters for deploy-config and idle-state (e.g.
-`/cloud-vm-llm/<env>/…`). The engine comes from the Outfit's `PROVIDER`, selecting
+`/cloud-vm-llm/<env>/…`). The engine comes from the Spinloop's `PROVIDER`, selecting
 the matching baked AMI.
 
 ### The environment identifier travels in remote.json and control calls
@@ -102,7 +102,7 @@ one. This is the per-environment half of the `remote/` CDK restructure.
   environments visible so stale ones can be found.
 - **Stale registry vs reality** → `remote.json` reflects what deploy wrote;
   teardown/removal of an environment is future work (see the bootstrap change's
-  `outfit remote destroy` note).
+  `spinloop remote destroy` note).
 
 ## Open Questions
 
@@ -110,5 +110,5 @@ one. This is the per-environment half of the `remote/` CDK restructure.
   bucket, reused by every environment serving it) — assumed yes, keyed by model
   prefix; deploy triggers a seed only when the model's weights are absent.
 - Whether `deploy` should optionally `start` the environment in one step, or
-  always leave starting to `outfit remote start` (kept separate here, matching
+  always leave starting to `spinloop remote start` (kept separate here, matching
   today's "deploying is not starting").

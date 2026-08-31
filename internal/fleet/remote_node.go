@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/lucinate-ai/outfit/internal/daemon"
-	"github.com/lucinate-ai/outfit/internal/metrics"
-	"github.com/lucinate-ai/outfit/internal/remote"
+	"github.com/spinloop-ai/spinloop/internal/daemon"
+	"github.com/spinloop-ai/spinloop/internal/metrics"
+	"github.com/spinloop-ai/spinloop/internal/remote"
 )
 
 // remoteNode is one member of the fleet as seen through a remote, scale-to-zero
@@ -73,13 +73,13 @@ func (n *remoteNode) StartWithProgress(ctx context.Context, progress func(string
 }
 
 // StartWith is how a router wakes a node to serve something. A remote environment
-// is not woken: what it serves is set by `outfit remote deploy`, a heavier flow
+// is not woken: what it serves is set by `spinloop remote deploy`, a heavier flow
 // (provisioning, weight seeding, ingress) that a node start must not conflate.
 func (n *remoteNode) StartWith(ctx context.Context, dc *remote.DeployConfig, engineKey string) (daemon.StatusResponse, error) {
 	_ = dc
 	_ = engineKey
 	return daemon.StatusResponse{}, fmt.Errorf(
-		"%s is a remote environment, not a node to be woken: tell it what to serve with `outfit remote deploy`",
+		"%s is a remote environment, not a node to be woken: tell it what to serve with `spinloop remote deploy`",
 		n.name)
 }
 

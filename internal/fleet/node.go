@@ -6,9 +6,9 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/lucinate-ai/outfit/internal/daemon"
-	"github.com/lucinate-ai/outfit/internal/metrics"
-	"github.com/lucinate-ai/outfit/internal/remote"
+	"github.com/spinloop-ai/spinloop/internal/daemon"
+	"github.com/spinloop-ai/spinloop/internal/metrics"
+	"github.com/spinloop-ai/spinloop/internal/remote"
 )
 
 // Outcome classifies how a node call ended. A fleet view renders these as rows
@@ -50,7 +50,7 @@ type ProgressStarter interface {
 }
 
 // Node is one member of the fleet. Only daemonNode implements it today; the
-// interface exists so a remote-environment kind (an `outfit remote`
+// interface exists so a remote-environment kind (an `spinloop remote`
 // environment read through its stats Lambda, which already yields
 // metrics.Stats) can be added without reworking the fan-out or the renderers.
 type Node interface {
@@ -67,7 +67,7 @@ type Node interface {
 	Logs(ctx context.Context, offset int64, limit int) (daemon.LogsResponse, error)
 }
 
-// daemonNode is a machine running `outfit daemon`, reached over its control
+// daemonNode is a machine running `spinloop daemon`, reached over its control
 // API.
 type daemonNode struct {
 	name   string

@@ -1,6 +1,6 @@
 ## Why
 
-`outfit` can point a harness at Claude on AWS Bedrock, but there is no GCP
+`spinloop` can point a harness at Claude on AWS Bedrock, but there is no GCP
 equivalent. Google Cloud's Vertex AI is the direct analogue — it hosts both
 Gemini and Anthropic Claude — and teams standardised on GCP have no first-class
 provider today. Adding it mirrors the Bedrock pattern (cloud creds, no injected
@@ -44,6 +44,6 @@ None. Both changes extend the existing catalogue capability.
 - `internal/catalog/catalog.go` — `OptionsRequired []string` on `Provider`;
   a validation step in `BuildProviderBlock` (opencode). No Go code enumerates
   models, so nothing else changes there.
-- `outfit list` — the two providers appear in the alphabetical listing.
+- `spinloop list` — the two providers appear in the alphabetical listing.
 - Docs: `docs/commands/add.md` gains a Vertex example alongside the Bedrock one.
 - No change to the Pi harness (both providers are opencode-only, as Bedrock is).

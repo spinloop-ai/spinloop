@@ -1,6 +1,6 @@
 ## Context
 
-The daemon runs `outfit daemon --api-addr 127.0.0.1:4242` on every instance, with a SIGTERM handler that calls `sup.Stop()` — which SIGTERMs the engine process group (SIGKILL after 10s grace). When the Lambda calls EC2 `StopInstances`, the engine blocks the instance shutdown (it's a long-running process that doesn't respond to SIGTERM during EC2's shutdown sequence), leaving the instance stuck in `stopping` for up to 12 minutes before EC2 force-kills it.
+The daemon runs `spinloop daemon --api-addr 127.0.0.1:4242` on every instance, with a SIGTERM handler that calls `sup.Stop()` — which SIGTERMs the engine process group (SIGKILL after 10s grace). When the Lambda calls EC2 `StopInstances`, the engine blocks the instance shutdown (it's a long-running process that doesn't respond to SIGTERM during EC2's shutdown sequence), leaving the instance stuck in `stopping` for up to 12 minutes before EC2 force-kills it.
 
 The daemon already exposes `POST /v1/stop` on its control API (loopback, no token), which the supervisor's `Stop()` method handles by terminating the engine process group.
 

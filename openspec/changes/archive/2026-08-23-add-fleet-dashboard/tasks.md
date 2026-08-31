@@ -136,7 +136,7 @@
       `fleet metrics --watch`, and a fleet-file failure fails before any
       terminal interaction
 - [x] 4.3 `gofmt`, `go vet ./...`, and `go test ./... -cover` at or above 80%
-      (cmd/outfit at 88.7%; the `-race` suite passes, matching CI)
+      (cmd/spinloop at 88.7%; the `-race` suite passes, matching CI)
 - [x] 4.4 `openspec validate add-fleet-dashboard --strict` passes clean
 - [x] 4.5 Update `AGENTS.md`: the `fleet dashboard` command and its files, the
       watch-mode-versus-dashboard split, and the new UI dependencies

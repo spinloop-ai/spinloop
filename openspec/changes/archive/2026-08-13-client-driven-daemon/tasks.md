@@ -14,24 +14,24 @@
 
 ## 2. The daemon stops reading workload configuration
 
-- [x] 2.1 Remove the Outfit path from `outfit daemon`, and fail with a message
+- [x] 2.1 Remove the Spinloop path from `spinloop daemon`, and fail with a message
       naming the start request when one is given
-- [x] 2.2 Delete the Outfit branch of the daemon's `BuildArgv`, its
-      `resolveDaemonOutfit`, and its `OUTFIT_ALIAS`/`defaultOutfitNamed` gate;
+- [x] 2.2 Delete the Spinloop branch of the daemon's `BuildArgv`, its
+      `resolveDaemonSpinloop`, and its `SPINLOOP_ALIAS`/`defaultSpinloopNamed` gate;
       what to serve comes from the request or the stored config alone
 - [x] 2.3 Make "nothing to serve" name what would supply it
-- [x] 2.4 Tests: an Outfit path is refused, an adjacent Outfit is not read, a
+- [x] 2.4 Tests: a Spinloop path is refused, an adjacent Spinloop is not read, a
       bare start with nothing stored fails, and a stored config still survives a
       restart
 
 ## 3. The bearer token gains a file and a flag
 
 - [x] 3.1 Add `--api-token-file` (trimmed) and `--api-token` beside
-      `OUTFIT_API_TOKEN`; fail naming both when more than one is given
+      `SPINLOOP_API_TOKEN`; fail naming both when more than one is given
 - [x] 3.2 Fail at startup when a token file cannot be read, rather than
       listening without a token
 - [x] 3.3 Update the non-loopback refusal message to name every way a token can
-      be supplied, and stop referring to an Outfit's `.env`
+      be supplied, and stop referring to a Spinloop's `.env`
 - [x] 3.4 Tests: each source, a conflict, an unreadable file, and that loopback
       still needs none
 
@@ -53,12 +53,12 @@
 - [x] 5.1 Update `docs/openapi.yaml` with the start request's key field, stating
       that it is never returned
 - [x] 5.2 Document the daemon's inputs in `docs/commands/serve.md` — its flags
-      and its API, and that it reads no Outfit, preset or fleet file
+      and its API, and that it reads no Spinloop, preset or fleet file
 - [x] 5.3 Document the token sources in `docs/env-vars.md` and the serve docs,
       recommending the file form and stating what the literal flag costs
-- [x] 5.4 Rewrite `examples/fleet-local` for a daemon started with no Outfit,
+- [x] 5.4 Rewrite `examples/fleet-local` for a daemon started with no Spinloop,
       and drop the paragraph about `fleet start` working standalone
-- [x] 5.5 Rewrite `examples/fleet-docker`: remove `node/Outfit` and the `CMD`
+- [x] 5.5 Rewrite `examples/fleet-docker`: remove `node/Spinloop` and the `CMD`
       that passes it, gate one node's engine to cover the key path, and assert
       it in `run-tests.sh`
 - [x] 5.6 Update `AGENTS.md`: the daemon's two inputs, the key's path to the

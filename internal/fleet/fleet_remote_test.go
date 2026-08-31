@@ -9,14 +9,14 @@ import (
 	"testing"
 )
 
-// registerRemoteEnv points the environment registry (OUTFIT_CONFIG_DIR) at a
+// registerRemoteEnv points the environment registry (SPINLOOP_CONFIG_DIR) at a
 // temp config directory and writes one environment's remote.json, whose control
 // plane is the start and stop servers it is handed. It returns the name a
 // kind-remote fleet node uses to refer to it.
 func registerRemoteEnv(t *testing.T, name, startURL, stopURL string) {
 	t.Helper()
 	home := t.TempDir()
-	t.Setenv("OUTFIT_CONFIG_DIR", home)
+	t.Setenv("SPINLOOP_CONFIG_DIR", home)
 	envDir := filepath.Join(home, "remotes", name)
 	if err := os.MkdirAll(envDir, 0o755); err != nil {
 		t.Fatal(err)
@@ -56,7 +56,7 @@ func TestFanOutLoadsARemoteNodeFromTheFile(t *testing.T) {
 func TestFanOutRemotesANUnregisteredEnvAsAConfigError(t *testing.T) {
 	stubAWSCreds(t)
 	// A registry directory with no such environment in it.
-	t.Setenv("OUTFIT_CONFIG_DIR", t.TempDir())
+	t.Setenv("SPINLOOP_CONFIG_DIR", t.TempDir())
 
 	path := writeFleet(t, "nodes:\n  - name: prod\n    kind: remote\n", "")
 	cfg, err := Load(path)

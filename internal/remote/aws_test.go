@@ -12,7 +12,7 @@ func TestControlPlaneFromOutputs_MapsEveryStackOutput(t *testing.T) {
 	// the mapping in controlPlaneFromOutputs must take it on: an output landed
 	// here but not mapped is dropped from every registered environment's
 	// remote.json without error — update_url was exactly that, which left
-	// `outfit remote keep` unusable on freshly registered environments.
+	// `spinloop remote keep` unusable on freshly registered environments.
 	outputs := map[string]string{
 		"StartUrl":               "https://start.example.aws/",
 		"StopUrl":                "https://stop.example.aws/",

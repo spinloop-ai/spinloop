@@ -1,11 +1,11 @@
 ## Context
 
-The `remote stats` command in `cmd/outfit/remote.go` currently prints a human-readable key-value table to stdout. The subcommand is dispatched at line 46 of the `cmdRemote` switch, handled by `cmdRemoteStats` (lines 403-518). The library layer (`internal/remote.Stats`) and response types remain unchanged — only the CLI command name and output formatting change.
+The `remote stats` command in `cmd/spinloop/remote.go` currently prints a human-readable key-value table to stdout. The subcommand is dispatched at line 46 of the `cmdRemote` switch, handled by `cmdRemoteStats` (lines 403-518). The library layer (`internal/remote.Stats`) and response types remain unchanged — only the CLI command name and output formatting change.
 
 ## Goals / Non-Goals
 
 **Goals:**
-- Rename `outfit remote stats` to `outfit remote metrics`
+- Rename `spinloop remote stats` to `spinloop remote metrics`
 - Add `--format` flag: `table` (default, existing behaviour) and `json` (structured JSON)
 - Add `--watch`/`-w` flag: poll metrics every 60 seconds
 - Keep the library layer (`internal/remote`) untouched — types, `Stats()` function, and `callStats()` are unchanged

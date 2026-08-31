@@ -12,12 +12,12 @@ See proposal.md — Why. The mechanics that matter for the approach:
 - `metrics.Stats` is the single shape both metrics views render.
   `remote.StatsResponse` restates it with the control plane's extras, using
   type aliases into `internal/metrics` for the sub-structs, which is why
-  `cmd/outfit/metrics_render.go` can serve both.
+  `cmd/spinloop/metrics_render.go` can serve both.
 - The cloud metrics path is a relay: `remote/lambda/stats/index.ts` curls the
   instance's `/v1/metrics` over SSM (`DAEMON_METRICS_CMD`) and merges EC2
   facts. Its `DaemonMetrics` interface is a hand-written mirror of
   `metrics.Stats`.
-- The cloud status path is separate and much thinner. `outfit remote status`
+- The cloud status path is separate and much thinner. `spinloop remote status`
   is a `GET` on `cfg.StartURL`, served by the `status(env)` branch of
   `remote/lambda/start/index.ts:80`. It returns `state`, `healthy` and
   `base_url` into `remote.Response` — the control Lambdas' shared reply — and
@@ -32,12 +32,12 @@ See proposal.md — Why. The mechanics that matter for the approach:
 - `docs/openapi.yaml` is enforced by `internal/daemon/openapi_test.go`, which
   compares it against the JSON fields of the structs the handler serialises.
   Adding a field to `metrics.Stats` fails the build until the schema matches.
-- `formatDuration(seconds int)` in `cmd/outfit/remote.go:754` is the only
-  duration formatter, and `cmd/outfit/fleet.go:109` already renders
+- `formatDuration(seconds int)` in `cmd/spinloop/remote.go:754` is the only
+  duration formatter, and `cmd/spinloop/fleet.go:109` already renders
   `(last active %s ago)` from `IdleSeconds`, gated on `LastActiveAt != ""`.
 
-There is no `stats` command to consider: `outfit remote stats` was renamed to
-`outfit remote metrics`, and "stats" survives only in type and Lambda names.
+There is no `stats` command to consider: `spinloop remote stats` was renamed to
+`spinloop remote metrics`, and "stats" survives only in type and Lambda names.
 
 ## Goals / Non-Goals
 
@@ -45,11 +45,11 @@ There is no `stats` command to consider: `outfit remote stats` was renamed to
 
 - One measurement, one record, reported from both `/v1/status` and
   `/v1/metrics`, with no possibility of the two disagreeing.
-- `outfit remote metrics`, `outfit fleet metrics` and `outfit remote status`
+- `spinloop remote metrics`, `spinloop fleet metrics` and `spinloop remote status`
   show it without any of them learning anything about how activity is derived.
-- Wording and duration formatting identical to `outfit fleet status`, so the
+- Wording and duration formatting identical to `spinloop fleet status`, so the
   same fact reads the same way wherever it appears.
-- `outfit remote status` stays as quick as it is today, and stays a read.
+- `spinloop remote status` stays as quick as it is today, and stays a read.
 
 **Non-Goals:**
 
@@ -59,7 +59,7 @@ There is no `stats` command to consider: `outfit remote stats` was renamed to
 - No new endpoint, and no second round trip on the metrics path: nothing calls
   `/v1/status` to decorate a metrics view. The status path is the one place a
   daemon call is genuinely added, because it makes none today.
-- No change to `outfit fleet status`, which already shows this.
+- No change to `spinloop fleet status`, which already shows this.
 - No history or activity series — one timestamp, as today.
 - No attempt to report activity for a *stopped instance* in the cloud. Reaching
   the daemon needs a running box; a stopped instance is silent, and this
@@ -77,14 +77,14 @@ status alongside metrics. `fleet.NodeResult` already carries both a `Status`
 and a `Metrics`, so `fleet metrics` could populate both with a second fan-out
 call. Rejected on three counts — it doubles the fan-out for one figure; it
 introduces a window where the status and metrics halves of one screen describe
-different moments; and it does nothing for `outfit remote metrics`, where the
+different moments; and it does nothing for `spinloop remote metrics`, where the
 Lambda would need a second SSM round trip per request. Putting the fields in
 the payload fixes every consumer at once, including the Lambda, which needs no
 new command.
 
 Alternative considered: a `time.Time` rather than an RFC 3339 string.
 Rejected: the value crosses a TypeScript relay on its way to
-`outfit remote metrics`, and `StatusResponse` already settled on a string for
+`spinloop remote metrics`, and `StatusResponse` already settled on a string for
 that reason. Matching it means the Lambda's mirror interfaces stay
 copy-paste-consistent and the two endpoints serialise identically.
 
@@ -132,7 +132,7 @@ The wording is `last active <d> ago`, from
 - **json**: the fields as they arrive, no formatting — a consumer wanting a
   duration has `idleSeconds` and a consumer wanting a fact has `lastActiveAt`.
 
-The bar and table lines go into `cmd/outfit/metrics_render.go` as a shared
+The bar and table lines go into `cmd/spinloop/metrics_render.go` as a shared
 helper, alongside `renderTokenLines` and friends. That is the file's stated
 purpose — the parts both metrics views draw — and it is what makes
 `fleet metrics` pick this up for free rather than by a parallel edit.
@@ -151,7 +151,7 @@ be made to share a request.
 
 A control plane deployed before this change simply omits the fields, and the
 CLI omits the line — the same absence it shows for an engine that has done no
-work. So `outfit remote metrics` degrades to today's output rather than
+work. So `spinloop remote metrics` degrades to today's output rather than
 erroring, and the Lambda redeploy is not a hard prerequisite for upgrading the
 CLI.
 
@@ -269,7 +269,7 @@ Deploy order does not matter, because every combination degrades safely:
 - Old CLI against a new daemon: two unknown JSON fields, ignored.
 
 The daemon and fleet paths work as soon as the binary is updated.
-`outfit remote metrics` and `outfit remote status` show the figure once the
+`spinloop remote metrics` and `spinloop remote status` show the figure once the
 control plane is redeployed (`pnpm deploy`); until then both render exactly as
 they do today, because an old Lambda omits the fields and the CLI omits the
 line.

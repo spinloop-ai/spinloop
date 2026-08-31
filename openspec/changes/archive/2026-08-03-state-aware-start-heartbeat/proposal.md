@@ -1,6 +1,6 @@
 ## Why
 
-During a cold start, `outfit remote start` prints a 30s heartbeat that always
+During a cold start, `spinloop remote start` prints a 30s heartbeat that always
 reads "still starting (Ns elapsed)". When AWS has no GPU capacity in any zone,
 the start Lambda launches nothing and returns `no-capacity`; the instance is not
 booting at all — it is blocked waiting for capacity to exist. The heartbeat has
@@ -39,13 +39,13 @@ misleads the user into thinking a boot is underway when none is.
 
 ## Impact
 
-- `cmd/outfit/remote.go`: the `startProgress` heartbeat goroutine and the
+- `cmd/spinloop/remote.go`: the `startProgress` heartbeat goroutine and the
   progress callback wiring into `remote.Start`; and registering `-t` as a second
   name for the existing `--timeout` flag in `cmdRemoteStart`.
 - `internal/remote/remote.go`: `Start` already surfaces each poll's state via
   the progress callback; the client needs the state made available to the
   heartbeat (not just formatted into the retry line).
-- `cmd/outfit/remote_deploy_test.go`: the existing test asserts the "still
+- `cmd/spinloop/remote_deploy_test.go`: the existing test asserts the "still
   starting" wording and heartbeat count; it needs updating for the state-aware
   wording.
 - User-facing terminal output only; no config, API, or stdout-contract changes.

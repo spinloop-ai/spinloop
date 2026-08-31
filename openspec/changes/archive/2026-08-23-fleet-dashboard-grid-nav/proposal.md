@@ -6,7 +6,7 @@ right when the dashboard renders one tile per row, but as soon as the
 terminal is wide enough to fit two or more tiles per row, `down` just
 advances to the next tile in file order — usually the one to the right, not
 the one below — and there is no way to move left or right at all
-([#130](https://github.com/lucinate-ai/outfit/issues/130)). The arrow keys
+([#130](https://github.com/spinloop-ai/spinloop/issues/130)). The arrow keys
 need to reflect the grid the operator is actually looking at.
 
 ## What Changes
@@ -43,10 +43,10 @@ None.
 
 ## Impact
 
-- **Go**: `cmd/outfit/dashboard_model.go` (the key switch's up/down handling
+- **Go**: `cmd/spinloop/dashboard_model.go` (the key switch's up/down handling
   and new left/right cases, cursor math against `dashCols`); possibly
-  `cmd/outfit/dashboard_render.go` if row/column helpers need to be shared
-  rather than recomputed; `cmd/outfit/fleet_dashboard_test.go` (new tests for
+  `cmd/spinloop/dashboard_render.go` if row/column helpers need to be shared
+  rather than recomputed; `cmd/spinloop/fleet_dashboard_test.go` (new tests for
   row-aware up/down, new left/right tests, edge-clamping on a short last
   row, and coverage for a terminal resize changing the column count mid
   session).

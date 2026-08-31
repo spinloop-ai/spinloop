@@ -18,7 +18,7 @@
 - [x] 3.1 In `remote/lib/llm-stack.ts`, add `UpdateFn` (NodejsFunction) pointing to `remote/lambda/update/index.ts`
 - [x] 3.2 Add `ec2:CreateTags` permission (broad ARN — no tag scoping available for this action) and `ec2:DescribeInstances` (to resolve the instance by tag)
 - [x] 3.3 Add Function URL with `AWS_IAM` auth and expose the URL as a stack output (`UpdateUrl`)
-- [x] 3.4 Include `update_url` in the `OutfitRemoteConfig` output JSON
+- [x] 3.4 Include `update_url` in the `SpinloopRemoteConfig` output JSON
 
 ## 4. Go client: Keep function
 
@@ -29,14 +29,14 @@
 
 ## 5. CLI: keep subcommand
 
-- [x] 5.1 In `cmd/outfit/remote.go`, add `keep` case to the `cmdRemote` switch
+- [x] 5.1 In `cmd/spinloop/remote.go`, add `keep` case to the `cmdRemote` switch
 - [x] 5.2 Implement `cmdRemoteKeep(args)` — parse duration from positional arg using `time.ParseDuration`, compute `time.Now().Add(d)`, call `remote.Keep`, print the deadline
 - [x] 5.3 Validate that the duration argument is present and valid
 - [x] 5.4 Update the usage error message to include `keep` in the list of accepted subcommands
 
 ## 6. CLI: start --keep flag
 
-- [x] 6.1 In `cmd/outfit/remote.go`, add `--keep`/`-k` flag to `cmdRemoteStart` accepting a duration string
+- [x] 6.1 In `cmd/spinloop/remote.go`, add `--keep`/`-k` flag to `cmdRemoteStart` accepting a duration string
 - [x] 6.2 Parse the duration with `time.ParseDuration`, compute the deadline, pass to `remote.Start`
 - [x] 6.3 Report the retention deadline in the output after the instance is ready
 

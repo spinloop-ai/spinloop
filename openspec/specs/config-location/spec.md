@@ -2,82 +2,82 @@
 
 ## Purpose
 
-How outfit resolves its own config directory, and why that resolution is
+How spinloop resolves its own config directory, and why that resolution is
 explicit rather than inferred.
 
-Everything outfit owns lives under one directory — `config.json`, `remote.json`,
+Everything spinloop owns lives under one directory — `config.json`, `remote.json`,
 the environment registry, the daemon state dir, the CDK source cache — and the
 obvious way to find it leans on `$HOME`. A systemd service does not get one. On
-the cloud instance that meant the boot script wrote to `/root/.config/outfit`
-while the daemon read a relative `.config/outfit`, so every boot start returned
+the cloud instance that meant the boot script wrote to `/root/.config/spinloop`
+while the daemon read a relative `.config/spinloop`, so every boot start returned
 "nothing to serve" against a perfectly healthy box. This covers the
-`OUTFIT_CONFIG_DIR` override, its precedence over `XDG_CONFIG_HOME` and
+`SPINLOOP_CONFIG_DIR` override, its precedence over `XDG_CONFIG_HOME` and
 `~/.config`, and the rule that an unresolvable home fails loudly instead of
 silently resolving to a bogus relative path.
 
 ## Requirements
 ### Requirement: Single resolved config directory
 
-outfit SHALL resolve one config directory and place every file it owns under
+spinloop SHALL resolve one config directory and place every file it owns under
 it: its own `config.json` (default-harness preference and alias registry), the
 legacy `remote.json`, the `remotes/<name>/` environment registry, the daemon
 state directory, and the CDK source directory. There SHALL be one resolver;
 the location SHALL NOT be computed independently in more than one place.
 
-#### Scenario: All outfit-owned state shares one root
+#### Scenario: All spinloop-owned state shares one root
 
 - **WHEN** the config directory resolves to a given path
 - **THEN** `config.json`, `remote.json`, the `remotes/<name>/` registry, and
   the daemon state directory all resolve beneath that same path
 
-### Requirement: OUTFIT_CONFIG_DIR override
+### Requirement: SPINLOOP_CONFIG_DIR override
 
-When `OUTFIT_CONFIG_DIR` is set, its value SHALL be outfit's config directory
-verbatim — used as-is, with no `outfit` segment appended. It SHALL take
+When `SPINLOOP_CONFIG_DIR` is set, its value SHALL be spinloop's config directory
+verbatim — used as-is, with no `spinloop` segment appended. It SHALL take
 precedence over `XDG_CONFIG_HOME` and over the home-directory default.
 
 #### Scenario: Override is used verbatim
 
-- **WHEN** `OUTFIT_CONFIG_DIR=/var/lib/outfit` is set
-- **THEN** outfit's config directory is `/var/lib/outfit` and, for example, the
-  daemon reads its deploy config from `/var/lib/outfit/daemon/`
+- **WHEN** `SPINLOOP_CONFIG_DIR=/var/lib/spinloop` is set
+- **THEN** spinloop's config directory is `/var/lib/spinloop` and, for example, the
+  daemon reads its deploy config from `/var/lib/spinloop/daemon/`
 
 #### Scenario: Override wins over XDG and home
 
-- **WHEN** both `OUTFIT_CONFIG_DIR` and `XDG_CONFIG_HOME` are set
-- **THEN** the config directory is `OUTFIT_CONFIG_DIR`'s value, ignoring
+- **WHEN** both `SPINLOOP_CONFIG_DIR` and `XDG_CONFIG_HOME` are set
+- **THEN** the config directory is `SPINLOOP_CONFIG_DIR`'s value, ignoring
   `XDG_CONFIG_HOME`
 
 ### Requirement: Default resolution unchanged
 
-With `OUTFIT_CONFIG_DIR` unset, the config directory SHALL be
-`${XDG_CONFIG_HOME}/outfit` when `XDG_CONFIG_HOME` is set, otherwise
-`~/.config/outfit`. This is the existing behaviour and SHALL be preserved so
+With `SPINLOOP_CONFIG_DIR` unset, the config directory SHALL be
+`${XDG_CONFIG_HOME}/spinloop` when `XDG_CONFIG_HOME` is set, otherwise
+`~/.config/spinloop`. This is the existing behaviour and SHALL be preserved so
 existing installs are unaffected.
 
 #### Scenario: XDG default
 
-- **WHEN** `OUTFIT_CONFIG_DIR` is unset and `XDG_CONFIG_HOME` is set
-- **THEN** the config directory is `${XDG_CONFIG_HOME}/outfit`
+- **WHEN** `SPINLOOP_CONFIG_DIR` is unset and `XDG_CONFIG_HOME` is set
+- **THEN** the config directory is `${XDG_CONFIG_HOME}/spinloop`
 
 #### Scenario: Home default
 
-- **WHEN** neither `OUTFIT_CONFIG_DIR` nor `XDG_CONFIG_HOME` is set and the
+- **WHEN** neither `SPINLOOP_CONFIG_DIR` nor `XDG_CONFIG_HOME` is set and the
   home directory resolves
-- **THEN** the config directory is `~/.config/outfit`
+- **THEN** the config directory is `~/.config/spinloop`
 
 ### Requirement: Unresolvable home fails loudly
 
-When `OUTFIT_CONFIG_DIR` is unset, `XDG_CONFIG_HOME` is unset, and the home
+When `SPINLOOP_CONFIG_DIR` is unset, `XDG_CONFIG_HOME` is unset, and the home
 directory cannot be resolved (no `$HOME`, as under a bare systemd service),
-outfit SHALL fail with an error that names `OUTFIT_CONFIG_DIR` as the fix,
+spinloop SHALL fail with an error that names `SPINLOOP_CONFIG_DIR` as the fix,
 rather than silently resolving to a relative or root-anchored `.config`
 directory.
 
 #### Scenario: No home, no override
 
-- **WHEN** none of `OUTFIT_CONFIG_DIR`, `XDG_CONFIG_HOME`, or a resolvable
+- **WHEN** none of `SPINLOOP_CONFIG_DIR`, `XDG_CONFIG_HOME`, or a resolvable
   home directory is available
-- **THEN** the operation fails with an error naming `OUTFIT_CONFIG_DIR`, and
+- **THEN** the operation fails with an error naming `SPINLOOP_CONFIG_DIR`, and
   does not read or write a bogus relative `.config` path
 

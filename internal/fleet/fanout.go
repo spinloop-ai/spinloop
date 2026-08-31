@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/lucinate-ai/outfit/internal/daemon"
+	"github.com/spinloop-ai/spinloop/internal/daemon"
 )
 
 // Call is one node operation, as fanned out over the fleet.

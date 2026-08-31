@@ -15,7 +15,7 @@ const VLLM: DeployConfig = {
   servedModelName: 'Qwen/Qwen3.6-27B-FP8',
   serveArgs: ['--enforce-eager', '--tool-call-parser', 'qwen3_coder'],
   companions: {},
-  outfitVersion: 'latest',
+  spinloopVersion: 'latest',
 };
 
 const LLAMACPP: DeployConfig = {
@@ -27,7 +27,7 @@ const LLAMACPP: DeployConfig = {
   servedModelName: 'qwen3.6-27b',
   serveArgs: ['-ngl', '99', '-fa', 'on', '--spec-type', 'mtp', '--jinja'],
   companions: {},
-  outfitVersion: 'latest',
+  spinloopVersion: 'latest',
 };
 
 describe('weightsPrefixFor', () => {
@@ -177,46 +177,46 @@ describe('parseDeployConfig companions', () => {
   });
 });
 
-describe('parseDeployConfig outfitVersion', () => {
+describe('parseDeployConfig spinloopVersion', () => {
   it('defaults to latest, so a config written before the pin existed parses unchanged', () => {
-    const { outfitVersion, ...prePin } = LLAMACPP;
-    expect(parseDeployConfig(JSON.stringify(prePin)).outfitVersion).toBe('latest');
+    const { spinloopVersion, ...prePin } = LLAMACPP;
+    expect(parseDeployConfig(JSON.stringify(prePin)).spinloopVersion).toBe('latest');
   });
 
   it('round-trips a pinned version', () => {
-    const withPin = { ...VLLM, outfitVersion: '1.26.1' };
+    const withPin = { ...VLLM, spinloopVersion: '1.26.1' };
     expect(parseDeployConfig(JSON.stringify(withPin))).toEqual(withPin);
   });
 
   it('stores a v-prefixed pin minus the v, so the binary version output agrees', () => {
-    const cfg = parseDeployConfig(JSON.stringify({ ...VLLM, outfitVersion: 'v1.26.1' }));
-    expect(cfg.outfitVersion).toBe('1.26.1');
+    const cfg = parseDeployConfig(JSON.stringify({ ...VLLM, spinloopVersion: 'v1.26.1' }));
+    expect(cfg.spinloopVersion).toBe('1.26.1');
   });
 
   it('treats an explicit latest, and an empty or whitespace value, as no pin', () => {
-    expect(parseDeployConfig(JSON.stringify({ ...VLLM, outfitVersion: 'latest' })).outfitVersion).toBe(
+    expect(parseDeployConfig(JSON.stringify({ ...VLLM, spinloopVersion: 'latest' })).spinloopVersion).toBe(
       'latest',
     );
-    expect(parseDeployConfig(JSON.stringify({ ...VLLM, outfitVersion: '' })).outfitVersion).toBe(
+    expect(parseDeployConfig(JSON.stringify({ ...VLLM, spinloopVersion: '' })).spinloopVersion).toBe(
       'latest',
     );
-    expect(parseDeployConfig(JSON.stringify({ ...VLLM, outfitVersion: '   ' })).outfitVersion).toBe(
+    expect(parseDeployConfig(JSON.stringify({ ...VLLM, spinloopVersion: '   ' })).spinloopVersion).toBe(
       'latest',
     );
   });
 
   it('rejects a pin with shell metacharacters — it is interpolated into the boot script', () => {
     expect(() =>
-      parseDeployConfig(JSON.stringify({ ...VLLM, outfitVersion: '1.2.3; rm -rf /' })),
-    ).toThrow(/outfitVersion/);
+      parseDeployConfig(JSON.stringify({ ...VLLM, spinloopVersion: '1.2.3; rm -rf /' })),
+    ).toThrow(/spinloopVersion/);
     expect(() =>
-      parseDeployConfig(JSON.stringify({ ...VLLM, outfitVersion: '/etc/passwd' })),
-    ).toThrow(/outfitVersion/);
+      parseDeployConfig(JSON.stringify({ ...VLLM, spinloopVersion: '/etc/passwd' })),
+    ).toThrow(/spinloopVersion/);
   });
 
   it('rejects a non-string value', () => {
-    expect(() => parseDeployConfig(JSON.stringify({ ...VLLM, outfitVersion: 7 }))).toThrow(
-      /outfitVersion/,
+    expect(() => parseDeployConfig(JSON.stringify({ ...VLLM, spinloopVersion: 7 }))).toThrow(
+      /spinloopVersion/,
     );
   });
 });

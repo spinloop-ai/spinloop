@@ -35,7 +35,7 @@ exposes these as `APIError` codes: `ExpiredToken`, `ExpiredTokenException`,
   `start`, `deploy`, and `stats` all benefit.
 
 **Non-Goals:**
-- Refreshing or acquiring credentials for the user (outfit stores none).
+- Refreshing or acquiring credentials for the user (spinloop stores none).
 - Changing the signing path, request shape, or stored config.
 - Reworking `bootstrap`'s credential flow beyond reusing the classifier if it
   is cheap; `bootstrap` already returns a non-blank error.
@@ -75,7 +75,7 @@ raw status+body for other codes.
 Lowercase, no trailing punctuation, fix in parentheses — e.g.
 `AWS credentials are expired or invalid (refresh your env credentials, profile, or SSO session)`.
 Guidance goes to the returned error (stderr via `main`'s funnel), never stdout,
-so `eval "$(outfit remote start)"` stays clean.
+so `eval "$(spinloop remote start)"` stays clean.
 
 ## Risks / Trade-offs
 
@@ -93,7 +93,7 @@ so `eval "$(outfit remote start)"` stays clean.
 
 Pure behavioural fix in one internal package; no data, config, or interface
 migration. Rollback is reverting the change. Verify by running
-`outfit remote status <outfit>` with a deliberately expired token and confirming
+`spinloop remote status <spinloop>` with a deliberately expired token and confirming
 a non-zero exit with the refresh message, plus `go test ./... -cover` staying
 ≥ 80%.
 

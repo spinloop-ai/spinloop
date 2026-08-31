@@ -3,7 +3,7 @@
 ### Requirement: Remote command group
 
 The system SHALL provide a `remote` command group with the subcommands `start`,
-`stop`, `status` and `deploy`, each taking an optional Outfit path. `start`
+`stop`, `status` and `deploy`, each taking an optional Spinloop path. `start`
 SHALL boot the endpoint and block until it is serving, printing the base URL
 and API key as shell exports; `stop` SHALL stop it immediately rather than
 waiting for its idle timer; `status` SHALL report instance state and endpoint
@@ -12,7 +12,7 @@ unrecognised subcommand SHALL fail naming the accepted ones.
 
 #### Scenario: Starting the endpoint
 
-- **WHEN** the user runs `outfit remote start` and the endpoint reports ready
+- **WHEN** the user runs `spinloop remote start` and the endpoint reports ready
 - **THEN** the base URL and API key are printed as `export` lines
 
 #### Scenario: Waiting through a cold start
@@ -23,7 +23,7 @@ unrecognised subcommand SHALL fail naming the accepted ones.
 
 #### Scenario: Unknown subcommand
 
-- **WHEN** the user runs `outfit remote frobnicate`
+- **WHEN** the user runs `spinloop remote frobnicate`
 - **THEN** the command fails listing the accepted subcommands
 
 ### Requirement: Reporting a start in progress
@@ -50,27 +50,27 @@ be evaluated directly while a person watching still sees progress.
 ### Requirement: Remote configuration discovery
 
 The endpoint's control URLs SHALL come from a JSON configuration naming a start
-URL, a stop URL, an optional deploy URL, and a region. An Outfit's `REMOTE`
-instruction SHALL select that file, resolved relative to the Outfit when the
-value is not absolute. When no Outfit names one, the per-user configuration
+URL, a stop URL, an optional deploy URL, and a region. A Spinloop's `REMOTE`
+instruction SHALL select that file, resolved relative to the Spinloop when the
+value is not absolute. When no Spinloop names one, the per-user configuration
 SHALL be used, so the command works outside any project. Environment variables
 SHALL override individual values, and the region SHALL fall back to the
 standard AWS region variable and then to the region named in the URL. A missing
 or incomplete configuration SHALL fail saying where to put it.
 
-#### Scenario: Outfit names the configuration
+#### Scenario: Spinloop names the configuration
 
-- **WHEN** an Outfit sets `REMOTE ./remote.json` and a `remote` subcommand runs
-  with that Outfit
-- **THEN** the URLs come from that file, resolved beside the Outfit
+- **WHEN** a Spinloop sets `REMOTE ./remote.json` and a `remote` subcommand runs
+  with that Spinloop
+- **THEN** the URLs come from that file, resolved beside the Spinloop
 
-#### Scenario: Explicit Outfit without a REMOTE instruction
+#### Scenario: Explicit Spinloop without a REMOTE instruction
 
-- **WHEN** a `remote` subcommand is given an Outfit that has no `REMOTE`
-- **THEN** it fails saying that Outfit has no `REMOTE` instruction, rather than
+- **WHEN** a `remote` subcommand is given a Spinloop that has no `REMOTE`
+- **THEN** it fails saying that Spinloop has no `REMOTE` instruction, rather than
   silently using the per-user configuration
 
-#### Scenario: No Outfit in play
+#### Scenario: No Spinloop in play
 
 - **WHEN** a `remote` subcommand runs outside a project
 - **THEN** the per-user configuration is used
@@ -80,12 +80,12 @@ or incomplete configuration SHALL fail saying where to put it.
 Requests to the control URLs SHALL be signed with the caller's own AWS
 credentials, resolved from the standard credential chain, and SHALL carry the
 hash of the request body so that a request with a payload is signed over that
-payload. Outfit SHALL NOT store AWS credentials of its own. A rejected request
+payload. Spinloop SHALL NOT store AWS credentials of its own. A rejected request
 SHALL report that the credentials may lack permission to invoke the endpoint.
 
 #### Scenario: A request carrying a body is signed over it
 
-- **WHEN** `outfit remote deploy` sends a configuration
+- **WHEN** `spinloop remote deploy` sends a configuration
 - **THEN** the request is signed including the body's hash, not as an empty
   payload
 
@@ -96,7 +96,7 @@ SHALL report that the credentials may lack permission to invoke the endpoint.
 
 ### Requirement: Deploying what the endpoint serves
 
-`outfit remote deploy` SHALL derive the deployment from the Outfit and its
+`spinloop remote deploy` SHALL derive the deployment from the Spinloop and its
 preset: `PROVIDER` SHALL select the inference engine, `MODEL` or the preset's
 Hugging Face reference SHALL name the weights as a repository and optional
 quantisation, `CONTEXT` or the preset's context size SHALL set the window,
@@ -110,25 +110,25 @@ derived deployment without sending it.
 
 #### Scenario: A preset drives both serving and deploying
 
-- **WHEN** an Outfit with a preset is deployed
+- **WHEN** a Spinloop with a preset is deployed
 - **THEN** the engine's arguments are the preset's, minus the settings the
   endpoint sets itself
 
-#### Scenario: The Outfit overrides its preset
+#### Scenario: The Spinloop overrides its preset
 
-- **WHEN** the Outfit states a `MODEL` and `CONTEXT` that differ from the
+- **WHEN** the Spinloop states a `MODEL` and `CONTEXT` that differ from the
   preset's
-- **THEN** the Outfit's values are deployed
+- **THEN** the Spinloop's values are deployed
 
 #### Scenario: A provider that is not a self-hosted engine
 
-- **WHEN** an Outfit naming a hosted provider is deployed
+- **WHEN** a Spinloop naming a hosted provider is deployed
 - **THEN** the command fails saying that only a self-hosted engine can be
   deployed
 
 #### Scenario: A local model file
 
-- **WHEN** an Outfit naming a local model file is deployed
+- **WHEN** a Spinloop naming a local model file is deployed
 - **THEN** the command fails saying to name a repository instead, because the
   endpoint fetches its own weights
 

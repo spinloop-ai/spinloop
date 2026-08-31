@@ -1,7 +1,7 @@
 # Qwen3.6-27B on llama.cpp
 
 Run Unsloth's GGUF build of Qwen3.6-27B locally with `llama-server`, then point
-opencode at it with the [`Outfit`](Outfit) in this directory.
+opencode at it with the [`Spinloop`](Spinloop) in this directory.
 
 This is the dense 27B model: every parameter is active on each token. That makes
 it heavier to run than the [35B-A3B mixture-of-experts
@@ -59,11 +59,11 @@ What the flags do:
   `http://127.0.0.1:8080/v1`.
 
 Rather than remember those flags, this directory keeps them in a
-[`preset.ini`](preset.ini) and lets `outfit` build and run the command:
+[`preset.ini`](preset.ini) and lets `spinloop` build and run the command:
 
 ```sh
-outfit serve              # from this directory; reads ./Outfit and its PRESET
-outfit serve --dry-run    # print the llama-server command without running it
+spinloop serve              # from this directory; reads ./Spinloop and its PRESET
+spinloop serve --dry-run    # print the llama-server command without running it
 ```
 
 ### Optional: quantise the KV cache
@@ -93,15 +93,15 @@ curl http://127.0.0.1:8080/v1/models
 
 `llama-server` speaks the OpenAI-compatible API, which is exactly what the
 `llamacpp` provider targets (default base URL `http://localhost:8080/v1`). Apply
-the [`Outfit`](Outfit) in this directory:
+the [`Spinloop`](Spinloop) in this directory:
 
 ```sh
-outfit apply examples/llamacpp/qwen3.6-27b/Outfit
+spinloop apply examples/llamacpp/qwen3.6-27b/Spinloop
 # or, from this directory:
-outfit apply
+spinloop apply
 ```
 
-The Outfit is:
+The Spinloop is:
 
 ```dockerfile
 PROVIDER llamacpp
@@ -125,15 +125,15 @@ PARALLEL 2
 ```
 
 llama.cpp's `--ctx-size` is a total KV-cache budget it divides across
-`--parallel` slots, so `outfit` scales it to compensate: with `CONTEXT 32768`
-and `PARALLEL 2`, `outfit serve` launches `llama-server` with `--ctx-size
+`--parallel` slots, so `spinloop` scales it to compensate: with `CONTEXT 32768`
+and `PARALLEL 2`, `spinloop serve` launches `llama-server` with `--ctx-size
 65536 --parallel 2` — each of the two slots still gets the 32768 tokens
 `CONTEXT` asked for, rather than half of it. `CONTEXT` itself, and what
 opencode sees as the context window, stay at 32768 either way. See
 [Parallelism](../../../docs/commands/serve.md#parallelism) for how vLLM and
 oMLX differ.
 
-Running on a non-default host or port? Add a `BASEURL` line to the Outfit (the
+Running on a non-default host or port? Add a `BASEURL` line to the Spinloop (the
 file ships one commented out):
 
 ```dockerfile
@@ -146,5 +146,5 @@ Now start `opencode` and select `llamacpp/qwen3.6-27b`.
 
 - The bigger mixture-of-experts sibling:
   [`examples/llamacpp/qwen3.6-35b-a3b`](../qwen3.6-35b-a3b/README.md)
-- The next generation of this dense size, with `outfit remote` deployment to
+- The next generation of this dense size, with `spinloop remote` deployment to
   AWS: [`examples/llamacpp/qwen3.8-27b`](../qwen3.8-27b/README.md)

@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lucinate-ai/outfit/internal/metrics"
+	"github.com/spinloop-ai/spinloop/internal/metrics"
 )
 
 // DefaultSampleInterval is how often the daemon reads the engine's counters

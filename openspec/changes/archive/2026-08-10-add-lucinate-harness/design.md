@@ -1,6 +1,6 @@
 ## Context
 
-outfit's harness abstraction (`internal/harness`) already anticipates a third
+spinloop's harness abstraction (`internal/harness`) already anticipates a third
 harness: `AGENTS.md` says "Start here when adding a third harness: implement the
 interface and register it." The interface is `Name / Command / ConfigPath /
 Apply / Remove / State`, and adapters wrap `catalog` + a per-harness config-IO
@@ -24,7 +24,7 @@ relevant on-disk state (read directly from the repo):
   the key from that store **or**, when the stored key is empty, from the
   `LUCINATE_OPENAI_API_KEY` environment variable (`app/factory.go`).
 
-So the natural mapping is: an outfit provider selection → one OpenAI-compatible
+So the natural mapping is: an spinloop provider selection → one OpenAI-compatible
 lucinate connection. This is the same shape as the Pi adapter (one managed entry
 merged into a document full of user entries), so the Pi adapter is the template.
 
@@ -32,16 +32,16 @@ merged into a document full of user entries), so the Pi adapter is the template.
 
 **Goals:**
 - Add lucinate as a third harness behind the existing interface, with no change
-  to opencode/Pi behaviour and no new keyword in the Outfit format.
+  to opencode/Pi behaviour and no new keyword in the Spinloop format.
 - Support `add` / `apply` / `remove` / `show` / `export` / `harness` for
   `-H lucinate`.
-- Preserve outfit's invariants: preserving merge that never drops user
+- Preserve spinloop's invariants: preserving merge that never drops user
   connections or unknown fields; `0600` output; **no resolved secret written to
   disk**.
 - Keep providers-as-data: eligibility is a marker in `providers.yaml`, not Go.
 
 **Non-Goals:**
-- Configuring lucinate's OpenClaw or Hermes connection types. outfit selects a
+- Configuring lucinate's OpenClaw or Hermes connection types. spinloop selects a
   *model provider*; those are gateway backends, out of scope.
 - Round-tripping context/output limits through lucinate — its connection has no
   fields for them.
@@ -67,14 +67,14 @@ mechanism.
 ### D2: Deterministic connection id keyed by provider
 
 The managed connection's `id` is derived deterministically from the provider id
-(e.g. `outfit:<providerId>`) rather than a random hex string. This lets a
+(e.g. `spinloop:<providerId>`) rather than a random hex string. This lets a
 re-apply update the same connection instead of duplicating it, lets `Remove`
 target it, and lets `State` recover the provider id when reconstructing an
-Outfit. It parallels how opencode/Pi key their managed entry by provider id.
+Spinloop. It parallels how opencode/Pi key their managed entry by provider id.
 
 *Alternative — match by natural key (`type`, `url`)*: rejected because two
 `openai-compatible` selections can share a URL, and the id is the stable handle
-outfit already needs for round-tripping.
+spinloop already needs for round-tripping.
 
 ### D3: Set `defaultId` so lucinate launches into the model
 
@@ -96,23 +96,23 @@ adapter.
 
 ### D5: No secret on disk — inject `LUCINATE_OPENAI_API_KEY` at launch
 
-outfit writes no key into `connections.json` and nothing into
+spinloop writes no key into `connections.json` and nothing into
 `secrets/secrets.json`. Instead it relies on lucinate's env fallback: at launch,
-`outfit harness -H lucinate` sets `LUCINATE_OPENAI_API_KEY` to the active
+`spinloop harness -H lucinate` sets `LUCINATE_OPENAI_API_KEY` to the active
 provider's resolved key, alongside the provider key variables `harnessEnv`
 already forwards. Apply prints a note that the key is read from that variable at
-run time (or that a local endpoint needs none). This keeps outfit's
+run time (or that a local endpoint needs none). This keeps spinloop's
 "never write the resolved secret to disk" invariant intact — the analog of
-opencode's `{env:VAR}` and Pi's `$VAR`, whose runtime-resolution outfit already
+opencode's `{env:VAR}` and Pi's `$VAR`, whose runtime-resolution spinloop already
 mirrors by injecting keys into the launched child.
 
-The injection is a small addition on the launch path (`cmd/outfit/main.go`,
+The injection is a small addition on the launch path (`cmd/spinloop/main.go`,
 around `harnessEnv`): when the resolved harness is lucinate, also export
 `LUCINATE_OPENAI_API_KEY` for the worn/active provider's key. A bare launch with
 no provider resolvable simply injects nothing and lucinate uses its own auth.
 
 *Alternative — write the literal key into `secrets.json`*: rejected. It is
-lucinate's native mechanism but breaks outfit's central no-secret-on-disk
+lucinate's native mechanism but breaks spinloop's central no-secret-on-disk
 invariant; the env fallback exists precisely for this.
 
 ### D6: Eligibility via a `lucinate` marker in `providers.yaml`
@@ -129,11 +129,11 @@ builder as complex as `BuildPiProvider` is required, though a small
 
 ## Risks / Trade-offs
 
-- **Single `LUCINATE_OPENAI_API_KEY` for possibly many connections** → outfit
+- **Single `LUCINATE_OPENAI_API_KEY` for possibly many connections** → spinloop
   sets `defaultId` to the managed connection and injects that provider's key, so
   the connection lucinate boots into is authenticated. Other managed connections
   would need their own stored key; documented as a limitation. Mitigation: the
-  common flow is one active model at a time, which is exactly what outfit points
+  common flow is one active model at a time, which is exactly what spinloop points
   at.
 - **Limits don't round-trip** → a `CONTEXT`/`OUTPUT` applied under lucinate is
   silently absent from `export`. Mitigation: the spec states this explicitly and
@@ -143,13 +143,13 @@ builder as complex as `BuildPiProvider` is required, though a small
   unknown fields, and the shape is covered by the adapter's tests so a drift
   surfaces there.
 - **Keychain-backed secrets (future in lucinate)** → if lucinate moves secrets to
-  the OS keychain, the env fallback still works, so outfit is unaffected.
+  the OS keychain, the env fallback still works, so spinloop is unaffected.
 
 ## Migration Plan
 
 Additive only. New `internal/lucinate` package and adapter, one registry entry,
 a launch-env addition, and a `providers.yaml` marker. No data migration, no
-change to existing configs, Outfit files, or opencode/Pi paths. Rollback is
+change to existing configs, Spinloop files, or opencode/Pi paths. Rollback is
 removing the registry entry (the harness simply stops being selectable).
 
 ## Open Questions
@@ -160,6 +160,6 @@ removing the registry entry (the harness simply stops being selectable).
   resolution; promote to a block only if a provider needs a lucinate-specific
   endpoint.
 - **Connection `name` collisions**: if a user already has a hand-made connection
-  with the same display name, outfit still keys by id (D2), so they coexist;
-  confirm the id namespace (`outfit:`) can't collide with lucinate's hex ids
+  with the same display name, spinloop still keys by id (D2), so they coexist;
+  confirm the id namespace (`spinloop:`) can't collide with lucinate's hex ids
   (it can't — hex ids contain no colon).

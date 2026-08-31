@@ -28,7 +28,7 @@ a caller-supplied value (such as a GCP project) that has no usable default.
 #### Scenario: Catalogue loads without external files
 
 - **WHEN** any command that needs the catalogue runs with no `--providers` flag
-  and no `OUTFIT_PROVIDERS` environment variable
+  and no `SPINLOOP_PROVIDERS` environment variable
 - **THEN** the embedded catalogue is used, with no file read from disk
 
 #### Scenario: An optional key is injected only when set

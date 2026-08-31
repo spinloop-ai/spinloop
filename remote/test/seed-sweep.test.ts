@@ -2,7 +2,7 @@
  * The seed sweep and the inference sweep act on disjoint populations and judge
  * them by different signals. This is the regression guard for the specific
  * mistake of letting the seed pass reach the daemon scrape: a seed instance
- * runs no outfit daemon, so that scrape would fail against it and yield nothing
+ * runs no spinloop daemon, so that scrape would fail against it and yield nothing
  * usable — the sweep would then reap or spare seeds for the wrong reasons.
  */
 

@@ -1,9 +1,9 @@
 ## Why
 
 The daemon scraped its engine's counters at the engine's *compiled-in default*
-address whenever no Outfit stated a `BASEURL` — not at the address the engine
+address whenever no Spinloop stated a `BASEURL` — not at the address the engine
 was actually told to bind. On a cloud llama.cpp instance, which is driven by a
-deploy config rather than an Outfit, the engine bound the deploy config's
+deploy config rather than a Spinloop, the engine bound the deploy config's
 `--port 8000` while the scraper asked `127.0.0.1:8080`. Every scrape was
 refused.
 
@@ -14,7 +14,7 @@ never appeared and looked like an engine that had served no requests.
 The cost was larger than a missing block. Engine activity is *derived* from
 those counters, so with the scrape permanently failing the activity record
 never moved: `lastActiveAt` stayed pinned at engine start, and every consumer
-of it — `outfit fleet status`, the new last-active line in the metrics views,
+of it — `spinloop fleet status`, the new last-active line in the metrics views,
 and the cloud's own idle-stop check — was reading a figure that could only ever
 grow, regardless of load. Confirmed on a live `g6e.xlarge`: the engine's
 `/metrics` answered 200 on `:8000` while `:8080` refused the connection.
@@ -23,7 +23,7 @@ grow, regardless of load. Confirmed on a live `g6e.xlarge`: the engine's
 
 - The scrape address is taken from the engine's own `--host`/`--port` when the
   command states them, because that is where the process actually binds. The
-  Outfit's `BASEURL` and the engine's compiled-in default remain as fallbacks,
+  Spinloop's `BASEURL` and the engine's compiled-in default remain as fallbacks,
   in that order.
 - A wildcard bind (`0.0.0.0`, `::`) is rewritten to loopback. The scrape is
   always to an engine on the same host, and a wildcard names every interface
@@ -50,7 +50,7 @@ makes its failures visible.
 
 ## Impact
 
-- `cmd/outfit/serve_daemon.go` — `scrapeTargetFor` reads the bind from argv,
+- `cmd/spinloop/serve_daemon.go` — `scrapeTargetFor` reads the bind from argv,
   alongside the API key it already lifts from there.
 - `internal/daemon/daemon.go` — a failed scrape appends to `Stats.Errors`
   rather than being discarded.
@@ -58,7 +58,7 @@ makes its failures visible.
   source is omitted rather than reported, which is still true but no longer the
   whole story.
 - Every cloud llama.cpp deployment is affected, and every local one where the
-  Outfit states no `BASEURL` and the preset sets a non-default port. vLLM binds
+  Spinloop states no `BASEURL` and the preset sets a non-default port. vLLM binds
   `:8000` by default, which is why it was not visibly broken.
 - No breaking change: a deployment that was already scraping the right address
   keeps doing so, and the new error only appears where collection was already

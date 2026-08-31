@@ -3,19 +3,19 @@ package harness
 import (
 	"fmt"
 
-	"github.com/lucinate-ai/outfit/internal/catalog"
-	"github.com/lucinate-ai/outfit/internal/contextsize"
-	"github.com/lucinate-ai/outfit/internal/lucinate"
-	"github.com/lucinate-ai/outfit/internal/opencode"
-	"github.com/lucinate-ai/outfit/internal/outfit"
-	"github.com/lucinate-ai/outfit/internal/pi"
+	"github.com/spinloop-ai/spinloop/internal/catalog"
+	"github.com/spinloop-ai/spinloop/internal/contextsize"
+	"github.com/spinloop-ai/spinloop/internal/lucinate"
+	"github.com/spinloop-ai/spinloop/internal/opencode"
+	"github.com/spinloop-ai/spinloop/internal/pi"
+	"github.com/spinloop-ai/spinloop/internal/spinloop"
 )
 
 // modelKey returns the model identifier a harness keys a selection by: the
 // friendly ALIAS when given, otherwise the provider-native MODEL. For a single-
 // model llama.cpp server the key is only a label, so an ALIAS keeps it readable;
 // for an API provider, leaving ALIAS unset keeps the real model id.
-func modelKey(sel outfit.Selection) string {
+func modelKey(sel spinloop.Selection) string {
 	if sel.Alias != "" {
 		return sel.Alias
 	}
@@ -31,7 +31,7 @@ func (opencodeHarness) Command() string { return "opencode" }
 
 func (opencodeHarness) ConfigPath() (string, error) { return opencode.ResolveConfigFile() }
 
-func (opencodeHarness) Apply(p *catalog.Provider, sel outfit.Selection, contextWindow, outputTokens int, resolve func(string) string) (Summary, error) {
+func (opencodeHarness) Apply(p *catalog.Provider, sel spinloop.Selection, contextWindow, outputTokens int, resolve func(string) string) (Summary, error) {
 	block, defaultModel, err := catalog.BuildProviderBlock(sel.Provider, p, modelKey(sel), sel.BaseURL, resolve)
 	if err != nil {
 		return Summary{}, err
@@ -107,7 +107,7 @@ func (piHarness) Command() string { return "pi" }
 
 func (piHarness) ConfigPath() (string, error) { return pi.ConfigPath() }
 
-func (piHarness) Apply(p *catalog.Provider, sel outfit.Selection, contextWindow, outputTokens int, resolve func(string) string) (Summary, error) {
+func (piHarness) Apply(p *catalog.Provider, sel spinloop.Selection, contextWindow, outputTokens int, resolve func(string) string) (Summary, error) {
 	prov, defaultModel, err := catalog.BuildPiProvider(sel.Provider, p, modelKey(sel), sel.BaseURL, resolve)
 	if err != nil {
 		return Summary{}, err
@@ -165,7 +165,7 @@ func (lucinateHarness) Command() string { return "lucinate" }
 
 func (lucinateHarness) ConfigPath() (string, error) { return lucinate.ConfigPath() }
 
-func (lucinateHarness) Apply(p *catalog.Provider, sel outfit.Selection, contextWindow, outputTokens int, resolve func(string) string) (Summary, error) {
+func (lucinateHarness) Apply(p *catalog.Provider, sel spinloop.Selection, contextWindow, outputTokens int, resolve func(string) string) (Summary, error) {
 	conn, defaultModel, err := catalog.BuildLucinateConnection(sel.Provider, p, modelKey(sel), sel.BaseURL, resolve)
 	if err != nil {
 		return Summary{}, err
@@ -173,7 +173,7 @@ func (lucinateHarness) Apply(p *catalog.Provider, sel outfit.Selection, contextW
 	// lucinate speaks to a concrete OpenAI-compatible endpoint, so a connection
 	// with no URL cannot work — fail rather than write a dead entry.
 	if conn.BaseURL == "" {
-		return Summary{}, fmt.Errorf("provider %q needs a base URL for the lucinate harness; set BASEURL in the Outfit or pass --base-url", sel.Provider)
+		return Summary{}, fmt.Errorf("provider %q needs a base URL for the lucinate harness; set BASEURL in the Spinloop or pass --base-url", sel.Provider)
 	}
 
 	// The connection's display name is the provider's, or the selection's display

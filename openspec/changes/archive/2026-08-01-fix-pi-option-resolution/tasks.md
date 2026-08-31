@@ -12,7 +12,7 @@
 ## 3. Tests
 
 - [x] 3.1 Regression: a per-provider endpoint variable reaches the Pi entry for `omlx`, `llamacpp`, `vllm` and `ollama`, and a keyed provider then gets `$VAR` rather than the keyless placeholder.
-- [x] 3.2 Precedence: explicit override and `OUTFIT_BASE_URL` both beat the provider variable; an unset variable leaves the catalogue value; `openrouter`'s `pi.baseUrl` still applies.
+- [x] 3.2 Precedence: explicit override and `SPINLOOP_BASE_URL` both beat the provider variable; an unset variable leaves the catalogue value; `openrouter`'s `pi.baseUrl` still applies.
 - [x] 3.3 `BuildPiProvider` errors on an unset required option, naming the variable, and builds once it is set.
 - [x] 3.4 Integrity: no embedded provider pairs `optionsRequired` with a `pi` block.
 - [x] 3.5 Confirm 3.1 and 3.3 fail against the pre-fix builder.
@@ -27,4 +27,4 @@
 ## 5. Verify
 
 - [x] 5.1 `gofmt -l` clean, `go vet ./...`, `go test ./... -race -cover` green.
-- [x] 5.2 Manual: `outfit add -H pi` with each per-provider variable pointed at a remote host writes that host and the `$VAR` reference; localhost is unchanged.
+- [x] 5.2 Manual: `spinloop add -H pi` with each per-provider variable pointed at a remote host writes that host and the `$VAR` reference; localhost is unchanged.

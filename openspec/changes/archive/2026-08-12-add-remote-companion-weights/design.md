@@ -9,7 +9,7 @@ See proposal.md — Why. The shape of the existing code matters to the approach:
   everything runner-specific: `seedDownload`, `syncedModelPath`,
   `weightsSentinel`, `daemonBoot`. The registry is a `Record<Runner, …>`, so a
   new member fails to compile until every runner implements it.
-- `cloudOwnedFlags` (`cmd/outfit/remote.go`) already exists precisely to stop a
+- `cloudOwnedFlags` (`cmd/spinloop/remote.go`) already exists precisely to stop a
   locally-meaningful preset value reaching the instance. A drafter path is the
   same problem it was built for.
 - `remote/scripts/seed-model.mjs` duplicates the seed's download shell for
@@ -26,7 +26,7 @@ ride along on the existing glob; they need to be named.
 
 - One mechanism that covers the drafter and the encoder, rather than a bespoke
   field per companion.
-- Keep the "one preset serves local and cloud" property: no new Outfit
+- Keep the "one preset serves local and cloud" property: no new Spinloop
   keyword, no second file to maintain.
 - Absent companions produce byte-identical behaviour to today.
 
@@ -103,11 +103,11 @@ deploy output to explain it.
 *Alternative — fold companions into the prefix.* Rejected: it re-downloads the
 20 GB main weights to add a 1.6 GB drafter, and orphans the old prefix.
 
-### `outfit` reads companions from the preset it already reads
+### `spinloop` reads companions from the preset it already reads
 
 `deployConfigFor` maps preset keys to roles: `spec-draft-model` → `draft`,
 `mmproj` → `mmproj`, taking `filepath.Base` of the value. The user writes the
-drafter once, for `outfit serve`, and deploy derives the repo filename from it.
+drafter once, for `spinloop serve`, and deploy derives the repo filename from it.
 
 This holds because a companion lives in the model's own repo, so its basename
 *is* its repo filename — true for the motivating case and the documented way to
@@ -186,5 +186,5 @@ Rollback is a Lambda redeploy: older code ignores the extra SSM field, and the
 extra objects in S3 are inert.
 
 Ship order: contract and validation, then seed, then presence, then the
-runner's flags, then the `outfit` side — each step leaves the tree working,
-with the `outfit` change last because it is what starts emitting the new field.
+runner's flags, then the `spinloop` side — each step leaves the tree working,
+with the `spinloop` change last because it is what starts emitting the new field.

@@ -10,13 +10,13 @@ is ready, `start` SHALL stop waiting and fail rather than block indefinitely.
 
 #### Scenario: Shortening the wait
 
-- **WHEN** the user runs `outfit remote start` with `-t 5m` (or `--timeout 5m`)
+- **WHEN** the user runs `spinloop remote start` with `-t 5m` (or `--timeout 5m`)
 - **THEN** the command waits at most five minutes for the endpoint before
   giving up
 
 #### Scenario: Default wait when unset
 
-- **WHEN** the user runs `outfit remote start` without a timeout flag
+- **WHEN** the user runs `spinloop remote start` without a timeout flag
 - **THEN** the command waits up to fifteen minutes
 
 ## MODIFIED Requirements

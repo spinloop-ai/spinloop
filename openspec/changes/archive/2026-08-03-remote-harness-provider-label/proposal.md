@@ -1,6 +1,6 @@
 ## Why
 
-When a remote Outfit is applied, the harness provider is keyed on the remote
+When a remote Spinloop is applied, the harness provider is keyed on the remote
 environment name (e.g. `dev-2`), but its human-readable display name still comes
 from the `PROVIDER` catalogue entry (e.g. `llama.cpp`). opencode's model picker
 shows the display name, not the provider key, so a remote environment and a local
@@ -10,7 +10,7 @@ was only done for the key; the label needs the same treatment.
 
 ## What Changes
 
-- When an applied Outfit has a `REMOTE`, the harness provider's **display name**
+- When an applied Spinloop has a `REMOTE`, the harness provider's **display name**
   reflects the environment as well as the engine, so it reads distinctly in a
   harness model picker (e.g. `llama.cpp (dev-2)` rather than a bare `llama.cpp`).
 - The label is derived from the catalogue engine's display name and the resolved
@@ -37,8 +37,8 @@ was only done for the key; the label needs the same treatment.
 - `internal/catalog/catalog.go`: `BuildProviderBlock` (and its Pi counterpart)
   need a way to set the display name to something other than the catalogue
   engine name.
-- `cmd/outfit/main.go`: `applySelection` passes the environment-derived label
-  through when it overrides the provider name for a remote Outfit.
+- `cmd/spinloop/main.go`: `applySelection` passes the environment-derived label
+  through when it overrides the provider name for a remote Spinloop.
 - No change to the provider key, model reference, or engine configuration — this
   builds on the existing `REMOTE`-names-the-provider behaviour.
-- `docs/outfit-file.md`: note that a remote provider is labelled per environment.
+- `docs/spinloop-file.md`: note that a remote provider is labelled per environment.

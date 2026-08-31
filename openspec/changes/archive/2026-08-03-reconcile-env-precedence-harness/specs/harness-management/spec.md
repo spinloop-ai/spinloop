@@ -2,52 +2,52 @@
 
 ### Requirement: Keys reach the launched agent
 
-When outfit launches a harness, the launched agent's environment SHALL carry the
-worn Outfit's local environment: the whole `.env` file beside that Outfit, and
-the Outfit's own `ENV` instructions, in addition to the API key variables outfit
+When spinloop launches a harness, the launched agent's environment SHALL carry the
+worn Spinloop's local environment: the whole `.env` file beside that Spinloop, and
+the Spinloop's own `ENV` instructions, in addition to the API key variables spinloop
 can resolve for the catalogue's providers. The precedence, highest to lowest,
-SHALL be the Outfit's `ENV` instructions, then a variable already present in
-outfit's own environment, then the adjacent `.env`. An `ENV` instruction SHALL
+SHALL be the Spinloop's `ENV` instructions, then a variable already present in
+spinloop's own environment, then the adjacent `.env`. An `ENV` instruction SHALL
 therefore override an exported variable; the `.env` SHALL only fill a variable
 that is otherwise unset. These values SHALL be placed only in the launched
-agent's environment — outfit SHALL NOT mutate its own process environment on this
-path. When outfit launches with no Outfit worn, the whole-`.env` overlay and the
-`ENV` instructions SHALL NOT be applied, though outfit SHALL still forward the
+agent's environment — spinloop SHALL NOT mutate its own process environment on this
+path. When spinloop launches with no Spinloop worn, the whole-`.env` overlay and the
+`ENV` instructions SHALL NOT be applied, though spinloop SHALL still forward the
 provider keys it can resolve. Neither harness stores a secret itself — each
-resolves a reference when it runs — so a key kept where only outfit reads it still
+resolves a reference when it runs — so a key kept where only spinloop reads it still
 reaches the agent. Failure to read the provider catalogue SHALL NOT prevent the
 launch.
 
-#### Scenario: A key only outfit can see still reaches the agent
+#### Scenario: A key only spinloop can see still reaches the agent
 
-- **WHEN** outfit can resolve a provider's key variable but it is absent from
+- **WHEN** spinloop can resolve a provider's key variable but it is absent from
   the environment, and the harness is launched
 - **THEN** the launched agent's environment carries that variable
 
 #### Scenario: An explicit setting is not overridden by the .env
 
-- **WHEN** a variable is set both in outfit's environment and in the `.env`
-  beside the worn Outfit, and the harness is launched
+- **WHEN** a variable is set both in spinloop's environment and in the `.env`
+  beside the worn Spinloop, and the harness is launched
 - **THEN** the launched agent sees the environment's value, not the `.env` value
 
 #### Scenario: The adjacent .env fills a gap for the agent
 
-- **WHEN** a variable is set in the `.env` beside the worn Outfit and is unset in
-  outfit's environment, and the harness is launched
+- **WHEN** a variable is set in the `.env` beside the worn Spinloop and is unset in
+  spinloop's environment, and the harness is launched
 - **THEN** the launched agent's environment carries the `.env` value
 
 #### Scenario: An ENV instruction overrides both
 
-- **WHEN** the worn Outfit sets a variable with an `ENV` instruction and the same
-  variable is also present in outfit's environment and/or the adjacent `.env`,
+- **WHEN** the worn Spinloop sets a variable with an `ENV` instruction and the same
+  variable is also present in spinloop's environment and/or the adjacent `.env`,
   and the harness is launched
 - **THEN** the launched agent sees the `ENV` value
 
-#### Scenario: Launching without an Outfit applies no overlay
+#### Scenario: Launching without a Spinloop applies no overlay
 
-- **WHEN** the harness is launched with no Outfit worn
-- **THEN** outfit applies no whole-`.env` overlay and no `ENV` instructions; the
-  agent runs with outfit's environment plus any provider key outfit resolves
+- **WHEN** the harness is launched with no Spinloop worn
+- **THEN** spinloop applies no whole-`.env` overlay and no `ENV` instructions; the
+  agent runs with spinloop's environment plus any provider key spinloop resolves
 
 #### Scenario: An unreadable catalogue still launches the agent
 

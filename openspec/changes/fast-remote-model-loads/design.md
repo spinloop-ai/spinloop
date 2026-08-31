@@ -1,7 +1,7 @@
 ## Context
 
 The daemon's start is the one seam every engine start goes through — a fresh
-cloud boot, a re-wake, a fleet wake, `outfit serve --api` — so it is also the
+cloud boot, a re-wake, a fleet wake, `spinloop serve --api` — so it is also the
 seam where a page-cache pre-warm must be gated (spec: `serve-daemon`). Today
 the daemon unconditionally pre-warms whenever a start names a model; the
 cloud's boot user data and the start Lambda can both issue starts, and the
@@ -30,12 +30,12 @@ the control plane can reach.
 ## Decisions
 
 **The option is a ceiling; the start may lower it, never raise it.**
-`outfit daemon` gains `--prewarm` (default off), which installs the pre-warm
+`spinloop daemon` gains `--prewarm` (default off), which installs the pre-warm
 in the daemon; the deploy config a start carries gains a tri-state `prewarm`
 field (`*bool` in Go, an optional property of the daemon deploy-config JSON).
 Effective pre-warm = daemon option AND (config field absent → true, else the
 field). The cloud AMI's unit passes `--prewarm`, so the cloud default is on;
-`outfit remote start --prewarm=false` sends the choice to the control plane,
+`spinloop remote start --prewarm=false` sends the choice to the control plane,
 which renders `prewarm: false` into the start's body; a local or fleet daemon
 never carries the flag, so no config can light it up. Alternatives: a
 per-start field defaulting on everywhere (would make a laptop or a fleet node
@@ -99,9 +99,9 @@ network-bound, not EBS-bound.
   does today when a crashing engine never answers health. Remediation is
   unchanged (redeploy, or terminate and let the next start relaunch).
 - [A new Lambda launches an instance from an older baked AMI] → the unit the
-  Lambda renders carries `--prewarm`, which the older outfit binary refuses,
+  Lambda renders carries `--prewarm`, which the older spinloop binary refuses,
   and that daemon never starts. Mitigation is ordering: bake the runtime AMI
-  with the new outfit release before deploying the control plane — the
+  with the new spinloop release before deploying the control plane — the
   established convention for exactly this shape of change (the control plane
   deploys after the images that carry what it needs). The daemon-answers wait
   covers in-flight instances of older user data (they answer, and their own
@@ -117,7 +117,7 @@ network-bound, not EBS-bound.
 
 ## Migration Plan
 
-1. Merge; cut the outfit release carrying the daemon option, the config
+1. Merge; cut the spinloop release carrying the daemon option, the config
    field, and the CLI flags.
 2. `pnpm bake` the runtime AMIs (the bake picks up the new release's pinned
    version).

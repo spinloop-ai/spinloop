@@ -1,6 +1,6 @@
 ## 1. Tile draw
 
-- [x] 1.1 In `cmd/outfit/dashboard_render.go`, make the in-flight case of `dashTileContent` render the node's last completed refresh beside the verb and the action's lines: the state line (only when non-empty) and the report body, and only when the last result is an OK answer
+- [x] 1.1 In `cmd/spinloop/dashboard_render.go`, make the in-flight case of `dashTileContent` render the node's last completed refresh beside the verb and the action's lines: the state line (only when non-empty) and the report body, and only when the last result is an OK answer
 - [x] 1.2 Factor the report body — serving line, last-active line, resource bars and token counters — into shared helpers used by both the settled and in-flight cases, keeping the settled tile's rule that the resource block shows only for a running node and the settled tile byte-for-byte unchanged
 
 ## 2. Tests

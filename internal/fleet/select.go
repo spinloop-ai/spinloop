@@ -14,7 +14,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/lucinate-ai/outfit/internal/daemon"
+	"github.com/spinloop-ai/spinloop/internal/daemon"
 )
 
 // DefaultPath is the OpenAI-compatible prefix appended to a node's engine
@@ -22,16 +22,16 @@ import (
 const DefaultPath = "/v1"
 
 // Want describes what a launch is looking for. Model and Alias are the two
-// names a node might report serving — an Outfit's MODEL, and the ALIAS the
+// names a node might report serving — a Spinloop's MODEL, and the ALIAS the
 // engine may be serving it under — and either matching is a match.
 type Want struct {
 	Model string
 	Alias string
 	// ModelID is the identity a woken node reports for this model — the
 	// deploy config's model id. It is a third acceptable name because an
-	// Outfit may state no MODEL at all, taking it from its preset instead:
+	// Spinloop may state no MODEL at all, taking it from its preset instead:
 	// the client then knows only an ALIAS, while a node woken from that same
-	// Outfit reports the resolved repo. Without this, a second launch would
+	// Spinloop reports the resolved repo. Without this, a second launch would
 	// fail to recognise the node the first one started.
 	ModelID string
 	// Node pins the selection to one node by name, skipping the search.
@@ -60,7 +60,7 @@ func (w Want) matches(serving string) bool {
 	return serving == w.Model || serving == w.Alias || serving == w.ModelID
 }
 
-// wanted names the model for a message, preferring the Outfit's own MODEL.
+// wanted names the model for a message, preferring the Spinloop's own MODEL.
 func (w Want) wanted() string {
 	if w.Model != "" {
 		return w.Model
@@ -126,7 +126,7 @@ func (c *Config) candidates(results []NodeResult) []candidate {
 
 // running keeps the nodes that answered and are serving what is wanted. A node
 // that did not answer is skipped rather than fatal, exactly as it is a row
-// rather than a failure in `outfit fleet status`.
+// rather than a failure in `spinloop fleet status`.
 func running(cands []candidate, w Want) []candidate {
 	var out []candidate
 	for _, c := range cands {

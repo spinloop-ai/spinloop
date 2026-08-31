@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lucinate-ai/outfit/internal/metrics"
-	"github.com/lucinate-ai/outfit/internal/remote"
+	"github.com/spinloop-ai/spinloop/internal/metrics"
+	"github.com/spinloop-ai/spinloop/internal/remote"
 )
 
 // baseTime is a fixed clock origin, so an idle duration is arithmetic rather
@@ -361,7 +361,7 @@ while true; do sleep 0.05; done`)
 	d.Sup.Stop()
 }
 
-// TestMarkActiveExported covers the wrapper `outfit serve --api` uses: it
+// TestMarkActiveExported covers the wrapper `spinloop serve --api` uses: it
 // starts its engine through the supervisor directly, so it stamps the activity
 // record itself rather than going through StartEngine.
 func TestMarkActiveExported(t *testing.T) {

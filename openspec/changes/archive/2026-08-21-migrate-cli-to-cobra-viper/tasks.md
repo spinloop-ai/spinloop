@@ -4,7 +4,7 @@
   `go.mod` and run `go mod tidy` (covers the transitive pflag/afero/cast/
   mapstructure/fsnotify)
 - [x] 1.2 Create the Cobra root command and the subcommand tree in
-  `cmd/outfit` mirroring `run()`'s switch exactly: `add remove list show
+  `cmd/spinloop` mirroring `run()`'s switch exactly: `add remove list show
   apply unapply alias unalias serve daemon export init-providers harness
   completion version`, with `fleet` (children status, metrics, logs, route,
   start, stop) and `remote` (children bootstrap, start, pause, stop, status,
@@ -28,7 +28,7 @@
   (`--harness/-H`), `export` (`--provider/-p`, `--providers`,
   `--harness/-H`), and `init-providers` (`--force/-F` + path positional) to
   `cmd.Flags()`
-- [x] 2.3 Migrate the outfit-path commands: `apply` (`--providers`,
+- [x] 2.3 Migrate the spinloop-path commands: `apply` (`--providers`,
   `--output/-o`, `--harness/-H`, path positional), `unapply` (`--providers`,
   `--harness/-H`, path), `alias` (`--name/-n`, `--force/-F`, `--list/-l`,
   path), `unalias` (name positional)
@@ -60,48 +60,48 @@
 
 - [x] 3.1 Set `DisableFlagParsing: true` on the `harness` command and port its
   manual parse from `flag.FlagSet` to `pflag.FlagSet` with identical
-  registrations: `--set`, `--get`, `--harness/-H`, `--outfit/-O` (string
-  flag with `NoOptDefVal = "./Outfit"`), `--providers`, `--fleet`, `--node`,
+  registrations: `--set`, `--get`, `--harness/-H`, `--spinloop/-O` (string
+  flag with `NoOptDefVal = "./Spinloop"`), `--providers`, `--fleet`, `--node`,
   `--prefer`, `--no-wake`, `--wake-timeout`
 - [x] 3.2 Preserve the existing rules exactly: a leading positional naming an
-  Outfit is consumed (not forwarded) unless `--` terminated flag parsing or a
-  leading `--` opted out; a `--` directly after a consumed Outfit is dropped;
+  Spinloop is consumed (not forwarded) unless `--` terminated flag parsing or a
+  leading `--` opted out; a `--` directly after a consumed Spinloop is dropped;
   all remaining args forward byte-for-byte
 - [x] 3.3 Add parse tests for the harness corner cases: bare `-O` applies
-  `./Outfit`, `-O=<path>` applies the attached path, `-O` with a following
+  `./Spinloop`, `-O=<path>` applies the attached path, `-O` with a following
   positional applies the default and forwards the positional, and `--`
   forwarding of harness args that look like flags
 - [x] 3.4 Verify: run the existing harness launch/forwarding tests, full
   suite green, coverage >= 80%
 
-## 4. Viper binding (CLI-layer OUTFIT_* reads)
+## 4. Viper binding (CLI-layer SPINLOOP_* reads)
 
 - [x] 4.1 Construct the single Viper instance in the CLI layer
-  (`viper.New()`, `SetEnvPrefix("OUTFIT")`,
+  (`viper.New()`, `SetEnvPrefix("SPINLOOP")`,
   `SetEnvKeyReplacer(strings.NewReplacer("-", "_"))`, `AutomaticEnv()`)
   behind a small accessor, and add the `resolve(cmd)` helper that calls
   `v.BindPFlags(cmd.Flags())` at the top of each command's `RunE`
-- [x] 4.2 Migrate `OUTFIT_ALIAS` reads (the `readOutfit` empty-path branch
-  and the `defaultOutfitNamed` gate in `resolveRemoteConfig`) to the Viper
-  instance, keeping argument > `OUTFIT_ALIAS` > `./Outfit` and the gate
+- [x] 4.2 Migrate `SPINLOOP_ALIAS` reads (the `readSpinloop` empty-path branch
+  and the `defaultSpinloopNamed` gate in `resolveRemoteConfig`) to the Viper
+  instance, keeping argument > `SPINLOOP_ALIAS` > `./Spinloop` and the gate
   counting the variable as well as a file
-- [x] 4.3 Migrate the `OUTFIT_REMOTE_*` config lookups: pass a Viper-backed
+- [x] 4.3 Migrate the `SPINLOOP_REMOTE_*` config lookups: pass a Viper-backed
   lookup closure (with `BindEnv` of the flat remote.json keys to the
   prefixed names and `LoadConfig` on the per-environment file) into
   `internal/remote`'s existing `func(string) string` injection points,
   leaving the internal package signatures unchanged
 - [x] 4.4 Leave the D3 "Unchanged" rows untouched and confirm by review:
-  `catalog.ResolveCatalogPath` (OUTFIT_PROVIDERS), the injected `resolve`
-  closures (OUTFIT_BASE_URL), `daemon.ParseLevel` (OUTFIT_LOG_LEVEL),
-  `harness.Resolve` (OUTFIT_HARNESS + source reporting), and the
-  domain-owned vars (OUTFIT_API_TOKEN, OUTFIT_CONFIG_DIR, XDG/LUCINATE
+  `catalog.ResolveCatalogPath` (SPINLOOP_PROVIDERS), the injected `resolve`
+  closures (SPINLOOP_BASE_URL), `daemon.ParseLevel` (SPINLOOP_LOG_LEVEL),
+  `harness.Resolve` (SPINLOOP_HARNESS + source reporting), and the
+  domain-owned vars (SPINLOOP_API_TOKEN, SPINLOOP_CONFIG_DIR, XDG/LUCINATE
   dirs, AWS_REGION, OPENAI_*)
 - [x] 4.5 Add per-variable precedence tests: flag beats env, env beats
-  default, unset env falls through, for `OUTFIT_ALIAS` and each
-  `OUTFIT_REMOTE_*` variable; assert the harness source-reporting tests
+  default, unset env falls through, for `SPINLOOP_ALIAS` and each
+  `SPINLOOP_REMOTE_*` variable; assert the harness source-reporting tests
   still pass unmodified
 - [x] 4.6 Verify: full suite green, coverage >= 80%, no `os.Getenv`
-  of a CLI-layer `OUTFIT_*` var remains outside the D3 "Unchanged" list
+  of a CLI-layer `SPINLOOP_*` var remains outside the D3 "Unchanged" list
 
 ## 5. Completion on Cobra's engine
 
@@ -118,7 +118,7 @@
   discovery-backed model lookup with best-effort silence on any error
 - [x] 5.3 Register `ValidArgsFunction`s: alias-slot (`apply`, `unapply`,
   `alias`, `serve`, `daemon`, `harness` first arg, each `remote <sub>`'s
-  outfit slot) → aliases + `ShellCompDirectiveDefault`; `unalias` → aliases +
+  spinloop slot) → aliases + `ShellCompDirectiveDefault`; `unalias` → aliases +
   `NoFileComp`; `init-providers` → `Nil + ShellCompDirectiveDefault`
 - [x] 5.4 Register flag completion functions: `--provider/-p` → catalogue
   names (`NoFileComp`); `--model/-m` → discovered models scoped to the
@@ -126,17 +126,17 @@
   `harness.Names()`; `--log-level` → `daemon.LevelNames()`;
   `--providers`, `--fleet`, `--dir` → `ShellCompDirectiveDefault`;
   nothing registered for boolean flags
-- [x] 5.5 Wire the `--outfit/-O` completion (aliases + files) in
+- [x] 5.5 Wire the `--spinloop/-O` completion (aliases + files) in
   `harness`'s `ValidArgsFunction`: Cobra short-circuits flag-value
   completion entirely for `DisableFlagParsing` commands, so the attached
-  forms (`--outfit=<partial>`, `-O=<partial>`) must be intercepted there
-  (toComplete starts with `--outfit=`/`-O=`); the bare `-O`/`--outfit`
+  forms (`--spinloop=<partial>`, `-O=<partial>`) must be intercepted there
+  (toComplete starts with `--spinloop=`/`-O=`); the bare `-O`/`--spinloop`
   consumes no word, so the following slot is the first positional the
   function sees. Add end-to-end `__complete` cases for both attached forms
   plus the bare `-O` slot
 - [x] 5.6 Enforce the silence guarantee: every completion function returns
   `(nil, ShellCompDirectiveNoFileComp)` on any error and writes nothing to
-  stderr; add a test that an unreadable outfit config and an unloadable
+  stderr; add a test that an unreadable spinloop config and an unloadable
   catalogue both give exit zero, no candidates, empty stderr
 - [x] 5.7 Port the `complete_test.go` scenario assertions through Cobra's
   real `__complete` (root command list; `unalias` exact names;
@@ -154,8 +154,8 @@
   `completion.ps1`, and their `//go:embed` directives — in the same commit
   that deletes the old `__complete` dispatch case so the two never coexist
 - [x] 5.10 Verify: full suite green, coverage >= 80%, and a manual smoke on a
-  built binary: `outfit completion bash|zsh|powershell` prints the generated
-  scripts, `outfit completion fish` fails naming the three shells, and
+  built binary: `spinloop completion bash|zsh|powershell` prints the generated
+  scripts, `spinloop completion fish` fails naming the three shells, and
   sourcing the bash script completes a command, a flag, a provider, an alias,
   and `-O`
 
@@ -167,14 +167,14 @@
   asserted on its exact text to the Cobra-rendered help
 - [x] 6.3 Update the `main` package doc comment (the `// Usage:` block) to
   the Cobra tree and remove now-stale flag-package references from
-  `cmd/outfit`
-- [x] 6.4 Verify: `outfit` (no args) prints help and exits 0, `outfit
-  --help`, `outfit -h`, `outfit --version`, `outfit -v`, and `outfit
+  `cmd/spinloop`
+- [x] 6.4 Verify: `spinloop` (no args) prints help and exits 0, `spinloop
+  --help`, `spinloop -h`, `spinloop --version`, `spinloop -v`, and `spinloop
   version` all behave as today; unknown command exits 1
 
 ## 7. Docs and final verification
 
-- [x] 7.1 Update AGENTS.md: the `cmd/outfit` layout section (Cobra tree,
+- [x] 7.1 Update AGENTS.md: the `cmd/spinloop` layout section (Cobra tree,
   pflag, `completion.bash`/`complete.go` removal, `TestCompletionCoversDispatch`
   replacement), the Traps section (the completion-table trap is replaced by
   tree-derived completion; note `NoOptDefVal`/`-O` and `DisableFlagParsing`
@@ -184,9 +184,9 @@
   the internal/ domain packages dependency-free)
 - [x] 7.3 Final gate: `gofmt -l .` empty, `go vet ./...` clean,
   `go test ./... -cover` green with total coverage >= 80%, and `go
-  build -o outfit ./cmd/outfit`
+  build -o spinloop ./cmd/spinloop`
 - [x] 7.4 Manual completion smoke on the built binary in both bash and zsh:
-  alias/provider/model slots, `--outfit` attached form, `remote <TAB>`
+  alias/provider/model slots, `--spinloop` attached form, `remote <TAB>`
   subcommands, a previously-drifted flag (e.g. `list --models`), and the
   `fish` rejection
 - [x] 7.5 Port the old hand-written usage()'s per-command detail into each

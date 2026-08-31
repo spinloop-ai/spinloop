@@ -4,7 +4,7 @@ Remote inference is split into two layers. The **shared** layer — Image Builde
 + AMIs, the lifecycle Lambdas, the weights bucket, shared roles and a VPC — is
 deployed once per account, analogous to `cdk bootstrap`. **Environments** — each
 with its own Elastic IP and EC2 instance — are created later, on demand, by
-`outfit remote deploy` (the sibling `add-remote-deploy-environments` change),
+`spinloop remote deploy` (the sibling `add-remote-deploy-environments` change),
 which the shared Lambdas then drive across the account.
 
 This change is the shared layer. It keeps the pragmatic approach decided earlier
@@ -20,7 +20,7 @@ and publishes it for discovery.
 
 - One command for the once-per-account shared setup: Image Builder + AMIs, the
   environment-aware lifecycle Lambdas + IAM, the shared bucket/roles/VPC.
-- Discoverable afterwards: `outfit remote deploy` finds the shared layer from
+- Discoverable afterwards: `spinloop remote deploy` finds the shared layer from
   CloudFormation stack outputs, so nothing per-environment is baked in here.
 - A hard consent gate over the shared resources and their cost; `--dry-run` and
   `--yes`.
@@ -30,7 +30,7 @@ and publishes it for discovery.
 **Non-Goals:**
 
 - Creating an environment (EIP + instance), registering it, or seeding weights —
-  that is `outfit remote deploy` in `add-remote-deploy-environments`.
+  that is `spinloop remote deploy` in `add-remote-deploy-environments`.
 - The per-environment API key (per-env, created at deploy) and the
   overwrite-a-live-instance guard (belongs to deploy).
 - Rewriting the CDK in Go or embedding infrastructure in the binary.
@@ -40,7 +40,7 @@ and publishes it for discovery.
 ### Wrap the TS CDK by downloading sources; do not embed
 
 Bootstrap downloads the `remote/` subtree from
-`codeload.github.com/lucinate-ai/outfit/tar.gz/<ref>` (stdlib only) and extracts
+`codeload.github.com/spinloop-ai/spinloop/tar.gz/<ref>` (stdlib only) and extracts
 `remote/*` into a work dir. Embedding was rejected: `node_modules` can't ship in
 a Go binary and a `pnpm install` runs at runtime anyway.
 
@@ -62,7 +62,7 @@ with `--dir`. Keying by ref means a re-run at the same version reuses sources
   HfToken secret used when seeding gated weights.
 
 The allowed ingress CIDR is **not** a bootstrap setting: it is per-environment,
-so it lives on `outfit remote deploy` (each environment scopes who can reach its
+so it lives on `spinloop remote deploy` (each environment scopes who can reach its
 instance).
 
 ### Consent gate
@@ -77,7 +77,7 @@ Then require confirmation. `--dry-run` returns before the prompt and runs nothin
 ### Discovery via CloudFormation stack outputs
 
 The shared stack publishes its Lambda URLs, weights bucket, roles and region as
-CloudFormation outputs under a well-known stack name. `outfit remote deploy`
+CloudFormation outputs under a well-known stack name. `spinloop remote deploy`
 reads them with `DescribeStacks` (the deploy change), so no local account file
 can go stale and it works from any machine with account access. Bootstrap adds the
 `aws-sdk-go-v2/service/cloudformation` client, also used in preflight to detect

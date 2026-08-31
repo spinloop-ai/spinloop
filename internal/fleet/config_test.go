@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lucinate-ai/outfit/internal/daemon"
+	"github.com/spinloop-ai/spinloop/internal/daemon"
 )
 
 // writeFleet puts a fleet.yaml (and optionally a .env) in a temp dir and
@@ -308,7 +308,7 @@ nodes:
 		t.Errorf("engine token = %q, want the .env value", got)
 	}
 
-	// An exported value wins, as everywhere else in outfit.
+	// An exported value wins, as everywhere else in spinloop.
 	t.Setenv("NODE_ENGINE_KEY", "exported")
 	if got, err := cfg.EngineToken(gated); err != nil || got != "exported" {
 		t.Errorf("engine token = %q, %v; want the exported value", got, err)

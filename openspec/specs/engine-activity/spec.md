@@ -5,7 +5,7 @@
 How the daemon judges whether the engine it supervises is doing any work: a
 background sampler that reads the engine's own counters on the host, the
 last-active time it keeps from those samples, and the idle duration derived
-from it. This is what makes "is this engine active?" a question outfit answers
+from it. This is what makes "is this engine active?" a question spinloop answers
 once, on the box, rather than something each caller re-derives from raw
 counters at whatever rate it happens to poll.
 

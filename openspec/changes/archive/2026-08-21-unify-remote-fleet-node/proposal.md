@@ -1,6 +1,6 @@
 ## Why
 
-`outfit remote` and `outfit fleet` are two parallel clients of the same daemon — one
+`spinloop remote` and `spinloop fleet` are two parallel clients of the same daemon — one
 through the cloud control plane, one through each node's control API — and each family
 keeps its own copy of the "ask about it and render the answer" logic. `fleet.Node` was
 designed to admit a remote kind, but only a local daemon node implements it. As a result
@@ -21,12 +21,12 @@ code, so a change lands on one side and the other drifts again.
   identically to a set of local nodes alone.
 - **Status facts render from one source.** The remote and fleet status views derive their
   overlapping facts — state, what it is serving, how long since it last did work, and the
-  outfit version — from a single shared source in the client, so the logic and wording
+  spinloop version — from a single shared source in the client, so the logic and wording
   cannot fork. **Non-breaking:** each command's existing output layout is preserved (the
   remote keeps its `base_url`/`healthy` lines; the fleet keeps its one-node-per-row table).
 - **Waking a remote environment is refused.** A node-level "start on this deploy config"
   is refused for a remote environment with a message naming the deploy path: a remote
-  endpoint is provisioned by `outfit remote deploy`, not woken like a node.
+  endpoint is provisioned by `spinloop remote deploy`, not woken like a node.
 - **The fleet file declares remote nodes.** A fleet-file node's kind now accepts `remote`
   (an omitted kind still defaults to `daemon`). A remote node's *name* is the registered
   environment it drives — env-shaped (no `/`, no `.json`) — and it needs no host, so a
@@ -56,7 +56,7 @@ code, so a change lands on one side and the other drifts again.
   `internal/remote`. The fleet-file config accepts a `remote` node kind and the node
   constructor loads that environment's config from the registry, so status, metrics, start
   and stop all reach a remote node with no change to the `fleet` command itself.
-- `cmd/outfit`: a shared status-view value and fact helpers added beside the existing
+- `cmd/spinloop`: a shared status-view value and fact helpers added beside the existing
   shared metrics renderer, used by both the `remote` status and `fleet` status paths. No
   change to either command's output.
 - `examples/`: two new runnable guides (`fleet-remote`, `fleet-mixed`) and a short note in

@@ -1,6 +1,6 @@
 ## Purpose
 
-Define in-process metrics collection: how outfit itself gathers engine
+Define in-process metrics collection: how spinloop itself gathers engine
 token/request stats and system GPU/CPU/RAM stats from the machine it runs on,
 replacing the remote stats Lambda's shell-command collection as the one way an
 engine's state is measured — locally, on fleet nodes, and (in a follow-up
@@ -74,7 +74,7 @@ value in the collected result.
 ### Requirement: Rendering-compatible stats shape
 
 The collected metrics SHALL be expressible in the same stats shape the
-`outfit remote metrics` formatters render (state, runner, model, GPU, CPU,
+`spinloop remote metrics` formatters render (state, runner, model, GPU, CPU,
 RAM, token stats), so the existing bar, table, and JSON formats display
 in-process metrics without format-specific changes.
 

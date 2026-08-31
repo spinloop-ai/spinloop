@@ -47,7 +47,7 @@ section SHALL update on the node's normal refresh cadence, exactly as the
 tile does.
 
 The log section SHALL show the node's engine log, tailing and following it
-the same way `outfit fleet logs -f <node>` follows one node's log, so new
+the same way `spinloop fleet logs -f <node>` follows one node's log, so new
 output appears while the view is open without the operator asking for it. A
 node whose engine has not run yet, or that cannot supply its log, SHALL show
 the same explanation the `fleet logs` command gives for it, rather than an

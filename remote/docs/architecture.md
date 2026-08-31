@@ -31,7 +31,7 @@ Three ideas hold it together:
 flowchart TB
   subgraph client["Your machine"]
     agent["coding agent<br/>(OpenAI client)"]
-    outfit["outfit CLI"]
+    spinloop["spinloop CLI"]
   end
 
   subgraph image["Image stack (cloud-vm-llm-image)"]
@@ -53,9 +53,9 @@ flowchart TB
 
   inst["EC2 g6e (L40S)<br/>runner + weights"]
 
-  outfit -->|SigV4 start, status| start
-  outfit -->|SigV4 stop / pause| stop
-  outfit -->|SigV4 deploy| deploy
+  spinloop -->|SigV4 start, status| start
+  spinloop -->|SigV4 stop / pause| stop
+  spinloop -->|SigV4 deploy| deploy
   deploy -->|write| dcfg
   start -->|read at wake| dcfg
   start -->|RunInstances<br/>+ associate| eip
@@ -70,7 +70,7 @@ flowchart TB
 ```
 
 The Lambdas live **outside the VPC** (no NAT cost) and reach the instance over
-**SSM Run Command** — a `curl` to the on-instance **outfit daemon**'s
+**SSM Run Command** — a `curl` to the on-instance **spinloop daemon**'s
 loopback control API (`127.0.0.1:4242`), which supervises the engine and
 collects its metrics — so nothing is exposed beyond the vLLM port, and that
 only to your `/32`. A stable **Elastic IP** is re-associated on each launch so
@@ -79,24 +79,24 @@ the base URL never changes.
 ## The deploy-config control plane
 
 The seam between "what infra exists" (CDK's job, provisioned once) and "what to
-serve" (per deployment). `outfit remote deploy` reads an Outfit file and POSTs a
+serve" (per deployment). `spinloop remote deploy` reads a Spinloop file and POSTs a
 DeployConfig to the deploy Lambda; the Lambda validates it and writes the
 `/cloud-vm-llm/deploy-config` SSM parameter. The next wake reads it.
 
 ```mermaid
 flowchart LR
-  outfitfile["Outfit file<br/>(runner, MODEL, CONTEXT, preset)"]
-  outfit["outfit remote deploy"]
+  spinloopfile["Spinloop file<br/>(runner, MODEL, CONTEXT, preset)"]
+  spinloop["spinloop remote deploy"]
   deploy["DeployFn<br/>(validate)"]
   param[("deploy-config<br/>SSM param")]
   seed["seed instance<br/>(if weights missing)"]
   start["StartFn (next wake)"]
 
-  outfitfile --> outfit -->|SigV4 POST| deploy
+  spinloopfile --> spinloop -->|SigV4 POST| deploy
   deploy -->|PutParameter| param
   deploy -.->|RunInstances, returns seedId| seed --> s3[("S3 weights")]
   start -->|read| param
-  start -->|render daemon deploy-config| unit["outfit daemon"]
+  start -->|render daemon deploy-config| unit["spinloop daemon"]
 ```
 
 The DeployConfig contract (`lambda/shared/deploy-config.ts`):
@@ -113,7 +113,7 @@ never encode the S3 layout (and a prefix sent in the body is ignored). If those
 weights are not in the bucket, the Lambda launches a seed itself and replies
 `{seeding: true, seedId}`; a wake before it finishes would sync an incomplete
 prefix, so wait for it. The id is stable (derived from the weights), unlike the
-instance it replaced, so it is what `outfit remote seed status` takes.
+instance it replaced, so it is what `spinloop remote seed status` takes.
 
 ## Seeding
 
@@ -121,7 +121,7 @@ A seed is a supervised job, not a fire-and-forget script.
 
 ```mermaid
 flowchart TB
-  cli["outfit remote seed<br/>start | status | ls | stop"]
+  cli["spinloop remote seed<br/>start | status | ls | stop"]
   seedfn["SeedFn (Function URL)"]
   deployfn["DeployFn<br/>(auto-seed on missing weights)"]
   inst["c7g.large, stock AL2023<br/>no bake"]
@@ -163,30 +163,30 @@ The pieces that matter:
   judges liveness from `DescribeLogStreams`'s `lastEventTimestamp`, *not* the
   daemon scrape used for inference instances (a seed runs no daemon).
 
-At boot, `buildInferenceUserData()` renders it into the on-instance outfit
+At boot, `buildInferenceUserData()` renders it into the on-instance spinloop
 daemon's own deploy config — the model as the synced local path, the bind
 address and per-runner key delivery resolved into the serve args — and the
 daemon builds the engine command from there (`vllm serve …` or
 `llama-server …`). There is **no default runner**: an unset or invalid config
 fails the wake loudly rather than guessing.
 
-The parameter is **outfit/manual-owned**. CDK creates it with a constant
+The parameter is **spinloop/manual-owned**. CDK creates it with a constant
 `unconfigured` placeholder — deliberately *not* the cfg-derived config — so a
-later `cdk deploy` can never clobber what `outfit remote deploy` (or a manual
+later `cdk deploy` can never clobber what `spinloop remote deploy` (or a manual
 edit) put there. `pnpm run deploy`'s seed step (`scripts/seed-deploy-config.mjs`)
 writes a cfg-derived initial config over the placeholder *only* while it is still
 unconfigured, and only when CDK knows the full serve config (vLLM); llama.cpp's
-serve args come from an Outfit, so its config is left for `outfit remote deploy`
+serve args come from a Spinloop, so its config is left for `spinloop remote deploy`
 to set.
 
 ## Wake lifecycle
 
-`outfit remote start` (or any POST to the start Function URL) blocks until the
+`spinloop remote start` (or any POST to the start Function URL) blocks until the
 server is answering, so the caller gets one "ready" with the base URL + key.
 
 ```mermaid
 sequenceDiagram
-  participant O as outfit remote start
+  participant O as spinloop remote start
   participant S as StartFn
   participant P as deploy-config (SSM)
   participant E as EC2
@@ -194,7 +194,7 @@ sequenceDiagram
   O->>S: POST (SigV4)
   S->>P: read deploy-config
   alt unconfigured
-    S-->>O: 503 "run outfit remote deploy"
+    S-->>O: 503 "run spinloop remote deploy"
   end
   S->>E: RunInstances (try each g6e AZ until capacity)
   S->>E: associate Elastic IP
@@ -207,7 +207,7 @@ sequenceDiagram
 
 Boot user-data (built by the start Lambda from the deploy-config): log
 `nvidia-smi`, add a swapfile, `aws s3 sync` the weights, fetch the API key, then
-write the daemon's deploy config, start `outfit daemon` (loopback `:4242`), and
+write the daemon's deploy config, start `spinloop daemon` (loopback `:4242`), and
 request the engine's first start over its control API. The health check hits
 `/health` on the port — portable across runners.
 
@@ -263,8 +263,8 @@ release — so a fresh boot always reports it. A stopped instance with no
 self-healed: the next sweep records the stop time and gives it the full
 retention. A `Retain-Until` instance tag (UTC ISO-8601) overrides both the idle
 timer and the max-runtime cap (and, on a stopped instance, its termination);
-`outfit remote pause` stops an instance on purpose, and a manual
-`outfit remote stop` still terminates it immediately.
+`spinloop remote pause` stops an instance on purpose, and a manual
+`spinloop remote stop` still terminates it immediately.
 
 ## Image stack
 
@@ -274,7 +274,7 @@ triggers a build out-of-band; each successful bake tags its AMI (role, and — a
 the second runner lands — runner), and the start Lambda launches the **newest
 AMI matching the tags**. A slim AMI carries only the driver + the runner
 (vLLM as a `uv` venv; llama.cpp as a prebuilt CUDA `llama-server`) — no
-Docker, and no outfit: each instance's boot installs the daemon (the deploy
+Docker, and no spinloop: each instance's boot installs the daemon (the deploy
 config's pin, or the latest release), so the AMI never carries a release of it.
 
 ## Key files

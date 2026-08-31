@@ -6,14 +6,14 @@ The remote control plane currently terminates an EC2 instance as soon as the idl
 
 **Goals:**
 - Preserve instance boot disk and weights by stopping before terminating.
-- Allow `outfit remote start` to re-wake a stopped instance in seconds.
-- Provide explicit `outfit remote pause` for user-initiated stop without termination.
+- Allow `spinloop remote start` to re-wake a stopped instance in seconds.
+- Provide explicit `spinloop remote pause` for user-initiated stop without termination.
 - Retain existing idle detection semantics, grace period, max runtime and retain-until override.
 - Keep the shared idle sweep for all environments.
 
 **Non-Goals:**
 - Changing the daemon's activity sampling or status format.
-- Modifying outfit Go CLI behavior beyond documenting start re-wake.
+- Modifying spinloop Go CLI behavior beyond documenting start re-wake.
 - Changing manual stop semantics — manual stop remains immediate termination.
 
 ## Decisions
@@ -45,7 +45,7 @@ The remote control plane currently terminates an EC2 instance as soon as the idl
 - Alternative: reuse the idle threshold for both stages. Rejected — the retention trade-off (EBS cost vs re-wake speed) is independent of GPU-idle cost.
 
 **Pause command handling**
-- `outfit remote pause` invokes the stop Lambda in pause mode: write the `Stopped-At` tag, then `stopInstances`. Manual `outfit remote stop` remains immediate termination.
+- `spinloop remote pause` invokes the stop Lambda in pause mode: write the `Stopped-At` tag, then `stopInstances`. Manual `spinloop remote stop` remains immediate termination.
 - Alternative: a separate pause Lambda. Rejected to keep control plane surface minimal and reuse auth/validation.
 
 ## Risks / Trade-offs

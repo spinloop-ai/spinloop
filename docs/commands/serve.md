@@ -1,28 +1,28 @@
-# outfit serve
+# spinloop serve
 
-Run the inference server for the model an [`Outfit` file](../outfit-file.md)
+Run the inference server for the model an [`Spinloop` file](../spinloop-file.md)
 names — so the same file that points your agent at a local model can also start
 the server behind it.
 
 ```sh
-outfit serve              # reads ./Outfit and runs its PROVIDER's server
-outfit serve path/to/Outfit
-outfit serve qwen3.6-27b  # a name registered with `outfit alias`
-outfit serve https://example.com/Outfit   # a URL, fetched instead of read from disk
-outfit serve --dry-run    # print the command without launching the server
+spinloop serve              # reads ./Spinloop and runs its PROVIDER's server
+spinloop serve path/to/Spinloop
+spinloop serve qwen3.6-27b  # a name registered with `spinloop alias`
+spinloop serve https://example.com/Spinloop   # a URL, fetched instead of read from disk
+spinloop serve --dry-run    # print the command without launching the server
 ```
 
-With no argument, `OUTFIT_ALIAS` names the Outfit before `./Outfit` is tried —
-see [`outfit alias`](alias.md#naming-one-for-the-whole-shell).
+With no argument, `SPINLOOP_ALIAS` names the Spinloop before `./Spinloop` is tried —
+see [`spinloop alias`](alias.md#naming-one-for-the-whole-shell).
 
 It prints the command before running it, and never touches your agent's
-config — pair it with [`outfit apply`](apply.md) to point the agent at the
+config — pair it with [`spinloop apply`](apply.md) to point the agent at the
 server.
 
 ## The engine comes from `PROVIDER`
 
 `PROVIDER` already names the engine, so `serve` needs no keyword of its own —
-the same way [`outfit remote deploy`](remote.md) picks the engine for a cloud
+the same way [`spinloop remote deploy`](remote.md) picks the engine for a cloud
 GPU:
 
 | `PROVIDER` | `serve` runs |
@@ -42,7 +42,7 @@ llama.cpp's short aliases would rewrite another engine's keys (`m` to `--model`,
 
 `CONTEXT` always means the context window a **single request** gets, whatever
 engine serves it. `PARALLEL` sets the number of concurrent request slots, and
-`outfit` translates it per engine so `CONTEXT`'s meaning holds everywhere:
+`spinloop` translates it per engine so `CONTEXT`'s meaning holds everywhere:
 
 | `PROVIDER` | `PARALLEL n` becomes | Effect on `CONTEXT` |
 | ---------- | --------------------- | -------------------- |
@@ -53,8 +53,8 @@ engine serves it. `PARALLEL` sets the number of concurrent request slots, and
 The `llamacpp` scaling exists because llama.cpp's own `--ctx-size` is a total
 KV-cache budget it divides across `--parallel` slots — so without help, asking
 for `CONTEXT 128k` with two parallel slots would silently give each request
-64k. `outfit` compensates by scaling: `CONTEXT 128k` + `PARALLEL 2` renders
-`--ctx-size 256000 --parallel 2`, so each slot still gets the 128k the Outfit
+64k. `spinloop` compensates by scaling: `CONTEXT 128k` + `PARALLEL 2` renders
+`--ctx-size 256000 --parallel 2`, so each slot still gets the 128k the Spinloop
 asked for.
 
 `vllm` and `omlx` need no such compensation: both share one dynamically-sized
@@ -64,20 +64,20 @@ per-request ceiling — `PARALLEL` only caps how many requests run at once.
 
 If `PARALLEL` is left out entirely, it changes nothing — no `--parallel`-family
 flag is added, and `CONTEXT` maps to the engine's context flag exactly as it
-always has. It only applies to an Outfit-stated `CONTEXT`: a `PRESET`'s own
-`ctx-size`, left unstated by the Outfit, is not retroactively scaled — the
+always has. It only applies to a Spinloop-stated `CONTEXT`: a `PRESET`'s own
+`ctx-size`, left unstated by the Spinloop, is not retroactively scaled — the
 preset is trusted to already account for its own slots. Like `CONTEXT`,
 `PARALLEL` overrides a preset's own `np`/`parallel`, `max-num-seqs`, or
 `max-concurrent-requests` value by the usual override rule.
 
-`PARALLEL` is Outfit-file-only — like `PRESET`, it has no meaning for a hosted
-provider selection, so there is no `outfit add --parallel`.
+`PARALLEL` is Spinloop-file-only — like `PRESET`, it has no meaning for a hosted
+provider selection, so there is no `spinloop add --parallel`.
 
 ## llama.cpp
 
-### Simple case — straight from the Outfit
+### Simple case — straight from the Spinloop
 
-With no `PRESET`, `serve` builds the command from the Outfit itself:
+With no `PRESET`, `serve` builds the command from the Spinloop itself:
 
 ```dockerfile
 PROVIDER llamacpp
@@ -93,7 +93,7 @@ path or ends in `.gguf`); `ALIAS`, `CONTEXT`, and `BASEURL` fill in the rest.
 
 ### Full control — a llama.cpp preset
 
-For flags an Outfit doesn't model — `-ngl`, `--jinja`, KV-cache types, draft
+For flags a Spinloop doesn't model — `-ngl`, `--jinja`, KV-cache types, draft
 models — point at a llama.cpp
 [preset `.ini`](https://github.com/ggml-org/llama.cpp/blob/master/docs/preset.md):
 a set of `llama-server` flags grouped under named `[model]` sections, with a
@@ -109,7 +109,7 @@ PRESET   ./preset.ini
 
 `serve` flattens the `[*]` defaults and the matching section into explicit
 `llama-server` flags, the section winning over the defaults. Anything the
-**Outfit** also states wins over both, so you can keep a shared preset and
+**Spinloop** also states wins over both, so you can keep a shared preset and
 tweak one field per project: `CONTEXT` overrides the section's `ctx-size`,
 `BASEURL` its `host`/`port`, `ALIAS` its `alias`, and `MODEL` its `hf`/`model`.
 Keys map straight to flags — `ctx-size = 262144` becomes `--ctx-size 262144`,
@@ -120,19 +120,19 @@ Keys map straight to flags — `ctx-size = 262144` becomes `--ctx-size 262144`,
 - With no `ALIAS`, a preset holding exactly one section serves that one.
 - Several sections and no `ALIAS` is an error — name one.
 
-A relative `PRESET` path resolves against the Outfit's own directory — or
-against its URL, when the Outfit itself was fetched from one — so the pair
+A relative `PRESET` path resolves against the Spinloop's own directory — or
+against its URL, when the Spinloop itself was fetched from one — so the pair
 can travel together either way. `PRESET` may also be an absolute URL of its
 own, fetched only when `serve` builds the command, never merely because the
-Outfit was read. See [Fetching an Outfit from a
-URL](../outfit-file.md#fetching-an-outfit-from-a-url).
+Spinloop was read. See [Fetching a Spinloop from a
+URL](../spinloop-file.md#fetching-an-spinloop-from-a-url).
 
 ## oMLX
 
 [oMLX](https://omlx.ai) serves MLX models on Apple Silicon. It differs from
 llama.cpp in one way that shapes everything else: it loads a whole **model
 directory** and picks the model per request, rather than being launched with one
-model. So a bare Outfit is enough to start it:
+model. So a bare Spinloop is enough to start it:
 
 ```dockerfile
 PROVIDER omlx
@@ -154,7 +154,7 @@ from a `PRESET` written in oMLX's own flags, or from oMLX's settings
 [*]
 model-dir = /Users/you/models
 
-[default]                      # selected by the Outfit's ALIAS
+[default]                      # selected by the Spinloop's ALIAS
 memory-guard            = safe
 paged-ssd-cache-dir     = /Users/you/.omlx/cache
 max-concurrent-requests = 16
@@ -166,10 +166,10 @@ paths out in full.
 `serve` never passes `--api-key`. It prints the command it runs, and oMLX takes
 its key on the command line, so passing one would put the secret on your screen
 and in the process table. If you want auth on the server, configure it in oMLX;
-`outfit add`/`apply` still picks up `OPENAI_API_KEY` for the agent's own config.
+`spinloop add`/`apply` still picks up `OPENAI_API_KEY` for the agent's own config.
 
 Note that oMLX can require a key even on localhost (it is an admin-panel
-setting). Because the `omlx` provider is `apiKeyOptional`, `outfit` only writes
+setting). Because the `omlx` provider is `apiKeyOptional`, `spinloop` only writes
 the key reference when `OPENAI_API_KEY` is set **at apply time** — so if your
 oMLX needs a key, set it before `add`/`apply`, not just before launching the
 agent.
@@ -201,7 +201,7 @@ it, unlike llama.cpp's.
 GPUs) are a different concept from `PARALLEL` and are not derived from it —
 set them by hand in a `PRESET`.
 
-## The control API (`--api`) and `outfit daemon`
+## The control API (`--api`) and `spinloop daemon`
 
 `serve` is strictly foreground: it runs the engine in front of you until one
 of you exits. Two related surfaces build on it:
@@ -210,9 +210,9 @@ of you exits. Two related surfaces build on it:
   engine — status and metrics answer, start fails (the engine is already
   running), and stop terminates the engine, after which serve exits as it
   always has.
-- `outfit daemon` is the long-lived agent: it supervises one engine, writes
+- `spinloop daemon` is the long-lived agent: it supervises one engine, writes
   its output to `daemon/engine.log` under
-  [outfit's config directory](../env-vars.md#config-directory-resolution),
+  [spinloop's config directory](../env-vars.md#config-directory-resolution),
   tracks its state
   (`idle`, `running`, `stopped`, `crashed` — a crash is reported, never
   auto-restarted), and starts **nothing** until a start request asks. Stopping
@@ -221,12 +221,12 @@ of you exits. Two related surfaces build on it:
   similar.
 
 The daemon is a worker: **its inputs are its flags and its API, and nothing
-else**. It reads no Outfit, no preset and no `fleet.yaml`, and takes no Outfit
+else**. It reads no Spinloop, no preset and no `fleet.yaml`, and takes no Spinloop
 path — passing one is an error rather than being quietly ignored. What a node
 runs is decided by the client that asks: the start request's own deploy config,
 or the one stored from a previous ask. With neither, a start says so.
 
-That is why a node and a client want different files. A client's Outfit names a
+That is why a node and a client want different files. A client's Spinloop names a
 model and a fleet; a node holds nothing. See
 [`examples/fleet-local/`](../../examples/fleet-local/) for the whole shape on one
 machine.
@@ -252,7 +252,7 @@ precedence:
 | Source | Notes |
 | ------ | ----- |
 | `--api-token-file <path>` | The file's contents, trimmed. |
-| `OUTFIT_API_TOKEN` | The environment. |
+| `SPINLOOP_API_TOKEN` | The environment. |
 | `--api-token <value>` | The token itself. |
 
 A non-loopback listen with no token refuses to start; a loopback one needs
@@ -309,7 +309,7 @@ Records are graded, which is what makes the level worth setting:
 | `debug` | The above, plus the full engine command line |
 | `info` (default) | Every request, plus starts, stops and clean exits |
 | `warn` | Only rejected requests (401, a bad cursor), a slow shutdown escalating to a kill, and crashes |
-| `error` | Only crashes, failed starts, and requests that failed inside outfit |
+| `error` | Only crashes, failed starts, and requests that failed inside spinloop |
 
 `--log-level warn` is the setting for a node a fleet polls: a `fleet status`
 refresh every few seconds is a request each, and at `info` that is all you will
@@ -331,18 +331,18 @@ output.
 | `-a`, `--api` | Expose the control API beside the foreground engine |
 | `--api-addr` | Control API listen address (default `:4242`) |
 | `--loopback`, `-l` | (daemon only) Bind the control API to loopback, `127.0.0.1:4242` — needs no token |
-| `--log-level` | `debug`, `info` (default), `warn` or `error`; overrides [`OUTFIT_LOG_LEVEL`](../env-vars.md) |
+| `--log-level` | `debug`, `info` (default), `warn` or `error`; overrides [`SPINLOOP_LOG_LEVEL`](../env-vars.md) |
 
 ## Notes
 
 - `serve` needs the engine installed: `llama-server` on your `PATH` (e.g.
   `brew install llama.cpp`), or [oMLX](https://omlx.ai).
-- For llama.cpp, an Outfit with no `PRESET` must name a `MODEL`. oMLX needs
+- For llama.cpp, a Spinloop with no `PRESET` must name a `MODEL`. oMLX needs
   neither.
 
 ## See also
 
-- [`outfit fleet`](fleet.md) — one outfit observing the daemons on every
+- [`spinloop fleet`](fleet.md) — one spinloop observing the daemons on every
   machine you run
 - Worked examples with real models: [`examples/`](../../examples/)
-- [The `Outfit` file](../outfit-file.md) — full syntax
+- [The `Spinloop` file](../spinloop-file.md) — full syntax

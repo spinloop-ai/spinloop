@@ -1,6 +1,6 @@
 ## Why
 
-`outfit remote status <outfit>` with expired AWS credentials prints a blank
+`spinloop remote status <spinloop>` with expired AWS credentials prints a blank
 line and exits 0, giving no hint that anything is wrong. The control Lambda
 rejects the request with HTTP 403 and a JSON body such as
 `{"message":"The security token included in the request is expired"}`; that

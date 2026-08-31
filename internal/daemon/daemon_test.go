@@ -15,8 +15,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lucinate-ai/outfit/internal/metrics"
-	"github.com/lucinate-ai/outfit/internal/remote"
+	"github.com/spinloop-ai/spinloop/internal/metrics"
+	"github.com/spinloop-ai/spinloop/internal/remote"
 )
 
 // stubEngine writes an executable shell script and returns its path.
@@ -161,7 +161,7 @@ func testDaemon(t *testing.T, engineScript string) *Daemon {
 		Dir: dir,
 		BuildArgv: func(dc *remote.DeployConfig) ([]string, error) {
 			if dc == nil {
-				return nil, fmt.Errorf("nothing to serve: no Outfit and no stored deploy config")
+				return nil, fmt.Errorf("nothing to serve: no Spinloop and no stored deploy config")
 			}
 			return append([]string{engine}, dc.ServeArgs...), nil
 		},
@@ -380,7 +380,7 @@ while true; do sleep 0.05; done`)
 
 	// The activity pair crosses the wire, not just the Go call: this is the
 	// shape the stats Lambda curls, so a field that never serialised would
-	// leave `outfit remote metrics` silently blank.
+	// leave `spinloop remote metrics` silently blank.
 	_, metricsBody := do("GET", "/v1/metrics", "sekrit", "")
 	_, statusBody := do("GET", "/v1/status", "sekrit", "")
 	if metricsBody["lastActiveAt"] == nil {

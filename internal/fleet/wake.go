@@ -15,8 +15,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lucinate-ai/outfit/internal/daemon"
-	"github.com/lucinate-ai/outfit/internal/remote"
+	"github.com/spinloop-ai/spinloop/internal/daemon"
+	"github.com/spinloop-ai/spinloop/internal/remote"
 )
 
 // WakeTimeout bounds waiting for a woken node's engine to answer. A cold node
@@ -146,7 +146,7 @@ func (c *Config) waitReady(ctx context.Context, node Node, entry NodeConfig, w W
 		if time.Now().After(deadline) {
 			return last, fmt.Errorf(
 				"node %q did not answer within %s of being started: its engine may still be loading, "+
-					"so it has been left running — check `outfit fleet status`",
+					"so it has been left running — check `spinloop fleet status`",
 				entry.Name, WakeTimeout)
 		}
 		select {

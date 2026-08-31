@@ -1,7 +1,7 @@
 # A fleet of one: this machine.
 #
 # Worth doing even with a single node, because it moves the engine's lifecycle
-# out of your way — `outfit harness` starts llama-server when you need it and
+# out of your way — `spinloop harness` starts llama-server when you need it and
 # leaves it running for the next session, instead of you keeping a terminal
 # open for it.
 #

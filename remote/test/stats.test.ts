@@ -7,7 +7,7 @@ import {
   parseDaemonStatus,
 } from '../lambda/shared/daemon';
 
-// A representative /v1/metrics reply from the on-instance outfit daemon —
+// A representative /v1/metrics reply from the on-instance spinloop daemon —
 // the Go side's metrics.Stats shape.
 const daemonReply = JSON.stringify({
   state: 'running',
@@ -105,7 +105,7 @@ const statusReply = JSON.stringify({
   runner: 'llamacpp',
   model: '/opt/llm/model/model.gguf',
   uptimeSeconds: 1234,
-  logPath: '/var/lib/outfit/daemon/engine.log',
+  logPath: '/var/lib/spinloop/daemon/engine.log',
   lastActiveAt: '2026-08-09T12:00:00Z',
   idleSeconds: 42,
   version: '1.18.0',

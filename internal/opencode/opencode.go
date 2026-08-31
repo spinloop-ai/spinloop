@@ -15,18 +15,18 @@ import (
 )
 
 // EnvResolver returns a lookup that prefers the process environment, falling
-// back to a `.env` beside the Outfit being applied. dir is that Outfit's
-// directory; when empty — a selection made entirely from flags, with no Outfit
-// to sit beside — the working directory is used, so `outfit add` still finds a
+// back to a `.env` beside the Spinloop being applied. dir is that Spinloop's
+// directory; when empty — a selection made entirely from flags, with no Spinloop
+// to sit beside — the working directory is used, so `spinloop add` still finds a
 // project's own `.env`.
 //
 // The process environment wins so an exported variable always beats the `.env`,
 // which only fills a gap — the same precedence the remote commands follow, so
 // the whole tool resolves local variables the same way.
 //
-// The file sits beside the Outfit rather than beside the binary because that is
+// The file sits beside the Spinloop rather than beside the binary because that is
 // where it belongs to a project — the same rule PRESET and REMOTE follow — so an
-// Outfit and the key it needs travel together, and an installed binary can find
+// Spinloop and the key it needs travel together, and an installed binary can find
 // one at all.
 func EnvResolver(dir string) func(string) string {
 	if dir == "" {
@@ -61,7 +61,7 @@ func readEnvFileVar(path, name string) string {
 // double quotes are stripped from the value. Blank lines, full-line `#`
 // comments, lines with no `=`, and entries with an empty value are skipped; on a
 // repeated key the last wins. A missing file is not an error — the `.env` beside
-// an Outfit is optional — so it yields an empty map and a nil error.
+// a Spinloop is optional — so it yields an empty map and a nil error.
 func ParseEnvFile(path string) (map[string]string, error) {
 	vars := map[string]string{}
 	data, err := os.ReadFile(path)
@@ -244,8 +244,8 @@ func RemoveConfig(path, providerID string, modelKeys []string) (int, error) {
 
 // ProviderState is one configured provider, read back from the opencode config:
 // its model keys (sorted), any options.baseURL, and the per-model limit.context
-// and limit.output for those models that set them. It is what `outfit export`
-// reconstructs an Outfit from.
+// and limit.output for those models that set them. It is what `spinloop export`
+// reconstructs a Spinloop from.
 type ProviderState struct {
 	ModelKeys []string
 	BaseURL   string
@@ -255,7 +255,7 @@ type ProviderState struct {
 
 // LoadConfigState reads the opencode config and reports each configured
 // provider's state plus the top-level default model. It is the inverse of
-// WriteConfig, used to reconstruct an Outfit on export.
+// WriteConfig, used to reconstruct a Spinloop on export.
 func LoadConfigState(path string) (providers map[string]ProviderState, defaultModel string, err error) {
 	root, err := loadRoot(path)
 	if err != nil {

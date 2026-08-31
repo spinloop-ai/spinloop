@@ -4,7 +4,7 @@
 
 The API SHALL authenticate requests with a bearer token compared against the
 token configured for the process. The token MAY be supplied three ways: a file
-naming it (`--api-token-file`), the environment (`OUTFIT_API_TOKEN`), or
+naming it (`--api-token-file`), the environment (`SPINLOOP_API_TOKEN`), or
 literally on the command line (`--api-token`). Giving more than one SHALL fail
 naming the conflict rather than picking one. Requests without the correct token
 SHALL be rejected with `401` and no state change. When no token is configured,

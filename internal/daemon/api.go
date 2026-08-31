@@ -11,14 +11,14 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/lucinate-ai/outfit/internal/remote"
+	"github.com/spinloop-ai/spinloop/internal/remote"
 )
 
 // TokenEnvVar names the environment variable carrying the control API's
-// bearer token. It is read from the environment — reached by the Outfit's
+// bearer token. It is read from the environment — reached by the Spinloop's
 // adjacent .env — never from a flag, so the secret stays off the command line
 // and out of the process table.
-const TokenEnvVar = "OUTFIT_API_TOKEN"
+const TokenEnvVar = "SPINLOOP_API_TOKEN"
 
 // DefaultAPIPort is the control API's port. A fleet client reaching a node
 // that states no port assumes this one, so the two sides share the constant
@@ -97,7 +97,7 @@ func Routes() []Route {
 // Handler builds the control API: status, start, stop, metrics, logs, and
 // deploy config, all JSON, all behind the bearer token (when one is set), and
 // all summarised to the daemon's logger. This is the one place both API hosts
-// — `outfit daemon` and `outfit serve --api` — build their handler, so what is
+// — `spinloop daemon` and `spinloop serve --api` — build their handler, so what is
 // wrapped here covers both with no per-command wiring.
 func (d *Daemon) Handler(token string) http.Handler {
 	handlers := map[string]http.HandlerFunc{

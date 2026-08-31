@@ -1,6 +1,6 @@
 ## Context
 
-The `outfit remote metrics` command currently outputs a verbose key-value table by default. When using `--watch` to monitor over time, each refresh appends below the previous output with a `---` separator, creating a growing scrollback. The network round-trip to the stats Lambda also causes a visible delay before each refresh appears.
+The `spinloop remote metrics` command currently outputs a verbose key-value table by default. When using `--watch` to monitor over time, each refresh appends below the previous output with a `---` separator, creating a growing scrollback. The network round-trip to the stats Lambda also causes a visible delay before each refresh appears.
 
 ## Goals / Non-Goals
 
@@ -19,7 +19,7 @@ The `outfit remote metrics` command currently outputs a verbose key-value table 
 
 **Default format is `bar`.** The table format is verbose for repeated viewing. Bar format gives an at-a-glance view of resource usage, which is the common case when monitoring a remote instance. Table remains available as `--format=table`.
 
-**ANSI escape codes for screen clearing.** `\033[2J\033[H` (clear screen + cursor home) is the standard approach. No external dependency needed — works in any modern terminal. We don't detect terminal capability because outfit is a dev tool where coloured output is expected.
+**ANSI escape codes for screen clearing.** `\033[2J\033[H` (clear screen + cursor home) is the standard approach. No external dependency needed — works in any modern terminal. We don't detect terminal capability because spinloop is a dev tool where coloured output is expected.
 
 **ANSI colours for bar fill.** Green (`\033[92m`) for healthy (≤80%), yellow (`\033[33m`) for warning (80–90%), red (`\033[31m`) for critical (>90%). The unfilled portion uses a lighter character (`░`) without colour so it's visually distinct but unobtrusive.
 

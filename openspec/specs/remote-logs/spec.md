@@ -11,25 +11,25 @@ which is when they are wanted most.
 ## Requirements
 ### Requirement: An environment's shipped logs are readable from the CLI
 
-`outfit remote logs` SHALL print the logs an environment's instances have
+`spinloop remote logs` SHALL print the logs an environment's instances have
 shipped, without the operator needing to know the log group or stream naming,
 open the AWS console, or connect to an instance. It SHALL select which
 environment to read using the same rules as the other remote subcommands — an
-explicit Outfit path or alias, else `./Outfit`'s `REMOTE`, else the `default`
-environment — so `outfit remote logs` and `outfit remote status` in the same
+explicit Spinloop path or alias, else `./Spinloop`'s `REMOTE`, else the `default`
+environment — so `spinloop remote logs` and `spinloop remote status` in the same
 directory always speak about the same environment.
 
 #### Scenario: Reading the current environment's logs
 
-- **WHEN** the operator runs `outfit remote logs` where `outfit remote status`
+- **WHEN** the operator runs `spinloop remote logs` where `spinloop remote status`
   would report on an environment
 - **THEN** the log events that environment's instances shipped are printed
 - **AND** the operator is not required to name a log group, stream, or instance
 
 #### Scenario: Reading a named environment's logs
 
-- **WHEN** the operator runs `outfit remote logs <path-or-alias>` naming an
-  Outfit whose `REMOTE` selects an environment
+- **WHEN** the operator runs `spinloop remote logs <path-or-alias>` naming an
+  Spinloop whose `REMOTE` selects an environment
 - **THEN** that environment's logs are printed rather than the default
   environment's
 
@@ -43,12 +43,12 @@ instance that has since terminated, is still available.
 #### Scenario: A terminated instance's logs are still readable
 
 - **WHEN** an instance has produced logs and has since terminated
-- **THEN** `outfit remote logs` still prints that instance's shipped events
+- **THEN** `spinloop remote logs` still prints that instance's shipped events
 
 #### Scenario: A stopped environment can be diagnosed
 
 - **WHEN** an environment is stopped, so its status reports no running instance
-- **THEN** `outfit remote logs` still prints the logs from its previous runs
+- **THEN** `spinloop remote logs` still prints the logs from its previous runs
 
 ### Requirement: Both engine and boot logs are reachable
 
@@ -61,7 +61,7 @@ the engine started is reachable even though the engine log is empty.
 
 #### Scenario: Engine output by default
 
-- **WHEN** the operator runs `outfit remote logs` with no source selected
+- **WHEN** the operator runs `spinloop remote logs` with no source selected
 - **THEN** the environment's engine log events are printed
 
 #### Scenario: Boot output on request
@@ -95,7 +95,7 @@ truncated view as complete.
 
 #### Scenario: A default window applies
 
-- **WHEN** the operator runs `outfit remote logs` with no window stated
+- **WHEN** the operator runs `spinloop remote logs` with no window stated
 - **THEN** only events from a bounded recent window are fetched
 
 #### Scenario: The window is widened

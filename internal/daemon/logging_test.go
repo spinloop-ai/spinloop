@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lucinate-ai/outfit/internal/remote"
+	"github.com/spinloop-ai/spinloop/internal/remote"
 )
 
 func TestParseLevel(t *testing.T) {
@@ -62,7 +62,7 @@ func TestParseLevelRejectsUnknownNamingTheAcceptedSet(t *testing.T) {
 			t.Errorf("error does not name accepted level %q: %q", name, msg)
 		}
 	}
-	// slog's own parser accepts offsets; outfit's vocabulary is the four names.
+	// slog's own parser accepts offsets; spinloop's vocabulary is the four names.
 	if _, err := ParseLevel("info+2"); err == nil {
 		t.Error("ParseLevel(\"info+2\") was accepted")
 	}
@@ -95,7 +95,7 @@ func TestResolveLevelPrefersFlagOverEnvironment(t *testing.T) {
 	// came from the environment rather than the command line.
 	t.Setenv(LevelEnvVar, "chatty")
 	if _, err := ResolveLevel(""); err == nil {
-		t.Error("a bad OUTFIT_LOG_LEVEL was accepted")
+		t.Error("a bad SPINLOOP_LOG_LEVEL was accepted")
 	}
 }
 

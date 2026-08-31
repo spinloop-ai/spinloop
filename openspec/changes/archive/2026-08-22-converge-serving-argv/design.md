@@ -11,7 +11,7 @@ See `proposal.md` — Why. What shapes the approach:
   written inline in two places: `buildServeArgv` (serve) and `argvFromDeployConfig`
   (daemon). Those two are where a change to the shape can land in one and miss the other.
 - The preset branch is different: it merges a preset's `[global]` + selected section +
-  the Outfit's overrides, in dialect order with short aliases collapsed, through
+  the Spinloop's overrides, in dialect order with short aliases collapsed, through
   `pre.CommandIn`. That merge is a distinct job that already lives in `internal/preset`,
   and re-implementing it in a shared helper risks changing which value wins. It is not
   part of the duplication.

@@ -150,7 +150,7 @@ the engine's CloudWatch group for a terminated box.
   updated to it, and CloudWatch covers the post-mortem case journald never did.
 - **Baking requires a rebake** → the agent only lands on instances launched from
   a re-baked AMI; older AMIs won't ship logs. Mitigation: bump `RUNNER_VERSION`
-  and note that `outfit remote bootstrap` must re-bake before the change takes
+  and note that `spinloop remote bootstrap` must re-bake before the change takes
   effect (consistent with how other AMI changes roll out).
 - **Rotation vs. a tailing agent** → `copytruncate` has a brief race where lines
   written between the copy and the truncate could be missed. Mitigation: the
@@ -169,7 +169,7 @@ the engine's CloudWatch group for a terminated box.
 ## Migration Plan
 
 1. Land CDK (log groups + IAM) and Image Builder change; `RUNNER_VERSION` bumped.
-2. Re-bake both runner AMIs (`outfit remote bootstrap`) so images carry the agent.
+2. Re-bake both runner AMIs (`spinloop remote bootstrap`) so images carry the agent.
 3. New instance starts pick up the file-logging unit + agent config from
    user-data automatically; no per-environment redeploy needed for the boot path,
    though a fresh `deploy`/`start` is what exercises it.

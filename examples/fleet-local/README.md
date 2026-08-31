@@ -1,12 +1,12 @@
 # A fleet of one: this machine
 
 Gemma-4-12B-IT on your own machine, but reached through
-[`outfit fleet`](../../docs/commands/fleet.md) rather than by starting
+[`spinloop fleet`](../../docs/commands/fleet.md) rather than by starting
 `llama-server` yourself.
 
 ```sh
-outfit daemon              # once, in this directory (or under launchd/systemd)
-outfit harness -O          # from this directory: wears ./Outfit, routes, launches
+spinloop daemon              # once, in this directory (or under launchd/systemd)
+spinloop harness -O          # from this directory: wears ./Spinloop, routes, launches
 ```
 
 That second command finds the node, starts the engine if it isn't running,
@@ -20,16 +20,16 @@ picking a node. What it actually removes is the engine's lifecycle from your
 day. Compare with [`examples/llamacpp/gemma4`](../llamacpp/gemma4/), which is
 the same model and the same preset:
 
-| | `outfit serve` | this |
+| | `spinloop serve` | this |
 | --- | --- | --- |
 | Starting the engine | you, in a terminal you keep open | on demand, when you launch an agent |
-| After a reboot | you again | `outfit daemon` under launchd/systemd |
-| Wrong model loaded | stop it, edit, start it | the launch pushes what its Outfit says |
+| After a reboot | you again | `spinloop daemon` under launchd/systemd |
+| Wrong model loaded | stop it, edit, start it | the launch pushes what its Spinloop says |
 | Second machine later | a new setup | add a line to `fleet.yaml` |
 
 The last row is the real argument. Everything here works unchanged when you add
 a second machine — the file grows a node, and `prefer` starts deciding between
-them. Nothing about the Outfit or the command changes.
+them. Nothing about the Spinloop or the command changes.
 
 ## The files
 
@@ -46,7 +46,7 @@ decision on a real network:
 
 - **No token.** A daemon on loopback needs none. Any node reachable across a
   network does — the daemon refuses to listen on a non-loopback address without
-  one, and takes it from `--api-token-file`, `OUTFIT_API_TOKEN`, or
+  one, and takes it from `--api-token-file`, `SPINLOOP_API_TOKEN`, or
   `--api-token`.
 - **No engine key.** An engine on loopback needs no gating either. On a shared
   network, name the variable holding one with `engineTokenEnv` and the client
@@ -60,20 +60,20 @@ decision on a real network:
   would be unreachable, and routing says so rather than handing you an address
   that refuses connections.
 
-[`Outfit`](Outfit) is `examples/llamacpp/gemma4`'s with one line added:
+[`Spinloop`](Spinloop) is `examples/llamacpp/gemma4`'s with one line added:
 
 ```dockerfile
 FLEET ./fleet.yaml
 ```
 
 and one line deliberately absent — there is no `BASEURL`. The address is
-whichever node gets chosen; pinning one turns routing off, and outfit says so
+whichever node gets chosen; pinning one turns routing off, and spinloop says so
 rather than choosing a node it would then ignore.
 
 [`preset.ini`](preset.ini) is unchanged from the non-fleet example. It matters
 more here than it looks: when routing wakes a node it sends the preset's flags
 along, so the daemon starts `llama-server` with exactly the command you would
-have typed. The model comes from the preset's `hf` too, which is why this Outfit
+have typed. The model comes from the preset's `hf` too, which is why this Spinloop
 needs no `MODEL` line.
 
 ## Running it
@@ -82,26 +82,26 @@ Start the daemon once. It takes no arguments and reads no files — it runs what
 a start request tells it to, and until then it sits idle:
 
 ```sh
-outfit daemon
+spinloop daemon
 ```
 
 Leave it running — under `launchd` or `systemd` for real use, or just in a
 terminal to try it. Then, from this directory:
 
 ```sh
-outfit fleet status        # local: idle
-outfit fleet route         # which node a launch would pick, changing nothing
-outfit harness -O          # wear ./Outfit, route, wake if needed, launch
+spinloop fleet status        # local: idle
+spinloop fleet route         # which node a launch would pick, changing nothing
+spinloop harness -O          # wear ./Spinloop, route, wake if needed, launch
 ```
 
 The first launch is what tells the node anything at all: until then it has no
-config and a bare `outfit fleet start local` would say so. After one launch it
+config and a bare `spinloop fleet start local` would say so. After one launch it
 has the config stored, so `fleet start` restarts the same thing.
 
-`outfit fleet route` before your first launch:
+`spinloop fleet route` before your first launch:
 
 ```
-Outfit: ./Outfit
+Spinloop: ./Spinloop
 Fleet:  ./fleet.yaml
 Prefer: idle
 
@@ -123,9 +123,9 @@ Using local at http://127.0.0.1:8080/v1 — woken to serve gemma-4-12b-it
 The wait is the model loading — minutes for a cold 12B, then seconds forever
 after, because the engine stays up between sessions.
 
-**`-O` is not optional.** A bare `outfit harness` launches undressed: it applies
-no Outfit, so there is no `FLEET` to act on and nothing routes. Wear the Outfit
-(`-O` for `./Outfit`, a path, or a [registered alias](../../docs/commands/alias.md))
+**`-O` is not optional.** A bare `spinloop harness` launches unconfigured: it applies
+no Spinloop, so there is no `FLEET` to act on and nothing routes. Wear the Spinloop
+(`-O` for `./Spinloop`, a path, or a [registered alias](../../docs/commands/alias.md))
 and routing follows from it.
 
 ## Prerequisites

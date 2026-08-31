@@ -1,7 +1,7 @@
 # Gemini 2.0 Flash on GCP Vertex AI
 
 Point opencode at Google's Gemini running on
-[GCP Vertex AI](https://cloud.google.com/vertex-ai), using the [`Outfit`](Outfit)
+[GCP Vertex AI](https://cloud.google.com/vertex-ai), using the [`Spinloop`](Spinloop)
 in this directory. Like the Claude-on-Vertex example, this authenticates with
 your **Google credentials** (Application Default Credentials) — no API key — and
 needs a **project**. The difference is the provider (`google-vertex` serves
@@ -22,17 +22,17 @@ export GOOGLE_VERTEX_PROJECT=my-gcp-project
 export GOOGLE_VERTEX_LOCATION=us-central1   # optional; defaults to `global`
 ```
 
-The project is required; `outfit apply` fails with a clear error if it is unset.
+The project is required; `spinloop apply` fails with a clear error if it is unset.
 
-## 2. Apply the Outfit
+## 2. Apply the Spinloop
 
 ```sh
-outfit apply examples/google-vertex/gemini-flash/Outfit
+spinloop apply examples/google-vertex/gemini-flash/Spinloop
 # or, from this directory:
-outfit apply
+spinloop apply
 ```
 
-The Outfit is:
+The Spinloop is:
 
 ```dockerfile
 PROVIDER google-vertex

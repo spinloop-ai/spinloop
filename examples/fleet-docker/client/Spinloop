@@ -1,0 +1,12 @@
+# What a client wears to use this fleet — the Spinloop you would have on your
+# laptop. It is the only Spinloop in this example: the nodes hold none, and run
+# whatever a start request tells them to.
+#
+# Note the missing BASEURL. The whole point is that spinloop picks a node and
+# fills the address in; a Spinloop that states one is taken at its word and
+# never routed.
+PROVIDER llamacpp
+MODEL    org/fake-model
+ALIAS    fake-model
+CONTEXT  4096
+FLEET    ../fleet.yaml

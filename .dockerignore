@@ -8,4 +8,4 @@ remote/cdk.out
 remote/.env
 **/.env
 *.log
-outfit
+spinloop

@@ -22,13 +22,13 @@ const PORT = Number(requireEnv('ENGINE_PORT'));
 const CIDR = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\/\d{1,2}$/;
 
 /**
- * The control plane `outfit remote deploy` calls (SigV4 Function URL). POST
+ * The control plane `spinloop remote deploy` calls (SigV4 Function URL). POST
  * `{environment, allowedCidr, ...deployConfig}` and the environment is created
  * on the control plane if it does not exist — its Elastic IP, security group
  * (ingress = its own allowed CIDR), API-key secret and SSM state — the weights
  * are seeded if missing, and the config is written to the environment's
  * deploy-config parameter. GET `?env=<name>` returns the current config. This
- * keeps outfit thin (Lambda invoke only) with all validation, layout decisions
+ * keeps spinloop thin (Lambda invoke only) with all validation, layout decisions
  * and AWS mutation server-side.
  */
 export async function handler(event: LambdaFunctionURLEvent): Promise<LambdaFunctionURLResult> {
@@ -95,7 +95,7 @@ export async function handler(event: LambdaFunctionURLEvent): Promise<LambdaFunc
   //
   // A requested re-seed skips the presence check rather than overriding it —
   // there is no point paying for HEADs whose answer is ignored — and forces
-  // the launch exactly as `outfit remote seed start --force` does, escaping
+  // the launch exactly as `spinloop remote seed start --force` does, escaping
   // the idempotency token deliberately rather than being handed back the
   // attempt it is meant to replace.
   let seeding = false;
@@ -105,7 +105,7 @@ export async function handler(event: LambdaFunctionURLEvent): Promise<LambdaFunc
       const infra = seedInfraFromEnv();
       // The seed id, not the instance id: the instance is an implementation
       // detail that changes if the seed is relaunched, while the id is stable
-      // and is what `outfit remote seed status` takes.
+      // and is what `spinloop remote seed status` takes.
       const launched = await launchSeedInstance(buildSeedJob(config, infra, ''), infra, {
         force: reseed,
       });
@@ -171,7 +171,7 @@ export async function handler(event: LambdaFunctionURLEvent): Promise<LambdaFunc
     // reply names the command that says when it is done rather than quoting an
     // estimate and leaving the operator to guess.
     ...(seeding
-      ? { message: `seeding the weights — follow it with \`outfit remote seed status ${seedId}\`` }
+      ? { message: `seeding the weights — follow it with \`spinloop remote seed status ${seedId}\`` }
       : {}),
   });
 }

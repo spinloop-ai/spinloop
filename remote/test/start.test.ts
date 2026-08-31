@@ -39,7 +39,7 @@ const LLAMACPP: DeployConfig = {
   servedModelName: 'friendly',
   serveArgs: ['--flash-attn'],
   companions: {},
-  outfitVersion: 'latest',
+  spinloopVersion: 'latest',
 };
 
 const VLLM: DeployConfig = {
@@ -49,17 +49,17 @@ const VLLM: DeployConfig = {
 };
 
 describe('buildInferenceUserData', () => {
-  it('boots the engine through the outfit daemon, not a per-runner unit', () => {
+  it('boots the engine through the spinloop daemon, not a per-runner unit', () => {
     for (const cfg of [LLAMACPP, VLLM]) {
       const data = buildInferenceUserData('prod', cfg);
-      expect(data).toContain('outfit-daemon.service');
-      expect(data).toContain('systemctl enable --now outfit-daemon.service');
-      expect(data).toContain('outfit-nudge.timer');
+      expect(data).toContain('spinloop-daemon.service');
+      expect(data).toContain('systemctl enable --now spinloop-daemon.service');
+      expect(data).toContain('spinloop-nudge.timer');
       expect(data).not.toContain('llama-server.service');
       expect(data).not.toContain('vllm.service');
       // The cloud daemon pre-warms by default: the unit opts in, and a start
       // request may still decline it for one start.
-      expect(data).toContain('outfit daemon --api-addr 127.0.0.1:4242 --prewarm');
+      expect(data).toContain('spinloop daemon --api-addr 127.0.0.1:4242 --prewarm');
       // The boot starts no engine: the control plane's start request issues
       // the start on every path, and the daemon's first answer is the boot's
       // signal that its deploy config is stored.
@@ -67,50 +67,50 @@ describe('buildInferenceUserData', () => {
     }
   });
 
-  it('installs outfit at boot, before the daemon unit is written and enabled', () => {
+  it('installs spinloop at boot, before the daemon unit is written and enabled', () => {
     for (const cfg of [LLAMACPP, VLLM]) {
       const data = buildInferenceUserData('prod', cfg);
       // The release's own checksums gate the install, and the binary lands by
       // rename — an interruption never leaves a partial one in place.
       expect(data).toContain('sha256sum -c');
-      expect(data).toContain('install -m 0755 /tmp/outfit-dl/outfit /usr/local/bin/outfit');
+      expect(data).toContain('install -m 0755 /tmp/spinloop-dl/spinloop /usr/local/bin/spinloop');
       // A re-run against an already-correct install skips the download.
       expect(data).toContain('already installed');
       // The binary must be in place before the unit that runs it is enabled.
-      expect(data.indexOf('OUTFIT_VERSION=')).toBeGreaterThanOrEqual(0);
-      expect(data.indexOf('OUTFIT_VERSION=')).toBeLessThan(data.indexOf('outfit-daemon.service'));
+      expect(data.indexOf('SPINLOOP_VERSION=')).toBeGreaterThanOrEqual(0);
+      expect(data.indexOf('SPINLOOP_VERSION=')).toBeLessThan(data.indexOf('spinloop-daemon.service'));
     }
   });
 
   it('resolves latest at boot when the deploy config names no pin', () => {
     const data = buildInferenceUserData('prod', LLAMACPP);
-    expect(data).toContain("OUTFIT_VERSION=''");
-    expect(data).toContain('api.github.com/repos/lucinate-ai/outfit/releases/latest');
+    expect(data).toContain("SPINLOOP_VERSION=''");
+    expect(data).toContain('api.github.com/repos/spinloop-ai/spinloop/releases/latest');
   });
 
   it('installs the pinned release directly when the deploy config pins one', () => {
-    const data = buildInferenceUserData('prod', { ...LLAMACPP, outfitVersion: '1.26.1' });
+    const data = buildInferenceUserData('prod', { ...LLAMACPP, spinloopVersion: '1.26.1' });
     // A non-empty pin skips the latest lookup at run time; the asset URL is
     // composed from it, re-adding the v the stamped version omits.
-    expect(data).toContain("OUTFIT_VERSION='1.26.1'");
-    expect(data).toContain('releases/download/v${OUTFIT_VERSION}');
+    expect(data).toContain("SPINLOOP_VERSION='1.26.1'");
+    expect(data).toContain('releases/download/v${SPINLOOP_VERSION}');
   });
 
   it("keeps the pin out of the daemon's stored deploy config", () => {
     // The pin is a property of the deployment (it drives the boot's install
     // step), not of the engine the daemon serves.
-    const data = buildInferenceUserData('prod', { ...LLAMACPP, outfitVersion: '1.26.1' });
-    expect(data).not.toContain('"outfitVersion"');
+    const data = buildInferenceUserData('prod', { ...LLAMACPP, spinloopVersion: '1.26.1' });
+    expect(data).not.toContain('"spinloopVersion"');
   });
 
   it('pins the daemon config dir so it does not depend on $HOME', () => {
     for (const cfg of [LLAMACPP, VLLM]) {
       const data = buildInferenceUserData('prod', cfg);
-      // The unit sets OUTFIT_CONFIG_DIR and the boot writes the deploy config
+      // The unit sets SPINLOOP_CONFIG_DIR and the boot writes the deploy config
       // under it — the same location the daemon then reads.
-      expect(data).toContain('Environment=OUTFIT_CONFIG_DIR=/var/lib/outfit');
-      expect(data).toContain('/var/lib/outfit/daemon/deploy-config.json');
-      expect(data).not.toContain('/root/.config/outfit');
+      expect(data).toContain('Environment=SPINLOOP_CONFIG_DIR=/var/lib/spinloop');
+      expect(data).toContain('/var/lib/spinloop/daemon/deploy-config.json');
+      expect(data).not.toContain('/root/.config/spinloop');
     }
   });
 
@@ -192,7 +192,7 @@ describe('buildInferenceUserData', () => {
 
   it('tails the daemon engine log into the runner log group', () => {
     const data = buildInferenceUserData('prod', LLAMACPP);
-    expect(data).toContain('/var/lib/outfit/daemon/engine.log');
+    expect(data).toContain('/var/lib/spinloop/daemon/engine.log');
     expect(data).toContain('/test/llamacpp');
     expect(data).not.toContain('/var/log/llm/llama-server.log');
   });

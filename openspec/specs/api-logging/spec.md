@@ -1,7 +1,7 @@
 # api-logging Specification
 
 ## Purpose
-What outfit records about its own behaviour while it hosts the control API and
+What spinloop records about its own behaviour while it hosts the control API and
 supervises an engine: a summary of every request served, the engine's
 lifecycle, the severity each record carries, and the level control that lets an
 operator silence routine traffic without losing the failures buried in it.
@@ -14,8 +14,8 @@ the machine.
 ## Requirements
 ### Requirement: A request summary for every API request
 
-Wherever the control API is exposed — under `outfit daemon`, which always
-exposes it, and under `outfit serve --api`, which opts in — outfit SHALL emit
+Wherever the control API is exposed — under `spinloop daemon`, which always
+exposes it, and under `spinloop serve --api`, which opts in — spinloop SHALL emit
 one log record per request it serves, after the response is complete. The
 record SHALL identify the request method, the request path, the response
 status, how long the request took, how many bytes the response body carried,
@@ -55,11 +55,11 @@ Each record SHALL carry a severity so that turning the volume down silences
 routine traffic first and failures last. A summary of a request that succeeded
 SHALL be recorded at informational severity; a summary of a request rejected as
 the caller's fault SHALL be recorded at warning severity; a summary of a request
-that failed inside outfit SHALL be recorded at error severity.
+that failed inside spinloop SHALL be recorded at error severity.
 
 The consequence SHALL hold in both directions: an operator running at warning
 severity sees rejected and failed requests and no successful ones, and an
-operator running at error severity sees only outfit's own failures.
+operator running at error severity sees only spinloop's own failures.
 
 #### Scenario: Routine traffic is silenced without silencing failures
 
@@ -130,8 +130,8 @@ silence, while an ordinary start or stop is informational.
 
 The host SHALL let an operator set the severity threshold at or above which
 records are emitted, choosing between debug, informational, warning and error.
-It SHALL be settable by a command-line flag on both `outfit daemon` and
-`outfit serve`, and by an environment variable, with the flag taking precedence
+It SHALL be settable by a command-line flag on both `spinloop daemon` and
+`spinloop serve`, and by an environment variable, with the flag taking precedence
 over the variable. With neither set, the threshold SHALL be informational — so
 request summaries appear by default and an operator silences them deliberately
 rather than discovering them missing.
@@ -165,8 +165,8 @@ needed.
 ### Requirement: Records go to the error stream, beside the engine's own output
 
 The host's own records SHALL be written to standard error, so that a foreground
-`outfit serve` keeps forwarding the engine's own stdout and stderr exactly as
-it does today: outfit's records sit beside the engine's output rather than
+`spinloop serve` keeps forwarding the engine's own stdout and stderr exactly as
+it does today: spinloop's records sit beside the engine's output rather than
 replacing it, reformatting it, or being mixed into the stream a caller may be
 piping.
 
@@ -178,11 +178,11 @@ except where a line is purely operational and belongs in the log.
 #### Scenario: Engine output is untouched
 
 - **WHEN** an engine writes to its stdout under a foreground serve
-- **THEN** that output is forwarded as before, with outfit's own records on
+- **THEN** that output is forwarded as before, with spinloop's own records on
   standard error
 
 #### Scenario: A dry run is unaffected
 
-- **WHEN** `outfit serve --dry-run` prints the command it would run
+- **WHEN** `spinloop serve --dry-run` prints the command it would run
 - **THEN** that output is unchanged at every level
 

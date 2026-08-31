@@ -9,9 +9,9 @@
 ## 2. Carry the label to the harness
 
 - [x] 2.1 Add a documented runtime field `DisplayName string` to
-  `outfit.Selection`, noting it is derived at apply time (like `BaseURL`), not
-  parsed from an Outfit.
-- [x] 2.2 In `applySelection` (`cmd/outfit/main.go`), set
+  `spinloop.Selection`, noting it is derived at apply time (like `BaseURL`), not
+  parsed from a Spinloop.
+- [x] 2.2 In `applySelection` (`cmd/spinloop/main.go`), set
   `sel.DisplayName = catalog.RemoteProviderLabel(p.Name, env)` inside the existing
   `if env != ""` block that overrides `sel.Provider`.
 
@@ -23,11 +23,11 @@
 
 ## 4. Tests and docs
 
-- [x] 4.1 Add/extend a test in `cmd/outfit/apply_test.go` (or the harness test)
-  proving a remote Outfit writes a provider whose display `name` is
+- [x] 4.1 Add/extend a test in `cmd/spinloop/apply_test.go` (or the harness test)
+  proving a remote Spinloop writes a provider whose display `name` is
   `llama.cpp (dev-2)` while a local `llamacpp` provider keeps `llama.cpp`.
 - [x] 4.2 Add a test for the path-form-`REMOTE`-without-environment case: display
   name stays the plain engine name.
-- [x] 4.3 Note in `docs/outfit-file.md` that a remote provider is labelled per
+- [x] 4.3 Note in `docs/spinloop-file.md` that a remote provider is labelled per
   environment so it reads distinctly in a harness model picker.
 - [x] 4.4 Run `go test ./...` and `openspec validate remote-harness-provider-label`.

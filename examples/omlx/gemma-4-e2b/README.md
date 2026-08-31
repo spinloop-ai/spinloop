@@ -1,7 +1,7 @@
 # Gemma-4-E2B on oMLX (Apple Silicon)
 
 Run LM Studio's MLX build of Gemma-4-E2B-it on your Mac with
-[oMLX](https://omlx.ai), then point opencode at it with the [`Outfit`](Outfit) in
+[oMLX](https://omlx.ai), then point opencode at it with the [`Spinloop`](Spinloop) in
 this directory.
 
 `E2B` is the small member of the Gemma-4 family: an *effective* ~2B parameters,
@@ -12,7 +12,7 @@ to prove the setup end to end before reaching for something larger (see the
 ## Prerequisites
 
 - An **Apple Silicon** Mac (M1 or later). oMLX is Apple Silicon only, so
-  [`outfit remote`](../../../docs/commands/remote.md) cannot deploy it.
+  [`spinloop remote`](../../../docs/commands/remote.md) cannot deploy it.
 - [oMLX](https://omlx.ai), installed from its DMG or from source.
 - The 6-bit build is only a few GB, so memory is not a concern here.
 
@@ -31,7 +31,7 @@ hf download lmstudio-community/gemma-4-E2B-it-MLX-6bit \
 
 The **directory name** is what the model is called over the API —
 `gemma-4-E2B-it-MLX-6bit` here — unless you set an alias for it in the admin
-panel. That is the name the `Outfit` uses as its `MODEL`.
+panel. That is the name the `Spinloop` uses as its `MODEL`.
 
 ## 2. Start oMLX
 
@@ -53,12 +53,12 @@ Installed from the DMG and haven't put it on your `PATH`? The binary lives at
 
 Rather than remember those flags, this directory keeps them in a
 [`preset.ini`](preset.ini) (with the paths spelled out in full — preset values
-reach the server verbatim, so `~` is not expanded) and lets `outfit` build and
+reach the server verbatim, so `~` is not expanded) and lets `spinloop` build and
 run the command:
 
 ```sh
-outfit serve              # from this directory; reads ./Outfit and its PRESET
-outfit serve --dry-run    # print the omlx-cli command without running it
+spinloop serve              # from this directory; reads ./Spinloop and its PRESET
+spinloop serve --dry-run    # print the omlx-cli command without running it
 ```
 
 `serve` finds `omlx-cli` on your `PATH`, falling back to the app bundle.
@@ -76,16 +76,16 @@ oMLX's API-key auth.)
 ## 3. Point opencode at it
 
 oMLX speaks the OpenAI-compatible API, which is what the `omlx` provider targets
-(default base URL `http://localhost:8000/v1`). Apply the [`Outfit`](Outfit) in
+(default base URL `http://localhost:8000/v1`). Apply the [`Spinloop`](Spinloop) in
 this directory:
 
 ```sh
-outfit apply examples/omlx/gemma-4-e2b/Outfit
+spinloop apply examples/omlx/gemma-4-e2b/Spinloop
 # or, from this directory:
-outfit apply
+spinloop apply
 ```
 
-The Outfit is:
+The Spinloop is:
 
 ```dockerfile
 PROVIDER omlx
@@ -95,7 +95,7 @@ PRESET   ./preset.ini
 ```
 
 `MODEL` must match a model oMLX actually has — its directory name, or the alias
-you set in the admin panel. This Outfit names the model downloaded above; **if
+you set in the admin panel. This Spinloop names the model downloaded above; **if
 you downloaded something else, change `MODEL` to match** (list yours with the
 `/v1/models` call above). A name oMLX does not have comes back as
 `model not found`.
@@ -106,20 +106,20 @@ this is purely about what opencode will send.
 
 ## A note on API keys
 
-By default `outfit` writes no key for a localhost oMLX: the `omlx` provider is
+By default `spinloop` writes no key for a localhost oMLX: the `omlx` provider is
 marked `apiKeyOptional`, so a local endpoint with no `OPENAI_API_KEY` set gets no
 `apiKey` field at all.
 
 **But oMLX can require a key even on localhost** — it is a per-install setting in
 the admin panel, and some builds turn it on by default. If yours does, set
-`OPENAI_API_KEY` **before** you apply the Outfit:
+`OPENAI_API_KEY` **before** you apply the Spinloop:
 
 ```sh
-OPENAI_API_KEY=your-omlx-key outfit apply     # writes an {env:OPENAI_API_KEY} reference
-OPENAI_API_KEY=your-omlx-key opencode         # or `outfit harness`, which forwards it
+OPENAI_API_KEY=your-omlx-key spinloop apply     # writes an {env:OPENAI_API_KEY} reference
+OPENAI_API_KEY=your-omlx-key opencode         # or `spinloop harness`, which forwards it
 ```
 
-The *before* matters: with the key unset at apply time, `outfit` omits the
+The *before* matters: with the key unset at apply time, `spinloop` omits the
 `apiKey` field, and exporting the key afterwards does nothing — there is no
 reference in the config to resolve, so you would re-run `apply`. See the
 [Qwen3.6 example](../qwen3.6/README.md#a-note-on-api-keys) for the full
@@ -127,6 +127,6 @@ explanation.
 
 ## See also
 
-- [`outfit serve`](../../../docs/commands/serve.md) — the full command reference
-- [The `Outfit` file](../../../docs/outfit-file.md) — full syntax
+- [`spinloop serve`](../../../docs/commands/serve.md) — the full command reference
+- [The `Spinloop` file](../../../docs/spinloop-file.md) — full syntax
 - A heavier model on oMLX: [`examples/omlx/qwen3.6`](../qwen3.6/README.md)

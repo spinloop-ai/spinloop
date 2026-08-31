@@ -14,13 +14,13 @@ retention, and the instance role may only create streams and put events.
 Nothing on the read side exists. The CLI already talks to AWS directly with the
 caller's credentials — `internal/remote/aws.go` uses CloudFormation, EC2,
 pricing and STS, and every control Lambda call is SigV4-signed
-(`internal/remote/remote.go:403`) — so a user of `outfit remote` always holds
+(`internal/remote/remote.go:403`) — so a user of `spinloop remote` always holds
 credentials in the account.
 
 Environment resolution is already settled and shared: `resolveRemoteConfig`
-(`cmd/outfit/remote.go:96`) turns an optional Outfit path into a
+(`cmd/spinloop/remote.go:96`) turns an optional Spinloop path into a
 `remote.Config`, whose `Environment` field names the environment and whose
-`Region` is resolved from config, `OUTFIT_REMOTE_REGION`, `AWS_REGION`, or the
+`Region` is resolved from config, `SPINLOOP_REMOTE_REGION`, `AWS_REGION`, or the
 Function URL host.
 
 ## Goals / Non-Goals
@@ -43,7 +43,7 @@ Function URL host.
 - Shipping any new log source, changing retention, or touching the CDK stacks.
 - A control Lambda for logs. Reading through the shared layer would make logs
   unavailable exactly when the layer is the thing that is broken.
-- Local (`outfit serve`) and `outfit fleet` logs. This is about remote
+- Local (`spinloop serve`) and `spinloop fleet` logs. This is about remote
   environments. Fleet reads each node's daemon over HTTP rather than
   CloudWatch, and no daemon endpoint serves log content today, so it needs its
   own change (`add-fleet-logs-command`); it reuses this change's rendering,
@@ -67,13 +67,13 @@ of the moments logs matter most.
 The cost is a new dependency, `aws-sdk-go-v2/service/cloudwatchlogs`, and a new
 IAM expectation on the human operator (`logs:FilterLogEvents` on the groups).
 Both are acceptable; the operator already needs CloudFormation and EC2 read
-access for `outfit remote bootstrap`.
+access for `spinloop remote bootstrap`.
 
 ### Derive group names by convention, do not discover them
 
 Group names are computed in Go: `/cloud-vm-llm/vllm`, `/cloud-vm-llm/llamacpp`,
 `/cloud-vm-llm/boot`, built from the same `cloud-vm-llm` prefix already hard
-coded as `sharedStackName` in `cmd/outfit/remote_bootstrap.go:24`, and from the
+coded as `sharedStackName` in `cmd/spinloop/remote_bootstrap.go:24`, and from the
 same runner names the deploy path already validates.
 
 Considered: reading the names from CloudFormation stack outputs. The stack does
@@ -91,7 +91,7 @@ For `--source engine`, query the group for every supported runner and merge.
 
 The alternative is to learn the environment's runner and query one group. The
 only local sources of the runner are the stats Lambda (which needs a running
-instance — precisely what we cannot assume) and the Outfit's own model
+instance — precisely what we cannot assume) and the Spinloop's own model
 selection (which describes intent, not what the last instance actually ran).
 Querying both is one extra API call against a group that will simply return
 nothing, and it is correct across a runner switch, where the environment's
@@ -131,7 +131,7 @@ also gives each printed line its instance label.
 ### Flags
 
 ```
-outfit remote logs [flags] [path]
+spinloop remote logs [flags] [path]
   --source engine|boot|all   default engine
   --since <duration>         default 1h, Go duration syntax (30m, 2h)
   --limit <n>                default 200
@@ -140,9 +140,9 @@ outfit remote logs [flags] [path]
   --format text|json         default text
 ```
 
-`--since`/`--format` mirror what `outfit remote metrics` already does, and
-`sortFlagsBeforeArgs` plus `outfitArg(fs)` give the same "flags anywhere,
-optional Outfit path last" behaviour as the other subcommands.
+`--since`/`--format` mirror what `spinloop remote metrics` already does, and
+`sortFlagsBeforeArgs` plus `spinloopArg(fs)` give the same "flags anywhere,
+optional Spinloop path last" behaviour as the other subcommands.
 
 Implementing this exposed a bug in that shared helper: it classified any token
 starting with `-` as a flag and everything else as positional, then moved the
@@ -151,7 +151,7 @@ value-taking flag the order happens to survive, which is why no existing
 subcommand hit it; `logs` has four, so `--source boot --limit 5` became
 `--source --limit boot 5` and `--source` swallowed `--limit`.
 
-`outfit fleet` hit the same bug and fixed it on main first, so this change
+`spinloop fleet` hit the same bug and fixed it on main first, so this change
 carries no fix of its own — it adopts main's, which takes the `*flag.FlagSet`,
 keeps each flag with its value, and is the better of the two: it preserves the
 `--` terminator in the flag section (dropping it, as this change's version did,
@@ -164,16 +164,16 @@ separate, differently-priced API with its own IAM action, and polling
 last seen timestamp minus a small overlap to tolerate late-arriving events, and
 a bounded set of recently seen `eventId`s suppresses the duplicates that
 overlap produces. Interrupt handling follows `runMetricsWatch`
-(`cmd/outfit/remote.go:542`): signal handler cancels the context, a cancelled
+(`cmd/spinloop/remote.go:542`): signal handler cancels the context, a cancelled
 context exits nil.
 
 ### Layering and testability
 
 `internal/remote/logs.go` owns group naming, the fetch, stream parsing, merge
 and cap, exposing a small `LogEvent` type. The CloudWatch call sits behind an
-interface with the client injected, matching how `cmd/outfit/remote.go` already
+interface with the client injected, matching how `cmd/spinloop/remote.go` already
 substitutes `deployDiscoverFn` and friends in tests, so the whole command is
-testable without AWS. `cmd/outfit/remote_logs.go` owns flags, rendering and the
+testable without AWS. `cmd/spinloop/remote_logs.go` owns flags, rendering and the
 follow loop.
 
 ## Risks / Trade-offs

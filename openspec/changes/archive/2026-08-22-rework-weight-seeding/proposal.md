@@ -65,7 +65,7 @@ control surface.
 - **A `_seed.json` manifest** written last, replacing the per-runner sentinel.
   It records the resolved revision, the file list with checksums, and what
   produced it, so what is in the bucket is identifiable rather than inferred.
-- **A CLI surface**, `outfit remote seed start|status|ls|stop`, selecting its
+- **A CLI surface**, `spinloop remote seed start|status|ls|stop`, selecting its
   environment by the same rules as the other remote subcommands.
   `scripts/seed-model.mjs` is removed in favour of it.
 
@@ -112,7 +112,7 @@ to wait twenty minutes.
   points at it.
 - **Go client**: `internal/remote` gains the seed calls and an optional
   `seed_url` in the remote config, degrading like `env_url` does for configs
-  written before it existed; `cmd/outfit` gains the `remote seed` subcommand.
+  written before it existed; `cmd/spinloop` gains the `remote seed` subcommand.
 - **Dependencies**: `@huggingface/hub` and `@aws-sdk/client-cloudwatch-logs` in
   `remote/`. No new language toolchain, no new runtime service, no new data
   store: seed state is EC2 tags, CloudWatch records and the S3 manifest.

@@ -1,6 +1,6 @@
 ## 1. Package-manager abstraction
 
-- [x] 1.1 Add a `packageManager` type to `cmd/outfit/remote_bootstrap.go` with a
+- [x] 1.1 Add a `packageManager` type to `cmd/spinloop/remote_bootstrap.go` with a
   `name` field, an `install` argv, and a `script(name string, args ...string) []string`
   method that shapes argv per manager (pnpm: `pnpm <script> <args>`, and
   `pnpm run deploy` for the no-arg `deploy` case; npm: `npm run <script>` with a
@@ -15,7 +15,7 @@
 
 - [x] 2.1 Add a `--package-manager` flag to `cmdRemoteBootstrap` (accepting `pnpm`
   or `npm`) and resolve the selection name with precedence flag >
-  `OUTFIT_REMOTE_PACKAGE_MANAGER` env var > auto-detection, rejecting any value
+  `SPINLOOP_REMOTE_PACKAGE_MANAGER` env var > auto-detection, rejecting any value
   that is not `pnpm` or `npm` with an error naming the accepted values.
 - [x] 2.2 Replace `checkNodeAndPnpm` with a manager-aware preflight: when a
   manager is pinned, require that specific manager on PATH and fail naming it if
@@ -43,7 +43,7 @@
   `npm run bake -- llamacpp`, `npm run bake -- vllm`, `npm run deploy`).
 - [x] 4.2 Add a detection test: a tempdir PATH with a fake `npm` and no `pnpm`
   selects npm; an empty PATH makes the auto preflight fail naming both managers.
-- [x] 4.3 Add override tests: precedence (flag beats `OUTFIT_REMOTE_PACKAGE_MANAGER`
+- [x] 4.3 Add override tests: precedence (flag beats `SPINLOOP_REMOTE_PACKAGE_MANAGER`
   beats auto-detect), an invalid value is rejected naming the accepted values, and
   a pinned manager absent from PATH fails the preflight naming that manager.
 - [x] 4.4 Update the existing "missing tooling fails" test, which currently keys

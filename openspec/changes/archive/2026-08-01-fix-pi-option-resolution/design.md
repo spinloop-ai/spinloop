@@ -18,7 +18,7 @@ both builders call them. A third harness would inherit both for free.
 
 ### Where the per-provider variable sits in the precedence
 
-`--base-url` > `OUTFIT_BASE_URL` > `optionsFromEnv` > `pi.baseUrl` > `options.baseURL`.
+`--base-url` > `SPINLOOP_BASE_URL` > `optionsFromEnv` > `pi.baseUrl` > `options.baseURL`.
 
 The interesting placement is `optionsFromEnv` above `pi.baseUrl`. Both are "where is the
 server", but one is written by the catalogue and one by the user, and a user who exports
@@ -38,7 +38,7 @@ A Pi provider entry is `{baseUrl, api, apiKey, models}`. There is nowhere to put
 `project`, so a provider that needs one genuinely cannot be served by Pi.
 
 Two guards, because they cover different things. The runtime check in `BuildPiProvider`
-catches a **runtime** catalogue (`--providers`/`OUTFIT_PROVIDERS`), which no test can see.
+catches a **runtime** catalogue (`--providers`/`SPINLOOP_PROVIDERS`), which no test can see.
 The integrity test catches the **embedded** catalogue, and states the invariant somewhere
 a reader will find it. Without the integrity test the runtime error would be the only
 documentation; without the runtime check the invariant would hold only for the shipped

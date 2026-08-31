@@ -2,10 +2,10 @@
 
 ### Requirement: The daemon command
 
-`outfit daemon` SHALL run a long-lived foreground process that supervises the
+`spinloop daemon` SHALL run a long-lived foreground process that supervises the
 engine and serves the control API — always on, the API being the command's
 purpose, under the same listen-address and token rules as any API exposure. It
-SHALL take no Outfit path: what it runs comes from its API, not from the
+SHALL take no Spinloop path: what it runs comes from its API, not from the
 directory it was started in. It SHALL NOT start an engine on boot — even when a
 stored deploy config is present — and SHALL wait idle for API requests; the
 engine starts only on a start request. The daemon SHALL keep running when the
@@ -14,20 +14,20 @@ SHALL exit cleanly on `SIGINT`/`SIGTERM`, stopping a running engine before
 exiting. Backgrounding the daemon is the user's concern (tmux, systemd,
 launchd); the daemon itself SHALL NOT detach.
 
-An Outfit path given to `outfit daemon` SHALL be rejected with an error saying
+A Spinloop path given to `spinloop daemon` SHALL be rejected with an error saying
 the daemon is driven by its API, and naming the start request as the way to say
 what to serve — rather than being accepted and quietly ignored.
 
 #### Scenario: Daemon does not auto-start
 
-- **WHEN** `outfit daemon` runs on a machine with a stored deploy config
+- **WHEN** `spinloop daemon` runs on a machine with a stored deploy config
 - **THEN** no engine starts, and status reports `idle` until a start request
   arrives
 
-#### Scenario: An Outfit path is refused
+#### Scenario: A Spinloop path is refused
 
-- **WHEN** `outfit daemon ./Outfit` runs
-- **THEN** it fails saying the daemon takes no Outfit, and points at the start
+- **WHEN** `spinloop daemon ./Spinloop` runs
+- **THEN** it fails saying the daemon takes no Spinloop, and points at the start
   request as the way to say what to serve
 
 #### Scenario: Daemon survives engine exit
@@ -50,15 +50,15 @@ what to serve — rather than being accepted and quietly ignored.
 
 ### Requirement: What the daemon serves
 
-**Reason**: The Outfit was one of three sources of what to serve, and it is the
+**Reason**: The Spinloop was one of three sources of what to serve, and it is the
 one a node should not have. Removing it changes the requirement's substance
 rather than adding to it — including dropping the scenario that asserts a bare
-start serves an adjacent Outfit — so it is replaced rather than edited.
+start serves an adjacent Spinloop — so it is replaced rather than edited.
 
 **Migration**: Push a deploy config, or carry one on the start request. A daemon
-that was started beside an Outfit and relied on a bare start serving it must now
-be told what to run: `outfit fleet start <node>` after one push, or a routed
-`outfit harness`, which carries the config itself.
+that was started beside a Spinloop and relied on a bare start serving it must now
+be told what to run: `spinloop fleet start <node>` after one push, or a routed
+`spinloop harness`, which carries the config itself.
 
 ## ADDED Requirements
 
@@ -69,7 +69,7 @@ order: a deploy config carried by the start request itself; else a deploy config
 previously pushed and stored for this daemon. With neither, a start request
 SHALL fail saying there is nothing to serve and naming what would supply it.
 
-The daemon SHALL NOT read an Outfit, a preset, or a fleet file for this or any
+The daemon SHALL NOT read a Spinloop, a preset, or a fleet file for this or any
 other purpose. A node runs what it is told to run: workload configuration
 belongs to the client that asks, and a fleet file is that client's map of the
 fleet, which a node has no use for and should not be handed.
@@ -89,9 +89,9 @@ serves the same thing on its next start.
 - **THEN** the start fails saying there is nothing to serve and how to supply
   it, and the daemon keeps running
 
-#### Scenario: An adjacent Outfit is not a source
+#### Scenario: An adjacent Spinloop is not a source
 
-- **WHEN** `outfit daemon` runs in a directory holding an `Outfit`, with no
+- **WHEN** `spinloop daemon` runs in a directory holding an `Spinloop`, with no
   stored deploy config, and a bare start request arrives
 - **THEN** the start fails as having nothing to serve: the adjacent file is not
   read

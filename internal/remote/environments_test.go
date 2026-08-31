@@ -28,7 +28,7 @@ func TestIsEnvName(t *testing.T) {
 func TestEnvConfigPath(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", home)
-	want := filepath.Join(home, "outfit", "remotes", "prod", "remote.json")
+	want := filepath.Join(home, "spinloop", "remotes", "prod", "remote.json")
 	if got := must1(EnvConfigPath("prod")); got != want {
 		t.Errorf("EnvConfigPath = %q, want %q", got, want)
 	}

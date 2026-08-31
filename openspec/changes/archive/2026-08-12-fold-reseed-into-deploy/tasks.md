@@ -14,7 +14,7 @@
   non-boolean `reseed` is a 400; and `reseed` does not appear in the config
   written to SSM
 
-## 2. The `outfit` client
+## 2. The `spinloop` client
 
 - [x] 2.1 Add `reseed bool` to `remote.Deploy`'s request struct in
   `internal/remote/remote.go` (`json:"reseed,omitempty"`), beside
@@ -35,7 +35,7 @@
 - [x] 3.1 Delete `remote/scripts/seed-model.mts`
 - [x] 3.2 Remove the `seed-model` entry from `remote/package.json`
 - [x] 3.3 Replace the script's mention in `remote/README.md` ("Force a re-seed
-  of weights already in S3") with `outfit remote deploy --reseed`
+  of weights already in S3") with `spinloop remote deploy --reseed`
 - [x] 3.4 Update the `scripts/seed-model.mts` row in
   `remote/docs/architecture.md`
 - [x] 3.5 Check nothing else references the script or `pnpm seed-model`
@@ -45,5 +45,5 @@
 
 - [x] 4.1 `pnpm -C remote test` and `npx tsc --noEmit` clean
 - [x] 4.2 Full Go suite clean, including the OpenAPI contract test
-- [x] 4.3 `outfit remote deploy --reseed --dry-run` against the Glimmer example
+- [x] 4.3 `spinloop remote deploy --reseed --dry-run` against the Glimmer example
   shows the re-seed intent and the unchanged config

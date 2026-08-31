@@ -25,7 +25,7 @@ import (
 	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	"github.com/aws/smithy-go"
 
-	"github.com/lucinate-ai/outfit/internal/metrics"
+	"github.com/spinloop-ai/spinloop/internal/metrics"
 )
 
 // httpClient is a package variable so tests can substitute it. The long
@@ -34,7 +34,7 @@ import (
 var httpClient = &http.Client{Timeout: 10 * time.Minute}
 
 // Config holds the connection details for the remote instance's control
-// Lambdas: deploying remote/ prints it as the OutfitRemoteConfig output, ready
+// Lambdas: deploying remote/ prints it as the SpinloopRemoteConfig output, ready
 // to paste into the config file.
 type Config struct {
 	StartURL  string `json:"start_url"`
@@ -56,8 +56,8 @@ type Config struct {
 	UpdateURL string `json:"update_url"`
 	Region    string `json:"region"`
 	// BaseURL is the endpoint's own address (the environment's stable Elastic
-	// IP). It belongs to the deployment rather than to the Outfit, so it is
-	// written here and `apply` reads it back for an Outfit that states no
+	// IP). It belongs to the deployment rather than to the Spinloop, so it is
+	// written here and `apply` reads it back for a Spinloop that states no
 	// BASEURL. Like DeployURL it is optional: the control calls do not need it —
 	// start and status report the address themselves — so configs without it
 	// still work.
@@ -69,7 +69,7 @@ type Config struct {
 }
 
 // ConfigPath returns the path of the legacy per-user remote config file,
-// alongside outfit's own config in the same directory. The environments
+// alongside spinloop's own config in the same directory. The environments
 // registry (see environments.go) supersedes it; it is still read as the
 // fallback for the default environment.
 func ConfigPath() (string, error) {
@@ -81,7 +81,7 @@ func ConfigPath() (string, error) {
 }
 
 // LoadConfig reads the per-user config file and applies environment overrides
-// (OUTFIT_REMOTE_START_URL, OUTFIT_REMOTE_STOP_URL, OUTFIT_REMOTE_REGION; the
+// (SPINLOOP_REMOTE_START_URL, SPINLOOP_REMOTE_STOP_URL, SPINLOOP_REMOTE_REGION; the
 // region also falls back to AWS_REGION and then to the region embedded in the
 // Function URL host). A missing file is fine — env vars alone can carry the
 // config. getenv is injectable for tests.
@@ -103,7 +103,7 @@ func LoadConfig(getenv func(string) string) (Config, error) {
 }
 
 // LoadConfigFile reads the remote config from an explicit local file —
-// typically one named by an Outfit's REMOTE instruction — then applies the
+// typically one named by a Spinloop's REMOTE instruction — then applies the
 // same environment overrides as LoadConfig. Unlike LoadConfig, the file must
 // exist: it was asked for by name.
 func LoadConfigFile(path string, getenv func(string) string) (Config, error) {
@@ -111,7 +111,7 @@ func LoadConfigFile(path string, getenv func(string) string) (Config, error) {
 	if err != nil {
 		if os.IsNotExist(err) {
 			return Config{}, fmt.Errorf(
-				"remote config %s does not exist: run `outfit remote deploy` to create and register the environment",
+				"remote config %s does not exist: run `spinloop remote deploy` to create and register the environment",
 				path)
 		}
 		return Config{}, err
@@ -135,33 +135,33 @@ func LoadConfigBytes(data []byte, source string, getenv func(string) string) (Co
 // finishConfig applies env overrides and validates. source names the config
 // file for error messages.
 func finishConfig(cfg Config, getenv func(string) string, source string) (Config, error) {
-	if v := getenv("OUTFIT_REMOTE_START_URL"); v != "" {
+	if v := getenv("SPINLOOP_REMOTE_START_URL"); v != "" {
 		cfg.StartURL = v
 	}
-	if v := getenv("OUTFIT_REMOTE_STOP_URL"); v != "" {
+	if v := getenv("SPINLOOP_REMOTE_STOP_URL"); v != "" {
 		cfg.StopURL = v
 	}
-	if v := getenv("OUTFIT_REMOTE_DEPLOY_URL"); v != "" {
+	if v := getenv("SPINLOOP_REMOTE_DEPLOY_URL"); v != "" {
 		cfg.DeployURL = v
 	}
-	if v := getenv("OUTFIT_REMOTE_STATS_URL"); v != "" {
+	if v := getenv("SPINLOOP_REMOTE_STATS_URL"); v != "" {
 		cfg.StatsURL = v
 	}
-	if v := getenv("OUTFIT_REMOTE_ENV_URL"); v != "" {
+	if v := getenv("SPINLOOP_REMOTE_ENV_URL"); v != "" {
 		cfg.EnvURL = v
 	}
-	if v := getenv("OUTFIT_REMOTE_SEED_URL"); v != "" {
+	if v := getenv("SPINLOOP_REMOTE_SEED_URL"); v != "" {
 		cfg.SeedURL = v
 	}
-	if v := getenv("OUTFIT_REMOTE_UPDATE_URL"); v != "" {
+	if v := getenv("SPINLOOP_REMOTE_UPDATE_URL"); v != "" {
 		cfg.UpdateURL = v
 	}
-	if v := getenv("OUTFIT_REMOTE_REGION"); v != "" {
+	if v := getenv("SPINLOOP_REMOTE_REGION"); v != "" {
 		cfg.Region = v
 	}
 	if cfg.StartURL == "" || cfg.StopURL == "" {
 		return Config{}, fmt.Errorf(
-			"remote is not configured: paste the OutfitRemoteConfig output of the remote/ deployment into %s",
+			"remote is not configured: paste the SpinloopRemoteConfig output of the remote/ deployment into %s",
 			source)
 	}
 	if cfg.Region == "" {
@@ -172,7 +172,7 @@ func finishConfig(cfg Config, getenv func(string) string, source string) (Config
 	}
 	if cfg.Region == "" {
 		return Config{}, fmt.Errorf(
-			"cannot determine the AWS region: set \"region\" in %s or OUTFIT_REMOTE_REGION",
+			"cannot determine the AWS region: set \"region\" in %s or SPINLOOP_REMOTE_REGION",
 			source)
 	}
 	return cfg, nil
@@ -216,7 +216,7 @@ type Response struct {
 	Deployed bool `json:"deployed"`
 	Seeding  bool `json:"seeding"`
 	// SeedID identifies the seed a deploy started, so it can be followed with
-	// `outfit remote seed status`. The instance id it replaces was an
+	// `spinloop remote seed status`. The instance id it replaces was an
 	// implementation detail that changes if the seed is relaunched.
 	SeedID        string `json:"seedId"`
 	Runner        string `json:"runner"`
@@ -231,7 +231,7 @@ type Response struct {
 }
 
 // DeployConfig is what the deploy Lambda accepts: the runner-neutral
-// description of WHAT to serve, derived from an Outfit. Deliberately no
+// description of WHAT to serve, derived from a Spinloop. Deliberately no
 // weights prefix — the Lambda derives the S3 layout itself, and seeds the
 // weights when they are not there yet, so this stays a statement of intent.
 type DeployConfig struct {
@@ -241,7 +241,7 @@ type DeployConfig struct {
 	ContextSize int    `json:"contextSize"`
 	// Parallel is the number of concurrent request slots the engine should
 	// run with, translated into the runner's own flag the same way a local
-	// `outfit serve` would — including scaling ContextSize for a llamacpp
+	// `spinloop serve` would — including scaling ContextSize for a llamacpp
 	// runner, since llama.cpp divides its ctx-size budget across slots. Zero
 	// means unset: no parallelism flag, ContextSize unscaled.
 	Parallel        int      `json:"parallel,omitempty"`
@@ -258,10 +258,10 @@ type DeployConfig struct {
 	// whether a daemon pre-warms at all is the daemon's own, so a client
 	// cannot switch on the behaviour on a host that does not have it.
 	Prewarm *bool `json:"prewarm,omitempty"`
-	// OutfitVersion pins the outfit release the instance's boot installs.
+	// SpinloopVersion pins the spinloop release the instance's boot installs.
 	// Empty means the boot installs the latest published release. Omitted
 	// when empty, so an unpinned deploy sends exactly what it always did.
-	OutfitVersion string `json:"outfitVersion,omitempty"`
+	SpinloopVersion string `json:"spinloopVersion,omitempty"`
 }
 
 // Deploy creates (or updates) cfg.Environment on the control plane and sets
@@ -277,7 +277,7 @@ type DeployConfig struct {
 func Deploy(ctx context.Context, cfg Config, dc DeployConfig, allowedCidr string, reseed bool) (*Response, error) {
 	if cfg.DeployURL == "" {
 		return nil, fmt.Errorf(
-			"no deploy_url configured: add the remote/ deployment's DeployUrl output to the remote config (or set OUTFIT_REMOTE_DEPLOY_URL)")
+			"no deploy_url configured: add the remote/ deployment's DeployUrl output to the remote config (or set SPINLOOP_REMOTE_DEPLOY_URL)")
 	}
 	body, err := json.Marshal(struct {
 		DeployConfig
@@ -465,7 +465,7 @@ func Restart(ctx context.Context, cfg Config, force bool, prewarm *bool, progres
 	progress("stopped; waking it")
 	resp, err := Start(ctx, cfg, prewarm, progress, onState, nil)
 	if err != nil {
-		return nil, fmt.Errorf("%w — the instance is stopped; `outfit remote start` will bring it back", err)
+		return nil, fmt.Errorf("%w — the instance is stopped; `spinloop remote start` will bring it back", err)
 	}
 	return resp, nil
 }
@@ -638,7 +638,7 @@ func truncate(s string, n int) string {
 
 // refreshCredsHint is the fix appended when a request is rejected because the
 // caller's AWS credentials are expired or invalid, rather than lacking
-// permission — outfit stores no credentials of its own to refresh.
+// permission — spinloop stores no credentials of its own to refresh.
 const refreshCredsHint = "refresh your env credentials, profile, or SSO session"
 
 // credentialErrorCodes are the SDK/smithy error codes that mean the caller's
@@ -738,7 +738,7 @@ type StatsResponse struct {
 	// this — in every case the formatters simply omit the line.
 	LastActiveAt string `json:"lastActiveAt"`
 	IdleSeconds  int    `json:"idleSeconds"`
-	// Version is the outfit binary's build-time version string, relayed from
+	// Version is the spinloop binary's build-time version string, relayed from
 	// the daemon's /v1/status by the stats Lambda. Empty when the daemon was
 	// unreachable or the control plane predates this.
 	Version string `json:"version"`
@@ -764,7 +764,7 @@ type (
 func Stats(ctx context.Context, cfg Config) (*StatsResponse, error) {
 	if cfg.StatsURL == "" {
 		return nil, fmt.Errorf(
-			"no stats_url configured: the control plane needs re-deploying with `pnpm run deploy` (or set OUTFIT_REMOTE_STATS_URL)")
+			"no stats_url configured: the control plane needs re-deploying with `pnpm run deploy` (or set SPINLOOP_REMOTE_STATS_URL)")
 	}
 	out, err := callStats(ctx, cfg)
 	if err != nil {

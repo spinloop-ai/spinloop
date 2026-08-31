@@ -5,7 +5,7 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 
 .PHONY: build
 build:
-	go build -ldflags="-s -w -X main.version=$(VERSION)" -o outfit ./cmd/outfit
+	go build -ldflags="-s -w -X main.version=$(VERSION)" -o spinloop ./cmd/spinloop
 
 .PHONY: fmt
 fmt:
@@ -13,7 +13,7 @@ fmt:
 
 .PHONY: run
 run:
-	go run ./cmd/outfit $(filter-out $@,$(MAKECMDGOALS))
+	go run ./cmd/spinloop $(filter-out $@,$(MAKECMDGOALS))
 
 .PHONY: test
 test:

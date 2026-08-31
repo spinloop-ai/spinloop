@@ -4,8 +4,8 @@
 
 Define how a single provider selection — a provider plus a model and/or alias,
 context/output limits, and base URL — is validated and applied to (or removed
-from) the active harness's config. This is the shared core behind `outfit
-add`/`outfit remove` and the Outfit-file commands `apply`/`unapply`, which route
+from) the active harness's config. This is the shared core behind `spinloop
+add`/`spinloop remove` and the Spinloop-file commands `apply`/`unapply`, which route
 through the same logic.
 ## Requirements
 ### Requirement: Context and output limits
@@ -46,37 +46,37 @@ configures.
 
 When a provider declares an API key environment variable, the system SHALL
 resolve its value from the process environment first, and only when the variable
-is unset there SHALL it fall back to a `.env` file **beside the Outfit being
+is unset there SHALL it fall back to a `.env` file **beside the Spinloop being
 applied**. An exported variable therefore always wins; the `.env` only fills a
-gap. When no Outfit is involved — a selection made entirely from flags — the
-working directory SHALL be used in place of the Outfit's directory, so a
+gap. When no Spinloop is involved — a selection made entirely from flags — the
+working directory SHALL be used in place of the Spinloop's directory, so a
 project's own `.env` is still found. A missing key SHALL be an error when the
 provider marks it required. A resolved key that does not start with the
 provider's declared prefix SHALL be rejected. Secrets SHALL never be written into
-an Outfit file.
+a Spinloop file.
 
 This precedence — process environment over `.env` — matches the rule the
 `remote` commands follow, so the whole tool resolves local variables the same
 way.
 
-The file sits beside the Outfit for the same reason `PRESET` and `REMOTE` do:
-an Outfit and the key it needs belong to the same project and travel together,
+The file sits beside the Spinloop for the same reason `PRESET` and `REMOTE` do:
+a Spinloop and the key it needs belong to the same project and travel together,
 and a location relative to the tool cannot be resolved by an installed binary.
 
-#### Scenario: The key travels with the Outfit
+#### Scenario: The key travels with the Spinloop
 
-- **WHEN** an Outfit is applied and a `.env` beside it sets the provider's key
+- **WHEN** a Spinloop is applied and a `.env` beside it sets the provider's key
   variable, which is unset in the environment
 - **THEN** that value is used
 
 #### Scenario: An exported key wins over the .env
 
-- **WHEN** an Outfit is applied and the provider's key variable is set both in
-  the process environment and in the `.env` beside the Outfit
+- **WHEN** a Spinloop is applied and the provider's key variable is set both in
+  the process environment and in the `.env` beside the Spinloop
 - **THEN** the process environment's value is used and the `.env` value is
   ignored
 
-#### Scenario: A command with no Outfit reads the working directory
+#### Scenario: A command with no Spinloop reads the working directory
 
 - **WHEN** a selection made entirely from flags is applied and a `.env` in the
   working directory sets the provider's key variable, unset in the environment
@@ -84,7 +84,7 @@ and a location relative to the tool cannot be resolved by an installed binary.
 
 #### Scenario: Another project's .env is not consulted
 
-- **WHEN** an Outfit is applied and the key variable is set only in a `.env`
+- **WHEN** a Spinloop is applied and the key variable is set only in a `.env`
   belonging to a different directory
 - **THEN** the key does not resolve from that file
 
@@ -102,41 +102,41 @@ and a location relative to the tool cannot be resolved by an installed binary.
 ### Requirement: Base URL precedence
 
 The system SHALL let the user override any provider's API base URL, resolved
-with the precedence: the explicit override, then the `OUTFIT_BASE_URL`
+with the precedence: the explicit override, then the `SPINLOOP_BASE_URL`
 environment variable, then the catalogue's per-provider values. The explicit
-override is the `--base-url`/`-u` flag, or the `BASEURL` of the Outfit being
+override is the `--base-url`/`-u` flag, or the `BASEURL` of the Spinloop being
 applied.
 
-When an Outfit names a remote configuration with `REMOTE` and states no
+When a Spinloop names a remote configuration with `REMOTE` and states no
 `BASEURL` of its own, applying it SHALL take the explicit override from that
 configuration's base URL, so the endpoint's address stays with the deployment
-that owns it rather than in the hand-written Outfit. The system SHALL report
+that owns it rather than in the hand-written Spinloop. The system SHALL report
 that it did so. A remote configuration that does not exist, or that names no
 base URL, SHALL NOT be an error: the base URL is left to the rest of the
 precedence chain.
 
 #### Scenario: Flag beats environment and catalogue
 
-- **WHEN** `--base-url https://gateway/v1` is given and `OUTFIT_BASE_URL` is
+- **WHEN** `--base-url https://gateway/v1` is given and `SPINLOOP_BASE_URL` is
   also set
 - **THEN** the configured base URL is `https://gateway/v1`
 
 #### Scenario: Base URL from the remote configuration
 
-- **WHEN** an Outfit with `REMOTE ./remote.json` and no `BASEURL` is applied,
+- **WHEN** a Spinloop with `REMOTE ./remote.json` and no `BASEURL` is applied,
   and that file names a base URL
 - **THEN** the provider is configured with the base URL from that file, and the
   output says where it came from
 
-#### Scenario: An Outfit's own BASEURL wins
+#### Scenario: A Spinloop's own BASEURL wins
 
-- **WHEN** an Outfit states both a `BASEURL` and a `REMOTE` whose configuration
+- **WHEN** a Spinloop states both a `BASEURL` and a `REMOTE` whose configuration
   names a different base URL
-- **THEN** the provider is configured with the Outfit's `BASEURL`
+- **THEN** the provider is configured with the Spinloop's `BASEURL`
 
 #### Scenario: Remote configuration not written yet
 
-- **WHEN** an Outfit with `REMOTE ./remote.json` and no `BASEURL` is applied
+- **WHEN** a Spinloop with `REMOTE ./remote.json` and no `BASEURL` is applied
   before the deployment that writes that file has run
 - **THEN** applying succeeds, leaving the base URL to the catalogue
 
@@ -149,7 +149,7 @@ URL, next steps).
 
 #### Scenario: Successful add
 
-- **WHEN** `outfit add -p openrouter -m deepseek/deepseek-v4-pro -c 128k`
+- **WHEN** `spinloop add -p openrouter -m deepseek/deepseek-v4-pro -c 128k`
   succeeds
 - **THEN** the output names the config path, the provider, the default model,
   and the 128000/32000 token limits
@@ -162,19 +162,19 @@ MUST exist in the resolved catalogue.
 
 #### Scenario: Missing provider
 
-- **WHEN** the user runs `outfit add` without `--provider`
-- **THEN** the command fails, pointing at `outfit list`
+- **WHEN** the user runs `spinloop add` without `--provider`
+- **THEN** the command fails, pointing at `spinloop list`
 
 #### Scenario: Provider alone is not enough to apply
 
-- **WHEN** the user runs `outfit add -p openrouter` with no model or alias
+- **WHEN** the user runs `spinloop add -p openrouter` with no model or alias
 - **THEN** the command fails explaining a selection needs a model or an alias
 
 #### Scenario: Unknown provider
 
 - **WHEN** the selection names a provider not in the catalogue
 - **THEN** the command fails naming the unknown id and pointing at
-  `outfit list`
+  `spinloop list`
 
 ### Requirement: Selection model key
 
@@ -184,7 +184,7 @@ configured and SHALL become the selection's default model.
 
 #### Scenario: Model becomes the default
 
-- **WHEN** the user runs `outfit add -p openrouter -m deepseek/deepseek-v4-pro`
+- **WHEN** the user runs `spinloop add -p openrouter -m deepseek/deepseek-v4-pro`
 - **THEN** `deepseek/deepseek-v4-pro` is configured and becomes the default
   model
 
@@ -195,19 +195,19 @@ configured and SHALL become the selection's default model.
 
 ### Requirement: Removing a provider or model
 
-`outfit remove` (and `unapply`) SHALL remove the whole provider when no model or
+`spinloop remove` (and `unapply`) SHALL remove the whole provider when no model or
 alias is given, and otherwise SHALL remove exactly the named model — an alias or
 model id each name one key. The command SHALL report how many entries were
 removed, and SHALL report "nothing to remove" (not an error) when none matched.
 
 #### Scenario: Removing a whole provider
 
-- **WHEN** the user runs `outfit remove -p ollama`
+- **WHEN** the user runs `spinloop remove -p ollama`
 - **THEN** the provider block is removed from the harness config
 
 #### Scenario: Removing one model
 
-- **WHEN** the user runs `outfit remove -p openrouter -m deepseek/deepseek-v4-pro`
+- **WHEN** the user runs `spinloop remove -p openrouter -m deepseek/deepseek-v4-pro`
 - **THEN** only that model is removed and the provider's other models survive
 
 #### Scenario: Nothing matched

@@ -1,6 +1,6 @@
 ## Why
 
-When an Outfit names a remote endpoint with `REMOTE`, applying it still keys the
+When a Spinloop names a remote endpoint with `REMOTE`, applying it still keys the
 harness provider config on the `PROVIDER` value (the engine, e.g. `llamacpp`), so
 every environment built from the same engine collapses to the same provider key:
 a second environment's `apply` overwrites the first's block, and the model
@@ -10,7 +10,7 @@ environment.
 
 ## What Changes
 
-- When an applied Outfit has a `REMOTE`, the harness (opencode/pi) provider is
+- When an applied Spinloop has a `REMOTE`, the harness (opencode/pi) provider is
   keyed on the **remote environment name** rather than the `PROVIDER` value, and
   the default model reads as `<env>/<model>` (e.g. `REMOTE dev-1` + `PROVIDER
   llamacpp` + `ALIAS qwen` → provider `dev-1`, model `dev-1/qwen`).
@@ -29,18 +29,18 @@ environment.
 
 ### Modified Capabilities
 - `remote-environments`: add a requirement that a `REMOTE` sets the harness
-  provider name (and the `<env>/<model>` default model) when an Outfit is applied,
+  provider name (and the `<env>/<model>` default model) when a Spinloop is applied,
   and that unapply removes that same provider.
 
 ## Impact
 
-- `cmd/outfit/remote.go`: a tolerant remote-config reader and an env-name helper
+- `cmd/spinloop/remote.go`: a tolerant remote-config reader and an env-name helper
   (bare name, else the config's `environment` field).
-- `cmd/outfit/main.go`: `applySelection` overrides the harness provider name after
+- `cmd/spinloop/main.go`: `applySelection` overrides the harness provider name after
   the catalog lookup; `removeSelection` applies the same override (and gains the
-  Outfit directory) so unapply stays symmetric.
+  Spinloop directory) so unapply stays symmetric.
 - No changes to `internal/harness`, `internal/catalog`, `internal/opencode`, or
   `internal/pi` — they already key on whatever provider id they are handed.
-- `docs/outfit-file.md`: note that `REMOTE` sets the harness provider name.
-- Not solved here: `outfit export` of a remote-applied Outfit stays lossy (the
+- `docs/spinloop-file.md`: note that `REMOTE` sets the harness provider name.
+- Not solved here: `spinloop export` of a remote-applied Spinloop stays lossy (the
   harness config does not record `REMOTE`), as it already is today.

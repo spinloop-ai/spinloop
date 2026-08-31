@@ -10,9 +10,9 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/lucinate-ai/outfit/internal/daemon"
-	"github.com/lucinate-ai/outfit/internal/metrics"
-	"github.com/lucinate-ai/outfit/internal/remote"
+	"github.com/spinloop-ai/spinloop/internal/daemon"
+	"github.com/spinloop-ai/spinloop/internal/metrics"
+	"github.com/spinloop-ai/spinloop/internal/remote"
 )
 
 // stubAWSCreds pins the AWS credential chain to static environment credentials
@@ -107,7 +107,7 @@ func TestLogsFromRemote(t *testing.T) {
 func TestRemoteNodeStartWithIsRefused(t *testing.T) {
 	node, _ := NewRemoteNode("env", remote.Config{StartURL: "http://x", StopURL: "http://x", Region: "r"})
 	_, err := node.StartWith(context.Background(), &remote.DeployConfig{Runner: "llamacpp"}, "")
-	if err == nil || !strings.Contains(err.Error(), "outfit remote deploy") {
+	if err == nil || !strings.Contains(err.Error(), "spinloop remote deploy") {
 		t.Errorf("StartWith should refuse, naming the deploy path; got %v", err)
 	}
 }

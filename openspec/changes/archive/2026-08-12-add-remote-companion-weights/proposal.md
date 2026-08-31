@@ -32,8 +32,8 @@ over with a filter, rather than modelled.
   (`--spec-draft-model`, `--mmproj`), pointing at the synced local paths. These
   join the deployment-owned settings, so a preset's local path for a drafter is
   dropped rather than leaking onto the instance where it does not exist.
-- `outfit remote deploy` reads the companion filenames from the same preset
-  keys that drive a local `outfit serve`, keeping the existing "one preset
+- `spinloop remote deploy` reads the companion filenames from the same preset
+  keys that drive a local `spinloop serve`, keeping the existing "one preset
   works locally and remotely without edits" property.
 
 Not breaking: every field is optional and absent companions reproduce today's
@@ -63,7 +63,7 @@ None. This extends two existing capabilities rather than introducing a new one.
 - `remote/lambda/shared/seed.ts` — the presence check.
 - `remote/scripts/seed-model.mjs` — the manual re-seed path, which duplicates
   the download shape.
-- `cmd/outfit/remote.go` — `deployConfigFor`, and the cloud-owned flag set.
+- `cmd/spinloop/remote.go` — `deployConfigFor`, and the cloud-owned flag set.
 - `internal/preset/preset.go` — alias coverage for the drafter flag spellings,
   so a cloud-owned flag is recognised however it is written.
 - `examples/llamacpp/muse-glimmer-30b/` — the motivating case; its README

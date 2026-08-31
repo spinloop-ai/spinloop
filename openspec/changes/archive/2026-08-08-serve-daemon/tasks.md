@@ -15,8 +15,8 @@
       GPU), absent-command → omitted stat, never an error
 - [x] 1.5 Add the engine `/metrics` scraper (HTTP GET on the engine's serving
       address, optional API key), unreachable engine → omitted engine stats
-- [x] 1.6 Switch the `cmd/outfit` metrics formatters (bar/table/json) to the
-      `internal/metrics` types and verify `outfit remote metrics` output is
+- [x] 1.6 Switch the `cmd/spinloop` metrics formatters (bar/table/json) to the
+      `internal/metrics` types and verify `spinloop remote metrics` output is
       unchanged
 
 ## 2. Supervisor (`internal/daemon`)
@@ -29,13 +29,13 @@
       10s grace; idempotent when nothing is running
 - [x] 2.3 Enforce one engine per daemon: start while running fails naming the
       running engine
-- [x] 2.4 Capture engine stdout/stderr to `~/.config/outfit/daemon/engine.log`
+- [x] 2.4 Capture engine stdout/stderr to `~/.config/spinloop/daemon/engine.log`
       and expose the path in status; move `configHome()` somewhere shared
 - [x] 2.5 Implement deploy-config persistence: store pushed `DeployConfig` as
       `deploy-config.json` (0600), load on daemon boot, precedence over the
-      Outfit; validate the runner via `engineFor`
+      Spinloop; validate the runner via `engineFor`
 - [x] 2.6 Build the engine argv from a stored deploy config's serveArgs, and
-      from the Outfit path otherwise, reusing serve's existing construction;
+      from the Spinloop path otherwise, reusing serve's existing construction;
       append the engine's metrics flag (new field in the `serveEngine` table)
 
 ## 3. Control API (`internal/daemon`)
@@ -44,31 +44,31 @@
       `POST /v1/start`, `POST /v1/stop`, `GET /v1/metrics`,
       `PUT /v1/deploy-config`; JSON errors with meaningful statuses (401,
       409 start-while-running, 400 bad config)
-- [x] 3.2 Implement bearer-token middleware: token from `OUTFIT_API_TOKEN`,
+- [x] 3.2 Implement bearer-token middleware: token from `SPINLOOP_API_TOKEN`,
       constant-time compare, 401 without; refuse non-loopback listen with no
       token, allow tokenless loopback
 - [x] 3.3 Wire `/v1/metrics` to the collector (system + engine scrape) and
       `/v1/status` to supervisor state, served model/runner, and log path
 
-## 4. Serve wiring (`cmd/outfit/serve.go`)
+## 4. Serve wiring (`cmd/spinloop/serve.go`)
 
 - [x] 4.1 Add `-d`/`--daemon`, `-a`/`--api`, and `--api-addr` flags; API
       defaults on under `--daemon`, off otherwise; plain foreground serve
       byte-for-byte unchanged
 - [x] 4.2 Implement daemon mode: resolve what to serve (stored deploy config,
-      else Outfit), start the engine when there is one, idle otherwise; clean
+      else Spinloop), start the engine when there is one, idle otherwise; clean
       shutdown on SIGINT/SIGTERM stops the engine first
 - [x] 4.3 Implement foreground `--api`: same server over the foreground
       engine (status/metrics work, start fails as already-running, stop
       terminates the engine and serve exits)
-- [x] 4.4 Ensure the Outfit-adjacent `.env` loading runs before the API token
+- [x] 4.4 Ensure the Spinloop-adjacent `.env` loading runs before the API token
       is read, matching the remote commands' local-environment behaviour
 
-## 5. The `outfit daemon` command and serve cleanup
+## 5. The `spinloop daemon` command and serve cleanup
 
-- [x] 5.1 Add the top-level `outfit daemon [path] [--api-addr]` command:
+- [x] 5.1 Add the top-level `spinloop daemon [path] [--api-addr]` command:
       dispatch case, usage text, completion-table entry; hosts the daemon
-      stack with no engine start on boot (stored config and Outfit are
+      stack with no engine start on boot (stored config and Spinloop are
       bare-start fallbacks only), API always on, same token rules
 - [x] 5.2 Remove `-d`/`--daemon` from `serve` (flags, completion entry,
       usage text), keeping `-a`/`--api` and `--api-addr`; rehome the daemon
@@ -76,13 +76,13 @@
 - [x] 5.3 Accept an optional deploy config body on `POST /v1/start`:
       validate and persist via the push path, then start; the already-running
       check runs first so a 409 stores nothing
-- [x] 5.4 Tests: the daemon idles beside an Outfit until started; stop over
+- [x] 5.4 Tests: the daemon idles beside a Spinloop until started; stop over
       the API leaves the daemon answering and restartable; start-with-body
       serves the carried config; start-with-body while running is a 409 that
       stores nothing; `serve -d` is an unknown flag; `serve -a` stays
       foreground
 - [x] 5.5 Update README, AGENTS.md, `docs/commands/serve.md` and
-      `docs/http-api.md` for `outfit daemon`, the start payload, and serve's
+      `docs/http-api.md` for `spinloop daemon`, the start payload, and serve's
       foreground-only contract
 
 ## 6. Verification and docs

@@ -2,14 +2,14 @@
 
 ## Purpose
 
-The instance-side half of the cloud deployment: outfit installed during boot
+The instance-side half of the cloud deployment: spinloop installed during boot
 from the deploy config's version (or the latest release), the boot writing a
 deploy config and starting the engine through the daemon's control API, and the
 control-plane Lambdas reaching that API over SSM.
 
 It exists to make the cloud path and every other path the same path. The
 instance used to run a hand-rolled systemd unit while the Lambdas collected
-metrics by shelling commands over SSM, duplicating in TypeScript what outfit
+metrics by shelling commands over SSM, duplicating in TypeScript what spinloop
 already does in Go. Now the Lambdas are thin relays to the same API a fleet
 client speaks: they read metrics from it, and they read its judgement of engine
 idleness rather than forming their own.
@@ -17,9 +17,9 @@ idleness rather than forming their own.
 ## Requirements
 ### Requirement: The instance engine runs under the daemon
 
-At boot the instance SHALL run `outfit daemon` as its engine host, bound to
+At boot the instance SHALL run `spinloop daemon` as its engine host, bound to
 loopback, instead of a per-runner engine unit. The daemon's config directory
-SHALL be pinned to a fixed system path via `OUTFIT_CONFIG_DIR` on its service
+SHALL be pinned to a fixed system path via `SPINLOOP_CONFIG_DIR` on its service
 unit, so it does not depend on `$HOME` (which a systemd service does not get) —
 what the boot writes and what the daemon reads are the same location. The boot
 sequence SHALL derive the daemon's deploy config from the environment's stored
@@ -40,7 +40,7 @@ one the boot script previously installed for that runner.
 #### Scenario: The daemon reads what the boot wrote
 
 - **WHEN** the boot writes the deploy config under the daemon's pinned
-  `OUTFIT_CONFIG_DIR` and requests a start
+  `SPINLOOP_CONFIG_DIR` and requests a start
 - **THEN** the daemon finds that deploy config and starts the engine, rather
   than reporting nothing to serve
 
@@ -55,7 +55,7 @@ one the boot script previously installed for that runner.
 The stats path SHALL obtain engine and system metrics by calling the
 on-instance daemon's metrics endpoint over SSM, merging in what only the
 control plane knows (environment, instance id and type, uptime), and SHALL
-preserve the reply shape `outfit remote metrics` renders today. The control
+preserve the reply shape `spinloop remote metrics` renders today. The control
 plane SHALL NOT collect metrics by running per-metric shell commands on the
 instance.
 
@@ -69,13 +69,13 @@ A daemon that cannot be reached, and a daemon whose reply carries no
 last-active time, SHALL both be treated as showing no activity, so an instance
 in either state is terminated once the idle threshold passes rather than left
 running. There SHALL be no second way of judging idleness for a daemon that
-does not report one: an instance running an outfit older than this behaviour
+does not report one: an instance running an spinloop older than this behaviour
 is handled by deploying the control plane after the images that carry it, not
 by a compatibility path in the check.
 
 #### Scenario: Stats flow through the daemon
 
-- **WHEN** `outfit remote metrics` runs against a running instance
+- **WHEN** `spinloop remote metrics` runs against a running instance
 - **THEN** the reported state, GPU, CPU, RAM and token figures come from the
   daemon's metrics endpoint and render in the existing bar, table and JSON
   formats unchanged
@@ -123,35 +123,35 @@ path. The boot log's shipping is unchanged.
 - **WHEN** the engine writes output while running under the daemon
 - **THEN** those lines appear in the engine's CloudWatch log stream
 
-### Requirement: Outfit is installed during boot, not baked into the AMI
+### Requirement: Spinloop is installed during boot, not baked into the AMI
 
-The runtime AMIs for both runners SHALL NOT include a pinned outfit release.
-Instead, the instance's boot sequence SHALL fetch and install the outfit
-binary early — before the `outfit-daemon` systemd unit is written and
+The runtime AMIs for both runners SHALL NOT include a pinned spinloop release.
+Instead, the instance's boot sequence SHALL fetch and install the spinloop
+binary early — before the `spinloop-daemon` systemd unit is written and
 enabled — so the daemon has a binary to run once its unit starts. An AMI
-bake SHALL NOT need to change when only outfit's own code changes.
+bake SHALL NOT need to change when only spinloop's own code changes.
 
-#### Scenario: The AMI carries no outfit binary or version pin
+#### Scenario: The AMI carries no spinloop binary or version pin
 
 - **WHEN** a runtime AMI is built
-- **THEN** it contains no outfit binary and declares no pinned outfit version
+- **THEN** it contains no spinloop binary and declares no pinned spinloop version
   among its bake parameters
 
-#### Scenario: Boot installs outfit before the daemon can start
+#### Scenario: Boot installs spinloop before the daemon can start
 
 - **WHEN** an instance launches from a runtime AMI
-- **THEN** the boot sequence installs the outfit binary before the
-  `outfit-daemon` systemd unit is written and enabled
+- **THEN** the boot sequence installs the spinloop binary before the
+  `spinloop-daemon` systemd unit is written and enabled
 
 #### Scenario: A daemon-only change needs no new AMI
 
-- **WHEN** an outfit release ships a daemon-only change
+- **WHEN** an spinloop release ships a daemon-only change
 - **THEN** an environment's instances pick it up through a fresh boot,
   without any runtime AMI being rebuilt
 
-### Requirement: The outfit install is idempotent
+### Requirement: The spinloop install is idempotent
 
-The boot's outfit install step SHALL be safe to run more than once: given the
+The boot's spinloop install step SHALL be safe to run more than once: given the
 same resolved version, re-running it SHALL succeed without re-downloading an
 already-correct install, and an interrupted attempt SHALL never leave a
 partially-installed or corrupted binary in place. The downloaded release
@@ -174,14 +174,14 @@ performed previously.
 
 #### Scenario: The downloaded binary is checksum-verified
 
-- **WHEN** boot downloads an outfit release
+- **WHEN** boot downloads an spinloop release
 - **THEN** it verifies the download against the release's published checksums
   before installing it, and fails the boot loudly on a mismatch rather than
   installing an unverified binary
 
-### Requirement: Outfit version resolves from the deploy config, defaulting to latest
+### Requirement: Spinloop version resolves from the deploy config, defaulting to latest
 
-The version of outfit a boot installs SHALL come from the environment's
+The version of spinloop a boot installs SHALL come from the environment's
 deploy config: an explicit pinned version SHALL install exactly that release,
 and an absent pin SHALL install the latest published release. A pinned
 version that does not exist as a release SHALL fail the boot loudly rather
@@ -189,12 +189,12 @@ than silently falling back to another version.
 
 #### Scenario: No pin installs latest
 
-- **WHEN** an environment's deploy config names no outfit version
-- **THEN** the boot installs the latest published outfit release
+- **WHEN** an environment's deploy config names no spinloop version
+- **THEN** the boot installs the latest published spinloop release
 
 #### Scenario: A pin installs exactly that version
 
-- **WHEN** an environment's deploy config pins an outfit version
+- **WHEN** an environment's deploy config pins an spinloop version
 - **THEN** the boot installs exactly that release, not the latest
 
 #### Scenario: An unresolvable pin fails loudly
@@ -205,8 +205,8 @@ than silently falling back to another version.
 
 #### Scenario: A version pin change takes effect on the next fresh launch
 
-- **WHEN** an operator changes an environment's pinned outfit version while
+- **WHEN** an operator changes an environment's pinned spinloop version while
   its instance is stopped
 - **THEN** the change is not applied until the environment's instance is next
   freshly launched — a re-wake of the existing stopped instance keeps
-  whatever outfit version it last installed at boot
+  whatever spinloop version it last installed at boot

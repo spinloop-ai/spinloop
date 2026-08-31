@@ -4,7 +4,7 @@
  * stack owns. It lives in an SSM parameter that the start Lambda reads at each
  * wake, so switching model/runner/context is a parameter write, not a redeploy.
  *
- * CDK writes the initial value from config; `outfit remote deploy` overwrites
+ * CDK writes the initial value from config; `spinloop remote deploy` overwrites
  * it later. There is deliberately NO default runner — one of the two must be
  * chosen, and an absent/invalid config fails the wake loudly rather than
  * silently picking one.
@@ -47,24 +47,24 @@ export function companionFileName(role: CompanionRole): string {
 export const COMPANION_FILENAME = /^[A-Za-z0-9._-]+$/;
 
 /**
- * What an outfit version pin may contain. Deliberately narrow: the value is
+ * What an spinloop version pin may contain. Deliberately narrow: the value is
  * interpolated into the generated boot script, so the charset is the guard
  * rather than multi-layer quoting.
  */
-export const OUTFIT_VERSION_PIN = /^[0-9A-Za-z.-]+$/;
+export const SPINLOOP_VERSION_PIN = /^[0-9A-Za-z.-]+$/;
 
 /**
- * The boot's outfit default: the latest published release, resolved by the
+ * The boot's spinloop default: the latest published release, resolved by the
  * boot itself at launch — so "latest" stays latest on every fresh boot rather
  * than being snapshotted at deploy time.
  */
-export const LATEST_OUTFIT = 'latest';
+export const LATEST_SPINLOOP = 'latest';
 
 /**
  * The placeholder CDK creates the deploy-config parameter with. It is a
  * constant, so a later `cdk deploy` never reasserts (clobbers) a real config
- * that `outfit remote deploy` or a manual edit wrote — the parameter is
- * outfit/manual-owned. A wake reading this fails loudly; `pnpm run deploy` seeds a
+ * that `spinloop remote deploy` or a manual edit wrote — the parameter is
+ * spinloop/manual-owned. A wake reading this fails loudly; `pnpm run deploy` seeds a
  * real config over it, but only while it is still this placeholder.
  */
 export const UNCONFIGURED_DEPLOY_CONFIG = 'unconfigured';
@@ -84,7 +84,7 @@ export function logGroupEnvVar(runner: Runner): string {
 
 /**
  * Where a model's weights live under the weights bucket. Derived here rather
- * than sent on the wire so callers (outfit) never need to know the S3 layout —
+ * than sent on the wire so callers (spinloop) never need to know the S3 layout —
  * runner + modelId + quant fully determine it, which also means the same model
  * always resolves to the same prefix.
  */
@@ -114,8 +114,8 @@ export interface DeployConfig {
    * Concurrent request slots. Optional; absent/undefined means unset — no
    * parallelism flag, contextSize used unscaled. This value is only stored
    * and relayed here (via runners/daemon-boot.ts, unchanged, into the JSON
-   * the instance's own outfit daemon reads back); the daemon's Go code —
-   * the same argvFromDeployConfig path a local `outfit serve` also runs
+   * the instance's own spinloop daemon reads back); the daemon's Go code —
+   * the same argvFromDeployConfig path a local `spinloop serve` also runs
    * through — is what scales contextSize by it for llama.cpp (--ctx-size is
    * a total budget divided across --parallel slots) and leaves it unscaled
    * for vLLM (--max-num-seqs is an independent concurrency cap).
@@ -133,13 +133,13 @@ export interface DeployConfig {
    */
   companions: Partial<Record<CompanionRole, string>>;
   /**
-   * The outfit release the instance's boot installs, normalised to
-   * `LATEST_OUTFIT` when absent (the boot then resolves the latest published
+   * The spinloop release the instance's boot installs, normalised to
+   * `LATEST_SPINLOOP` when absent (the boot then resolves the latest published
    * release at launch). A pin is a property of the deployment, not of the
    * engine: it drives the boot's install step only and never reaches the
    * daemon's stored deploy config.
    */
-  outfitVersion: string;
+  spinloopVersion: string;
 }
 
 /**
@@ -149,7 +149,7 @@ export interface DeployConfig {
 export function parseDeployConfig(raw: string | undefined): DeployConfig {
   if (!raw || !raw.trim() || raw.trim() === UNCONFIGURED_DEPLOY_CONFIG) {
     throw new Error(
-      'deploy-config is not set — run `pnpm run deploy` (seeds the initial config) or `outfit remote deploy`',
+      'deploy-config is not set — run `pnpm run deploy` (seeds the initial config) or `spinloop remote deploy`',
     );
   }
   let obj: Record<string, unknown>;
@@ -192,35 +192,35 @@ export function parseDeployConfig(raw: string | undefined): DeployConfig {
     servedModelName,
     serveArgs: serveArgs as string[],
     companions: parseCompanions(obj.companions),
-    outfitVersion: parseOutfitVersion(obj.outfitVersion),
+    spinloopVersion: parseSpinloopVersion(obj.spinloopVersion),
   };
 }
 
 /**
- * Normalise the boot's outfit version. Absent, empty or `latest` means the
+ * Normalise the boot's spinloop version. Absent, empty or `latest` means the
  * boot resolves the latest published release at launch; a pin is stored minus
  * a leading `v`, so the asset URL the boot builds (which re-adds the `v`) and
- * the release binary's own `outfit version` output — stamped by the release
+ * the release binary's own `spinloop version` output — stamped by the release
  * process without the `v` — agree.
  *
  * The pin is interpolated into the generated boot script, so its charset is
  * validated at this boundary, where a hand-writable SSM parameter is what it
  * guards.
  */
-function parseOutfitVersion(raw: unknown): string {
+function parseSpinloopVersion(raw: unknown): string {
   if (raw === undefined || raw === null) {
-    return LATEST_OUTFIT;
+    return LATEST_SPINLOOP;
   }
   if (typeof raw !== 'string') {
-    throw new Error(`deploy-config.outfitVersion must be a string, got ${JSON.stringify(raw)}`);
+    throw new Error(`deploy-config.spinloopVersion must be a string, got ${JSON.stringify(raw)}`);
   }
   const pin = raw.trim().replace(/^v/, '');
-  if (pin === '' || pin === LATEST_OUTFIT) {
-    return LATEST_OUTFIT;
+  if (pin === '' || pin === LATEST_SPINLOOP) {
+    return LATEST_SPINLOOP;
   }
-  if (!OUTFIT_VERSION_PIN.test(pin)) {
+  if (!SPINLOOP_VERSION_PIN.test(pin)) {
     throw new Error(
-      `deploy-config.outfitVersion must match ${OUTFIT_VERSION_PIN} (got ${JSON.stringify(raw)})`,
+      `deploy-config.spinloopVersion must match ${SPINLOOP_VERSION_PIN} (got ${JSON.stringify(raw)})`,
     );
   }
   return pin;

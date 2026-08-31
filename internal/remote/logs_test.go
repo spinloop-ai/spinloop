@@ -262,7 +262,7 @@ func TestFetchLogsReportsWhenNoGroupExistsAtAll(t *testing.T) {
 	if err == nil {
 		t.Fatal("every group missing should be an error, not an empty result")
 	}
-	if !strings.Contains(err.Error(), "outfit remote bootstrap") {
+	if !strings.Contains(err.Error(), "spinloop remote bootstrap") {
 		t.Errorf("error = %q, want it to name the fix", err)
 	}
 }
@@ -338,7 +338,7 @@ func TestFetchLogsRequiresAnEnvironmentName(t *testing.T) {
 	if err == nil {
 		t.Fatal("a config with no environment cannot identify its streams")
 	}
-	if !strings.Contains(err.Error(), "outfit remote deploy") {
+	if !strings.Contains(err.Error(), "spinloop remote deploy") {
 		t.Errorf("error = %q, want it to say how to re-register", err)
 	}
 }

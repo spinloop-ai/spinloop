@@ -1,13 +1,13 @@
 # remote — the cloud GPU deployment
 
-The deployment [`outfit remote`](../docs/commands/remote.md) drives:
+The deployment [`spinloop remote`](../docs/commands/remote.md) drives:
 scale-to-zero, self-hosted LLM endpoints on AWS, each exposing an
 OpenAI-compatible API for use as a coding-agent backend. It is split into two
 layers. A **control plane** — the lifecycle Lambdas, the weights bucket, the
 VPC and the AMI bake pipelines — is deployed **once per account** by
-`outfit remote bootstrap`. **Environments** — one per endpoint, each with its
+`spinloop remote bootstrap`. **Environments** — one per endpoint, each with its
 own Elastic IP, API key and allowed CIDR — are created on it by
-`outfit remote deploy`, as many as you need side by side. An environment's GPU
+`spinloop remote deploy`, as many as you need side by side. An environment's GPU
 instance exists only while you are actually using it: the start Lambda
 launches it on demand (and re-wakes it when it is merely stopped), and the
 stop Lambda's idle sweep stops it after a period of idleness, then terminates
@@ -18,7 +18,7 @@ or [vLLM](https://docs.vllm.ai). The deployed default is llama.cpp, serving
 Unsloth's `Qwen3.6-27B-MTP-GGUF` at **128k context** with a q8 KV cache and
 **multi-token prediction** (~0.8 draft acceptance, so decode is roughly twice
 what it would be without). Which engine you get is decided by one line in an
-`Outfit` file, not by a redeploy.
+`Spinloop` file, not by a redeploy.
 
 The instance is **stateless**, and responsibilities are split cleanly:
 
@@ -29,13 +29,13 @@ The instance is **stateless**, and responsibilities are split cleanly:
 - The **model weights** live in an **S3 bucket**, put there by a disposable
   seed job that streams them from Hugging Face entirely within AWS. You do not
   run it by hand: deploying a model whose weights are missing starts it for you,
-  and `outfit remote seed` starts, follows, lists and stops one directly. The
+  and `spinloop remote seed` starts, follows, lists and stops one directly. The
   seed runs on a **stock Amazon Linux image** — it needs no bake — reports its
   progress and outcome to CloudWatch, and terminates itself on success and on
   failure alike. A prefix is complete when it holds a `_seed.json` manifest,
   which also records the exact revision the weights came from.
  - At boot the instance **syncs the weights from S3** onto its disk (~2–4 min)
-   and starts its outfit daemon pointed at them. The daemon starts no engine
+   and starts its spinloop daemon pointed at them. The daemon starts no engine
    itself: the start Lambda issues the engine's start (with the deploy config
    as its body) once the daemon answers, on a fresh launch and a re-wake
    alike.
@@ -50,23 +50,23 @@ engine, and the start Lambda launches the **newest AMI matching the engine it
 was told to run**. A failed bake produces no new AMI and changes nothing.
 
 The control plane **renders** the boot script and the daemon's service unit,
-and the boot script **installs** the outfit binary that runs them — the
+and the boot script **installs** the spinloop binary that runs them — the
 release its deploy config pins, or the latest release. Keep that coupling
-honest: ship a new outfit release, and only then `pnpm deploy` a control
+honest: ship a new spinloop release, and only then `pnpm deploy` a control
 plane that renders units or scripts the new binary understands — the other
 order launches instances whose daemon never starts.
 
 ```
-outfit remote bootstrap ─▶ control-plane stack (Lambdas, S3, VPC, roles) + bake pipelines
+spinloop remote bootstrap ─▶ control-plane stack (Lambdas, S3, VPC, roles) + bake pipelines
      pnpm bake llamacpp ─▶ Image Builder pipeline ─(async)─▶ AMI (driver + engine), tagged
-outfit remote deploy ─▶ deploy Lambda ─▶ creates env <name>: EIP, SG (your CIDR),
+spinloop remote deploy ─▶ deploy Lambda ─▶ creates env <name>: EIP, SG (your CIDR),
                                       │  API key, deploy-config (what to serve)
                                       └─ seeds weights ─▶ S3 weights bucket (shared)
                                          newest AMI by tag + weights ◀─┐ (at launch)
-outfit remote start ─SigV4▶ start Lambda ─ RunInstances (try each AZ) ─▶ EC2 g6e.xlarge
-outfit remote status ──?env▶ (Function URL,  + the env's EIP, SSM)      │ L40S 48GB
-outfit remote stop ───────▶ stop Lambda        AWS_IAM auth             │ s3 sync weights
-outfit remote pause ──────▶  (stop, not terminate)                      │ engine on :8000
+spinloop remote start ─SigV4▶ start Lambda ─ RunInstances (try each AZ) ─▶ EC2 g6e.xlarge
+spinloop remote status ──?env▶ (Function URL,  + the env's EIP, SSM)      │ L40S 48GB
+spinloop remote stop ───────▶ stop Lambda        AWS_IAM auth             │ s3 sync weights
+spinloop remote pause ──────▶  (stop, not terminate)                      │ engine on :8000
                                   ▲
 EventBridge rate(5 min) ─────────┘ (idle sweep: stop, then terminate)  ▼
 coding agent ── OPENAI_BASE_URL=http://<env EIP>:8000/v1 + api key ──▶ direct HTTP
@@ -86,7 +86,7 @@ and the wake/idle lifecycle — see [docs/architecture.md](docs/architecture.md)
 
 - An AWS account with admin (or equivalent) credentials configured locally
 - Node.js 22+ and [pnpm](https://pnpm.io)
-- The [`outfit`](https://github.com/lucinate-ai/outfit) CLI, which drives the
+- The [`spinloop`](https://github.com/spinloop-ai/spinloop) CLI, which drives the
   endpoint
 - AWS CLI v2, plus the [Session Manager plugin](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html)
   for shell access (there is no SSH)
@@ -119,14 +119,14 @@ aws ec2 describe-instance-type-offerings --location-type availability-zone \
 ## Deploy
 
 The one-time account setup is
-[`outfit remote bootstrap`](../docs/commands/remote.md#bootstrapping-the-account),
+[`spinloop remote bootstrap`](../docs/commands/remote.md#bootstrapping-the-account),
 which drives this directory for you — download, consent plan, then the shared
-deploy and the AMI bakes. Endpoints come after it, one `outfit remote deploy`
+deploy and the AMI bakes. Endpoints come after it, one `spinloop remote deploy`
 per environment:
 
 ```sh
-outfit remote bootstrap   # once per account: control-plane stack + pipelines + bakes
-outfit remote deploy      # creates the Outfit's REMOTE environment and says
+spinloop remote bootstrap   # once per account: control-plane stack + pipelines + bakes
+spinloop remote deploy      # creates the Spinloop's REMOTE environment and says
                           # what it serves; seeds the weights if missing
 ```
 
@@ -150,10 +150,10 @@ pnpm run deploy        # deploys the control-plane stack (Lambdas, VPC, S3 bucke
 - `pnpm run deploy` deploys the **control-plane stack** — VPC, the lifecycle Lambdas,
   the S3 weights bucket, roles — and publishes its outputs for discovery. It
   creates no Elastic IP and no environment.
-- `outfit remote deploy` reads the [`Outfit`](Outfit) and its
-  [`preset.ini`](preset.ini), creates the environment the Outfit's `REMOTE`
+- `spinloop remote deploy` reads the [`Spinloop`](Spinloop) and its
+  [`preset.ini`](preset.ini), creates the environment the Spinloop's `REMOTE`
   names (its EIP, API key, ingress scoped to your `--allowed-cidr`, defaulting
-  to your public IP), registers it under `~/.config/outfit/remotes/<env>/`, and
+  to your public IP), registers it under `~/.config/spinloop/remotes/<env>/`, and
   tells it what to serve. If those weights are not in S3 it starts the seed job
   itself, all within AWS, and prints the command that follows it — wait for the
   seed to reach `succeeded` before the first `start`, since a wake before then
@@ -167,7 +167,7 @@ pnpm run deploy        # deploys the control-plane stack (Lambdas, VPC, S3 bucke
 The bake and the weight seed are independent and can run in parallel.
 
 Everything per-environment — the model, the engine, the context window, the
-allowed CIDR — is given to `outfit remote deploy`, not to the stack. `.env` can
+allowed CIDR — is given to `spinloop remote deploy`, not to the stack. `.env` can
 hold `HF_TOKEN` for gated model repos (used only when seeding). The shared
 layer's own settings all have defaults, overridable in `cdk.json`:
 
@@ -195,16 +195,16 @@ layer's own settings all have defaults, overridable in `cdk.json`:
 | `maxRuntimeMinutes` | `240` | Hard stop this long after boot, even if busy |
 
 The **model, quant, context window and engine flags are not in this table** —
-they come from the `Outfit` and its preset via `outfit remote deploy`, so
+they come from the `Spinloop` and its preset via `spinloop remote deploy`, so
 changing model is a command, not a redeploy.
 
 What needs what:
-- Change **model, quant, context or engine flags** → edit the `Outfit`/preset,
-  then `outfit remote deploy --overwrite`. No bake, no redeploy.
+- Change **model, quant, context or engine flags** → edit the `Spinloop`/preset,
+  then `spinloop remote deploy --overwrite`. No bake, no redeploy.
 - Change an environment's **allowed CIDR** →
-  `outfit remote deploy --overwrite --allowed-cidr <ip>/32`.
-- Change the **outfit release** fresh boots install →
-  `outfit remote deploy --overwrite --outfit-version <x.y.z>` (omit the flag
+  `spinloop remote deploy --overwrite --allowed-cidr <ip>/32`.
+- Change the **spinloop release** fresh boots install →
+  `spinloop remote deploy --overwrite --spinloop-version <x.y.z>` (omit the flag
   for the latest). Takes effect at the next boot — a running instance keeps
   the daemon it was deployed with.
 - Change **`llamacppRelease`/`vllmVersion`/`nvidiaDriverPackage`** → bump the
@@ -219,17 +219,17 @@ For vLLM, FP8 is hardware-native on the L40S (Ada generation).
 
 ### Switching engine, or model
 
-The `Outfit` is the control surface. `PROVIDER` names the engine, so the same
-file that runs a model locally under `outfit serve` deploys it to the cloud
-under `outfit remote deploy`:
+The `Spinloop` is the control surface. `PROVIDER` names the engine, so the same
+file that runs a model locally under `spinloop serve` deploys it to the cloud
+under `spinloop remote deploy`:
 
 ```sh
-outfit remote deploy                 # what ./Outfit describes
-outfit remote deploy path/to/Outfit  # something else
-outfit remote deploy --dry-run       # print the config without sending it
+spinloop remote deploy                 # what ./Spinloop describes
+spinloop remote deploy path/to/Spinloop  # something else
+spinloop remote deploy --dry-run       # print the config without sending it
 ```
 
-Cutting back to vLLM means an Outfit with `PROVIDER vllm` and the FP8 repo as
+Cutting back to vLLM means a Spinloop with `PROVIDER vllm` and the FP8 repo as
 its `MODEL` — both AMIs stay baked, so it is a deploy, not a rebuild. The start
 Lambda launches the AMI matching the engine the environment's deploy-config
 names, so nothing else has to agree.
@@ -238,7 +238,7 @@ names, so nothing else has to agree.
 
 A model published with extra files beside its weights — a speculative-decoding
 drafter, a perception encoder — can carry them too. The deploy-config names
-them by **role**, and `outfit remote deploy` fills that in from the preset keys
+them by **role**, and `spinloop remote deploy` fills that in from the preset keys
 that already drive a local serve:
 
 | Preset key | Role | Synced to | Engine flag |
@@ -266,44 +266,44 @@ the root volume's gp3 throughput to its ceiling (an unprovisioned gp3 caps at
 125 MiB/s, which used to throttle both the sync and the load), and the daemon
 pre-warms the page cache before the engine loads the model, so the ~26 GB of
 weights stream through once at line rate and the engine's copy is mostly cache
-hits. The cloud daemon pre-warms by default — `outfit remote start --prewarm=false`
+hits. The cloud daemon pre-warms by default — `spinloop remote start --prewarm=false`
 (a restart takes the same flag) skips it for one wake — and a plain
-`outfit daemon` on any other machine never pre-warms, since it is an option of
+`spinloop daemon` on any other machine never pre-warms, since it is an option of
 the daemon, not of the config. A cold boot is roughly **5–7 minutes** end to
 end, every time, with no Hugging Face dependency. The first request after a cold start also pays a one-off warm-up
 (~30 s); steady-state decode is around 28 tokens/s. Watch a wake:
 
 ```sh
 pnpm console                                 # SSM shell onto the running instance
-tail -f /var/lib/outfit/daemon/engine.log    # engine logs (both runners)
+tail -f /var/lib/spinloop/daemon/engine.log    # engine logs (both runners)
 tail -f /var/log/cloud-init-output.log       # boot: s3 sync progress
 ```
 
 ## Daily use
 
-The endpoint is driven by the `outfit` CLI, using this directory's `Outfit`;
+The endpoint is driven by the `spinloop` CLI, using this directory's `Spinloop`;
 its `REMOTE` names the environment `deploy` registered under
-`~/.config/outfit/remotes/<env>/`. Run these from this directory (`outfit`
-reads `./Outfit`):
+`~/.config/spinloop/remotes/<env>/`. Run these from this directory (`spinloop`
+reads `./Spinloop`):
 
 ```sh
-outfit remote start    # boots (or re-wakes a stopped) the instance, blocks
+spinloop remote start    # boots (or re-wakes a stopped) the instance, blocks
                         # until it is serving, prints OPENAI_BASE_URL + OPENAI_API_KEY exports
-outfit apply           # points your coding agent at the endpoint
-outfit remote status   # instance state + endpoint health
-outfit remote pause    # stop now (no terminate); a later start re-wakes it
-outfit remote stop     # terminate now instead of waiting for the idle timer
+spinloop apply           # points your coding agent at the endpoint
+spinloop remote status   # instance state + endpoint health
+spinloop remote pause    # stop now (no terminate); a later start re-wakes it
+spinloop remote stop     # terminate now instead of waiting for the idle timer
 ```
 
-`outfit apply` writes the endpoint's base URL and API key into your harness
-config, so export the key that `outfit remote start` prints first. The base URL
-comes from the environment's `remote.json` (`base_url`), since the Outfit
-states none; a `BASEURL` in the Outfit would override it. The model
-name to request is the Outfit's `ALIAS` (`qwen3.6-27b`) — the same value the
+`spinloop apply` writes the endpoint's base URL and API key into your harness
+config, so export the key that `spinloop remote start` prints first. The base URL
+comes from the environment's `remote.json` (`base_url`), since the Spinloop
+states none; a `BASEURL` in the Spinloop would override it. The model
+name to request is the Spinloop's `ALIAS` (`qwen3.6-27b`) — the same value the
 server is started under, so the two cannot drift:
 
 ```sh
-eval "$(outfit remote start)"   # sets OPENAI_BASE_URL + OPENAI_API_KEY
+eval "$(spinloop remote start)"   # sets OPENAI_BASE_URL + OPENAI_API_KEY
 curl "$OPENAI_BASE_URL/models" -H "Authorization: Bearer $OPENAI_API_KEY"
 curl "$OPENAI_BASE_URL/chat/completions" \
   -H "Authorization: Bearer $OPENAI_API_KEY" -H 'Content-Type: application/json' \
@@ -316,7 +316,7 @@ curl "$OPENAI_BASE_URL/chat/completions" \
 
 ### Idle behaviour
 
-The on-instance outfit daemon reads its engine's request/token counters every
+The on-instance spinloop daemon reads its engine's request/token counters every
 15 seconds and keeps track of when the engine was last doing work, which it
 reports as `lastActiveAt` and `idleSeconds` on `/v1/status`. Every 5 minutes
 the stop Lambda asks for that (via SSM) and **stops** the instance once
@@ -324,14 +324,14 @@ the stop Lambda asks for that (via SSM) and **stops** the instance once
 **15–20 minutes** after the last request.
 
 Stopping (rather than terminating) keeps the boot disk and the weights the
-boot synced onto it, so the next `outfit remote start` **re-wakes** the
+boot synced onto it, so the next `spinloop remote start` **re-wakes** the
 instance — a boot without a fresh launch and a no-op S3 sync — instead of
 launching one from the AMI. The stop clears the page cache, but the daemon's
 pre-warm re-covers it on the engine start, so a re-wake loads the model in
 the same few minutes a cold boot does, minus the sync. The stopped instance
 is billed for its volume only, not compute, and the sweep **terminates** it
 once it has been stopped longer than `stopRetentionMinutes` (default 1 h):
-after that, the next start is a fresh launch again. `outfit remote pause`
+after that, the next start is a fresh launch again. `spinloop remote pause`
 does the same stop on purpose.
 
 Sampling on the box is what makes this reliable: a busy endpoint that happens
@@ -343,20 +343,20 @@ If the daemon cannot be reached, or answers without a last-active time, the
 instance is treated as showing no activity and is still stopped at the
 threshold — deliberately, so a wedged box does not run up GPU-hours unnoticed.
 That second case is also why the **runtime AMIs must be re-baked before the
-control plane is deployed**: an outfit older than daemon-owned idle detection
+control plane is deployed**: an spinloop older than daemon-owned idle detection
 reports no last-active time, and there is no fallback to counter scraping.
 
 There is also a hard cap: `maxRuntimeMinutes` (default 4 hours) stops the
 instance that long after its session started **even if requests are still
 flowing**, as a backstop against a runaway session. A session begins at launch
 or re-wake (the control plane records both on the instance), so it caps one
-running session, not anything cumulative — if you hit it mid-work, `outfit
+running session, not anything cumulative — if you hit it mid-work, `spinloop
 remote start` brings the endpoint back for another 4 hours. Like the idle
 stop, it lands on the next 5-minute tick.
 
 **Pinning an instance up**: tag it `Retain-Until` with a UTC ISO-8601 time and
 neither the idle timer nor the hard cap will touch it until then — handy while
-debugging on the box. A manual `outfit remote stop` still works.
+debugging on the box. A manual `spinloop remote stop` still works.
 
 ```sh
 aws ec2 create-tags --resources <instance id> \
@@ -378,34 +378,34 @@ coding a day lands around $90/month. Full breakdown in
 ## Operations
 
 - **Logs**: `pnpm console` (an SSM shell onto the running instance) then
-  `tail -f /var/lib/outfit/daemon/engine.log` (the engine, both runners) or
+  `tail -f /var/lib/spinloop/daemon/engine.log` (the engine, both runners) or
   `tail -f /var/log/cloud-init-output.log` (boot / S3 sync). The engine log and
   the boot log are also shipped to CloudWatch — groups `/cloud-vm-llm/<engine>`
   and `/cloud-vm-llm/boot`, stream `<env>/<instance-id>` — so they survive the
   instance's termination. Lambda decisions (launch AZ, idle/terminate, deploys)
   are in the three Lambdas' CloudWatch log groups.
-- **Changing the model**: edit the `Outfit`/preset and run `outfit remote
+- **Changing the model**: edit the `Spinloop`/preset and run `spinloop remote
   deploy`. It seeds the new weights if needed. No bake, no redeploy.
 - **Changing the engine version or the driver**: update `llamacppRelease` /
   `vllmVersion` / `nvidiaDriverPackage`, **bump the recipe (and component)
   `version` in `lib/image-stack.ts`** (Image Builder versions are immutable),
   then `pnpm deploy:image` + `pnpm bake <runner>`.
-- **Your home IP changed**: `outfit remote deploy --overwrite --allowed-cidr
+- **Your home IP changed**: `spinloop remote deploy --overwrite --allowed-cidr
   <ip>/32`. Ingress is per environment, and an existing environment keeps its
   ingress unless a CIDR is passed explicitly — auto-detection applies only to a
   first deploy.
 - **Force a fresh AMI** (same config): just `pnpm bake <runner>` — the runtime
   launches the newest tagged AMI.
-- **Seeding weights**: `outfit remote seed start` fetches the model an Outfit
-  names into S3, and `outfit remote seed status <seed-id>` follows it. Deploying
+- **Seeding weights**: `spinloop remote seed start` fetches the model a Spinloop
+  names into S3, and `spinloop remote seed status <seed-id>` follows it. Deploying
   starts a seed automatically when the weights are missing and prints the id to
-  follow. Other subcommands: `outfit remote seed ls` (what is in flight, with
-  progress) and `outfit remote seed stop <seed-id>`.
-- **Force a re-seed** of weights already in S3: either `outfit remote seed
-  start --force`, or `outfit remote deploy --reseed` to re-fetch and redeploy
+  follow. Other subcommands: `spinloop remote seed ls` (what is in flight, with
+  progress) and `spinloop remote seed stop <seed-id>`.
+- **Force a re-seed** of weights already in S3: either `spinloop remote seed
+  start --force`, or `spinloop remote deploy --reseed` to re-fetch and redeploy
   in one step. An ordinary start/deploy does nothing when the weights are
   already there.
-- **Pin the revision** a seed fetches: `outfit remote seed start --revision
+- **Pin the revision** a seed fetches: `spinloop remote seed start --revision
   <commit>`. Without one, the repository's default branch is used and the commit
   it resolved to is recorded in the prefix's `_seed.json`.
 
@@ -422,7 +422,7 @@ There is deliberately **no backfill helper**. Writing a manifest over files that
 nobody verified would assert exactly the guarantee the manifest exists to make
 real. If you would rather not re-seed, the honest options are to leave the old
 prefix in place unused, or to re-seed it deliberately with
-`outfit remote seed start --force`.
+`spinloop remote seed start --force`.
 
 > **Rotate your Hugging Face token** if you ran the old seed with one. It fetched
 > the token into a shell variable under `set -x`, and bash's xtrace expands
@@ -440,16 +440,16 @@ prefix in place unused, or to re-seed it deliberately with
 |---|---|
 | Engine state (idle/running/stopped/crashed) | `curl -s 127.0.0.1:4242/v1/status` |
 | Engine + host metrics | `curl -s 127.0.0.1:4242/v1/metrics` |
-| Follow the engine's logs | `tail -f /var/lib/outfit/daemon/engine.log` |
-| Why it won't start | `tail -50 /var/lib/outfit/daemon/engine.log` (or the boot log below for a pre-engine failure) |
-| Is it up? | `systemctl is-active outfit-daemon` · `ss -ltn \| grep :8000` |
-| Is MTP actually working | `grep 'draft acceptance' /var/lib/outfit/daemon/engine.log` |
+| Follow the engine's logs | `tail -f /var/lib/spinloop/daemon/engine.log` |
+| Why it won't start | `tail -50 /var/lib/spinloop/daemon/engine.log` (or the boot log below for a pre-engine failure) |
+| Is it up? | `systemctl is-active spinloop-daemon` · `ss -ltn \| grep :8000` |
+| Is MTP actually working | `grep 'draft acceptance' /var/lib/spinloop/daemon/engine.log` |
 | Boot / S3-sync progress | `tail -f /var/log/cloud-init-output.log` |
 | Weights pulled so far | `du -sh /opt/llm/model` |
 | GPU + driver | `nvidia-smi` |
 | RAM + swap | `free -h` |
 
-(Both runners run under the same `outfit-daemon` unit: the `outfit` binary
+(Both runners run under the same `spinloop-daemon` unit: the `spinloop` binary
 the boot installed supervises the engine and serves its control API on
 loopback `:4242`.)
 
@@ -457,7 +457,7 @@ From your own machine, no shell needed (the EIP is `<endpoint>`):
 
 ```sh
 curl -s -o /dev/null -w '%{http_code}\n' http://<endpoint>:8000/health   # 200 once serving
-eval "$(outfit remote start)"                                            # base URL + key
+eval "$(spinloop remote start)"                                            # base URL + key
 curl "$OPENAI_BASE_URL/models" -H "Authorization: Bearer $OPENAI_API_KEY"
 ```
 
@@ -478,7 +478,7 @@ The **start** Lambda logs the launch AZ and each wake phase.
   [docs/tailscale-plan.md](docs/tailscale-plan.md).
 - No SSH ingress; shell access is via SSM Session Manager. IMDSv2 is enforced.
 - The Function URLs require SigV4-signed requests (`lambda:InvokeFunctionUrl`),
-  so `outfit` needs no AWS permissions beyond invoking them.
+  so `spinloop` needs no AWS permissions beyond invoking them.
 
 ## Teardown
 
@@ -487,7 +487,7 @@ pnpm cdk destroy cloud-vm-llm cloud-vm-llm-image
 ```
 
 Removes both stacks. If an instance is currently running, terminate it first
-(`outfit remote stop`) — it is not owned by CloudFormation. The **S3 weights
+(`spinloop remote stop`) — it is not owned by CloudFormation. The **S3 weights
 bucket is retained** on destroy (so you don't lose the seeded weights); baked
 AMIs and their snapshots are not owned by the stacks either. Delete the bucket,
 deregister the AMIs, and delete their snapshots by hand to reclaim that storage.
@@ -495,7 +495,7 @@ deregister the AMIs, and delete their snapshots by hand to reclaim that storage.
 ## Troubleshooting
 
 - **`start` returns `unconfigured`**: nothing has been deployed yet. Run
-  `outfit remote deploy`.
+  `spinloop remote deploy`.
 - **`start` returns `no-ami`**: no AMI is tagged for the engine you asked for.
   Run `pnpm bake <runner>` and wait for it to reach `AVAILABLE`.
 - **`start` returns `no-capacity`**: every configured AZ was out of g6e
@@ -511,10 +511,10 @@ deregister the AMIs, and delete their snapshots by hand to reclaim that storage.
   component) in `lib/image-stack.ts`. Bump and redeploy.
 - **`start` reaches `running` but never `ready`, or the model is empty**: the
   weights aren't in S3 yet, or a seed is still running. Ask the seed:
-  `outfit remote seed ls`, then `outfit remote seed status <seed-id>`. A seed
+  `spinloop remote seed ls`, then `spinloop remote seed status <seed-id>`. A seed
   reports `failed` with a reason even after its instance is gone, so this works
   for a seed that died as well as one still going.
-- **A seed failed**: `outfit remote seed status <seed-id>` names the reason. The
+- **A seed failed**: `spinloop remote seed status <seed-id>` names the reason. The
   underlying records are in the `/cloud-vm-llm/seed` log group under stream
   `<seed-id>/<instance-id>` and outlive the instance. Common causes are a gated
   repository with no `hfToken` configured, a quant whose selection matches more
@@ -522,7 +522,7 @@ deregister the AMIs, and delete their snapshots by hand to reclaim that storage.
   checksum mismatch.
 - **Quota errors on launch**: see the GPU quota warning above.
 - **`start` times out repeatedly**: `pnpm console` onto the instance and read
-  `tail -50 /var/lib/outfit/daemon/engine.log` (or `/cloud-vm-llm/llamacpp` in
+  `tail -50 /var/lib/spinloop/daemon/engine.log` (or `/cloud-vm-llm/llamacpp` in
   CloudWatch if the instance is already gone). Known startup
   crashes, all handled for the defaults but reachable after a bump:
   - `libcudart.so.12: cannot open shared object` — the prebuilt llama.cpp
@@ -533,11 +533,11 @@ deregister the AMIs, and delete their snapshots by hand to reclaim that storage.
   - `Could not find nvcc` (vLLM) — the FlashInfer sampler wants the CUDA
     toolkit, which the slim AMI omits. The user-data sets
     `VLLM_USE_FLASHINFER_SAMPLER=0` (native sampler) to avoid it.
-  - Engine start OOM — lower `CONTEXT` in the Outfit, or use a smaller quant;
+  - Engine start OOM — lower `CONTEXT` in the Spinloop, or use a smaller quant;
     the driver failing to load shows up as a bad `nvidia-smi`.
 - **The coding agent reports `the model ... does not exist`**: the `model` id it
-  sends must equal what the server serves. Under llama.cpp that is the Outfit's
+  sends must equal what the server serves. Under llama.cpp that is the Spinloop's
   `ALIAS`, which is also what the server is started with, so keep the two the
-  same — and if you deploy with a different `ALIAS`, re-run `outfit apply`.
+  same — and if you deploy with a different `ALIAS`, re-run `spinloop apply`.
   Under vLLM there is no alias, so the id is the Hugging Face repo. Either way,
   `curl "$OPENAI_BASE_URL/models"` shows the truth.

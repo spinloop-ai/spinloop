@@ -39,7 +39,7 @@ See `proposal.md` — Why. What shapes the approach:
 ### The remote node lives in `internal/fleet`, backed by `remote.Config`
 
 The two alternatives are putting it in `internal/remote` (which would force an
-`internal/remote` to `internal/fleet` import and create a cycle) or in `cmd/outfit` (which
+`internal/remote` to `internal/fleet` import and create a cycle) or in `cmd/spinloop` (which
 leaves the abstraction where only one caller sees it). `internal/fleet` is where `Node`
 and its one implementation live, so the second node belongs beside the first.
 
@@ -61,7 +61,7 @@ be lossy and would drift from the source.
 ### Wake is refused, not implemented
 
 A node-level start-on-a-deploy-config means "wake this machine to serve that." A remote
-endpoint's "what to serve" is a different, heavier flow — `outfit remote deploy`, with
+endpoint's "what to serve" is a different, heavier flow — `spinloop remote deploy`, with
 provisioning, weight seeding and ingress. Proxying `StartWith` to `deploy` would conflate
 the two. Refusing it with a message that names the deploy path is honest. `Start` and
 `Stop` map straight onto `remote.Start`/`remote.Stop`.
@@ -87,7 +87,7 @@ through, so that is where the kind dispatch lives: a `remote` entry loads the co
 the registered environment keyed by the node's *name* and returns a `remoteNode`. The name
 is both what you type at `fleet start <node>` and the environment's key — there is no
 separate `remote:` field, because an environment is already user-named at
-`outfit remote deploy`, so its name is the right label. A daemon node, by contrast, needs
+`spinloop remote deploy`, so its name is the right label. A daemon node, by contrast, needs
 a separate `host:` because a label is not where it listens. Because the name doubles as
 the registry key, it is validated as env-shaped (no `/`, no `.json`: a path-like name would
 be read as a registry subdirectory). Keeping the URLs out of the fleet file (in each

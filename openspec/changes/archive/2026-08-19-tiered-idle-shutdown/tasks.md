@@ -26,7 +26,7 @@
 
 - [x] 5.1 Document new env vars `STOP_RETENTION_MINUTES` in remote deployment README
 - [x] 5.2 Update CDK stacks to set default `STOP_RETENTION_MINUTES` and pass to Lambdas
-- [x] 5.3 Update `remote/Outfit` documentation for tiered idle behavior
+- [x] 5.3 Update `remote/Spinloop` documentation for tiered idle behavior
 
 ## 6. Validation
 
@@ -35,7 +35,7 @@
 
 ## 7. Pause command
 
-- [x] 7.1 Add `pause` subcommand handling in `cmd/outfit/remote.go` for `outfit remote pause`
+- [x] 7.1 Add `pause` subcommand handling in `cmd/spinloop/remote.go` for `spinloop remote pause`
 - [x] 7.2 Extend the stop Lambda with a pause mode: write the `Stopped-At` tag, then `stopInstance` (manual stop stays `terminateInstance`)
 - [x] 7.3 Add tests for pause vs stop semantics and status reporting
 

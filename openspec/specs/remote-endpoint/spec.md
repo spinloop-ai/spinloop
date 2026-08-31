@@ -3,14 +3,14 @@
 ## Purpose
 
 Define how a remote inference endpoint is discovered, controlled and told
-what to serve from an Outfit: the `outfit remote` command group.
+what to serve from a Spinloop: the `spinloop remote` command group.
 ## Requirements
 ### Requirement: Remote command group
 
 The system SHALL provide a `remote` command group with the subcommands
 `bootstrap`, `start`, `stop`, `restart`, `status`, `deploy`, `ls`, `metrics`,
 and `keep`. `start`, `stop`, `restart`, `status`, `metrics` and `deploy` each
-take an optional Outfit path:
+take an optional Spinloop path:
 `start` SHALL boot the endpoint and block until it is serving, then perform a
 quick TCP probe of the inference endpoint — if the probe fails, a warning is
 printed to stderr explaining the network mismatch (see the Remote Start Probe
@@ -36,25 +36,25 @@ consumption, and GPU information for a running instance; `deploy` SHALL set
 what the endpoint serves. `ls` SHALL list the registered remote environments
 (see the Remote Environments specification). `bootstrap` SHALL stand up the
 account-level AWS control plane (once per account) by obtaining and driving the
-CDK project, and takes its own flags rather than an Outfit path (see the
+CDK project, and takes its own flags rather than a Spinloop path (see the
 Endpoint Provisioning specification). An unrecognised subcommand SHALL fail
 naming the accepted ones.
 
 #### Scenario: Starting the endpoint
 
-- **WHEN** the user runs `outfit remote start` and the endpoint reports ready
+- **WHEN** the user runs `spinloop remote start` and the endpoint reports ready
 - **THEN** the base URL and API key are printed as `export` lines
 
 #### Scenario: Starting warns when the network is not admitted
 
-- **WHEN** the user runs `outfit remote start` and the endpoint reports ready
+- **WHEN** the user runs `spinloop remote start` and the endpoint reports ready
   but the TCP probe to the inference port fails
 - **THEN** a warning is printed to stderr with a remediation command, and the
   command still exits 0
 
 #### Scenario: Starting with a keep flag
 
-- **WHEN** the user runs `outfit remote start --keep 4h` and the endpoint reports ready
+- **WHEN** the user runs `spinloop remote start --keep 4h` and the endpoint reports ready
 - **THEN** the base URL and API key are printed as `export` lines, and the
   instance retention deadline is set to 4 hours from now
 
@@ -66,7 +66,7 @@ naming the accepted ones.
 
 #### Scenario: Restarting the endpoint
 
-- **WHEN** the user runs `outfit remote restart` for a running environment and
+- **WHEN** the user runs `spinloop remote restart` for a running environment and
   the endpoint reports ready again
 - **THEN** the instance was stopped and re-woken without being terminated, the
   command blocked until the model was serving again, and the environment's
@@ -74,13 +74,13 @@ naming the accepted ones.
 
 #### Scenario: Forcing a restart skips the engine stop
 
-- **WHEN** the user runs `outfit remote restart --force` (or `-F`)
+- **WHEN** the user runs `spinloop remote restart --force` (or `-F`)
 - **THEN** the instance is stopped without the engine being asked to shut down
   first, and the command then blocks until the model is serving again
 
 #### Scenario: Restarting a stopped endpoint starts it
 
-- **WHEN** the user runs `outfit remote restart` for an environment whose instance is already stopped
+- **WHEN** the user runs `spinloop remote restart` for an environment whose instance is already stopped
 - **THEN** the instance is re-woken rather than replaced, and the command blocks
   until the model is serving again, as with a plain start
 
@@ -88,33 +88,33 @@ naming the accepted ones.
 
 - **WHEN** the stop half of a restart has taken effect but the wake fails
 - **THEN** the command fails saying the instance is stopped and that
-  `outfit remote start` will bring it back
+  `spinloop remote start` will bring it back
 
 #### Scenario: Listing environments
 
-- **WHEN** the user runs `outfit remote ls`
+- **WHEN** the user runs `spinloop remote ls`
 - **THEN** the registered environments are listed rather than any endpoint being
   contacted
 
 #### Scenario: Setting a keep deadline
 
-- **WHEN** the user runs `outfit remote keep 2h`
+- **WHEN** the user runs `spinloop remote keep 2h`
 - **THEN** the instance retention tag is set and the deadline is reported
 
 #### Scenario: Metrics reports instance figures
 
-- **WHEN** the user runs `outfit remote metrics` with a running instance
+- **WHEN** the user runs `spinloop remote metrics` with a running instance
 - **THEN** token counts, resource usage, and GPU information are displayed
 
 #### Scenario: Bootstrap is a recognised subcommand
 
-- **WHEN** the user runs `outfit remote bootstrap`
+- **WHEN** the user runs `spinloop remote bootstrap`
 - **THEN** the command is dispatched to the provisioning flow rather than
   reported as unknown
 
 #### Scenario: Unknown subcommand
 
-- **WHEN** the user runs `outfit remote frobnicate`
+- **WHEN** the user runs `spinloop remote frobnicate`
 - **THEN** the command fails listing the accepted subcommands, which include
   `bootstrap`, `metrics`, and `keep`
 
@@ -182,13 +182,13 @@ is ready, `start` SHALL stop waiting and fail rather than block indefinitely.
 
 #### Scenario: Shortening the wait
 
-- **WHEN** the user runs `outfit remote start` with `-t 5m` (or `--timeout 5m`)
+- **WHEN** the user runs `spinloop remote start` with `-t 5m` (or `--timeout 5m`)
 - **THEN** the command waits at most five minutes for the endpoint before
   giving up
 
 #### Scenario: Default wait when unset
 
-- **WHEN** the user runs `outfit remote start` without a timeout flag
+- **WHEN** the user runs `spinloop remote start` without a timeout flag
 - **THEN** the command waits up to fifteen minutes
 
 ### Requirement: Remote configuration discovery
@@ -196,41 +196,41 @@ is ready, `start` SHALL stop waiting and fail rather than block indefinitely.
 The endpoint's control URLs SHALL come from a JSON configuration naming a start
 URL, a stop URL, an optional deploy URL, and a region. That configuration MAY
 also name the endpoint's own base URL; it SHALL be optional, since no control
-call needs it, and a configuration without it SHALL remain valid. An Outfit's
+call needs it, and a configuration without it SHALL remain valid. A Spinloop's
 `REMOTE` instruction SHALL select that configuration: a bare name selects the
 named environment from the per-user registry (always local; see the Remote
 Environments specification), and a path or URL selects a configuration
-resolved relative to the Outfit's own source when not itself absolute — a
-local directory join when the Outfit was read from disk, URL-relative
-resolution when the Outfit was fetched from a URL — and fetched over HTTP when
+resolved relative to the Spinloop's own source when not itself absolute — a
+local directory join when the Spinloop was read from disk, URL-relative
+resolution when the Spinloop was fetched from a URL — and fetched over HTTP when
 it resolves to a URL. Fetching a remote `REMOTE` configuration SHALL happen
-only at the point a `remote` subcommand, or `outfit apply`'s base-URL
-fallback, actually resolves it. When no Outfit names one, the `default`
+only at the point a `remote` subcommand, or `spinloop apply`'s base-URL
+fallback, actually resolves it. When no Spinloop names one, the `default`
 environment SHALL be used, so the command works outside any project.
 Environment variables SHALL override individual values, and the region SHALL
 fall back to the standard AWS region variable and then to the region named in
 the URL. A missing or incomplete configuration SHALL fail saying where to put
 it.
 
-#### Scenario: Outfit names the configuration
+#### Scenario: Spinloop names the configuration
 
-- **WHEN** an Outfit sets `REMOTE ./remote.json` and a `remote` subcommand
-  runs with that Outfit
-- **THEN** the URLs come from that file, resolved beside the Outfit
+- **WHEN** a Spinloop sets `REMOTE ./remote.json` and a `remote` subcommand
+  runs with that Spinloop
+- **THEN** the URLs come from that file, resolved beside the Spinloop
 
-#### Scenario: Outfit names an environment
+#### Scenario: Spinloop names an environment
 
-- **WHEN** an Outfit sets `REMOTE qwen3.6-27b-prod` and a `remote` subcommand
-  runs with that Outfit
+- **WHEN** a Spinloop sets `REMOTE qwen3.6-27b-prod` and a `remote` subcommand
+  runs with that Spinloop
 - **THEN** the URLs come from that environment's `remote.json` in the registry
 
-#### Scenario: Explicit Outfit without a REMOTE instruction
+#### Scenario: Explicit Spinloop without a REMOTE instruction
 
-- **WHEN** a `remote` subcommand is given an Outfit that has no `REMOTE`
-- **THEN** it fails saying that Outfit has no `REMOTE` instruction, rather than
+- **WHEN** a `remote` subcommand is given a Spinloop that has no `REMOTE`
+- **THEN** it fails saying that Spinloop has no `REMOTE` instruction, rather than
   silently using the default environment
 
-#### Scenario: No Outfit in play
+#### Scenario: No Spinloop in play
 
 - **WHEN** a `remote` subcommand runs outside a project
 - **THEN** the `default` environment is used
@@ -244,27 +244,27 @@ it.
 
 #### Scenario: A remote configuration fetched over HTTP
 
-- **WHEN** an Outfit sets `REMOTE https://example.com/team/remote.json`
+- **WHEN** a Spinloop sets `REMOTE https://example.com/team/remote.json`
 - **THEN** a `remote` subcommand fetches that URL for the control
   configuration
 
-#### Scenario: A REMOTE relative to a URL-sourced Outfit
+#### Scenario: A REMOTE relative to a URL-sourced Spinloop
 
-- **WHEN** an Outfit fetched from `https://example.com/team/Outfit` sets
+- **WHEN** a Spinloop fetched from `https://example.com/team/Spinloop` sets
   `REMOTE ./remote.json`
 - **THEN** the configuration resolves to
   `https://example.com/team/remote.json` and is fetched
 
 #### Scenario: A remote REMOTE is fetched only by commands that resolve one
 
-- **WHEN** `outfit serve` runs against an Outfit whose `REMOTE` is a URL
+- **WHEN** `spinloop serve` runs against a Spinloop whose `REMOTE` is a URL
 - **THEN** the `REMOTE` URL is never fetched — `serve` has no use for a
   remote endpoint's control configuration
 
 #### Scenario: Applying names the environment even with an explicit BASEURL
 
-- **WHEN** an Outfit with a URL-form `REMOTE` and its own `BASEURL`
-  instruction is applied with `outfit apply`
+- **WHEN** a Spinloop with a URL-form `REMOTE` and its own `BASEURL`
+  instruction is applied with `spinloop apply`
 - **THEN** the `REMOTE` URL is still fetched once, to name the harness
   provider after the deployment's environment (the same read a local-path
   `REMOTE` already triggers) — only the redundant base-URL lookup is skipped,
@@ -275,7 +275,7 @@ it.
 Requests to the control URLs SHALL be signed with the caller's own AWS
 credentials, resolved from the standard credential chain, and SHALL carry the
 hash of the request body so that a request with a payload is signed over that
-payload. Outfit SHALL NOT store AWS credentials of its own.
+payload. Spinloop SHALL NOT store AWS credentials of its own.
 
 Every control subcommand — `start`, `stop`, `status`, `deploy`, and `metrics` —
 SHALL treat a non-success reply from the control endpoint as a failure: it SHALL
@@ -290,7 +290,7 @@ lack permission to invoke the endpoint.
 
 #### Scenario: A request carrying a body is signed over it
 
-- **WHEN** `outfit remote deploy` sends a configuration
+- **WHEN** `spinloop remote deploy` sends a configuration
 - **THEN** the request is signed including the body's hash, not as an empty
   payload
 
@@ -301,7 +301,7 @@ lack permission to invoke the endpoint.
 
 #### Scenario: Credentials are expired
 
-- **WHEN** `outfit remote status` runs with expired or invalid AWS credentials
+- **WHEN** `spinloop remote status` runs with expired or invalid AWS credentials
   and the control endpoint rejects the signed request
 - **THEN** the command fails with a non-zero exit and a message saying to
   refresh the AWS credentials, rather than printing a blank state
@@ -315,7 +315,7 @@ lack permission to invoke the endpoint.
 
 ### Requirement: Deploying what the endpoint serves
 
-`outfit remote deploy` SHALL derive the deployment from the Outfit and its
+`spinloop remote deploy` SHALL derive the deployment from the Spinloop and its
 preset: `PROVIDER` SHALL select the inference engine, `MODEL` or the preset's
 Hugging Face reference SHALL name the weights as a repository and optional
 quantisation, `CONTEXT` or the preset's context size SHALL set the window,
@@ -335,25 +335,25 @@ the instance.
 
 #### Scenario: A preset drives both serving and deploying
 
-- **WHEN** an Outfit with a preset is deployed
+- **WHEN** a Spinloop with a preset is deployed
 - **THEN** the engine's arguments are the preset's, minus the settings the
   endpoint sets itself
 
-#### Scenario: The Outfit overrides its preset
+#### Scenario: The Spinloop overrides its preset
 
-- **WHEN** the Outfit states a `MODEL` and `CONTEXT` that differ from the
+- **WHEN** the Spinloop states a `MODEL` and `CONTEXT` that differ from the
   preset's
-- **THEN** the Outfit's values are deployed
+- **THEN** the Spinloop's values are deployed
 
 #### Scenario: A provider that is not a self-hosted engine
 
-- **WHEN** an Outfit naming a hosted provider is deployed
+- **WHEN** a Spinloop naming a hosted provider is deployed
 - **THEN** the command fails saying that only a self-hosted engine can be
   deployed
 
 #### Scenario: A local model file
 
-- **WHEN** an Outfit naming a local model file is deployed
+- **WHEN** a Spinloop naming a local model file is deployed
 - **THEN** the command fails saying to name a repository instead, because the
   endpoint fetches its own weights
 
@@ -372,7 +372,7 @@ the instance.
 
 ### Requirement: Status reports when the endpoint last did work
 
-`outfit remote status` SHALL report how long it has been since the endpoint's
+`spinloop remote status` SHALL report how long it has been since the endpoint's
 engine last did any work, alongside the instance state and health it reports
 already. The figure SHALL come from the activity the on-instance daemon
 tracks, not from a measurement the control plane makes itself — one answer,
@@ -389,20 +389,20 @@ read, and SHALL still perform no TCP probe.
 
 #### Scenario: A running endpoint reports its last activity
 
-- **WHEN** the user runs `outfit remote status` against a running endpoint
+- **WHEN** the user runs `spinloop remote status` against a running endpoint
   whose engine has served work
 - **THEN** the output reports how long ago that work happened, labelled "last
   active", beside the state and health lines
 
 #### Scenario: Status stays a read
 
-- **WHEN** the user runs `outfit remote status`
+- **WHEN** the user runs `spinloop remote status`
 - **THEN** nothing is started, stopped or probed in order to obtain the
   last-active figure
 
 ### Requirement: Status degrades when activity cannot be read
 
-`outfit remote status` SHALL omit the last-active figure rather than fail,
+`spinloop remote status` SHALL omit the last-active figure rather than fail,
 report zero, or imply inactivity, whenever the figure cannot be obtained. That
 covers an endpoint whose engine has not yet done any work, a daemon that
 cannot be reached or answers unrecognisably, and an instance that is not
@@ -415,7 +415,7 @@ SHALL still succeed.
 
 #### Scenario: A stopped instance reports no activity figure
 
-- **WHEN** the user runs `outfit remote status` and the instance is stopped or
+- **WHEN** the user runs `spinloop remote status` and the instance is stopped or
   undeployed
 - **THEN** the output reports the state as it does today and shows no
   last-active figure

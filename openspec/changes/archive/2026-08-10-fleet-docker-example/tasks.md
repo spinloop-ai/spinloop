@@ -1,8 +1,8 @@
 ## 1. The node image
 
-- [x] 1.1 `examples/fleet-docker/Dockerfile`: multi-stage — build outfit from
-      the working tree, then a slim runtime carrying the outfit binary, a
-      pinned Imposter native engine binary, and `OUTFIT_CONFIG_DIR` set
+- [x] 1.1 `examples/fleet-docker/Dockerfile`: multi-stage — build spinloop from
+      the working tree, then a slim runtime carrying the spinloop binary, a
+      pinned Imposter native engine binary, and `SPINLOOP_CONFIG_DIR` set
 - [x] 1.2 Add the `llama-server` shim on `PATH`: parse the daemon's `--port`,
       ignore llama.cpp's other flags, and `exec` the Imposter **engine binary**
       with `IMPOSTER_PORT` set — never `imposter up` (see design D2)
@@ -19,8 +19,8 @@
       `tokenEnv` references for the nodes that need one
 - [x] 2.3 `.env.example` for the node tokens, and ensure the real `.env` is
       gitignored
-- [x] 2.4 Verify by hand: `docker compose up -d`, then `outfit fleet status`
-      and `outfit fleet metrics -w` against the stack
+- [x] 2.4 Verify by hand: `docker compose up -d`, then `spinloop fleet status`
+      and `spinloop fleet metrics -w` against the stack
 
 ## 3. The test run
 

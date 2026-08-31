@@ -24,7 +24,7 @@ custom provider, for no benefit.)
 
 Like Bedrock, neither provider sets `apiKeyEnv`. The AI SDK's Vertex provider
 reads Application Default Credentials (`gcloud auth application-default login`,
-or a service-account key file via `GOOGLE_APPLICATION_CREDENTIALS`). outfit
+or a service-account key file via `GOOGLE_APPLICATION_CREDENTIALS`). spinloop
 injects nothing secret.
 
 ### Options: `project` (required) and `location` (default `global`)

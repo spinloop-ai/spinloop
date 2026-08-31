@@ -51,10 +51,10 @@ A user-initiated pause SHALL stop the instance without terminating it, preservin
 
 #### Scenario: Pause stops without terminating
 
-- **WHEN** user runs `outfit remote pause` for a running environment
+- **WHEN** user runs `spinloop remote pause` for a running environment
 - **THEN** the instance is stopped, not terminated, and the environment's URL is retained
 
 #### Scenario: Pause is distinct from stop
 
-- **WHEN** user runs `outfit remote stop`
+- **WHEN** user runs `spinloop remote stop`
 - **THEN** the instance is terminated immediately

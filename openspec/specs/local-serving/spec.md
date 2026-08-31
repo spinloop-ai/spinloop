@@ -2,16 +2,16 @@
 
 ## Purpose
 
-Define `outfit serve`: launching `llama-server` for the model an Outfit
-describes — from the Outfit's own instructions, or from a llama.cpp preset
-`.ini` it points at — so the same file that dresses the harness can also start
+Define `spinloop serve`: launching `llama-server` for the model a Spinloop
+describes — from the Spinloop's own instructions, or from a llama.cpp preset
+`.ini` it points at — so the same file that configures the harness can also start
 the server behind it. `serve` is harness-agnostic and never touches harness
 config.
 ## Requirements
 ### Requirement: Serve basics
 
-`outfit serve [path]` SHALL read an Outfit (default `./Outfit`, aliases and
-directories accepted like every Outfit command), build the command for the
+`spinloop serve [path]` SHALL read a Spinloop (default `./Spinloop`, aliases and
+directories accepted like every Spinloop command), build the command for the
 engine its `PROVIDER` names, print it in copy-pasteable shell form, and run it
 with stdio forwarded. `--dry-run`/`-n` SHALL print the command without
 launching. A missing binary SHALL produce an install hint naming **that** engine
@@ -19,7 +19,7 @@ rather than a raw exec error.
 
 #### Scenario: Dry run
 
-- **WHEN** the user runs `outfit serve --dry-run`
+- **WHEN** the user runs `spinloop serve --dry-run`
 - **THEN** the resolved command is printed and no server starts
 
 #### Scenario: Engine not installed
@@ -29,14 +29,14 @@ rather than a raw exec error.
 
 ### Requirement: Choosing the engine
 
-`outfit serve` SHALL launch the inference engine the Outfit's `PROVIDER` names,
-the local counterpart of the runner `outfit remote deploy` selects from the same
+`spinloop serve` SHALL launch the inference engine the Spinloop's `PROVIDER` names,
+the local counterpart of the runner `spinloop remote deploy` selects from the same
 instruction. `llamacpp` SHALL run `llama-server`; `omlx` SHALL run the oMLX CLI;
 `vllm` SHALL run `vllm serve`, with the model passed as its positional
 argument, the served name as `--served-model-name`, and the context window as
 `--max-model-len`. There SHALL be no default: a `PROVIDER` that is not a
 self-hosted engine SHALL fail, naming the providers that can be served, rather
-than launching an engine the Outfit did not ask for.
+than launching an engine the Spinloop did not ask for.
 
 An engine whose executable is normally installed outside the `PATH` SHALL also be
 looked for at its conventional install location, so a user who has never put it
@@ -44,18 +44,18 @@ on their `PATH` can still serve.
 
 #### Scenario: Provider selects the engine
 
-- **WHEN** the Outfit says `PROVIDER omlx`
+- **WHEN** the Spinloop says `PROVIDER omlx`
 - **THEN** the printed command runs the oMLX CLI, not `llama-server`
 
 #### Scenario: vLLM is servable
 
-- **WHEN** the Outfit says `PROVIDER vllm` with a `MODEL`
+- **WHEN** the Spinloop says `PROVIDER vllm` with a `MODEL`
 - **THEN** the printed command runs `vllm serve` with that model as the
   positional argument
 
 #### Scenario: A provider that is not a local engine
 
-- **WHEN** the Outfit names a hosted provider such as `ollama` or `openrouter`
+- **WHEN** the Spinloop names a hosted provider such as `ollama` or `openrouter`
 - **THEN** the command fails, listing the providers that can be served locally
 
 #### Scenario: Engine installed outside the PATH
@@ -66,7 +66,7 @@ on their `PATH` can still serve.
 
 ### Requirement: Preset-less serving
 
-Without a `PRESET`, the Outfit SHALL supply the command directly and MUST name
+Without a `PRESET`, the Spinloop SHALL supply the command directly and MUST name
 a `MODEL`: a value that looks like a local file (ending `.gguf`, or starting
 with `/`, `./`, `../`, or `~`) becomes the model path, anything else is
 treated as a Hugging Face repo reference. `ALIAS` sets the served model's
@@ -75,59 +75,59 @@ the context size, and `BASEURL`'s host and port set the server's bind address.
 
 #### Scenario: Hugging Face repo
 
-- **WHEN** the Outfit has `MODEL unsloth/Qwen3.6-35B-A3B-GGUF:UD-Q4_K_XL`,
+- **WHEN** the Spinloop has `MODEL unsloth/Qwen3.6-35B-A3B-GGUF:UD-Q4_K_XL`,
   `ALIAS qwen3.6`, and `CONTEXT 32768`
 - **THEN** the command carries the repo reference, the alias, and a context
   size of 32768
 
 #### Scenario: Local file
 
-- **WHEN** the Outfit has `MODEL ./models/qwen.gguf`
+- **WHEN** the Spinloop has `MODEL ./models/qwen.gguf`
 - **THEN** the command loads that file as a model path rather than a repo
 
 #### Scenario: No model to serve
 
-- **WHEN** the Outfit has neither `PRESET` nor `MODEL`
+- **WHEN** the Spinloop has neither `PRESET` nor `MODEL`
 - **THEN** the command fails explaining serve needs one of them
 
 ### Requirement: Serving a multi-model engine
 
 An engine that loads a directory of models and selects one per request SHALL be
 servable with neither a `PRESET` nor a `MODEL`, since it needs nothing at launch
-to know what to load. For such an engine the Outfit's `MODEL` and `ALIAS` SHALL
+to know what to load. For such an engine the Spinloop's `MODEL` and `ALIAS` SHALL
 keep their usual meaning — the id the harness requests — rather than becoming
 launch flags, and `CONTEXT` SHALL size the harness's window only. `BASEURL`'s
 host and port SHALL still set the server's bind address, and SHALL be omitted
-entirely when the Outfit states no `BASEURL`, so the engine's own defaults stand.
+entirely when the Spinloop states no `BASEURL`, so the engine's own defaults stand.
 
-#### Scenario: Bare Outfit starts the server
+#### Scenario: Bare Spinloop starts the server
 
-- **WHEN** the Outfit states only `PROVIDER omlx`
+- **WHEN** the Spinloop states only `PROVIDER omlx`
 - **THEN** the server is launched with no bind flags and no model flags, rather
   than failing for want of a model
 
 #### Scenario: Bind address from BASEURL
 
-- **WHEN** the Outfit adds `BASEURL http://127.0.0.1:9100/v1`
+- **WHEN** the Spinloop adds `BASEURL http://127.0.0.1:9100/v1`
 - **THEN** the command binds the server to that host and port
 
 ### Requirement: Preset-based serving
 
 With a `PRESET`, the referenced `.ini` SHALL supply the command: a relative
-preset reference resolves against the Outfit's own source — a local directory
-join when the Outfit was read from disk, URL-relative resolution when the
-Outfit was fetched from a URL — so the pair can travel together either way. A
+preset reference resolves against the Spinloop's own source — a local directory
+join when the Spinloop was read from disk, URL-relative resolution when the
+Spinloop was fetched from a URL — so the pair can travel together either way. A
 `PRESET` MAY itself be an absolute `http://`/`https://` URL regardless of
-where the Outfit lives, in which case it is fetched over HTTP. Fetching a
-remote `PRESET` SHALL happen only when a command that consumes it (`outfit
-serve`, `outfit remote deploy`) actually builds its launch or deploy
-configuration — never merely because the Outfit was read or applied. The
+where the Spinloop lives, in which case it is fetched over HTTP. Fetching a
+remote `PRESET` SHALL happen only when a command that consumes it (`spinloop
+serve`, `spinloop remote deploy`) actually builds its launch or deploy
+configuration — never merely because the Spinloop was read or applied. The
 preset's `[*]`/`[global]` section holds shared defaults; each named section is
 one model whose keys are server arguments with dashes stripped. The served
-section is chosen by the Outfit's `ALIAS`, matched case-insensitively; a
+section is chosen by the Spinloop's `ALIAS`, matched case-insensitively; a
 preset with exactly one section is always served; no sections is an error;
 several sections with no matching name SHALL fail listing the available
-sections. Values the Outfit itself states SHALL override the preset's.
+sections. Values the Spinloop itself states SHALL override the preset's.
 
 A preset SHALL be read in the flag vocabulary of the engine the `PROVIDER`
 names, never in a vocabulary inferred from the file. A preset written for one
@@ -135,15 +135,15 @@ engine is therefore not portable to another: read in the wrong vocabulary it
 would parse cleanly and produce a command with silently rewritten or dropped
 flags.
 
-#### Scenario: Outfit overrides the preset
+#### Scenario: Spinloop overrides the preset
 
-- **WHEN** the preset section sets `ctx-size = 4096` and the Outfit says
+- **WHEN** the preset section sets `ctx-size = 4096` and the Spinloop says
   `CONTEXT 32768`
 - **THEN** the command carries a context size of 32768
 
 #### Scenario: Ambiguous preset
 
-- **WHEN** the preset defines several sections and the Outfit's `ALIAS` matches
+- **WHEN** the preset defines several sections and the Spinloop's `ALIAS` matches
   none
 - **THEN** the command fails listing the section names to choose from
 
@@ -156,19 +156,19 @@ flags.
 
 #### Scenario: A remote preset
 
-- **WHEN** the Outfit sets `PRESET https://example.com/preset.ini`
-- **THEN** `outfit serve` fetches that URL and serves the section its `ALIAS`
+- **WHEN** the Spinloop sets `PRESET https://example.com/preset.ini`
+- **THEN** `spinloop serve` fetches that URL and serves the section its `ALIAS`
   selects
 
-#### Scenario: A preset relative to a URL-sourced Outfit
+#### Scenario: A preset relative to a URL-sourced Spinloop
 
-- **WHEN** an Outfit fetched from `https://example.com/team/Outfit` sets
+- **WHEN** a Spinloop fetched from `https://example.com/team/Spinloop` sets
   `PRESET ./preset.ini`
-- **THEN** `outfit serve` fetches `https://example.com/team/preset.ini`
+- **THEN** `spinloop serve` fetches `https://example.com/team/preset.ini`
 
 #### Scenario: A preset is not fetched by commands that do not need it
 
-- **WHEN** `outfit apply` runs against an Outfit whose `PRESET` is a URL
+- **WHEN** `spinloop apply` runs against a Spinloop whose `PRESET` is a URL
 - **THEN** the preset URL is never fetched, matching how a local `PRESET` is
   already ignored by `apply`
 
@@ -201,14 +201,14 @@ the tokens that need it, and SHALL pass values to the server verbatim.
 ### Requirement: Parallelism
 
 `CONTEXT` SHALL always mean the context window a single request gets, whatever
-engine serves it. An Outfit's `PARALLEL` SHALL set the number of concurrent
+engine serves it. A Spinloop's `PARALLEL` SHALL set the number of concurrent
 request slots, translated per engine so that `CONTEXT`'s meaning holds:
 
 - For `llamacpp`, `PARALLEL n` SHALL be rendered as `--parallel n`. Because
   llama.cpp treats `--ctx-size` as a total budget divided across its parallel
-  slots, when the Outfit **also** states `CONTEXT`, the rendered `--ctx-size`
+  slots, when the Spinloop **also** states `CONTEXT`, the rendered `--ctx-size`
   SHALL be `context_tokens * n` rather than `context_tokens`, so each slot
-  still gets the context the Outfit asked for. `CONTEXT` set with no
+  still gets the context the Spinloop asked for. `CONTEXT` set with no
   `PARALLEL` SHALL render `--ctx-size` as `context_tokens`, unscaled, exactly
   as before this capability existed.
 - For `vllm`, `PARALLEL n` SHALL be rendered as `--max-num-seqs n`.
@@ -217,14 +217,14 @@ request slots, translated per engine so that `CONTEXT`'s meaning holds:
 - For `omlx`, `PARALLEL n` SHALL be rendered as `--max-concurrent-requests n`.
   oMLX has no context flag to scale either way.
 
-An Outfit stating no `PARALLEL` SHALL produce a command identical to one from
+A Spinloop stating no `PARALLEL` SHALL produce a command identical to one from
 before this capability existed, for all three engines. A `PARALLEL` value
 SHALL be validated as a positive integer at the point it is used (`serve`, a
 daemon-pushed config, or `remote deploy`); a value that is not SHALL fail
 naming the invalid value rather than being passed to the engine.
 
 When `CONTEXT` is supplied by a `PRESET` section's own `ctx-size` rather than
-by the Outfit, `PARALLEL` SHALL NOT rescale it — only an Outfit-stated
+by the Spinloop, `PARALLEL` SHALL NOT rescale it — only a Spinloop-stated
 `CONTEXT` participates in the `llamacpp` multiply. A `PARALLEL` value SHALL
 still override a preset's own `np`/`parallel` (llama.cpp), `max-num-seqs`
 (vLLM), or `max-concurrent-requests` (oMLX) value by the same
@@ -233,59 +233,59 @@ override-by-canonical-name rule `CONTEXT` already uses against a preset's
 
 #### Scenario: llama.cpp context is scaled by parallel slots
 
-- **WHEN** an Outfit states `PROVIDER llamacpp`, `CONTEXT 128k`, and
+- **WHEN** a Spinloop states `PROVIDER llamacpp`, `CONTEXT 128k`, and
   `PARALLEL 2`
 - **THEN** the printed command includes `--ctx-size 256000` and `--parallel 2`
 
 #### Scenario: llama.cpp parallel with no context set
 
-- **WHEN** an Outfit states `PROVIDER llamacpp` and `PARALLEL 4` with no
+- **WHEN** a Spinloop states `PROVIDER llamacpp` and `PARALLEL 4` with no
   `CONTEXT`
 - **THEN** the printed command includes `--parallel 4` and no `--ctx-size`
   flag is added
 
 #### Scenario: llama.cpp context with no parallel set is unscaled
 
-- **WHEN** an Outfit states `PROVIDER llamacpp` and `CONTEXT 128k` with no
+- **WHEN** a Spinloop states `PROVIDER llamacpp` and `CONTEXT 128k` with no
   `PARALLEL`
 - **THEN** the printed command includes `--ctx-size 128000`, exactly as it
   would have before `PARALLEL` existed
 
 #### Scenario: A preset's own context is not rescaled
 
-- **WHEN** an Outfit states `PROVIDER llamacpp`, `PARALLEL 2`, and a `PRESET`
-  whose section sets `ctx-size` but the Outfit itself states no `CONTEXT`
+- **WHEN** a Spinloop states `PROVIDER llamacpp`, `PARALLEL 2`, and a `PRESET`
+  whose section sets `ctx-size` but the Spinloop itself states no `CONTEXT`
 - **THEN** the printed command includes `--parallel 2` and the preset's
   `ctx-size` value passes through unscaled
 
 #### Scenario: vLLM concurrency does not touch context
 
-- **WHEN** an Outfit states `PROVIDER vllm`, `CONTEXT 128k`, and `PARALLEL 4`
+- **WHEN** a Spinloop states `PROVIDER vllm`, `CONTEXT 128k`, and `PARALLEL 4`
 - **THEN** the printed command includes `--max-model-len 128000` and
   `--max-num-seqs 4`, with neither value derived from the other
 
 #### Scenario: oMLX concurrency
 
-- **WHEN** an Outfit states `PROVIDER omlx` and `PARALLEL 8`
+- **WHEN** a Spinloop states `PROVIDER omlx` and `PARALLEL 8`
 - **THEN** the printed command includes `--max-concurrent-requests 8` and no
   context flag, exactly as with no `PARALLEL` stated
 
 #### Scenario: No PARALLEL means no change
 
-- **WHEN** an Outfit states no `PARALLEL`, for any of the three engines
+- **WHEN** a Spinloop states no `PARALLEL`, for any of the three engines
 - **THEN** the printed command is identical to what it would have been before
   this capability existed
 
 #### Scenario: Invalid parallel count
 
-- **WHEN** an Outfit states `PARALLEL 0`, a negative number, or a non-numeric
+- **WHEN** a Spinloop states `PARALLEL 0`, a negative number, or a non-numeric
   value, for any of the three engines
 - **THEN** the command fails naming the invalid value rather than passing it
   to the engine
 
-#### Scenario: Outfit PARALLEL overrides a preset's own value
+#### Scenario: Spinloop PARALLEL overrides a preset's own value
 
-- **WHEN** an Outfit states `PROVIDER llamacpp` and `PARALLEL 2`, and its
+- **WHEN** a Spinloop states `PROVIDER llamacpp` and `PARALLEL 2`, and its
   `PRESET` section separately sets `np = 4`
 - **THEN** the printed command includes `--parallel 2`, not `--parallel 4`
 
@@ -303,21 +303,21 @@ process. Configuring authentication on the server is the engine's own concern.
 
 ### Requirement: Control API flag
 
-`outfit serve` SHALL accept `-a`/`--api` to expose the control API over the
+`spinloop serve` SHALL accept `-a`/`--api` to expose the control API over the
 foreground engine, as defined by the `daemon-api` capability. Serve SHALL
 remain a foreground command with no daemon flag — long-lived supervision is
-`outfit daemon`'s job. Without `--api`, serve's foreground stdio-forwarded
+`spinloop daemon`'s job. Without `--api`, serve's foreground stdio-forwarded
 behaviour SHALL be unchanged.
 
 #### Scenario: Plain serve is unchanged
 
-- **WHEN** the user runs `outfit serve` without `--api`
+- **WHEN** the user runs `spinloop serve` without `--api`
 - **THEN** the engine runs in the foreground with stdio forwarded, exactly as
   before
 
 #### Scenario: Serve with the API stays foreground
 
-- **WHEN** the user runs `outfit serve -a`
+- **WHEN** the user runs `spinloop serve -a`
 - **THEN** the engine runs in the foreground with the control API listening
   beside it
 

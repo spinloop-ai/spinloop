@@ -18,7 +18,7 @@ import {
 } from '../shared/aws';
 import {
   isRunner,
-  LATEST_OUTFIT,
+  LATEST_SPINLOOP,
   weightsPrefixFor,
   type DeployConfig,
 } from '../shared/deploy-config';
@@ -126,9 +126,9 @@ async function start(event: LambdaFunctionURLEvent): Promise<LambdaFunctionURLRe
     // Seeds name no companions of their own: `deploy --reseed` carries the
     // deployment's, and a bare `seed start` fetches the main weights.
     companions: {},
-    // The seed never boots a daemon, so its outfit version is a placeholder
+    // The seed never boots a daemon, so its spinloop version is a placeholder
     // for the shape, not a choice.
-    outfitVersion: LATEST_OUTFIT,
+    spinloopVersion: LATEST_SPINLOOP,
   };
 
   if (!force && (await weightsPresent(infra.bucket, cfg))) {
@@ -164,7 +164,7 @@ async function start(event: LambdaFunctionURLEvent): Promise<LambdaFunctionURLRe
     joined: false,
     modelId,
     weightsPrefix: cfg.weightsPrefix,
-    message: `seeding ${modelId} — follow it with \`outfit remote seed status ${seedId}\``,
+    message: `seeding ${modelId} — follow it with \`spinloop remote seed status ${seedId}\``,
   });
 }
 

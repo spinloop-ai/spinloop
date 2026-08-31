@@ -1,11 +1,11 @@
-# outfit completion
+# spinloop completion
 
 Tab completion for bash, zsh, and PowerShell.
 
 ```sh
-source <(outfit completion bash)   # add to ~/.bashrc
-source <(outfit completion zsh)    # or ~/.zshrc (needs compinit)
-outfit completion powershell | Out-String | Invoke-Expression   # or $PROFILE
+source <(spinloop completion bash)   # add to ~/.bashrc
+source <(spinloop completion zsh)    # or ~/.zshrc (needs compinit)
+spinloop completion powershell | Out-String | Invoke-Expression   # or $PROFILE
 ```
 
 Homebrew installs the bash and zsh completions for you.
@@ -17,10 +17,10 @@ them:
 
 - provider names after `-p` (honouring a `--providers` override on the line)
 - harness names after `-H`, `--harness`, or `--set`
-- your [registered aliases](alias.md) wherever an Outfit path goes —
-  `outfit unalias <TAB>` offers exactly the names you have
+- your [registered aliases](alias.md) wherever a Spinloop path goes —
+  `spinloop unalias <TAB>` offers exactly the names you have
 - the supported shells after `completion`
 
 ## See also
 
-- [`outfit alias`](alias.md) — the names completion offers
+- [`spinloop alias`](alias.md) — the names completion offers

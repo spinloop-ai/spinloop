@@ -39,7 +39,7 @@ function tempDotEnv(content: string): string {
 
 describe('config', () => {
   it('needs no per-environment settings (control plane only)', () => {
-    // allowedCidr, runner, model settings all moved to `outfit remote deploy`.
+    // allowedCidr, runner, model settings all moved to `spinloop remote deploy`.
     expect(() => loadConfig(new cdk.App(), NO_DOTENV)).not.toThrow();
   });
 
@@ -408,7 +408,7 @@ describe('LlmStack (control plane)', () => {
 
   it('outputs the discovery values and no per-environment address', () => {
     for (const name of [
-      'OutfitRemoteConfig',
+      'SpinloopRemoteConfig',
       'StartUrl',
       'StopUrl',
       'DeployUrl',
@@ -461,11 +461,11 @@ describe('ImageStack', () => {
     const llamacpp = params.find((p) => names(p).includes('LlamacppRelease'));
     expect(vllm!.find((p: { Name: string }) => p.Name === 'VllmVersion').Value).toEqual(['0.26.0']);
     expect(llamacpp).toBeDefined();
-    // Both need the driver; neither takes an outfit version — the instance's
-    // boot installs outfit, so the AMI carries no release of it to pin.
+    // Both need the driver; neither takes an spinloop version — the instance's
+    // boot installs spinloop, so the AMI carries no release of it to pin.
     for (const p of params) {
       expect(names(p)).toContain('NvidiaDriverPackage');
-      expect(names(p)).not.toContain('OutfitVersion');
+      expect(names(p)).not.toContain('SpinloopVersion');
     }
   });
 
@@ -502,24 +502,24 @@ describe('ImageStack', () => {
       // The rotation is size-triggered and copytruncate (the engine holds the
       // append fd); only the daemon's engine log (under its pinned config dir)
       // is rotated, not the boot log.
-      expect(data).toContain('/var/lib/outfit/daemon/engine.log');
+      expect(data).toContain('/var/lib/spinloop/daemon/engine.log');
       expect(data).toContain('copytruncate');
       expect(data).toContain('llm-logrotate.timer');
       expect(data).not.toContain('cloud-init-output.log');
     }
   });
 
-  it('bakes the crash-nudge timer, but not outfit, into every runner', () => {
+  it('bakes the crash-nudge timer, but not spinloop, into every runner', () => {
     const components = Object.values(template.findResources('AWS::ImageBuilder::Component'));
     for (const c of components) {
       const data = c.Properties.Data as string;
-      // outfit is installed by each instance's boot (the deploy config's pin
+      // spinloop is installed by each instance's boot (the deploy config's pin
       // or latest), never by the bake: no release download, no install.
-      expect(data).not.toContain('OutfitVersion');
-      expect(data).not.toContain('outfit_linux_amd64.tar.gz');
-      expect(data).not.toContain('install -m 0755 /tmp/outfit-dl/outfit /usr/local/bin/outfit');
+      expect(data).not.toContain('SpinloopVersion');
+      expect(data).not.toContain('spinloop_linux_amd64.tar.gz');
+      expect(data).not.toContain('install -m 0755 /tmp/spinloop-dl/spinloop /usr/local/bin/spinloop');
       // The nudge acts only on a crashed engine.
-      expect(data).toContain('outfit-nudge.timer');
+      expect(data).toContain('spinloop-nudge.timer');
       expect(data).toContain('"state":"crashed"');
     }
   });

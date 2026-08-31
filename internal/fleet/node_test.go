@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lucinate-ai/outfit/internal/daemon"
+	"github.com/spinloop-ai/spinloop/internal/daemon"
 )
 
 // stubDaemon serves the control API endpoints a node exposes. token is the
@@ -277,7 +277,7 @@ func TestResultCarriesTheStatusAndTheVerdict(t *testing.T) {
 // is: no config directory to find it in, or the environment never registered.
 func TestNewNodeForAUnregisteredRemoteEnvironment(t *testing.T) {
 	cfg := &Config{}
-	t.Setenv("OUTFIT_CONFIG_DIR", "")
+	t.Setenv("SPINLOOP_CONFIG_DIR", "")
 	t.Setenv("XDG_CONFIG_HOME", "")
 	t.Setenv("HOME", "")
 	if _, err := cfg.NewNode(NodeConfig{Name: "env", Kind: KindRemote}); err == nil {
@@ -286,7 +286,7 @@ func TestNewNodeForAUnregisteredRemoteEnvironment(t *testing.T) {
 	// With a registry to look in, an unregistered environment fails the node,
 	// not the fleet: the name never has to be env-shaped for that, a path-like
 	// one simply finds nothing.
-	t.Setenv("OUTFIT_CONFIG_DIR", t.TempDir())
+	t.Setenv("SPINLOOP_CONFIG_DIR", t.TempDir())
 	for _, name := range []string{"env", "a/b"} {
 		if _, err := cfg.NewNode(NodeConfig{Name: name, Kind: KindRemote}); err == nil {
 			t.Errorf("unregistered environment %q built a node", name)

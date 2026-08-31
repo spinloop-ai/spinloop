@@ -1,29 +1,29 @@
 ## Purpose
 
-Define how the remote GPU instance hosts its engine through outfit's own
-daemon: outfit baked into the runtime AMI, boot handing the daemon a deploy
+Define how the remote GPU instance hosts its engine through spinloop's own
+daemon: spinloop baked into the runtime AMI, boot handing the daemon a deploy
 config and running it on loopback, the control Lambdas speaking to that
 daemon over SSM, and the engine's log and self-healing riding on the daemon's
 contract — one engine host, cloud and local alike.
 
 ## ADDED Requirements
 
-### Requirement: Outfit is baked into the runtime AMI
+### Requirement: Spinloop is baked into the runtime AMI
 
-The runtime AMIs for both runners SHALL include a pinned outfit release,
+The runtime AMIs for both runners SHALL include a pinned spinloop release,
 installed at image-bake time with its version declared alongside the other
 pinned runner versions. Changing the pinned version SHALL produce a new image
-version, so an instance's outfit is decided by its AMI, not fetched at boot.
+version, so an instance's spinloop is decided by its AMI, not fetched at boot.
 
-#### Scenario: Instance boots with outfit present
+#### Scenario: Instance boots with spinloop present
 
 - **WHEN** an instance launches from a runtime AMI
-- **THEN** the outfit binary is already installed and runnable without network
+- **THEN** the spinloop binary is already installed and runnable without network
   access
 
 ### Requirement: The instance engine runs under the daemon
 
-At boot the instance SHALL run `outfit daemon` as its engine host, bound to
+At boot the instance SHALL run `spinloop daemon` as its engine host, bound to
 loopback, instead of a per-runner engine unit. The boot sequence SHALL derive
 the daemon's deploy config from the environment's stored deploy config — with
 the cloud-owned settings (bind address and port, API-key delivery, the synced
@@ -51,14 +51,14 @@ the boot script previously installed for that runner.
 The stats path SHALL obtain engine and system metrics by calling the
 on-instance daemon's metrics endpoint over SSM, merging in what only the
 control plane knows (environment, instance id and type, uptime), and SHALL
-preserve the reply shape `outfit remote metrics` renders today. The idle
+preserve the reply shape `spinloop remote metrics` renders today. The idle
 check SHALL read its activity signals (in-flight requests, cumulative
 counters) from the same daemon reply. The control plane SHALL NOT collect
 metrics by running per-metric shell commands on the instance.
 
 #### Scenario: Stats flow through the daemon
 
-- **WHEN** `outfit remote metrics` runs against a running instance
+- **WHEN** `spinloop remote metrics` runs against a running instance
 - **THEN** the reported state, GPU, CPU, RAM and token figures come from the
   daemon's metrics endpoint and render in the existing bar, table and JSON
   formats unchanged

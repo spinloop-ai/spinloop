@@ -1,8 +1,8 @@
-# A mixed fleet: a machine running `outfit daemon` and two `outfit remote`
+# A mixed fleet: a machine running `spinloop daemon` and two `spinloop remote`
 # environments, observed side by side. The same command reaches every node,
 # whatever kind it is.
 #
-#   outfit fleet status / metrics -w
+#   spinloop fleet status / metrics -w
 #
 # A daemon node names the machine (host) and the variable holding its bearer
 # token (tokenEnv). A remote node names its environment — its node name *is* the

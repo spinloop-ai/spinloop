@@ -131,7 +131,7 @@ func TestBuildPiProvider_BaseURLFallbackAndOverride(t *testing.T) {
 		t.Errorf("baseUrl = %q, want the flag override", prov.BaseURL)
 	}
 
-	// OUTFIT_BASE_URL wins when no flag is given.
+	// SPINLOOP_BASE_URL wins when no flag is given.
 	prov, _, err = BuildPiProvider("ollama", p, "llama3.2", "", envMap(map[string]string{
 		baseURLEnv: "https://from-env.example/v1",
 	}))
@@ -139,7 +139,7 @@ func TestBuildPiProvider_BaseURLFallbackAndOverride(t *testing.T) {
 		t.Fatalf("BuildPiProvider: %v", err)
 	}
 	if prov.BaseURL != "https://from-env.example/v1" {
-		t.Errorf("baseUrl = %q, want the OUTFIT_BASE_URL value", prov.BaseURL)
+		t.Errorf("baseUrl = %q, want the SPINLOOP_BASE_URL value", prov.BaseURL)
 	}
 }
 
@@ -477,7 +477,7 @@ func TestBuildProviderBlock_BaseURLFlagOverrides(t *testing.T) {
 }
 
 // TestBuildProviderBlock_BaseURLFromEnv checks that, with no flag, the general
-// OUTFIT_BASE_URL env var overrides the catalogue's static baseURL.
+// SPINLOOP_BASE_URL env var overrides the catalogue's static baseURL.
 func TestBuildProviderBlock_BaseURLFromEnv(t *testing.T) {
 	cat, _ := Load()
 	p := cat.Providers["ollama"]
@@ -490,12 +490,12 @@ func TestBuildProviderBlock_BaseURLFromEnv(t *testing.T) {
 	}
 	opts := block["options"].(map[string]any)
 	if opts["baseURL"] != "https://from-env.example/v1" {
-		t.Errorf("baseURL = %v, want the OUTFIT_BASE_URL value", opts["baseURL"])
+		t.Errorf("baseURL = %v, want the SPINLOOP_BASE_URL value", opts["baseURL"])
 	}
 }
 
 // TestBuildProviderBlock_BaseURLFlagBeatsEnv checks the precedence: an explicit
-// --base-url flag wins over OUTFIT_BASE_URL.
+// --base-url flag wins over SPINLOOP_BASE_URL.
 func TestBuildProviderBlock_BaseURLFlagBeatsEnv(t *testing.T) {
 	cat, _ := Load()
 	p := cat.Providers["ollama"]
@@ -597,7 +597,7 @@ func TestBuildPiProvider_OptionalKey(t *testing.T) {
 }
 
 // A provider whose key is NOT optional keeps the reference even when unset, so
-// the key can be exported after the Outfit is applied.
+// the key can be exported after the Spinloop is applied.
 func TestBuildPiProvider_RequiredKeyKeepsReference(t *testing.T) {
 	cat, _ := Load()
 	prov, _, err := BuildPiProvider("openai-compatible", cat.Providers["openai-compatible"], "gpt-4o", "", noEnv)
@@ -818,10 +818,10 @@ func TestBuildPiProvider_BaseURLPrecedence(t *testing.T) {
 		}
 	})
 
-	t.Run("OUTFIT_BASE_URL beats the provider variable", func(t *testing.T) {
+	t.Run("SPINLOOP_BASE_URL beats the provider variable", func(t *testing.T) {
 		prov, _, err := BuildPiProvider("omlx", omlx, "m", "", envMap(map[string]string{
-			"OUTFIT_BASE_URL": "http://generic:1/v1",
-			"OMLX_BASE_URL":   "http://from-env:2/v1",
+			"SPINLOOP_BASE_URL": "http://generic:1/v1",
+			"OMLX_BASE_URL":     "http://from-env:2/v1",
 		}))
 		if err != nil {
 			t.Fatalf("BuildPiProvider: %v", err)

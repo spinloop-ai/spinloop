@@ -1,6 +1,6 @@
 ## Context
 
-`dashTileContent` (`cmd/outfit/dashboard_render.go`) builds a node tile as
+`dashTileContent` (`cmd/spinloop/dashboard_render.go`) builds a node tile as
 plain text lines, which `dashClip` then hard-truncates to `dashTileW` (42
 columns) each. `dashTileServingLine` currently builds `runner  modelID  (up
 ...)` as one string; when `runner + modelID` alone is long, `dashClip` cuts
@@ -53,7 +53,7 @@ The tile has two shapes that print a node's state:
 
 - [Existing byte-stable tests assert exact tile text and will fail once the
   line layout changes] → Update the fixtures in
-  `cmd/outfit/fleet_dashboard_test.go` (`TestDashTileRunningByteStable`,
+  `cmd/spinloop/fleet_dashboard_test.go` (`TestDashTileRunningByteStable`,
   `TestDashTileActionInFlightWithReport`, `TestDashGridRealTilesSideBySide`,
   and any other test asserting a `(up ...)` line) as part of this change.
 - [The settled top line (`name  state  (up ...)`) is now longer and could

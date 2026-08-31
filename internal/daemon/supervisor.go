@@ -1,5 +1,5 @@
 // Package daemon runs an engine under supervision and exposes the control API
-// that observes and drives it — the long-lived half of `outfit serve
+// that observes and drives it — the long-lived half of `spinloop serve
 // --daemon`. The supervisor deliberately does not restart a crashed engine
 // (it reports the crash and waits for an explicit start) and holds at most
 // one engine at a time.

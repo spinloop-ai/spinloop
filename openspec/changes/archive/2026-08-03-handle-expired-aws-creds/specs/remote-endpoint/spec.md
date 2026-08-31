@@ -5,7 +5,7 @@
 Requests to the control URLs SHALL be signed with the caller's own AWS
 credentials, resolved from the standard credential chain, and SHALL carry the
 hash of the request body so that a request with a payload is signed over that
-payload. Outfit SHALL NOT store AWS credentials of its own.
+payload. Spinloop SHALL NOT store AWS credentials of its own.
 
 Every control subcommand — `start`, `stop`, `status`, `deploy`, and `stats` —
 SHALL treat a non-success reply from the control endpoint as a failure: it SHALL
@@ -20,7 +20,7 @@ lack permission to invoke the endpoint.
 
 #### Scenario: A request carrying a body is signed over it
 
-- **WHEN** `outfit remote deploy` sends a configuration
+- **WHEN** `spinloop remote deploy` sends a configuration
 - **THEN** the request is signed including the body's hash, not as an empty
   payload
 
@@ -31,7 +31,7 @@ lack permission to invoke the endpoint.
 
 #### Scenario: Credentials are expired
 
-- **WHEN** `outfit remote status` runs with expired or invalid AWS credentials
+- **WHEN** `spinloop remote status` runs with expired or invalid AWS credentials
   and the control endpoint rejects the signed request
 - **THEN** the command fails with a non-zero exit and a message saying to
   refresh the AWS credentials, rather than printing a blank state

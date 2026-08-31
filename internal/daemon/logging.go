@@ -1,7 +1,7 @@
-// outfit's own diagnostic output: the level control, the logger the API hosts
+// spinloop's own diagnostic output: the level control, the logger the API hosts
 // build, and the middleware that summarises every request the control API
 // serves. The engine's output is a separate thing entirely — it is captured to
-// the supervisor's log file and served over /v1/logs; this is what outfit says
+// the supervisor's log file and served over /v1/logs; this is what spinloop says
 // about itself while serving that engine.
 //
 // The logger is injected rather than global (see Daemon.Logger and
@@ -21,14 +21,14 @@ import (
 	"time"
 )
 
-// LevelEnvVar names the environment variable setting outfit's log level. The
-// --log-level flag beats it, matching how --harness beats OUTFIT_HARNESS.
-const LevelEnvVar = "OUTFIT_LOG_LEVEL"
+// LevelEnvVar names the environment variable setting spinloop's log level. The
+// --log-level flag beats it, matching how --harness beats SPINLOOP_HARNESS.
+const LevelEnvVar = "SPINLOOP_LOG_LEVEL"
 
 // levelNames is the accepted set, in the order the error message lists them.
 // slog understands more spellings than these (INFO+2, and every level offset),
 // which is why parsing is a switch rather than slog.Level.UnmarshalText: the
-// accepted vocabulary is outfit's to state, and an error has to name it.
+// accepted vocabulary is spinloop's to state, and an error has to name it.
 var levelNames = []string{"debug", "info", "warn", "error"}
 
 // LevelNames lists the accepted level names, for the CLI's flag help and its
@@ -158,7 +158,7 @@ func summarize(logger *slog.Logger, next http.Handler) http.Handler {
 			slog.Duration("duration", time.Since(start)),
 			slog.Int("bytes", rec.bytes),
 			// Host and port as the connection reports them. Behind a proxy
-			// this is the proxy: outfit does not trust X-Forwarded-For, since
+			// this is the proxy: spinloop does not trust X-Forwarded-For, since
 			// the API is meant to be reached directly.
 			slog.String("remote", r.RemoteAddr),
 		)

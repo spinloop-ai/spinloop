@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Define how `outfit` reads and writes the Pi coding agent's model catalogue at
+Define how `spinloop` reads and writes the Pi coding agent's model catalogue at
 `~/.pi/agent/models.json`: the merge that preserves everything else in the
 file, Pi's API-key idiom, which providers are Pi-capable, and the differences
 from opencode (no default-model setting).
@@ -19,7 +19,7 @@ when needed. The file SHALL be written with owner-only (`0600`) permissions.
 
 #### Scenario: First write creates the file
 
-- **WHEN** the user runs `outfit add -H pi` and no `models.json` exists
+- **WHEN** the user runs `spinloop add -H pi` and no `models.json` exists
 - **THEN** the file is created with the managed provider entry and owner-only
   permissions
 
@@ -35,7 +35,7 @@ sorted by id so the file is deterministic.
 #### Scenario: Sibling provider and unknown fields survive
 
 - **WHEN** `models.json` holds another provider and extra fields on the managed
-  one, and the user re-runs `outfit add -H pi`
+  one, and the user re-runs `spinloop add -H pi`
 - **THEN** the sibling provider and the extra fields are intact afterwards
 
 #### Scenario: Models unioned by id
@@ -48,7 +48,7 @@ sorted by id so the file is deterministic.
 The managed provider's `apiKey` SHALL be written as a `$ENV_VAR` interpolation
 referencing the provider's key variable — never the resolved secret. The
 reference SHALL be written even when that variable is currently unset, because
-Pi resolves it when it runs, so the key may be exported after the Outfit is
+Pi resolves it when it runs, so the key may be exported after the Spinloop is
 applied.
 
 A dummy literal placeholder SHALL be written instead when the provider has no
@@ -149,7 +149,7 @@ catalogues supplied at run time, which no integrity test can inspect.
 
 Pi has no default-model setting, so applying a selection SHALL NOT record one;
 instead the command SHALL tell the user which model to select with `/model`
-inside Pi. `outfit export` for Pi SHALL rely on the provider selection alone.
+inside Pi. `spinloop export` for Pi SHALL rely on the provider selection alone.
 
 #### Scenario: Add tells the user what to pick
 
@@ -164,5 +164,5 @@ written on every model the selection adds, as `contextWindow` and `maxTokens`.
 
 #### Scenario: Limits land on the Pi models
 
-- **WHEN** `outfit add -H pi -p llamacpp -m my-model -c 128k` is applied
+- **WHEN** `spinloop add -H pi -p llamacpp -m my-model -c 128k` is applied
 - **THEN** the written model has `contextWindow` 128000 and `maxTokens` 32000
