@@ -40,6 +40,9 @@ Four words carry the whole tool:
 - [Runnable examples](../examples/) — ready-to-apply Spinloops with walkthroughs
 - [Deploying your own cloud GPU endpoint](../remote/) — the AWS project behind
   `spinloop remote`
+- [Implementation notes](internals.md) — maintainer-facing gotchas and
+  adapter schema references (behavior itself is specified in
+  `openspec/specs/`)
 
 ## Commands
 

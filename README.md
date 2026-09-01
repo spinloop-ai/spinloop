@@ -3,11 +3,11 @@
 </p>
 
 <p align="center">
-  Orchestrate every model your coding agent runs on.
+  <code>spinloop</code> is a CLI for a model's whole lifecycle — deploy it, host it, watch it, and point a coding agent at it — driven from a static no-dependencies binary.
 </p>
 
 <p align="center">
-  <em>// opencode, Pi or lucinate &middot; llama.cpp, vLLM or oMLX &middot; deploy local, LAN or cloud &middot; one fleet, one board.</em>
+  <em>// opencode, Pi or lucinate &middot; llama.cpp, vLLM or oMLX &middot; deploy local, LAN or cloud &middot; the whole fleet, on one dashboard.</em>
 </p>
 
 ---
@@ -21,13 +21,6 @@ serve the engine behind it, drive every machine that runs one, and wake a
 cloud GPU only for as long as you actually use it.
 
 ```sh
-# POINT — configure the agent and aim it at a model (here, a local Qwen3.6 on Ollama)
-spinloop add -p ollama -m qwen3.6
-spinloop harness            # launch the agent, now running the model you picked
-
-# ...or keep the selection in a file, like a Dockerfile for your coding agent
-spinloop apply              # reads ./Spinloop and applies it
-
 # SERVE — the same file launches the inference server behind it
 spinloop serve
 
@@ -36,10 +29,14 @@ spinloop fleet dashboard
 
 # CLOUD — a GPU instance that exists only while you are using it
 spinloop remote start
-```
 
-Start at the first command and stop there if that is all you need. Each step up
-reuses the file you already wrote, and the rest of your config never moved.
+# POINT - keep the selection in a file, like a Dockerfile for your coding agent
+spinloop apply              # reads ./Spinloop and applies it
+
+# ...or  configure the agent and aim it at a model (here, a local Qwen3.6 on Ollama)
+spinloop add -p ollama -m qwen3.6
+spinloop harness            # launch the agent, now running the model you picked
+```
 
 ## Supported providers
 
@@ -92,7 +89,7 @@ it configures the agent for you:
 
 Works with [opencode](https://opencode.ai),
 [Pi](https://github.com/earendil-works/pi) and
-[lucinate](https://github.com/lucinate-ai/lucinate) today — pick the one you use
+[lucinate](https://lucinate.ai) today — pick the one you use
 per command, or set a default. The same selection works for any of them.
 
 ## Install
