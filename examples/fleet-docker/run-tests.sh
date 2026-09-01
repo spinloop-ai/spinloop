@@ -172,6 +172,31 @@ wait_for_state() {
 }
 
 #######################################
+# Wait until the engine's token counters reach the fleet view. A node reads
+# `running` as soon as the engine process is alive, which is earlier than the
+# counters exist: the engine needs a moment to answer at all, and the daemon
+# reports the reading its background sampler took rather than scraping when
+# asked. The sampler retries about once a second until the first reading
+# lands, so the counters trail the state by a second or two and a state check
+# returns inside that window.
+# Arguments:
+#   Timeout in seconds.
+# Returns:
+#   0 once the counters appear, 1 on timeout.
+#######################################
+wait_for_tokens() {
+  local timeout="$1"
+  local deadline=$((SECONDS + timeout))
+  while (( SECONDS < deadline )); do
+    if [[ "$(fleet metrics)" == *"prompt tokens"* ]]; then
+      return 0
+    fi
+    sleep 1
+  done
+  return 1
+}
+
+#######################################
 # Tear the stack down unless --keep was given. Registered as an EXIT trap so a
 # failure part-way through still cleans up.
 # Globals:
@@ -362,6 +387,10 @@ test_metrics() {
   # config, and only a client can supply one.
   fleet start studio >/dev/null
   wait_for_state studio running 30 || true
+  # Running is the process, not a sample; let the counters land before reading
+  # them. A timeout is not fatal here — the assertions below say what was
+  # missing, which is more use than an abort.
+  wait_for_tokens 30 || true
 
   local out
   out="$(fleet metrics)"
