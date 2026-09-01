@@ -74,6 +74,19 @@ const TERMINAL_STATES = new Set(['shutting-down', 'terminated']);
 const HEALTH_COMMAND =
   `curl -s -o /dev/null -w "%{http_code}" --max-time 5 http://localhost:${ENGINE_PORT}/health || true`;
 
+// Where a dying boot leaves its reason, and where the wake reads it. Under
+// /var/lib (which always exists) rather than the daemon's config dir, which a
+// boot that fails early never creates; on disk rather than tmpfs so a
+// re-woken instance still reports the boot that broke it — user data does not
+// re-run on a stop/start, so the marker outlives the only chance to fix it.
+export const BOOT_FAILED_MARKER = '/var/lib/spinloop-boot-failed';
+
+// The boot's own word for "I died": prefixed so the boot log greps as easily
+// as the marker file, matching the seed boot's SEED_BOOT_FAILED convention.
+const BOOT_FAILED_PREFIX = 'SPINLOOP_BOOT_FAILED';
+
+const BOOT_FAILURE_COMMAND = `cat ${BOOT_FAILED_MARKER} 2>/dev/null || true`;
+
 // ~125 MB/s. A cold boot pays it twice: the S3 sync writes the weights
 // through it, and the engine's model load reads them back page fault by page
 // fault — an IOPS-bound read, so the load takes its limit from the provisioned
@@ -335,6 +348,21 @@ async function wake(
     if (await daemonAnswers(instanceId)) {
       break;
     }
+    // The daemon is installed by the boot, so a boot that died is a daemon
+    // that will never answer — no amount of further polling changes that.
+    // Reading the marker here turns the old silent zombie (a running GPU
+    // instance serving nothing, reported as "still starting" until the
+    // deadline) into a terminal answer naming the failing command.
+    const failure = await bootFailure(instanceId);
+    if (failure) {
+      console.log(JSON.stringify({ phase: 'boot-failed', environment: env, instanceId, failure }));
+      return jsonResponse(500, {
+        state: 'boot-failed',
+        environment: env,
+        instance_id: instanceId,
+        message: `the instance booted but its start-up script failed, so nothing is serving: ${failure}`,
+      });
+    }
     await sleep(POLL_MS);
   }
 
@@ -550,7 +578,15 @@ if [ -x /usr/local/bin/spinloop ] && [ "$(/usr/local/bin/spinloop version)" = "$
 else
   SPINLOOP_URL="https://github.com/spinloop-ai/spinloop/releases/download/v\${SPINLOOP_VERSION}"
   mkdir -p /tmp/spinloop-dl
-  curl -fsSL "$SPINLOOP_URL/spinloop_linux_amd64.tar.gz" -o /tmp/spinloop-dl/spinloop_linux_amd64.tar.gz
+  # Named rather than left to the ERR trap: a rename resolves a version
+  # happily (GitHub redirects the API call) and then 404s the asset, so the
+  # bare curl failure points at the wrong thing. Say which asset was missing
+  # from which release, because that is the whole diagnosis.
+  if ! curl -fsSL "$SPINLOOP_URL/spinloop_linux_amd64.tar.gz" -o /tmp/spinloop-dl/spinloop_linux_amd64.tar.gz; then
+    echo "${BOOT_FAILED_PREFIX}: no spinloop_linux_amd64.tar.gz in release v\${SPINLOOP_VERSION} ($SPINLOOP_URL) — the release may not publish that asset name (repository or binary renamed?)" >${BOOT_FAILED_MARKER}
+    cat ${BOOT_FAILED_MARKER} >&2
+    exit 1
+  fi
   curl -fsSL "$SPINLOOP_URL/checksums.txt" -o /tmp/spinloop-dl/checksums.txt
   (cd /tmp/spinloop-dl && grep ' spinloop_linux_amd64.tar.gz$' checksums.txt | sha256sum -c -)
   tar -xzf /tmp/spinloop-dl/spinloop_linux_amd64.tar.gz -C /tmp/spinloop-dl
@@ -572,7 +608,21 @@ export function buildInferenceUserData(env: string, cfg: DeployConfig): string {
   // daemon takes over: its deploy config is written, its unit enabled, and
   // the engine's first start requested over the control API.
   return `#!/bin/bash
-set -euxo pipefail
+# -E so the ERR trap is inherited by functions, subshells and command
+# substitutions: without it a failure inside \`$(...)\` would exit the boot
+# without recording why.
+set -Eeuxo pipefail
+
+# Fail loudly. A boot that dies leaves a perfectly healthy-looking instance
+# with no daemon on it, and the wake can then only report a generic timeout —
+# so the reason is written where the control plane reads it (the marker) and
+# where a human reads it (the boot log). The trap fires on the first failing
+# command, before set -e ends the script, so it captures the command that
+# actually broke rather than the last one to run. Cleared up front: a marker
+# left by an earlier boot must not be reported as this one's.
+rm -f ${BOOT_FAILED_MARKER}
+trap 'rc=$?; msg="${BOOT_FAILED_PREFIX}: line $LINENO exited $rc: $BASH_COMMAND"; echo "$msg" >${BOOT_FAILED_MARKER}; echo "$msg" >&2' ERR
+
 # Log the GPU state up front so cloud-init-output.log shows whether the driver
 # loaded — the fastest way to tell a driver problem from a serving one.
 nvidia-smi || echo "NVIDIA_SMI_FAILED"
@@ -614,6 +664,25 @@ umask 077
 
 ${runnerUnit}
 `;
+}
+
+/**
+ * The boot's recorded reason for dying, or null when it left none. Null is
+ * the answer for every ambiguous case — no marker, an SSM error, an agent not
+ * yet reachable — because this gates a terminal failure: only the marker's
+ * own text ends a wake, and anything else lets the poll continue.
+ */
+async function bootFailure(instanceId: string): Promise<string | null> {
+  try {
+    const result = await runShellCommand(instanceId, BOOT_FAILURE_COMMAND, 10);
+    if (result.status !== 'Success') {
+      return null;
+    }
+    const text = result.stdout.trim();
+    return text.includes(BOOT_FAILED_PREFIX) ? text : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
