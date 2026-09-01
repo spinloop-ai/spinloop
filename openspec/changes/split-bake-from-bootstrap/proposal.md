@@ -14,8 +14,9 @@ choose to run (issue #139).
   requested runner (default: both `llamacpp` and `vllm`). It reuses bootstrap's
   CDK-source machinery — the same version-matched download, ref-keyed cache,
   package-manager selection, `--ref`/`--dir`/`--package-manager` flags — and
-  runs `pnpm bake <runner>` per runner. A `--wait` flag blocks until the baked
-  AMI(s) are available.
+  runs `pnpm bake <runner>` per runner. Bake blocks until the baked AMI(s) are
+  available; a `--no-wait` flag returns as soon as the bakes are queued,
+  reporting how to check on them.
 - **BREAKING** `spinloop remote bootstrap` no longer starts any AMI bake: the
   `--runners`, `--wait`, and `--force-bake` flags are removed, the sequence is
   just install → `cdk bootstrap` → `deploy:image` → `deploy`, and the consent

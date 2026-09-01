@@ -98,9 +98,10 @@ spellings for the same list.
   `context.runners` write it also performed is dead — the CDK reads no such
   key, and the image stack always creates both runners' pipelines — so the
   write goes too.
-- `--wait`: nothing is left to wait for; the flag moves to bake unchanged
-  (`waitForBake` polls `BakedRunners` every 60 s under a 60-minute bound,
-  both reused as-is).
+- `--wait`: nothing is left to wait for. The waiting moves to bake — and
+  becomes its default behaviour, with a `--no-wait` hand-off (below);
+  `waitForBake` itself is reused unchanged (polling `BakedRunners` every
+  60 s under a 60-minute bound).
 - `--force-bake`: with no automatic bake, "re-bake even if already
   bootstrapped" has no referent — running `bake` is already the re-bake.
 
@@ -109,6 +110,19 @@ The success message becomes the signpost: the account is bootstrapped; next,
 its first start), then `spinloop remote deploy <env>`. The plan's command list
 and resource bullet drop the bakes ("Image Builder pipelines" — no "and baked
 AMIs").
+
+### Bake blocks until the AMI is available, with a `--no-wait` hand-off
+
+The step after bake is `deploy` — and a first start needs the AMI — so the
+default flow should finish at the point the user can go: bake queues the
+build(s), then blocks on the same bounded `waitForBake` poll bootstrap's
+`--wait` used. `--no-wait` returns as soon as the bakes are queued, reporting
+how to check on them (the `pnpm bake` script already prints the build ARN and
+the progress command), which keeps the documented parallelism of a bake and a
+weight seed.
+Alternative rejected: keeping bootstrap's opt-in `--wait` shape — it would
+leave the common path handing off to the Image Builder console for 20–40
+minutes.
 
 ### Shared helpers stay in package main, seams stay per-concern
 
@@ -137,6 +151,12 @@ project is untouched.
 - **Bake pruning other ref caches could surprise a user juggling binary
   versions** → same policy bootstrap already applies on success; an explicit
   `--dir` opts out, and a re-download of a pruned ref is cheap.
+- **A failed bake only surfaces as the 60-minute wait timeout** —
+  `BakedRunners` sees available AMIs, not failed builds, so a broken driver
+  install waits out the bound before reporting. → The bake script's streamed
+  output (build ARN, progress command) is on the terminal the whole time, so
+  the operator can see the failure in parallel; failing fast on the build
+  state is a follow-up, not part of this split.
 
 ## Migration Plan
 

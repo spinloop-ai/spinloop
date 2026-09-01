@@ -10,8 +10,8 @@
 
 ## 3. Add `spinloop remote bake`
 
-- [ ] 3.1 New `cmd/spinloop/remote_bake.go`: `bake [runner...]` with positional runners (default both, validated against the accepted runner set), `--wait`, and `--ref`/`--dir`/`--package-manager` flags matching bootstrap's; register it on the remote command group and give the positional argument runner-name completion
-- [ ] 3.2 Bake body: preflight (Node 22+, a package manager, resolvable AWS credentials), fail early naming `spinloop remote bootstrap` when the control-plane stack is not deployed, shared source resolution, run install-if-needed plus one bake step per runner, `waitForBake` polling when `--wait` is given, and prune other refs on success when the default location was used
+- [ ] 3.1 New `cmd/spinloop/remote_bake.go`: `bake [runner...]` with positional runners (default both, validated against the accepted runner set), a `--no-wait` flag (the wait is the default), and `--ref`/`--dir`/`--package-manager` flags matching bootstrap's; register it on the remote command group and give the positional argument runner-name completion
+- [ ] 3.2 Bake body: preflight (Node 22+, a package manager, resolvable AWS credentials), fail early naming `spinloop remote bootstrap` when the control-plane stack is not deployed, shared source resolution, run install-if-needed plus one bake step per runner, `waitForBake` polling by default (skipped with `--no-wait`, which reports how to check on the builds), and prune other refs on success when the default location was used
 
 ## 4. internal/remote
 
@@ -20,7 +20,7 @@
 ## 5. Tests
 
 - [ ] 5.1 Update `cmd/spinloop/remote_bootstrap_test.go`: expected sequence without bake steps, plan output without bakes, the success signpost, drop the `--runners`/`--force-bake`/`--wait` tests and the `runners` context-write assertion
-- [ ] 5.2 New `cmd/spinloop/remote_bake_test.go` driving the shared seams hermetically: default both runners, a single runner, an unknown runner rejected before anything runs, no control plane failing early naming bootstrap, `--wait` polling to available (and the timeout path), and default-location prune vs an explicit `--dir`
+- [ ] 5.2 New `cmd/spinloop/remote_bake_test.go` driving the shared seams hermetically: default both runners, a single runner, an unknown runner rejected before anything runs, no control plane failing early naming bootstrap, the default wait polling to available (and the timeout path), `--no-wait` returning once the bakes are queued, and default-location prune vs an explicit `--dir`
 
 ## 6. Docs
 

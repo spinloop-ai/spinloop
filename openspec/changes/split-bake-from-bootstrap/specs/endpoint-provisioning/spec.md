@@ -10,8 +10,9 @@ same ref-keyed default location, the same package-manager selection and
 override, and `--ref` and `--dir` flags matching bootstrap's. Bake SHALL NOT
 deploy any stack; when the control-plane stack is not deployed, it SHALL fail
 before starting any bake, naming `spinloop remote bootstrap` as the step to run
-first. A `--wait` flag SHALL block until every requested runner's AMI is
-available.
+first. Bake SHALL block until every requested runner's AMI is available; a
+`--no-wait` flag SHALL return as soon as the bakes are queued, reporting how to
+check on them, rather than blocking for the bake duration.
 
 #### Scenario: Default bake covers both runners
 
@@ -34,11 +35,17 @@ available.
 - **THEN** it fails before starting any bake, saying to run
   `spinloop remote bootstrap` first
 
-#### Scenario: Waiting on request
+#### Scenario: Bake waits by default
 
-- **WHEN** the user passes `--wait`
-- **THEN** bake blocks until the requested runners' AMIs are available before
-  finishing
+- **WHEN** the user runs `spinloop remote bake` without `--no-wait`
+- **THEN** the command blocks until the requested runners' AMIs are available
+  before finishing
+
+#### Scenario: Handing off with --no-wait
+
+- **WHEN** the user passes `--no-wait`
+- **THEN** the command returns as soon as the bakes are queued, reporting how
+  to check on them, rather than blocking for the bake duration
 
 ### Requirement: Idempotent bootstrap
 
