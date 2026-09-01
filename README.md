@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <em>// no hand-editing JSON, no model ids to memorise, no clobbering the config you already have.</em>
+  <em>// opencode, Pi or lucinate &middot; local, LAN or cloud &middot; the whole fleet on one board.</em>
 </p>
 
 ---
@@ -17,7 +17,7 @@ brew install spinloop-ai/tap/spinloop
 ```
 
 One CLI for the whole supply line: point your agent at a hosted or local model,
-serve the engine behind it, watch every engine you run from one board, and wake a
+serve the engine behind it, drive every machine that runs one, and wake a
 cloud GPU only for as long as you actually use it.
 
 ```sh
