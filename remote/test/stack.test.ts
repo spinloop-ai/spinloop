@@ -445,6 +445,20 @@ describe('ImageStack', () => {
     template.resourceCountIs('AWS::ImageBuilder::Image', 0);
   });
 
+  it('names each recipe after the base AMI it was built on', () => {
+    // Recipe properties are create-only and Image Builder rejects a create at
+    // an existing name+version. The parent image moves whenever Canonical
+    // publishes a new Ubuntu, so the name has to move with it or the
+    // replacement collides with the recipe it is replacing.
+    const recipes = Object.values(template.findResources('AWS::ImageBuilder::ImageRecipe'));
+    expect(recipes).toHaveLength(2);
+    for (const recipe of recipes) {
+      const [prefix, parentRef] = recipe.Properties.Name['Fn::Join'][1];
+      expect(prefix).toMatch(/-recipe-$/);
+      expect(parentRef).toEqual(recipe.Properties.ParentImage);
+    }
+  });
+
   it('resizes the AMI root to the configured size on the right device', () => {
     template.hasResourceProperties('AWS::ImageBuilder::ImageRecipe', {
       BlockDeviceMappings: [

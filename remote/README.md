@@ -504,7 +504,9 @@ deregister the AMIs, and delete their snapshots by hand to reclaim that storage.
   `nvidiaDriverPackage`.
 - **`deploy:image` fails with "recipe/component version already exists"**: you
   changed a baked-in setting without bumping the `version` on the recipe (or
-  component) in `lib/image-stack.ts`. Bump and redeploy.
+  component) in `lib/image-stack.ts`. Bump and redeploy. The base Ubuntu image
+  is exempt — the recipe name carries the AMI id, so a new Canonical release
+  replaces the recipe on its own.
 - **`start` reaches `running` but never `ready`, or the model is empty**: the
   weights aren't in S3 yet, or a seed is still running. Ask the seed:
   `spinloop remote seed ls`, then `spinloop remote seed status <seed-id>`. A seed
