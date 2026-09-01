@@ -9,7 +9,9 @@ is not guaranteed in any single zone. A launch SHALL provision the instance's
 root volume: a gp3 volume of the AMI's own root size, with provisioned
 throughput at the volume's ceiling — the size is read from the AMI's own root
 mapping, because a launch's block device mapping replaces the AMI's rather
-than extending it — and IOPS SHALL remain at the volume's baseline. The
+than extending it — and IOPS provisioned at four times that throughput,
+which is the minimum EC2 allows for it (gp3 caps throughput at 0.25 MiB/s
+per provisioned IOP). The
 instance SHALL be given the environment's own stable address (its Elastic IP)
 so the environment's URL does not change between launches, and the request
 SHALL NOT report success until the model is answering — the caller receives
@@ -23,9 +25,7 @@ launch and a re-wake alike — once the instance's daemon answers its control
 API, which on a fresh boot is the signal that the boot has stored the deploy
 config; the boot's own user data SHALL NOT start the engine. The start SHALL
 carry the deploy config as its body, so it always names the exact config the
-daemon runs. A start request MAY carry a pre-warm choice for the engine's
-start, which SHALL ride in that body; absent one, the cloud default (the
-pre-warm enabled) SHALL apply.
+daemon runs.
 
 #### Scenario: A zone without capacity is not the end of it
 
@@ -57,7 +57,8 @@ pre-warm enabled) SHALL apply.
 
 - **WHEN** a start launches a fresh instance
 - **THEN** its root volume is the AMI's gp3 root, at the AMI's own size, with
-  provisioned throughput at the volume's ceiling and IOPS at the baseline
+  provisioned throughput at the volume's ceiling and provisioned IOPS at four
+  times that throughput
 
 #### Scenario: The control plane starts the engine on a fresh boot
 
@@ -65,9 +66,3 @@ pre-warm enabled) SHALL apply.
 - **THEN** the start request itself issues the engine's start, with the
   deploy config as its body, and reports ready only once the model answers —
   the boot started no engine
-
-#### Scenario: A start may carry the pre-warm choice
-
-- **WHEN** a start request carries the pre-warm choice disabled
-- **THEN** the engine's start for that wake pre-warms no page cache, and a
-  start that carries none pre-warms as the cloud default says

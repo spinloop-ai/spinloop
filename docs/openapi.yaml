@@ -527,14 +527,6 @@ components:
             type: string
           propertyNames:
             enum: [draft, mmproj]
-        prewarm:
-          type: boolean
-          description: |
-            This start's pre-warm choice. Absent leaves it to the daemon,
-            which pre-warms when it was launched with `--prewarm`; false
-            disables a pre-warm the daemon would otherwise do. It can never
-            enable one — whether a daemon pre-warms at all is the daemon's
-            own, so a client cannot switch it on a host that lacks it.
         spinloopVersion:
           type: string
           description: |

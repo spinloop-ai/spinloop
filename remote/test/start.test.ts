@@ -57,9 +57,7 @@ describe('buildInferenceUserData', () => {
       expect(data).toContain('spinloop-nudge.timer');
       expect(data).not.toContain('llama-server.service');
       expect(data).not.toContain('vllm.service');
-      // The cloud daemon pre-warms by default: the unit opts in, and a start
-      // request may still decline it for one start.
-      expect(data).toContain('spinloop daemon --api-addr 127.0.0.1:4242 --prewarm');
+      expect(data).toContain('spinloop daemon --api-addr 127.0.0.1:4242');
       // The boot starts no engine: the control plane's start request issues
       // the start on every path, and the daemon's first answer is the boot's
       // signal that its deploy config is stored.
@@ -128,9 +126,6 @@ describe('buildInferenceUserData', () => {
     }
     // The daemon switches the metrics endpoint on itself.
     expect(data).not.toContain('--metrics');
-    // The boot's stored copy states no pre-warm choice: it is the start's to
-    // make, not the boot's, and the start sends its own config.
-    expect(data).not.toContain('"prewarm"');
   });
 
   it('names a companion drafter at its synced path', () => {
@@ -202,7 +197,6 @@ describe('buildInferenceUserData', () => {
       runner: 'llamacpp',
       modelId: '/opt/llm/model/model.gguf',
       servedModelName: 'friendly',
-      prewarm: false,
     });
     const cmd = daemonStartCmd(body);
     expect(cmd).toContain(`${DAEMON_API}/v1/start`);

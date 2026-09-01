@@ -44,13 +44,12 @@ const daemonDeployConfigJson = (
   cfg: DeployConfig,
   modelDir: string,
   port: number,
-  prewarm?: boolean,
 ): string =>
   daemonDeployConfig(cfg, syncedModelPath(modelDir), port, [
     '--api-key-file',
     '/etc/llm/api-key',
     ...companionArgs(cfg.companions, modelDir),
-  ], prewarm);
+  ]);
 
 export const llamacpp: RunnerSpec = {
   // llama-server is pointed at the single synced GGUF.

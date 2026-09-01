@@ -23,7 +23,6 @@ export function daemonDeployConfig(
   modelId: string,
   port: number,
   extraServeArgs: string[],
-  prewarm?: boolean,
 ): string {
   return JSON.stringify(
     {
@@ -37,10 +36,6 @@ export function daemonDeployConfig(
       parallel: cfg.parallel,
       servedModelName: cfg.servedModelName,
       serveArgs: ['--host', '0.0.0.0', '--port', String(port), ...extraServeArgs, ...cfg.serveArgs],
-      // The start's pre-warm choice. Absent in the boot's stored copy, where
-      // the daemon's own default applies; only a start request carries the
-      // operator's resolution.
-      prewarm,
     },
     null,
     2,
@@ -80,7 +75,7 @@ After=network-online.target
 Wants=network-online.target
 [Service]
 Environment=SPINLOOP_CONFIG_DIR=${DAEMON_CONFIG_DIR}
-${unitExtra}ExecStart=/usr/local/bin/spinloop daemon --api-addr 127.0.0.1:4242 --prewarm
+${unitExtra}ExecStart=/usr/local/bin/spinloop daemon --api-addr 127.0.0.1:4242
 Restart=on-failure
 RestartSec=5
 [Install]

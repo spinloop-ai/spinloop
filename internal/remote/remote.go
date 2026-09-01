@@ -18,7 +18,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -252,12 +251,6 @@ type DeployConfig struct {
 	// Values are bare filenames within that repo, never paths. Omitted when
 	// empty, so a deployment naming none sends exactly what it always did.
 	Companions map[string]string `json:"companions,omitempty"`
-	// Prewarm is the start's pre-warm choice: absent leaves it to the daemon
-	// (which pre-warms when it was launched with the option), false disables
-	// a pre-warm the daemon would otherwise do. It can never enable one —
-	// whether a daemon pre-warms at all is the daemon's own, so a client
-	// cannot switch on the behaviour on a host that does not have it.
-	Prewarm *bool `json:"prewarm,omitempty"`
 	// SpinloopVersion pins the spinloop release the instance's boot installs.
 	// Empty means the boot installs the latest published release. Omitted
 	// when empty, so an unpinned deploy sends exactly what it always did.
@@ -334,22 +327,15 @@ const StateInFlight = "in-flight"
 // to the same booting instance — so retrying never launches a second one.
 //
 // When retainUntil is non-nil, the instance's Retain-Until tag is set so the
-// idle sweep does not terminate it before the stated deadline. prewarm is the
-// start's page-cache pre-warm choice: nil sends none and the cloud default
-// applies, and a non-nil value rides on every retry, since every retry is the
-// same start.
-func Start(ctx context.Context, cfg Config, prewarm *bool, progress func(string), onState func(string), retainUntil *time.Time) (*Response, error) {
+// idle sweep does not terminate it before the stated deadline; the parameter
+// rides on every retry, since every retry is the same start.
+func Start(ctx context.Context, cfg Config, progress func(string), onState func(string), retainUntil *time.Time) (*Response, error) {
 	startURL := cfg.StartURL
-	if retainUntil != nil || prewarm != nil {
+	if retainUntil != nil {
 		u, err := url.Parse(startURL)
 		if err == nil {
 			q := u.Query()
-			if retainUntil != nil {
-				q.Set("retainUntil", retainUntil.UTC().Format(time.RFC3339))
-			}
-			if prewarm != nil {
-				q.Set("prewarm", strconv.FormatBool(*prewarm))
-			}
+			q.Set("retainUntil", retainUntil.UTC().Format(time.RFC3339))
 			u.RawQuery = q.Encode()
 			startURL = u.String()
 		}
@@ -456,14 +442,12 @@ func Pause(ctx context.Context, cfg Config, force bool) (*Response, error) {
 // the wake fails after the stop takes effect, the error says the instance is
 // stopped and that Start will bring it back — the very state a manual pause
 // leaves behind.
-// Restart composes a pause-style stop and a start; prewarm is the start's
-// pre-warm choice, carried exactly as a start would carry it.
-func Restart(ctx context.Context, cfg Config, force bool, prewarm *bool, progress func(string), onState func(string)) (*Response, error) {
+func Restart(ctx context.Context, cfg Config, force bool, progress func(string), onState func(string)) (*Response, error) {
 	if _, err := Pause(ctx, cfg, force); err != nil {
 		return nil, err
 	}
 	progress("stopped; waking it")
-	resp, err := Start(ctx, cfg, prewarm, progress, onState, nil)
+	resp, err := Start(ctx, cfg, progress, onState, nil)
 	if err != nil {
 		return nil, fmt.Errorf("%w — the instance is stopped; `spinloop remote start` will bring it back", err)
 	}

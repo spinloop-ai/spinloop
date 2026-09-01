@@ -26,9 +26,9 @@ export const DAEMON_STOP_CMD = `curl -s --max-time 10 -X POST ${DAEMON_API}/v1/s
 /**
  * The SSM command that asks the daemon to start its engine with the given
  * deploy config as the start's body — push-then-start in one call, so the
- * start always names the exact config the daemon runs, and the config's own
- * pre-warm choice rides with it. The body is base64 because its JSON quotes
- * are not ours to defend through the shell; a 409 (already running) is fine:
+ * start always names the exact config the daemon runs. The body is base64
+ * because its JSON quotes are not ours to defend through the shell; a 409
+ * (already running) is fine:
  * /v1/start is idempotent in the only way that matters here.
  */
 export function daemonStartCmd(body: string): string {

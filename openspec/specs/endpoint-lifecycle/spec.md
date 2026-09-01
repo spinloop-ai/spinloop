@@ -11,14 +11,27 @@ when it is torn down.
 Each environment SHALL hold no running instance when idle. A start request names
 an environment and SHALL launch that environment's instance, trying each
 configured availability zone in turn until one has capacity, since GPU capacity
-is not guaranteed in any single zone. The instance SHALL be given the
-environment's own stable address (its Elastic IP) so the environment's URL does
-not change between launches, and the request SHALL NOT report success until the
-model is answering — the caller receives one "ready", never a URL that is not yet
-serving. When no capacity can be found anywhere, the response SHALL say so and
-SHALL be retryable rather than fatal. One shared set of lifecycle Lambdas SHALL
-serve every environment in the account, selecting the instance by the
-environment identifier.
+is not guaranteed in any single zone. A launch SHALL provision the instance's
+root volume: a gp3 volume of the AMI's own root size, with provisioned
+throughput at the volume's ceiling — the size is read from the AMI's own root
+mapping, because a launch's block device mapping replaces the AMI's rather
+than extending it — and IOPS provisioned at four times that throughput,
+which is the minimum EC2 allows for it (gp3 caps throughput at 0.25 MiB/s
+per provisioned IOP). The
+instance SHALL be given the environment's own stable address (its Elastic IP)
+so the environment's URL does not change between launches, and the request
+SHALL NOT report success until the model is answering — the caller receives
+one "ready", never a URL that is not yet serving. When no capacity can be
+found anywhere, the response SHALL say so and SHALL be retryable rather than
+fatal. One shared set of lifecycle Lambdas SHALL serve every environment in
+the account, selecting the instance by the environment identifier.
+
+The control plane SHALL request the engine's start on every path — a fresh
+launch and a re-wake alike — once the instance's daemon answers its control
+API, which on a fresh boot is the signal that the boot has stored the deploy
+config; the boot's own user data SHALL NOT start the engine. The start SHALL
+carry the deploy config as its body, so it always names the exact config the
+daemon runs.
 
 #### Scenario: A zone without capacity is not the end of it
 
@@ -45,6 +58,20 @@ environment identifier.
 - **WHEN** a start is requested for an environment before it has been deployed
 - **THEN** it fails saying what to deploy, rather than launching an instance
   with nothing to serve
+
+#### Scenario: A launch provisions the root volume
+
+- **WHEN** a start launches a fresh instance
+- **THEN** its root volume is the AMI's gp3 root, at the AMI's own size, with
+  provisioned throughput at the volume's ceiling and provisioned IOPS at four
+  times that throughput
+
+#### Scenario: The control plane starts the engine on a fresh boot
+
+- **WHEN** a fresh instance's daemon first answers its control API
+- **THEN** the start request itself issues the engine's start, with the
+  deploy config as its body, and reports ready only once the model answers —
+  the boot started no engine
 
 ### Requirement: Stopping when unused
 
