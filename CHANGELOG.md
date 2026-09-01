@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [1.29.1] - 2026-09-01
+### Changed
+- docs: cover fleet routing, seeding and the fleet file's newer fields
+- docs: lead the readme with orchestration and an install line
+- docs: name the inference engines in the readme's strapline
+- docs: say what spinloop spans in the readme's strapline
+
+### Other
+- perf: remove the page-cache pre-warm after the live check (#136)
+
 ## [1.29.0] - 2026-08-31
 ### Added
 - feat: show dashboard node health, backed by real engine readiness
