@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  Point your coding agent at any model — local or hosted — with one command.
+  Orchestrate every model your coding agent runs on.
 </p>
 
 <p align="center">
@@ -13,21 +13,33 @@
 ---
 
 ```sh
-# point your coding agent at a model — here, a local Qwen3.6 on Ollama
-spinloop add -p ollama -m qwen3.6
-
-# launch that agent, now running the model you picked
-spinloop harness
-
-# prefer it declarative? commit an ./Spinloop file and apply it
-spinloop apply
-
-# running that model locally too? the same file launches the server
-spinloop serve
+brew install spinloop-ai/tap/spinloop
 ```
 
-That's the whole tool. Your agent is configured and pointed at the model; the rest
-of your config never moved.
+One CLI for the whole supply line: point your agent at a hosted or local model,
+serve the engine behind it, watch every engine you run from one board, and wake a
+cloud GPU only for as long as you actually use it.
+
+```sh
+# POINT — configure the agent and aim it at a model (here, a local Qwen3.6 on Ollama)
+spinloop add -p ollama -m qwen3.6
+spinloop harness            # launch the agent, now running the model you picked
+
+# ...or keep the selection in a file, like a Dockerfile for your coding agent
+spinloop apply              # reads ./Spinloop and applies it
+
+# SERVE — the same file launches the inference server behind it
+spinloop serve
+
+# FLEET — a daemon per machine, one board to watch and drive them all
+spinloop fleet dashboard
+
+# CLOUD — a GPU instance that exists only while you are using it
+spinloop remote start
+```
+
+Start at the first command and stop there if that is all you need. Each step up
+reuses the file you already wrote, and the rest of your config never moved.
 
 ## Supported providers
 
