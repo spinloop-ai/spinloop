@@ -93,6 +93,55 @@ assert_equals() {
 }
 
 #######################################
+# Run a docker compose command, showing its output only when it fails. These
+# commands are noisy on success and the test's own output is the point, but a
+# silent failure is worse than noise: a `compose up` that cannot pull leaves
+# nothing behind but "Tearing down..." and an exit code.
+# Globals:
+#   HERE
+# Arguments:
+#   Arguments to pass to docker compose.
+# Returns:
+#   The command's exit status.
+#######################################
+compose() {
+  local out rc=0
+  out="$(docker compose -f "${HERE}/compose.yaml" "$@" 2>&1)" || rc=$?
+  if (( rc != 0 )); then
+    echo "Error: docker compose $* failed (exit ${rc}):" >&2
+    echo "${out}" >&2
+  fi
+  return "${rc}"
+}
+
+#######################################
+# The container state for one service, or "" when docker cannot say.
+# Globals:
+#   HERE
+# Arguments:
+#   Service name.
+# Outputs:
+#   Writes the state to stdout.
+#######################################
+container_state() {
+  docker compose -f "${HERE}/compose.yaml" ps --format '{{.State}}' "$1" 2>/dev/null
+}
+
+#######################################
+# Dump what the containers are doing, for a wait that timed out. `fleet status`
+# only reports that a port refused the connection; whether the container is
+# even up, and what its daemon said on the way down, is the part worth having.
+# Globals:
+#   HERE
+# Outputs:
+#   Writes container state and recent logs to stderr.
+#######################################
+diagnose_fleet() {
+  docker compose -f "${HERE}/compose.yaml" ps >&2 2>&1 || true
+  docker compose -f "${HERE}/compose.yaml" logs --tail 20 >&2 2>&1 || true
+}
+
+#######################################
 # Run `spinloop fleet` against the example's fleet.yaml.
 # Globals:
 #   SPINLOOP_BIN, HERE
@@ -142,13 +191,18 @@ node_state() {
 wait_for_fleet() {
   local deadline=$((SECONDS + READY_TIMEOUT_SECS))
   while (( SECONDS < deadline )); do
-    if ! fleet status | grep -q "unreachable"; then
+    # Read the table into a variable rather than piping it: under `pipefail`
+    # a `grep -q` that matches and exits first can leave the pipeline
+    # reporting the writer's SIGPIPE, which reads here as "nothing
+    # unreachable" — the opposite of what was found.
+    if [[ "$(fleet status)" != *unreachable* ]]; then
       return 0
     fi
     sleep 2
   done
   echo "Error: the fleet did not become reachable in ${READY_TIMEOUT_SECS}s" >&2
   fleet status >&2 || true
+  diagnose_fleet
   return 1
 }
 
@@ -164,6 +218,63 @@ wait_for_state() {
   local deadline=$((SECONDS + timeout))
   while (( SECONDS < deadline )); do
     if [[ "$(node_state "${name}")" == "${want}" ]]; then
+      return 0
+    fi
+    sleep 1
+  done
+  return 1
+}
+
+#######################################
+# Bring a stopped node back and wait for its daemon to answer again. The start
+# is retried rather than issued once: a container that has just gone away can
+# still hold its published host port, and a start that loses that race leaves
+# the node refusing connections for the rest of the run — which is a 90-second
+# wait on a fleet that was never coming back.
+# Globals:
+#   READY_TIMEOUT_SECS
+# Arguments:
+#   Node name.
+# Returns:
+#   0 once the node answers, 1 on timeout.
+#######################################
+restart_node() {
+  local name="$1"
+  local deadline=$((SECONDS + READY_TIMEOUT_SECS))
+  while (( SECONDS < deadline )); do
+    local state
+    state="$(node_state "${name}")"
+    if [[ -n "${state}" && "${state}" != "unreachable" ]]; then
+      return 0
+    fi
+    if [[ "$(container_state "${name}")" != "running" ]]; then
+      compose start "${name}" || true
+    fi
+    sleep 2
+  done
+  echo "Error: ${name} did not come back in ${READY_TIMEOUT_SECS}s" >&2
+  diagnose_fleet
+  return 1
+}
+
+#######################################
+# Wait until the engine's token counters reach the fleet view. A node reads
+# `running` as soon as the engine process is alive, which is earlier than the
+# counters exist: the engine needs a moment to answer at all, and the daemon
+# reports the reading its background sampler took rather than scraping when
+# asked. The sampler retries about once a second until the first reading
+# lands, so the counters trail the state by a second or two and a state check
+# returns inside that window.
+# Arguments:
+#   Timeout in seconds.
+# Returns:
+#   0 once the counters appear, 1 on timeout.
+#######################################
+wait_for_tokens() {
+  local timeout="$1"
+  local deadline=$((SECONDS + timeout))
+  while (( SECONDS < deadline )); do
+    if [[ "$(fleet metrics)" == *"prompt tokens"* ]]; then
       return 0
     fi
     sleep 1
@@ -362,6 +473,10 @@ test_metrics() {
   # config, and only a client can supply one.
   fleet start studio >/dev/null
   wait_for_state studio running 30 || true
+  # Running is the process, not a sample; let the counters land before reading
+  # them. A timeout is not fatal here — the assertions below say what was
+  # missing, which is more use than an abort.
+  wait_for_tokens 30 || true
 
   local out
   out="$(fleet metrics)"
@@ -380,7 +495,7 @@ test_metrics() {
 #######################################
 test_unreachable_node() {
   echo "A stopped node degrades, the rest keep reporting"
-  docker compose -f "${HERE}/compose.yaml" stop laptop >/dev/null 2>&1
+  compose stop laptop
 
   local out
   out="$(fleet status)"
@@ -391,8 +506,7 @@ test_unreachable_node() {
   fleet status >/dev/null
   assert_equals "status still succeeds" "$?" "0"
 
-  docker compose -f "${HERE}/compose.yaml" start laptop >/dev/null 2>&1
-  wait_for_fleet || true
+  restart_node laptop || true
 }
 
 #######################################
@@ -467,7 +581,7 @@ main() {
   (cd "${REPO_ROOT}" && go build -o "${SPINLOOP_BIN}" ./cmd/spinloop)
 
   echo "Bringing the fleet up..."
-  docker compose -f "${HERE}/compose.yaml" up -d --build >/dev/null 2>&1
+  compose up -d --build
   wait_for_fleet
 
   echo
