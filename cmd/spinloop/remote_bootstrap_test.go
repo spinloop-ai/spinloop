@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,37 +16,35 @@ type recordedStep struct {
 	dir  string
 }
 
-// stubBootstrapSeams wires the bootstrap package seams to hermetic fakes: no
-// AWS, no network, no pnpm. It returns a pointer to the recorded command list.
+// stubBootstrapSeams wires the shared bootstrap/bake seams to hermetic fakes:
+// no AWS, no network, no pnpm. It returns a pointer to the recorded command
+// list.
 func stubBootstrapSeams(t *testing.T, alreadyDeployed bool) *[]recordedStep {
 	t.Helper()
 	var steps []recordedStep
 
-	origRun, origDl := bootstrapRunStep, bootstrapDownloadFn
-	origAcct, origStack := bootstrapAccountFn, bootstrapStackDeployedFn
-	origPre := bootstrapPreflightFn
+	origRun, origDl := runStep, downloadFn
+	origAcct, origStack := accountFn, stackDeployedFn
+	origPre := preflightFn
 	t.Cleanup(func() {
-		bootstrapRunStep, bootstrapDownloadFn = origRun, origDl
-		bootstrapAccountFn, bootstrapStackDeployedFn = origAcct, origStack
-		bootstrapPreflightFn = origPre
+		runStep, downloadFn = origRun, origDl
+		accountFn, stackDeployedFn = origAcct, origStack
+		preflightFn = origPre
 	})
 
-	bootstrapRunStep = func(_ context.Context, _ string, argv []string, workDir string) error {
+	runStep = func(_ context.Context, _ string, argv []string, workDir string) error {
 		steps = append(steps, recordedStep{argv: argv, dir: workDir})
 		return nil
 	}
-	bootstrapDownloadFn = func(_ context.Context, _, destDir string) error {
+	downloadFn = func(_ context.Context, _, destDir string) error {
 		if err := os.MkdirAll(destDir, 0o755); err != nil {
 			return err
 		}
-		if err := os.WriteFile(filepath.Join(destDir, "package.json"), []byte(`{"name":"cloud-vm-llm"}`), 0o644); err != nil {
-			return err
-		}
-		return os.WriteFile(filepath.Join(destDir, "cdk.json"), []byte(`{"context":{}}`), 0o644)
+		return os.WriteFile(filepath.Join(destDir, "package.json"), []byte(`{"name":"cloud-vm-llm"}`), 0o644)
 	}
-	bootstrapAccountFn = func(context.Context, aws.Config) (string, error) { return "1", nil }
-	bootstrapStackDeployedFn = func(context.Context, aws.Config, string) (bool, error) { return alreadyDeployed, nil }
-	bootstrapPreflightFn = func(name string, _ bool) (packageManager, error) { return managerByName(name), nil }
+	accountFn = func(context.Context, aws.Config) (string, error) { return "1", nil }
+	stackDeployedFn = func(context.Context, aws.Config, string) (bool, error) { return alreadyDeployed, nil }
+	preflightFn = func(name string, _ bool) (packageManager, error) { return managerByName(name), nil }
 	return &steps
 }
 
@@ -66,7 +63,7 @@ func withStdin(t *testing.T, input string) {
 	t.Cleanup(func() { os.Stdin = orig; fh.Close() })
 }
 
-func TestBootstrap_EnvAndCdkWrites(t *testing.T) {
+func TestBootstrap_EnvWrites(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte("ALLOWED_CIDR=old\n"), 0o600); err != nil {
 		t.Fatal(err)
@@ -83,31 +80,19 @@ func TestBootstrap_EnvAndCdkWrites(t *testing.T) {
 		t.Errorf(".env mode = %v, want 0600", fi.Mode().Perm())
 	}
 
-	if err := os.WriteFile(filepath.Join(dir, "cdk.json"), []byte(`{"app":"x","context":{"//":"note"}}`), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := setCdkContext(dir, "runners", "llamacpp,vllm"); err != nil {
-		t.Fatal(err)
-	}
-	var doc map[string]any
-	raw, _ := os.ReadFile(filepath.Join(dir, "cdk.json"))
-	if err := json.Unmarshal(raw, &doc); err != nil {
-		t.Fatal(err)
-	}
-	ctxObj := doc["context"].(map[string]any)
-	if ctxObj["runners"] != "llamacpp,vllm" || ctxObj["//"] != "note" || doc["app"] != "x" {
-		t.Errorf("cdk.json not merged as expected: %v", doc)
-	}
 }
 
 func TestBootstrap_PlanOutput(t *testing.T) {
 	out := captureStderr(t, func() {
-		renderBootstrapPlan("1", "us-east-1", []string{"llamacpp", "vllm"}, "v1.10.0", "/tmp/cdk/v1.10.0", false, pnpmManager)
+		renderBootstrapPlan("1", "us-east-1", "v1.10.0", "/tmp/cdk/v1.10.0", false, pnpmManager)
 	})
-	for _, want := range []string{"AWS account:  1\n", "us-east-1", "llamacpp, vllm", "Image Builder", "Cost:", "pnpm run deploy\n"} {
+	for _, want := range []string{"AWS account:  1\n", "us-east-1", "Image Builder", "spinloop remote bake", "Cost:", "pnpm run deploy\n"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("plan missing %q:\n%s", want, out)
 		}
+	}
+	if strings.Contains(out, "bake llamacpp") {
+		t.Errorf("plan should list no bake commands:\n%s", out)
 	}
 	if strings.Contains(out, "$") {
 		t.Errorf("plan should carry no dollar figures:\n%s", out)
@@ -156,42 +141,34 @@ func TestBootstrap_ConfirmGate(t *testing.T) {
 			}
 		}
 		want := []string{
-			"pnpm install", "pnpm run cdk bootstrap", "pnpm run deploy:image",
-			"pnpm run bake llamacpp", "pnpm run bake vllm", "pnpm run deploy",
+			"pnpm install", "pnpm run cdk bootstrap", "pnpm run deploy:image", "pnpm run deploy",
 		}
 		if strings.Join(got, "|") != strings.Join(want, "|") {
 			t.Errorf("commands = %v, want %v", got, want)
 		}
 	})
+}
 
-	t.Run("already bootstrapped skips the bake", func(t *testing.T) {
-		isolateConfig(t)
-		stubAWSEnv(t)
-		steps := stubBootstrapSeams(t, true) // stack already deployed
+func TestBootstrap_SignpostsTheBake(t *testing.T) {
+	isolateConfig(t)
+	stubAWSEnv(t)
+	stubBootstrapSeams(t, false)
+	out := captureStdout(t, func() {
 		if err := cmdRemoteBootstrap([]string{"--region", "us-east-1", "--yes"}); err != nil {
 			t.Fatal(err)
 		}
-		for _, s := range *steps {
-			if strings.Contains(strings.Join(s.argv, " "), "bake") {
-				t.Errorf("re-run should not bake without --force-bake, got %v", s.argv)
-			}
-		}
 	})
+	bakeIdx := strings.Index(out, "spinloop remote bake")
+	deployIdx := strings.Index(out, "spinloop remote deploy")
+	if bakeIdx < 0 || deployIdx < 0 {
+		t.Fatalf("success output should signpost bake then deploy:\n%s", out)
+	}
+	if bakeIdx > deployIdx {
+		t.Errorf("bake should be signposted before deploy:\n%s", out)
+	}
 }
 
-func TestBootstrap_PreflightAndRunners(t *testing.T) {
-	t.Run("bad runner rejected before anything", func(t *testing.T) {
-		isolateConfig(t)
-		stubAWSEnv(t)
-		steps := stubBootstrapSeams(t, false)
-		if err := cmdRemoteBootstrap([]string{"--runners", "bogus", "--yes"}); err == nil {
-			t.Fatal("expected an error for a bad runner")
-		}
-		if len(*steps) != 0 {
-			t.Errorf("bad runner should run nothing, got %v", *steps)
-		}
-	})
-
+func TestBootstrap_Preflight(t *testing.T) {
 	t.Run("missing tooling fails naming both managers", func(t *testing.T) {
 		t.Setenv("PATH", t.TempDir()) // no node/pnpm/npm
 		_, err := checkNodeAndPackageManager("", false)
@@ -263,9 +240,9 @@ func TestCheckNodeAndPackageManager_NodeVersion(t *testing.T) {
 
 func TestRunBootstrapSequence_SkipsSatisfiedSteps(t *testing.T) {
 	var steps []recordedStep
-	orig := bootstrapRunStep
-	t.Cleanup(func() { bootstrapRunStep = orig })
-	bootstrapRunStep = func(_ context.Context, _ string, argv []string, _ string) error {
+	orig := runStep
+	t.Cleanup(func() { runStep = orig })
+	runStep = func(_ context.Context, _ string, argv []string, _ string) error {
 		steps = append(steps, recordedStep{argv: argv})
 		return nil
 	}
@@ -273,18 +250,20 @@ func TestRunBootstrapSequence_SkipsSatisfiedSteps(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(dir, "node_modules"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	// node_modules present + already bootstrapped, no force-bake: install and bake skip.
-	if err := runBootstrapSequence(context.Background(), dir, []string{"llamacpp"}, true, false, npmManager); err != nil {
+	// node_modules present: install skips, and no bake step exists at all.
+	if err := runBootstrapSequence(context.Background(), dir, npmManager); err != nil {
 		t.Fatal(err)
 	}
+	want := []string{"npm run cdk -- bootstrap", "npm run deploy:image", "npm run deploy"}
+	var got []string
 	for _, s := range steps {
-		joined := strings.Join(s.argv, " ")
-		if strings.Contains(joined, "install") {
+		got = append(got, strings.Join(s.argv, " "))
+		if strings.Contains(strings.Join(s.argv, " "), "install") {
 			t.Errorf("node_modules present should skip install, got %v", s.argv)
 		}
-		if strings.Contains(joined, "bake") {
-			t.Errorf("alreadyBootstrapped should skip bake, got %v", s.argv)
-		}
+	}
+	if strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Errorf("commands = %v, want %v", got, want)
 	}
 }
 
@@ -377,8 +356,7 @@ func TestBootstrap_NpmOverrideDrivesNpmCommands(t *testing.T) {
 		got = append(got, strings.Join(s.argv, " "))
 	}
 	want := []string{
-		"npm install", "npm run cdk -- bootstrap", "npm run deploy:image",
-		"npm run bake -- llamacpp", "npm run bake -- vllm", "npm run deploy",
+		"npm install", "npm run cdk -- bootstrap", "npm run deploy:image", "npm run deploy",
 	}
 	if strings.Join(got, "|") != strings.Join(want, "|") {
 		t.Errorf("commands = %v, want %v", got, want)

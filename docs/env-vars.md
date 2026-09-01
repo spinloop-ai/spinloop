@@ -29,7 +29,7 @@ from the environment or a `.env` beside the Spinloop — never written into an
 | `SPINLOOP_REMOTE_ENV_URL` | Override the env Lambda Function URL. |
 | `SPINLOOP_REMOTE_UPDATE_URL` | Override the update Lambda Function URL (drives `keep`). |
 | `SPINLOOP_REMOTE_REGION` | Override the AWS region (else `AWS_REGION`, else the region in the Function URL host). |
-| `SPINLOOP_REMOTE_PACKAGE_MANAGER` | Pin the package manager (`pnpm`/`npm`) `spinloop remote bootstrap` uses. |
+| `SPINLOOP_REMOTE_PACKAGE_MANAGER` | Pin the package manager (`pnpm`/`npm`) `spinloop remote bootstrap` and `bake` use. |
 
 These let the remote commands run without a `remote.json` on disk — the
 config can come entirely from the environment. `spinloop remote logs` is the

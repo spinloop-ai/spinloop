@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -26,16 +25,16 @@ import (
 const controlPlaneStackName = remote.ControlPlaneStackName
 
 // Seams: package variables so tests drive the flow without AWS, a network, or
-// spawning a package manager/cdk.
-type bootstrapStep func(ctx context.Context, name string, argv []string, workDir string) error
+// spawning a package manager/cdk. Shared by bootstrap and bake.
+type stepRunner func(ctx context.Context, name string, argv []string, workDir string) error
 
 var (
-	bootstrapRunStep         bootstrapStep = runBootstrapStep
-	bootstrapDownloadFn                    = remote.DownloadRemote
-	bootstrapAccountFn                     = remote.CallerIdentity
-	bootstrapStackDeployedFn               = remote.ControlPlaneStackDeployed
-	bootstrapBakedFn                       = remote.BakedRunners
-	bootstrapPreflightFn                   = checkNodeAndPackageManager
+	runStep         stepRunner = execStep
+	downloadFn                 = remote.DownloadRemote
+	accountFn                  = remote.CallerIdentity
+	stackDeployedFn            = remote.ControlPlaneStackDeployed
+	bakedFn                    = remote.BakedRunners
+	preflightFn                = checkNodeAndPackageManager
 )
 
 // packageManagerEnv pins the Node package manager bootstrap drives the CDK
@@ -134,47 +133,43 @@ func resolvePackageManagerName(flagVal string) (name string, pinned bool, err er
 	return "", false, nil
 }
 
-// cmdRemoteBootstrap deploys the account-level control plane once —
+// remoteBootstrapCmd deploys the account-level control plane once —
 // analogous to `cdk bootstrap` — by downloading the remote/ CDK project and
 // driving its control-plane deploy. It creates no EIP, instance, or environment;
-// those come from `spinloop remote deploy`.
+// those come from `spinloop remote deploy`. It starts no AMI bake either —
+// `spinloop remote bake` is the separate step after it.
 func remoteBootstrapCmd() *cobra.Command {
 	var (
-		runnersFlag string
-		hfToken     string
-		ref         string
-		dir         string
-		region      string
-		dryRun      bool
-		assumeYes   bool
-		wait        bool
-		forceBake   bool
-		pkgMgr      string
+		hfToken   string
+		ref       string
+		dir       string
+		region    string
+		dryRun    bool
+		assumeYes bool
+		pkgMgr    string
 	)
 	c := &cobra.Command{
 		Use:   "bootstrap",
 		Short: "set up the once-per-account control plane",
 		Long: `does the once-per-account control-plane setup (Image Builder, the
-lifecycle Lambdas, shared bucket/roles/VPC) with a consent gate.`,
+lifecycle Lambdas, shared bucket/roles/VPC) with a consent gate. It bakes no
+AMIs — spinloop remote bake is the next step after it.`,
 		Args:              cobra.ArbitraryArgs,
 		SilenceErrors:     true,
 		SilenceUsage:      true,
 		ValidArgsFunction: noPositionals,
 		RunE: func(c *cobra.Command, _ []string) error {
 			resolve(c)
-			return runRemoteBootstrap(runnersFlag, hfToken, ref, dir, region, dryRun, assumeYes, wait, forceBake, pkgMgr)
+			return runRemoteBootstrap(hfToken, ref, dir, region, dryRun, assumeYes, pkgMgr)
 		},
 	}
 	fs := c.Flags()
-	fs.StringVar(&runnersFlag, "runners", "llamacpp,vllm", "comma-separated runner AMIs to bake")
 	fs.StringVar(&hfToken, "hf-token", "", "Hugging Face token for the shared secret (optional)")
 	fs.StringVar(&ref, "ref", "", "git ref of remote/ to download (default: matches this binary)")
 	fs.StringVar(&dir, "dir", "", "where to place the downloaded remote/ sources")
 	fs.StringVar(&region, "region", "", "AWS region (default: AWS_REGION or us-east-1)")
 	fs.BoolVarP(&dryRun, "dry-run", "n", false, "print the plan and exit without doing anything")
 	fs.BoolVarP(&assumeYes, "yes", "y", false, "skip the confirmation prompt")
-	fs.BoolVar(&wait, "wait", false, "block until the AMI bake(s) finish")
-	fs.BoolVar(&forceBake, "force-bake", false, "re-bake the AMIs even if already bootstrapped")
 	fs.StringVar(&pkgMgr, "package-manager", "", "package manager to use: pnpm or npm (default: auto-detect, preferring pnpm)")
 	fs.SetInterspersed(false)
 	compRegister(c, "dir", compFiles)
@@ -182,26 +177,15 @@ lifecycle Lambdas, shared bucket/roles/VPC) with a consent gate.`,
 }
 
 // runRemoteBootstrap is the body of `spinloop remote bootstrap`.
-func runRemoteBootstrap(runnersFlag, hfToken, ref, dir, region string, dryRun, assumeYes, wait, forceBake bool, pkgMgr string) error {
-	runners, err := parseRunners(runnersFlag)
-	if err != nil {
-		return err
-	}
-
+func runRemoteBootstrap(hfToken, ref, dir, region string, dryRun, assumeYes bool, pkgMgr string) error {
 	pmName, pmPinned, err := resolvePackageManagerName(pkgMgr)
 	if err != nil {
 		return err
 	}
 
-	resolvedRef := remote.ResolveRef(version, ref)
-	cdkDir, err := remote.SourceDir(resolvedRef)
+	loc, err := resolveSourceLocation(ref, dir)
 	if err != nil {
 		return err
-	}
-	pruneAfter := true
-	if dir != "" {
-		cdkDir = dir
-		pruneAfter = false // an explicit --dir is the user's own; leave it alone
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
@@ -212,21 +196,19 @@ func runRemoteBootstrap(runnersFlag, hfToken, ref, dir, region string, dryRun, a
 	// AWS is best-effort for the plan; it is hard-required for a real run.
 	account := "unknown"
 	alreadyBootstrapped := false
-	var awsCfg aws.Config
 	cfg, credsErr := loadCreds(ctx, resolvedRegion)
 	if credsErr == nil {
-		awsCfg = cfg
-		if acct, err := bootstrapAccountFn(ctx, cfg); err == nil {
+		if acct, err := accountFn(ctx, cfg); err == nil {
 			account = acct
 		}
-		if dep, err := bootstrapStackDeployedFn(ctx, cfg, controlPlaneStackName); err == nil {
+		if dep, err := stackDeployedFn(ctx, cfg, controlPlaneStackName); err == nil {
 			alreadyBootstrapped = dep
 		}
 	}
 
 	var pm packageManager
 	if !dryRun {
-		selected, err := bootstrapPreflightFn(pmName, pmPinned)
+		selected, err := preflightFn(pmName, pmPinned)
 		if err != nil {
 			return err
 		}
@@ -239,7 +221,7 @@ func runRemoteBootstrap(runnersFlag, hfToken, ref, dir, region string, dryRun, a
 		pm, _ = selectPackageManager(pmName)
 	}
 
-	renderBootstrapPlan(account, resolvedRegion, runners, resolvedRef, cdkDir, alreadyBootstrapped, pm)
+	renderBootstrapPlan(account, resolvedRegion, loc.ref, loc.dir, alreadyBootstrapped, pm)
 
 	if dryRun {
 		return nil
@@ -249,56 +231,32 @@ func runRemoteBootstrap(runnersFlag, hfToken, ref, dir, region string, dryRun, a
 		return nil
 	}
 
-	if err := bootstrapDownloadFn(ctx, resolvedRef, cdkDir); err != nil {
+	if err := downloadFn(ctx, loc.ref, loc.dir); err != nil {
 		return err
 	}
 	if hfToken != "" {
-		if err := upsertEnvVar(filepath.Join(cdkDir, ".env"), "HF_TOKEN", hfToken); err != nil {
+		if err := upsertEnvVar(filepath.Join(loc.dir, ".env"), "HF_TOKEN", hfToken); err != nil {
 			return err
 		}
-	}
-	if err := setCdkContext(cdkDir, "runners", strings.Join(runners, ",")); err != nil {
-		return err
 	}
 
 	fmt.Fprintf(os.Stderr, "\nUsing %s to run the CDK project.\n", pm.name)
-	if err := runBootstrapSequence(ctx, cdkDir, runners, alreadyBootstrapped, forceBake, pm); err != nil {
+	if err := runBootstrapSequence(ctx, loc.dir, pm); err != nil {
 		return err
 	}
 
-	fmt.Println("\nThe account is bootstrapped. Create an endpoint with:")
-	fmt.Println("  spinloop remote deploy <env>   # names an environment; discovers this control plane")
+	fmt.Println("\nThe account is bootstrapped. Before an environment can start, its AMI needs baking:")
+	fmt.Println("  spinloop remote bake <runner>   # bakes the AMI(s) an environment runs from; waits until available")
+	fmt.Println("  spinloop remote deploy <env>    # names an environment; discovers this control plane")
 
-	if wait {
-		if credsErr != nil {
-			return fmt.Errorf("--wait needs AWS credentials to poll the bake")
-		}
-		fmt.Fprintln(os.Stderr, "\nWaiting for the AMI bake(s) to finish (this can take 20-40 minutes)...")
-		if err := waitForBake(ctx, awsCfg, runners); err != nil {
-			return err
-		}
-		fmt.Fprintln(os.Stderr, "AMI(s) available.")
-	} else {
-		fmt.Fprintln(os.Stderr, "\nThe AMI bake(s) run in the background (~20-40 min). Re-run with --wait to block, or check the Image Builder console.")
-	}
-
-	if pruneAfter {
-		sourceRoot, err := remote.SourceRoot()
-		if err != nil {
-			return err
-		}
-		if err := remote.PruneSources(sourceRoot, resolvedRef); err != nil {
-			return err
-		}
-	}
-	return nil
+	return pruneSourceCaches(loc)
 }
 
 // runBootstrapSequence runs the package-manager/cdk steps in the sources
 // directory with the resolved manager.
-func runBootstrapSequence(ctx context.Context, cdkDir string, runners []string, alreadyBootstrapped, forceBake bool, pm packageManager) error {
+func runBootstrapSequence(ctx context.Context, cdkDir string, pm packageManager) error {
 	run := func(name string, argv ...string) error {
-		return bootstrapRunStep(ctx, name, argv, cdkDir)
+		return runStep(ctx, name, argv, cdkDir)
 	}
 	if !dirExists(filepath.Join(cdkDir, "node_modules")) {
 		if err := run("install", pm.install...); err != nil {
@@ -311,19 +269,12 @@ func runBootstrapSequence(ctx context.Context, cdkDir string, runners []string, 
 	if err := run("deploy:image", pm.script("deploy:image")...); err != nil {
 		return err
 	}
-	if !alreadyBootstrapped || forceBake {
-		for _, r := range runners {
-			if err := run("bake "+r, pm.script("bake", r)...); err != nil {
-				return err
-			}
-		}
-	}
 	return run("deploy", pm.script("deploy")...)
 }
 
-// runBootstrapStep runs one external command in workDir, streaming its stdio,
+// execStep runs one external command in workDir, streaming its stdio,
 // mirroring serve.go's exec pattern. Ctrl-C propagates via the context.
-func runBootstrapStep(ctx context.Context, name string, argv []string, workDir string) error {
+func execStep(ctx context.Context, name string, argv []string, workDir string) error {
 	fmt.Fprintf(os.Stderr, "\n$ %s\n", strings.Join(argv, " "))
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
 	cmd.Dir = workDir
@@ -339,25 +290,6 @@ func runBootstrapStep(ctx context.Context, name string, argv []string, workDir s
 		return err
 	}
 	return nil
-}
-
-// parseRunners splits and validates the --runners list.
-func parseRunners(csv string) ([]string, error) {
-	var runners []string
-	for _, part := range strings.Split(csv, ",") {
-		r := strings.TrimSpace(part)
-		if r == "" {
-			continue
-		}
-		if _, err := runnerFor(r); err != nil {
-			return nil, fmt.Errorf("--runners: %w", err)
-		}
-		runners = append(runners, r)
-	}
-	if len(runners) == 0 {
-		return nil, fmt.Errorf("--runners is empty")
-	}
-	return runners, nil
 }
 
 func resolveRegion(flagVal string) string {
@@ -451,49 +383,23 @@ func upsertEnvVar(path, key, value string) error {
 	return os.WriteFile(path, []byte(strings.TrimLeft(out, "\n")), 0o600)
 }
 
-// setCdkContext sets a context key in cdk.json (an additive JSON edit), so the
-// value reaches every cdk invocation without a -c flag.
-func setCdkContext(cdkDir, key, value string) error {
-	path := filepath.Join(cdkDir, "cdk.json")
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return err
-	}
-	var doc map[string]any
-	if err := json.Unmarshal(data, &doc); err != nil {
-		return fmt.Errorf("parsing %s: %w", path, err)
-	}
-	ctxObj, _ := doc["context"].(map[string]any)
-	if ctxObj == nil {
-		ctxObj = map[string]any{}
-		doc["context"] = ctxObj
-	}
-	ctxObj[key] = value
-	out, err := json.MarshalIndent(doc, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(path, append(out, '\n'), 0o644)
-}
-
-func renderBootstrapPlan(account, region string, runners []string, ref, cdkDir string, alreadyBootstrapped bool, pm packageManager) {
+func renderBootstrapPlan(account, region string, ref, cdkDir string, alreadyBootstrapped bool, pm packageManager) {
 	w := os.Stderr
 	fmt.Fprintln(w, "spinloop remote bootstrap — account-level control-plane setup (once per account)")
 	fmt.Fprintln(w)
 	fmt.Fprintf(w, "AWS account:  %s\n", account)
 	fmt.Fprintf(w, "Region:       %s\n", region)
-	fmt.Fprintf(w, "Runners:      %s\n", strings.Join(runners, ", "))
 	fmt.Fprintf(w, "Sources:      github.com/spinloop-ai/spinloop @ %s  ->  %s\n", ref, cdkDir)
 	if alreadyBootstrapped {
 		fmt.Fprintln(w, "Note:         the account is already bootstrapped; this will update the control plane.")
 	}
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "This deploys the control plane every environment reuses:")
-	fmt.Fprintln(w, "  • EC2 Image Builder pipelines and the baked AMIs")
+	fmt.Fprintln(w, "  • EC2 Image Builder pipelines (the AMI bakes are a separate step: spinloop remote bake)")
 	fmt.Fprintln(w, "  • the lifecycle Lambdas (start/stop/monitor/deploy) and their IAM")
 	fmt.Fprintln(w, "  • the shared S3 weights bucket, IAM roles, and VPC")
 	fmt.Fprintln(w)
-	fmt.Fprintln(w, "Cost: an ongoing at-rest cost (bucket, AMIs) plus a per-hour GPU cost only while")
+	fmt.Fprintln(w, "Cost: an ongoing at-rest cost (bucket, and AMIs once baked) plus a per-hour GPU cost only while")
 	fmt.Fprintln(w, "an environment is running. See remote/docs/costs.md for the breakdown.")
 	fmt.Fprintln(w, "Note: the GPU vCPU quota must be > 0 in this region or a later launch fails.")
 	fmt.Fprintln(w)
@@ -501,9 +407,6 @@ func renderBootstrapPlan(account, region string, runners []string, ref, cdkDir s
 	fmt.Fprintf(w, "  %s\n", strings.Join(pm.install, " "))
 	fmt.Fprintf(w, "  %s\n", strings.Join(pm.script("cdk", "bootstrap"), " "))
 	fmt.Fprintf(w, "  %s\n", strings.Join(pm.script("deploy:image"), " "))
-	for _, r := range runners {
-		fmt.Fprintf(w, "  %s\n", strings.Join(pm.script("bake", r), " "))
-	}
 	fmt.Fprintf(w, "  %s\n", strings.Join(pm.script("deploy"), " "))
 }
 
@@ -518,6 +421,10 @@ func confirmProceed() bool {
 	}
 }
 
+// bakePollInterval is how often waitForBake checks; a variable so tests can
+// poll fast, like the dashboard's interval hooks.
+var bakePollInterval = 60 * time.Second
+
 // waitForBake polls until every requested runner has an available AMI, or the
 // context is cancelled. It is bounded by a generous timeout so it cannot hang
 // forever if a bake fails.
@@ -525,7 +432,7 @@ func waitForBake(ctx context.Context, cfg aws.Config, runners []string) error {
 	ctx, cancel := context.WithTimeout(ctx, 60*time.Minute)
 	defer cancel()
 	for {
-		baked, err := bootstrapBakedFn(ctx, cfg)
+		baked, err := bakedFn(ctx, cfg)
 		if err != nil {
 			return err
 		}
@@ -542,7 +449,7 @@ func waitForBake(ctx context.Context, cfg aws.Config, runners []string) error {
 		select {
 		case <-ctx.Done():
 			return fmt.Errorf("timed out waiting for the AMI bake(s): %w", ctx.Err())
-		case <-time.After(60 * time.Second):
+		case <-time.After(bakePollInterval):
 		}
 	}
 }

@@ -215,5 +215,5 @@ asynchronous bake to hand off or wait for; its re-run idempotency remains,
 described without the bake.
 
 **Migration**: Re-run behaviour is carried by the "Idempotent bootstrap"
-requirement; baking and waiting for it is `spinloop remote bake` (with
-`--wait`), per the "AMI bake is a separate command" requirement.
+requirement; baking and waiting for it is `spinloop remote bake` (which waits
+by default), per the "AMI bake is a separate command" requirement.

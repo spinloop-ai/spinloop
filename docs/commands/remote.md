@@ -6,6 +6,7 @@ while you're using it.
 
 ```sh
 spinloop remote bootstrap  # once per account: deploy the control plane
+spinloop remote bake       # bake the runner AMI(s) an environment runs from
 spinloop remote deploy     # create an endpoint (environment) and tell it what to serve
 spinloop remote start      # boot it; prints the exports your agent needs (progress on stderr)
 spinloop remote status     # is it up? is it healthy?
@@ -26,15 +27,14 @@ enough that the pause is over.
 Before any endpoint can run, the account-level control plane has to
 exist — much like `cdk bootstrap`. `spinloop remote bootstrap` does it once per
 account: it downloads the `remote/` CDK project (version-matched to your binary)
-and deploys the control plane — the EC2 Image Builder pipelines and baked AMIs,
-the lifecycle Lambdas, and the shared weights bucket, roles and VPC — publishing
-them as CloudFormation outputs that `spinloop remote deploy` discovers later.
+and deploys the control plane — the EC2 Image Builder pipelines, the lifecycle
+Lambdas, and the shared weights bucket, roles and VPC — publishing them as
+CloudFormation outputs that `spinloop remote deploy` discovers later. It bakes
+**no** AMIs — that is the separate `spinloop remote bake` step below.
 
 ```sh
 spinloop remote bootstrap                 # shows a consent plan, then deploys
 spinloop remote bootstrap --dry-run       # print the plan and do nothing
-spinloop remote bootstrap --runners llamacpp   # bake only one engine's AMI
-spinloop remote bootstrap --wait          # block until the AMI bake(s) finish
 spinloop remote bootstrap --package-manager npm  # use npm instead of pnpm
 ```
 
@@ -50,7 +50,28 @@ By default bootstrap uses `pnpm` and falls back to `npm` when `pnpm` isn't on th
 path, logging which one it picked. To pin the choice, pass `--package-manager`
 (`pnpm` or `npm`) or set `SPINLOOP_REMOTE_PACKAGE_MANAGER`; the flag wins over the
 env var. A pinned manager that isn't installed fails the preflight rather than
-falling back.
+falling back. `spinloop remote bake` honours the same flags.
+
+## Baking the AMIs
+
+Each engine runs from a baked AMI (driver + engine, no model).
+`spinloop remote bake` starts a bake for each runner you name — both `llamacpp`
+and `vllm` when you name none — and **waits** until the AMI(s) are available, so
+the command returns at the point `spinloop remote deploy` can go:
+
+```sh
+spinloop remote bake                # bake both engines' AMIs; waits (~20-40 min)
+spinloop remote bake llamacpp       # bake one engine's AMI
+spinloop remote bake --no-wait      # return once the bakes are queued
+```
+
+Bakes are slow (a builder instance runs for 20–40 minutes) and independent of
+the weight seed, so `--no-wait` lets them run in parallel — the command prints
+how to check on them. A bake deploys nothing: it needs the control plane's
+Image Builder pipelines, so if the control plane isn't deployed it fails telling
+you to run `spinloop remote bootstrap` first. Re-bake only when the engine
+version or the driver changes; the model is **not** baked in, and a new AMI is
+picked up automatically once it is available.
 
 ## The usual flow
 

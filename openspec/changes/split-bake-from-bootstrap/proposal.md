@@ -43,10 +43,10 @@ choose to run (issue #139).
 
 - `cmd/spinloop/remote_bootstrap.go` — flag and sequence removal, plan and
   success-message changes; `cmd/spinloop/remote_bake.go` (new) — the bake
-  command; shared helpers (`parseRunners`, `waitForBake`, source resolution)
-  move to be used by both.
-- `internal/remote/bake.go` — `BakedRunners` now serves `bake --wait` instead
-  of `bootstrap --wait` (comment change only).
+  command; `cmd/spinloop/remote_sources.go` (new) — the shared source
+  resolution; `waitForBake` and the step seams are used by both.
+- `internal/remote/bake.go` — `BakedRunners` now serves bake's default wait
+  instead of `bootstrap --wait` (comment change only).
 - Tests: `cmd/spinloop/remote_bootstrap_test.go` updated, `remote_bake_test.go`
   new; coverage stays ≥ 80%.
 - Docs: `docs/commands/remote.md`, `remote/README.md`, `docs/env-vars.md`.

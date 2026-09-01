@@ -345,6 +345,7 @@ names a file — falling back to the default environment. Each subcommand's
 	}
 	remote.AddCommand(
 		remoteBootstrapCmd(),
+		remoteBakeCmd(),
 		remoteStartCmd(),
 		remotePauseCmd(),
 		remoteRestartCmd(),
