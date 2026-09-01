@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <em>// opencode, Pi or lucinate &middot; local, LAN or cloud &middot; the whole fleet on one board.</em>
+  <em>// opencode, Pi or lucinate &middot; llama.cpp, vLLM or oMLX &middot; deploy local, LAN or cloud &middot; one fleet, one board.</em>
 </p>
 
 ---
