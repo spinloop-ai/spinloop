@@ -30,7 +30,11 @@ const AMI_ROOT_DEVICE = '/dev/sda1';
 // immutable, so bump a runner's version to force a fresh AMI for just it.
 // 3.4.0: spinloop is no longer baked — each instance's boot installs it (the
 // deploy config's pin, or latest), so the AMI needs no release of it at all.
-const RUNNER_VERSION = { vllm: '3.4.0', llamacpp: '3.4.0' } as const;
+// 3.5.0: the outfit -> spinloop rename moved the baked daemon directory to
+// /var/lib/spinloop and the crash-nudge unit to spinloop-nudge; the boot script
+// pins both names, so a 3.4.0 AMI logrotates the wrong path and has no timer to
+// enable.
+const RUNNER_VERSION = { vllm: '3.5.0', llamacpp: '3.5.0' } as const;
 
 /**
  * Bakes a slim, model-agnostic AMI **per runner** — vLLM (a `uv` venv) and
@@ -81,6 +85,8 @@ export class ImageStack extends cdk.Stack {
       terminateInstanceOnFailure: true,
     });
 
+    // Resolved at deploy time, so Canonical publishing a new Ubuntu 24.04 image
+    // silently changes it between two deploys of an unchanged stack.
     const parentImage = ssm.StringParameter.valueForStringParameter(this, UBUNTU_SSM_PARAMETER);
     const nvidiaParam = { name: 'NvidiaDriverPackage', value: [cfg.nvidiaDriverPackage] };
 
@@ -106,7 +112,15 @@ export class ImageStack extends cdk.Stack {
       });
 
       const recipe = new imagebuilder.CfnImageRecipe(this, `${build.runner}Recipe`, {
-        name: `${this.stackName}-${build.runner}-recipe`,
+        // Every recipe property is create-only, so any change replaces the
+        // recipe — and Image Builder rejects the replacement if a recipe of the
+        // same name and version already exists. `parentImage` moves on its own
+        // whenever Canonical publishes, so the name carries the base AMI id:
+        // a new base image means a new recipe name, and the replacement lands
+        // instead of colliding with the one it is replacing. Changes we control
+        // (component data, driver, volume size) are still covered by bumping
+        // RUNNER_VERSION.
+        name: `${this.stackName}-${build.runner}-recipe-${parentImage}`,
         version: RUNNER_VERSION[build.runner as keyof typeof RUNNER_VERSION],
         parentImage,
         components: [{ componentArn: component.attrArn, parameters: [...build.parameters] }],
