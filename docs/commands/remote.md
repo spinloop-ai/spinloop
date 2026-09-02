@@ -125,7 +125,7 @@ needs it, never merely because the Spinloop was read. A bare name (no slash, no
 per-user registry at `~/.config/spinloop/remotes/<name>/remote.json`. This keeps
 deployment state per-user and per-instance: two projects name two environments
 without clobbering, and only the name — not the URLs — lives in the committed
-Spinloop. `spinloop remote bootstrap` registers an environment for you; you can also
+Spinloop. `spinloop remote deploy` registers an environment for you; you can also
 create one by hand.
 
 Given no path, `spinloop remote` reads the Spinloop `SPINLOOP_ALIAS` names, or
@@ -340,15 +340,18 @@ something to reach for by habit.
 | `--reseed` | `deploy` only: re-fetch the weights even if they are already in S3 |
 | `--spinloop-version` | `deploy` only: the spinloop release fresh boots install (default: the latest published release) |
 
+`bootstrap` and `bake` have their own too (`--ref`, `--dir`, `--region`,
+`--package-manager`, and `--no-wait` on bake) — see their sections above.
 `logs` has its own set — see [reading the logs](#reading-the-logs).
 
 ## Notes
 
-- Every subcommand takes an optional Spinloop path, a
-  [registered alias](alias.md), or a URL. Given none, it uses the alias
-  `SPINLOOP_ALIAS` names, and failing that `./Spinloop`.
+- `bootstrap` and `bake` are account-level and take no Spinloop: the control
+  plane and the AMIs are shared by every environment.
 - `deploy` always needs a Spinloop — it's the thing being deployed. The others
-  fall back to your per-user config.
+  take an optional Spinloop path, a [registered alias](alias.md), or a URL.
+  Given none, they use the alias `SPINLOOP_ALIAS` names, and failing that
+  `./Spinloop`, and failing that your per-user config.
 - `deploy_url` is optional: a config written before `deploy` existed still
   works for `start`, `stop`, and `status`.
 - Only a self-hosted engine can be deployed (`llamacpp` or `vllm`). A hosted

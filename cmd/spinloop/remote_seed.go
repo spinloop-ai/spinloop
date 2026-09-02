@@ -18,19 +18,11 @@ import (
 // about the same model.
 func remoteSeedCmd() *cobra.Command {
 	seed := &cobra.Command{
-		Use:                "seed",
-		Short:              "start, watch and stop model weight seeds",
-		Args:               cobra.ArbitraryArgs,
-		DisableFlagParsing: true,
-		SilenceErrors:      true,
-		SilenceUsage:       true,
-		RunE: func(c *cobra.Command, args []string) error {
-			resolve(c)
-			if len(args) == 0 {
-				return fmt.Errorf("usage: spinloop remote seed <start|status|ls|stop> [args]")
-			}
-			return fmt.Errorf("unknown seed subcommand %q (expected start, status, ls or stop)", args[0])
-		},
+		Use:           "seed",
+		Short:         "start, watch and stop model weight seeds",
+		SilenceErrors: true,
+		SilenceUsage:  true,
+		RunE:          groupFallback,
 	}
 	seed.AddCommand(
 		remoteSeedStartCmd(),

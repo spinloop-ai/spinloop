@@ -279,11 +279,18 @@ func TestCmdFleetExplicitPath(t *testing.T) {
 }
 
 func TestCmdFleetUnknownSubcommand(t *testing.T) {
-	if err := cmdFleet([]string{"wat"}); err == nil {
-		t.Fatal("unknown subcommand accepted")
+	if err := cmdFleet([]string{"wat"}); err == nil || !strings.Contains(err.Error(), "unknown command") {
+		t.Fatalf("unknown subcommand should error, got %v", err)
 	}
-	if err := cmdFleet(nil); err == nil {
-		t.Fatal("no subcommand accepted")
+	// Bare: no error — cobra shows the group's own help, with the
+	// subcommand list generated from the tree.
+	out := captureStdout(t, func() {
+		if err := cmdFleet([]string{}); err != nil {
+			t.Fatalf("bare fleet should show its help, got %v", err)
+		}
+	})
+	if !strings.Contains(out, "Available Commands") {
+		t.Errorf("bare fleet should list its subcommands:\n%s", out)
 	}
 }
 

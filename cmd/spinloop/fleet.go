@@ -21,18 +21,6 @@ import (
 	"github.com/spinloop-ai/spinloop/internal/fleet"
 )
 
-// fleetParentFallback reports the usage when no (named) subcommand is given,
-// and rejects the ones that are not named — the subcommands themselves are real
-// commands in the tree, so only the unknown and the bare cases reach here.
-func fleetParentFallback(args []string) error {
-	if len(args) == 0 {
-		return fmt.Errorf("usage: spinloop fleet <status|metrics|logs|dashboard|route|start|stop> [node] [--fleet <path>]")
-	}
-	return fmt.Errorf(
-		"unknown fleet subcommand %q (expected status, metrics, logs, dashboard, route, start or stop)",
-		args[0])
-}
-
 // cmdFleet runs the fleet subcommands through the tree — the seam the suite
 // calls directly.
 func cmdFleet(args []string) error {
