@@ -116,6 +116,7 @@ const (
 	dashHealthy dashHealthTier = iota
 	dashAttention
 	dashUnhealthy
+	dashNotServing
 	dashUnknown
 )
 
@@ -128,11 +129,14 @@ const (
 // outcome is unhealthy; then a running engine the daemon has explicitly
 // reported not ready is attention — the case this tier exists for, a cloud
 // node whose process is up but still loading weights; then an answer that
-// carries no state at all is unknown; anything else, including a running
-// engine the daemon reports no readiness for at all (an older daemon, or a
-// runner with no known health check), is healthy, so this degrades to the
-// pre-readiness behaviour rather than showing a tier the daemon cannot
-// actually back.
+// carries no state at all is unknown; then a node that answered with nothing
+// serving is not serving, a faded dot rather than the green of a node that
+// is up and serving — idle, the daemon with nothing started; stopped, a
+// daemon engine that was stopped; undeployed, a remote environment with no
+// instance at all; anything else, including a running engine the daemon
+// reports no readiness for at all (an older daemon, or a runner with no
+// known health check), is healthy, so this degrades to the pre-readiness
+// behaviour rather than showing a tier the daemon cannot actually back.
 func dashHealthTierFor(r fleet.NodeResult, a dashAction) dashHealthTier {
 	switch {
 	case a.verb != "":
@@ -145,6 +149,8 @@ func dashHealthTierFor(r fleet.NodeResult, a dashAction) dashHealthTier {
 		return dashAttention
 	case r.Metrics.State == "":
 		return dashUnknown
+	case r.Metrics.State == "idle" || r.Metrics.State == "stopped" || r.Metrics.State == "undeployed":
+		return dashNotServing
 	default:
 		return dashHealthy
 	}
@@ -154,13 +160,18 @@ func dashHealthTierFor(r fleet.NodeResult, a dashAction) dashHealthTier {
 // panel's name line, in the same raw-ANSI style renderBar already uses for
 // the resource bars inside the tile — the tile body is one plain string
 // wrapped in a single lipgloss style at the border, so per-character colour
-// here has to be ANSI, not lipgloss.Color.
+// here has to be ANSI, not lipgloss.Color. Not serving shares unknown's
+// faded shade and keeps the dot: the two greys are told apart by their mark,
+// a filled dot for a known undeployed node against the ? for one that has
+// not answered yet.
 func dashHealthGlyph(tier dashHealthTier) string {
 	switch tier {
 	case dashHealthy:
 		return "\033[92m●\033[0m"
 	case dashAttention:
 		return "\033[33m●\033[0m"
+	case dashNotServing:
+		return "\033[90m●\033[0m"
 	case dashUnknown:
 		return "\033[90m?\033[0m"
 	default:
