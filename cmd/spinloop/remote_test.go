@@ -101,8 +101,15 @@ func TestRemoteEnvName_Malformed(t *testing.T) {
 }
 
 func TestRemoteDispatch(t *testing.T) {
-	if err := run([]string{"remote"}); err == nil || !strings.Contains(err.Error(), "usage") {
-		t.Errorf("bare remote should error with usage, got %v", err)
+	// Bare remote shows the group's own help — generated from the tree, so
+	// its subcommand list cannot drift — rather than an error.
+	out := captureStdout(t, func() {
+		if err := run([]string{"remote"}); err != nil {
+			t.Fatalf("bare remote should show its help, got %v", err)
+		}
+	})
+	if !strings.Contains(out, "bootstrap") || !strings.Contains(out, "bake") {
+		t.Errorf("bare remote help should name its subcommands, got:\n%s", out)
 	}
 	if err := run([]string{"remote", "bogus"}); err == nil || !strings.Contains(err.Error(), "bogus") {
 		t.Errorf("unknown subcommand should error, got %v", err)
@@ -527,13 +534,17 @@ func TestRemoteRestart_WakeFailureReportsRecovery(t *testing.T) {
 
 // The parent fallback names restart in both its usage line and its
 // unknown-subcommand list, so a mistyped or bare `remote` points to it.
-func TestRemote_RestartInUsageAndUnknownList(t *testing.T) {
+func TestRemote_RestartInGeneratedHelp(t *testing.T) {
 	isolateConfig(t)
-	if err := run([]string{"remote"}); err == nil || !strings.Contains(err.Error(), "restart") {
-		t.Errorf("bare remote usage should name restart, got %v", err)
-	}
-	if err := run([]string{"remote", "bogus"}); err == nil || !strings.Contains(err.Error(), "restart") {
-		t.Errorf("unknown-subcommand list should name restart, got %v", err)
+	// A regression from when the usage was a hand-rolled list: restart had
+	// to be added to two places by hand. The help now comes from the tree.
+	out := captureStdout(t, func() {
+		if err := run([]string{"remote"}); err != nil {
+			t.Fatalf("bare remote should show its help, got %v", err)
+		}
+	})
+	if !strings.Contains(out, "restart") {
+		t.Errorf("bare remote help should name restart, got:\n%s", out)
 	}
 }
 

@@ -205,9 +205,10 @@ spinloop harness [<spinloop>] [-H <name>] [--spinloop[=<path>]] [args...]
                                          # launch the harness (a leading Spinloop or alias is
                                          #   applied first; --get shows it; --set stores it)
 spinloop completion <shell>                # tab completion (bash, zsh, powershell)
-spinloop remote <bootstrap|start|pause|stop|restart|status|metrics|logs|deploy|env|ls|keep|seed> [path]
+spinloop remote <bootstrap|bake|start|pause|stop|restart|status|metrics|logs|deploy|env|ls|keep|seed> [path]
                                          # control the remote GPU inference instance
                                          #   (bootstrap does the once-per-account setup;
+                                         #    bake bakes the runner AMI(s) it launches from;
                                          #    deploy sets what it serves, from the Spinloop;
                                          #    pause stops it while keeping it re-wakeable;
                                          #    restart gives a fresh engine at the same address;

@@ -38,20 +38,8 @@ import (
 // retention deadline to prevent the sweep from terminating the instance
 // early, and deploy sets what the instance will serve from the Spinloop itself.
 // Each subcommand takes an optional Spinloop path; see resolveRemoteConfig for
-// how the remote config is found.
-// cmdRemote reports the usage when no (named) subcommand is given, and rejects
-// the ones that are not named — the subcommands themselves are real commands
-// in the tree, so only the unknown and the bare cases reach here.
-// remoteParentFallback reports the usage when no (named) subcommand is given,
-// and rejects the ones that are not named — the subcommands themselves are real
-// commands in the tree, so only the unknown and the bare cases reach here.
-func remoteParentFallback(args []string) error {
-	if len(args) == 0 {
-		return fmt.Errorf("usage: spinloop remote <bootstrap|start|pause|restart|stop|status|metrics|logs|deploy|seed|env|ls|keep> [path]")
-	}
-	return fmt.Errorf(
-		"unknown remote subcommand %q (expected bootstrap, start, pause, restart, stop, status, metrics, logs, deploy, seed, env, ls or keep)", args[0])
-}
+// how the remote config is found. The group itself does nothing — see
+// groupFallback for what a bare or mistyped invocation gets.
 
 // cmdRemote runs the remote subcommands through the tree — the seam the suite
 // calls directly.

@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 	"github.com/spinloop-ai/spinloop/internal/fleet"
 	"github.com/spinloop-ai/spinloop/internal/harness"
 	"github.com/spinloop-ai/spinloop/internal/opencode"
@@ -290,8 +291,22 @@ func versionCmd() *cobra.Command {
 	}
 }
 
-// fleetCmd builds the fleet parent and its subcommands. The parent runs when
-// no subcommand is named and reports the usage, as the old dispatch did.
+// groupFallback is the RunE a command group (fleet, remote, seed) gets: bare,
+// it shows the group's own help — the one cobra generates from the tree, so
+// its subcommand list cannot drift from the tree — and a word that is not a
+// subcommand is cobra's own unknown-command error. The help sentinel is
+// pflag's, not the stdlib one: cobra's ExecuteC checks pflag.ErrHelp (cobra
+// imports pflag as its flag package), and the stdlib twin would surface as a
+// bare "flag: help requested" error instead of the help.
+func groupFallback(c *cobra.Command, args []string) error {
+	if len(args) == 0 {
+		return pflag.ErrHelp
+	}
+	return cobra.NoArgs(c, args)
+}
+
+// fleetCmd builds the fleet parent and its subcommands. The parent does
+// nothing itself — see groupFallback.
 func fleetCmd() *cobra.Command {
 	fleet := &cobra.Command{
 		Use:   "fleet",
@@ -302,14 +317,9 @@ logs, and dashboard — the live tiled view); start, stop and route act on a
 single node, and with no node they list the fleet and touch nothing. A node
 that fails is a rendered row, never an error — only a problem with the fleet
 file itself fails a command.`,
-		Args:               cobra.ArbitraryArgs,
-		DisableFlagParsing: true,
-		SilenceErrors:      true,
-		SilenceUsage:       true,
-		RunE: func(c *cobra.Command, args []string) error {
-			resolve(c)
-			return fleetParentFallback(args)
-		},
+		SilenceErrors: true,
+		SilenceUsage:  true,
+		RunE:          groupFallback,
 	}
 	fleet.AddCommand(
 		fleetStatusCmd(),
@@ -323,8 +333,8 @@ file itself fails a command.`,
 	return fleet
 }
 
-// remoteCmd builds the remote parent and its subcommands. The parent runs
-// when no subcommand is named and reports the usage, as the old dispatch did.
+// remoteCmd builds the remote parent and its subcommands. The parent does
+// nothing itself — see groupFallback.
 func remoteCmd() *cobra.Command {
 	remote := &cobra.Command{
 		Use:   "remote",
@@ -334,17 +344,13 @@ the same Spinloop. The endpoint's URLs come from the Spinloop's REMOTE — a bar
 name selects an environment under ~/.config/spinloop/remotes/<name>/, a path
 names a file — falling back to the default environment. Each subcommand's
 --help says what that step does.`,
-		Args:               cobra.ArbitraryArgs,
-		DisableFlagParsing: true,
-		SilenceErrors:      true,
-		SilenceUsage:       true,
-		RunE: func(c *cobra.Command, args []string) error {
-			resolve(c)
-			return remoteParentFallback(args)
-		},
+		SilenceErrors: true,
+		SilenceUsage:  true,
+		RunE:          groupFallback,
 	}
 	remote.AddCommand(
 		remoteBootstrapCmd(),
+		remoteBakeCmd(),
 		remoteStartCmd(),
 		remotePauseCmd(),
 		remoteRestartCmd(),

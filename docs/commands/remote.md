@@ -6,6 +6,7 @@ while you're using it.
 
 ```sh
 spinloop remote bootstrap  # once per account: deploy the control plane
+spinloop remote bake       # bake the runner AMI(s) an environment runs from
 spinloop remote deploy     # create an endpoint (environment) and tell it what to serve
 spinloop remote start      # boot it; prints the exports your agent needs (progress on stderr)
 spinloop remote status     # is it up? is it healthy?
@@ -26,15 +27,14 @@ enough that the pause is over.
 Before any endpoint can run, the account-level control plane has to
 exist — much like `cdk bootstrap`. `spinloop remote bootstrap` does it once per
 account: it downloads the `remote/` CDK project (version-matched to your binary)
-and deploys the control plane — the EC2 Image Builder pipelines and baked AMIs,
-the lifecycle Lambdas, and the shared weights bucket, roles and VPC — publishing
-them as CloudFormation outputs that `spinloop remote deploy` discovers later.
+and deploys the control plane — the EC2 Image Builder pipelines, the lifecycle
+Lambdas, and the shared weights bucket, roles and VPC — publishing them as
+CloudFormation outputs that `spinloop remote deploy` discovers later. It bakes
+**no** AMIs — that is the separate `spinloop remote bake` step below.
 
 ```sh
 spinloop remote bootstrap                 # shows a consent plan, then deploys
 spinloop remote bootstrap --dry-run       # print the plan and do nothing
-spinloop remote bootstrap --runners llamacpp   # bake only one engine's AMI
-spinloop remote bootstrap --wait          # block until the AMI bake(s) finish
 spinloop remote bootstrap --package-manager npm  # use npm instead of pnpm
 ```
 
@@ -50,7 +50,28 @@ By default bootstrap uses `pnpm` and falls back to `npm` when `pnpm` isn't on th
 path, logging which one it picked. To pin the choice, pass `--package-manager`
 (`pnpm` or `npm`) or set `SPINLOOP_REMOTE_PACKAGE_MANAGER`; the flag wins over the
 env var. A pinned manager that isn't installed fails the preflight rather than
-falling back.
+falling back. `spinloop remote bake` honours the same flags.
+
+## Baking the AMIs
+
+Each engine runs from a baked AMI (driver + engine, no model).
+`spinloop remote bake` starts a bake for each runner you name — both `llamacpp`
+and `vllm` when you name none — and **waits** until the AMI(s) are available, so
+the command returns at the point `spinloop remote deploy` can go:
+
+```sh
+spinloop remote bake                # bake both engines' AMIs; waits (~20-40 min)
+spinloop remote bake llamacpp       # bake one engine's AMI
+spinloop remote bake --no-wait      # return once the bakes are queued
+```
+
+Bakes are slow (a builder instance runs for 20–40 minutes) and independent of
+the weight seed, so `--no-wait` lets them run in parallel — the command prints
+how to check on them. A bake deploys nothing: it needs the control plane's
+Image Builder pipelines, so if the control plane isn't deployed it fails telling
+you to run `spinloop remote bootstrap` first. Re-bake only when the engine
+version or the driver changes; the model is **not** baked in, and a new AMI is
+picked up automatically once it is available.
 
 ## The usual flow
 
@@ -104,7 +125,7 @@ needs it, never merely because the Spinloop was read. A bare name (no slash, no
 per-user registry at `~/.config/spinloop/remotes/<name>/remote.json`. This keeps
 deployment state per-user and per-instance: two projects name two environments
 without clobbering, and only the name — not the URLs — lives in the committed
-Spinloop. `spinloop remote bootstrap` registers an environment for you; you can also
+Spinloop. `spinloop remote deploy` registers an environment for you; you can also
 create one by hand.
 
 Given no path, `spinloop remote` reads the Spinloop `SPINLOOP_ALIAS` names, or
@@ -319,15 +340,18 @@ something to reach for by habit.
 | `--reseed` | `deploy` only: re-fetch the weights even if they are already in S3 |
 | `--spinloop-version` | `deploy` only: the spinloop release fresh boots install (default: the latest published release) |
 
+`bootstrap` and `bake` have their own too (`--ref`, `--dir`, `--region`,
+`--package-manager`, and `--no-wait` on bake) — see their sections above.
 `logs` has its own set — see [reading the logs](#reading-the-logs).
 
 ## Notes
 
-- Every subcommand takes an optional Spinloop path, a
-  [registered alias](alias.md), or a URL. Given none, it uses the alias
-  `SPINLOOP_ALIAS` names, and failing that `./Spinloop`.
+- `bootstrap` and `bake` are account-level and take no Spinloop: the control
+  plane and the AMIs are shared by every environment.
 - `deploy` always needs a Spinloop — it's the thing being deployed. The others
-  fall back to your per-user config.
+  take an optional Spinloop path, a [registered alias](alias.md), or a URL.
+  Given none, they use the alias `SPINLOOP_ALIAS` names, and failing that
+  `./Spinloop`, and failing that your per-user config.
 - `deploy_url` is optional: a config written before `deploy` existed still
   works for `start`, `stop`, and `status`.
 - Only a self-hosted engine can be deployed (`llamacpp` or `vllm`). A hosted

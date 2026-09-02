@@ -296,15 +296,21 @@ func TestRemoteSeed_NoSeedURLNamesTheValueToAdd(t *testing.T) {
 
 func TestRemoteSeed_UnknownSubcommand(t *testing.T) {
 	err := cmdRemoteSeed([]string{"frobnicate"})
-	if err == nil || !strings.Contains(err.Error(), "unknown seed subcommand") {
+	if err == nil || !strings.Contains(err.Error(), "unknown command") {
 		t.Errorf("want an unknown-subcommand error, got %v", err)
 	}
 }
 
-func TestRemoteSeed_NoSubcommandShowsUsage(t *testing.T) {
-	err := cmdRemoteSeed([]string{})
-	if err == nil || !strings.Contains(err.Error(), "start|status|ls|stop") {
-		t.Errorf("want usage, got %v", err)
+func TestRemoteSeed_NoSubcommandShowsHelp(t *testing.T) {
+	// Bare: no error — cobra shows the group's own help, with the
+	// subcommand list generated from the tree.
+	out := captureStdout(t, func() {
+		if err := cmdRemoteSeed([]string{}); err != nil {
+			t.Fatalf("bare seed should show its help, got %v", err)
+		}
+	})
+	if !strings.Contains(out, "Available Commands") {
+		t.Errorf("bare seed should list its subcommands:\n%s", out)
 	}
 }
 

@@ -8,9 +8,9 @@ what to serve from a Spinloop: the `spinloop remote` command group.
 ### Requirement: Remote command group
 
 The system SHALL provide a `remote` command group with the subcommands
-`bootstrap`, `start`, `stop`, `restart`, `status`, `deploy`, `ls`, `metrics`,
-and `keep`. `start`, `stop`, `restart`, `status`, `metrics` and `deploy` each
-take an optional Spinloop path:
+`bootstrap`, `bake`, `start`, `stop`, `restart`, `status`, `deploy`, `ls`,
+`metrics`, and `keep`. `start`, `stop`, `restart`, `status`, `metrics` and
+`deploy` each take an optional Spinloop path:
 `start` SHALL boot the endpoint and block until it is serving, then perform a
 quick TCP probe of the inference endpoint — if the probe fails, a warning is
 printed to stderr explaining the network mismatch (see the Remote Start Probe
@@ -37,6 +37,8 @@ what the endpoint serves. `ls` SHALL list the registered remote environments
 (see the Remote Environments specification). `bootstrap` SHALL stand up the
 account-level AWS control plane (once per account) by obtaining and driving the
 CDK project, and takes its own flags rather than a Spinloop path (see the
+Endpoint Provisioning specification). `bake` SHALL start an AMI bake for each
+runner named, and takes runner names rather than a Spinloop path (see the
 Endpoint Provisioning specification). An unrecognised subcommand SHALL fail
 naming the accepted ones.
 
@@ -112,11 +114,17 @@ naming the accepted ones.
 - **THEN** the command is dispatched to the provisioning flow rather than
   reported as unknown
 
+#### Scenario: Bake is a recognised subcommand
+
+- **WHEN** the user runs `spinloop remote bake llamacpp`
+- **THEN** the command is dispatched to the bake flow rather than reported as
+  unknown
+
 #### Scenario: Unknown subcommand
 
 - **WHEN** the user runs `spinloop remote frobnicate`
 - **THEN** the command fails listing the accepted subcommands, which include
-  `bootstrap`, `metrics`, and `keep`
+  `bootstrap`, `bake`, `metrics`, and `keep`
 
 ### Requirement: Reporting a start in progress
 

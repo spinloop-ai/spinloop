@@ -45,9 +45,10 @@ availability zone — it tries each g6e zone in turn until one has capacity.
 
 The image stack defines an Image Builder **pipeline**, not a build, so
 deploying it never runs (or fails on) a bake. You trigger bakes out-of-band
-with `pnpm bake <runner>`; each successful bake **tags** its AMI with its
-engine, and the start Lambda launches the **newest AMI matching the engine it
-was told to run**. A failed bake produces no new AMI and changes nothing.
+with `spinloop remote bake <runner>` (or `pnpm bake <runner>` by hand); each
+successful bake **tags** its AMI with its engine, and the start Lambda launches
+the **newest AMI matching the engine it was told to run**. A failed bake
+produces no new AMI and changes nothing.
 
 The control plane **renders** the boot script and the daemon's service unit,
 and the boot script **installs** the spinloop binary that runs them — the
@@ -58,7 +59,7 @@ order launches instances whose daemon never starts.
 
 ```
 spinloop remote bootstrap ─▶ control-plane stack (Lambdas, S3, VPC, roles) + bake pipelines
-     pnpm bake llamacpp ─▶ Image Builder pipeline ─(async)─▶ AMI (driver + engine), tagged
+spinloop remote bake llamacpp ─▶ Image Builder pipeline ─(async)─▶ AMI (driver + engine), tagged
 spinloop remote deploy ─▶ deploy Lambda ─▶ creates env <name>: EIP, SG (your CIDR),
                                       │  API key, deploy-config (what to serve)
                                       └─ seeds weights ─▶ S3 weights bucket (shared)
@@ -121,24 +122,26 @@ aws ec2 describe-instance-type-offerings --location-type availability-zone \
 The one-time account setup is
 [`spinloop remote bootstrap`](../docs/commands/remote.md#bootstrapping-the-account),
 which drives this directory for you — download, consent plan, then the shared
-deploy and the AMI bakes. Endpoints come after it, one `spinloop remote deploy`
-per environment:
+deploy. Baking the AMIs is the separate
+[`spinloop remote bake`](../docs/commands/remote.md#baking-the-amis) step after
+it; endpoints come after that, one `spinloop remote deploy` per environment:
 
 ```sh
-spinloop remote bootstrap   # once per account: control-plane stack + pipelines + bakes
+spinloop remote bootstrap   # once per account: control-plane stack + pipelines
+spinloop remote bake        # bakes the runner AMI(s); waits until they are available
 spinloop remote deploy      # creates the Spinloop's REMOTE environment and says
                           # what it serves; seeds the weights if missing
 ```
 
-Under the hood, bootstrap runs this directory's own commands — usable by hand
-too:
+Under the hood, bootstrap and bake run this directory's own commands — usable
+by hand too:
 
 ```sh
 pnpm install
 pnpm cdk bootstrap     # once per account/region
 pnpm deploy:image      # creates the bake pipelines — instant, no build yet
-pnpm bake llamacpp     # bakes that engine's AMI — ~15-25 min, in the background
 pnpm run deploy        # deploys the control-plane stack (Lambdas, VPC, S3 bucket)
+pnpm bake llamacpp     # bakes that engine's AMI — ~15-25 min, in the background
 ```
 
 - `pnpm deploy:image` only creates the pipelines, so it deploys in seconds and
