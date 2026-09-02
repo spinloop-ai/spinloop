@@ -5,10 +5,11 @@ prefixed by a status dot: `dashHealthGlyph(dashHealthTierFor(result, action))`
 in `cmd/spinloop/dashboard_render.go`. Today the tier switch has four
 outcomes — attention (action in flight), unknown (no refresh yet, or a
 report with no state), unhealthy (failed outcome or `crashed`), and
-everything else — and `idle`/`stopped` reports fall into "everything else",
-drawing the green dot of a serving node. See proposal.md for why that is
-wrong. The tile body already prints the state word ("idle", "stopped") on
-its state line, so the text is never in doubt; only the dot lies.
+everything else — and the not-serving reports (`idle`, `stopped`,
+`undeployed`) fall into "everything else", drawing the green dot of a
+serving node. See proposal.md for why that is wrong. The tile body already
+prints the state word on its state line, so the text is never in doubt;
+only the dot lies.
 
 Constraints: the glyph is raw ANSI in the same style as the resource bars
 (the tile body is one plain string under a single lipgloss border style),
@@ -20,8 +21,8 @@ beside the shared lines.
 ## Goals / Non-Goals
 
 **Goals:**
-- A settled report of `idle` or `stopped` with no action in flight draws a
-  faded grey dot instead of green.
+- A settled report of `idle`, `stopped`, or `undeployed` with no action in
+  flight draws a faded grey dot instead of green.
 - The new grey stays distinguishable from the `unknown` grey, which marks
   "no answer yet" with a `?`.
 - Every precedence rule the tier switch already enforces (action in flight
@@ -31,9 +32,9 @@ beside the shared lines.
 **Non-Goals:**
 - No change to any tile body line, to `fleet metrics`/`fleet status`
   output, or to the detail view (none of them draw the dot).
-- No new state vocabulary: `idle`/`stopped` are exactly the daemon states
-  and the remote control-plane state that mean "not serving", so the tier
-  keys on the state strings it already sees.
+- No new state vocabulary: `idle`, `stopped`, and `undeployed` are exactly
+  the daemon states and the remote control-plane states that mean "not
+  serving", so the tier keys on the state strings it already sees.
 - No colour for states like a remote environment reporting `starting`
   outside of a dashboard-initiated start — that path is covered by the
   existing action-in-flight rule when the dashboard drove the start, and
@@ -66,26 +67,28 @@ The switch's order is its precedence. The action-in-flight, no-outcome,
 failed-outcome/`crashed`, not-ready, and empty-state cases all come first
 and are untouched, so a start in flight over an `idle` report still reads
 attention and a failed refresh still reads unhealthy regardless of state.
-`idle` and `stopped` are non-empty states, so the new case overlaps
-nothing; placing it just before `default` is the only position that
-changes any behaviour, and it changes exactly the two states named in the
+`idle`, `stopped`, and `undeployed` are non-empty states, so the new case
+overlaps nothing; placing it just before `default` is the only position
+that changes any behaviour, and it changes exactly the states named in the
 spec.
 
-**4. `stopped` is in scope alongside `idle`.**
-A daemon that stops its engine reports `stopped`; a remote environment at
-scale-to-zero reports `stopped` (the control-plane state passes through
-`statusFromRemote` unchanged). Both are "node up, serving nothing" — the
+**4. All three off states are in scope: `idle`, `stopped`, `undeployed`.**
+A daemon that stops its engine reports `stopped`; a remote environment
+reports `stopped` while its instance is stopped and `undeployed` when it has
+no instance at all (the control-plane states pass through
+`statusFromRemote` unchanged). All are "node up, serving nothing" — the
 same fact the dot exists to convey — and keying the tier on `idle` alone
-would leave two off states wearing two different dots on one grid. The
-proposal records this as a scoping decision.
+would leave off states wearing different dots on one grid. The proposal
+records this as a scoping decision.
 
 **5. Tile body untouched; tests move with the glyph.**
 Only `dashHealthTierFor` and `dashHealthGlyph` change, so the
 content-line invariant (tile lines = `fleet metrics` bar lines) is intact
 by construction. In `fleet_dashboard_test.go`, the byte-stable idle tile
 (`TestDashTileStoppedByteStable`) and the tier table's `idle is healthy`
-entry change their expected glyph to the new tier, and the table gains
-`stopped` and idle-with-start-in-flight rows.
+entry change their expected glyph to the new tier, the byte-stable tiles
+gain an `undeployed` case carrying its serving line, and the table gains
+`stopped`/`undeployed` and idle-with-start-in-flight rows.
 
 ## Risks / Trade-offs
 

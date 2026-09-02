@@ -130,13 +130,13 @@ const (
 // reported not ready is attention — the case this tier exists for, a cloud
 // node whose process is up but still loading weights; then an answer that
 // carries no state at all is unknown; then a node that answered with nothing
-// serving — idle, or stopped, the state of a stopped daemon engine and of a
-// remote environment at scale to zero — is not serving, a faded dot rather
-// than the green of a node that is up and serving; anything else, including
-// a running engine the daemon reports no readiness for at all (an older
-// daemon, or a runner with no known health check), is healthy, so this
-// degrades to the pre-readiness behaviour rather than showing a tier the
-// daemon cannot actually back.
+// serving is not serving, a faded dot rather than the green of a node that
+// is up and serving — idle, the daemon with nothing started; stopped, a
+// daemon engine that was stopped; undeployed, a remote environment with no
+// instance at all; anything else, including a running engine the daemon
+// reports no readiness for at all (an older daemon, or a runner with no
+// known health check), is healthy, so this degrades to the pre-readiness
+// behaviour rather than showing a tier the daemon cannot actually back.
 func dashHealthTierFor(r fleet.NodeResult, a dashAction) dashHealthTier {
 	switch {
 	case a.verb != "":
@@ -149,7 +149,7 @@ func dashHealthTierFor(r fleet.NodeResult, a dashAction) dashHealthTier {
 		return dashAttention
 	case r.Metrics.State == "":
 		return dashUnknown
-	case r.Metrics.State == "idle" || r.Metrics.State == "stopped":
+	case r.Metrics.State == "idle" || r.Metrics.State == "stopped" || r.Metrics.State == "undeployed":
 		return dashNotServing
 	default:
 		return dashHealthy

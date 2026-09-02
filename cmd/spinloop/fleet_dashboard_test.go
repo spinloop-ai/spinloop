@@ -336,6 +336,21 @@ func TestDashTileStoppedByteStable(t *testing.T) {
 	if got := dashTile("idle", r, false, dashAction{}); got != want {
 		t.Errorf("stopped tile mismatch:\n%q\nwant:\n%q", got, want)
 	}
+	// A remote environment with no instance at all reports undeployed and
+	// keeps its deployment: the serving line rides on the same shape, and
+	// the dot is the faded one, not the green of a serving node.
+	u := fleet.NodeResult{
+		Name: "dev-1", Outcome: fleet.OutcomeOK,
+		Metrics: metrics.Stats{State: "undeployed", Runner: "llamacpp", ModelID: "unsloth/Qwen3.8-27B-GGUF"},
+	}
+	wantUndeployed := dashTileExpected([]string{
+		dashHealthGlyph(dashNotServing) + " dev-1  undeployed",
+		"llamacpp  unsloth/Qwen3.8-27B-GGUF",
+		"", "", "", "", "", "", "", "", "", "",
+	})
+	if got := dashTile("dev-1", u, false, dashAction{}); got != wantUndeployed {
+		t.Errorf("undeployed tile mismatch:\ngot:\n%q\nwant:\n%q", got, wantUndeployed)
+	}
 }
 
 // A node with an action in flight and no report yet shows the verb and the
@@ -445,6 +460,8 @@ func TestDashHealthTierFor(t *testing.T) {
 			Metrics: metrics.Stats{State: "idle"}}, dashAction{}, dashNotServing},
 		{"stopped is not serving", fleet.NodeResult{Outcome: fleet.OutcomeOK,
 			Metrics: metrics.Stats{State: "stopped"}}, dashAction{}, dashNotServing},
+		{"undeployed is not serving", fleet.NodeResult{Outcome: fleet.OutcomeOK,
+			Metrics: metrics.Stats{State: "undeployed"}}, dashAction{}, dashNotServing},
 		{"crashed is unhealthy", fleet.NodeResult{Outcome: fleet.OutcomeOK,
 			Metrics: metrics.Stats{State: "crashed"}}, dashAction{}, dashUnhealthy},
 		{"unreachable is unhealthy", fleet.NodeResult{Outcome: fleet.OutcomeUnreachable}, dashAction{}, dashUnhealthy},

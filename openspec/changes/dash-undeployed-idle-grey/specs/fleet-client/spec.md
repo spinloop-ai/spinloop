@@ -19,8 +19,8 @@ node known to be undeployed never reads as a node the dashboard has not
 heard from yet.
 
 - **Healthy**: the node answered its last refresh, its engine is not
-  crashed, not `idle`, and not `stopped`, and — when the daemon reports
-  readiness for it — the engine is ready. A `running` node whose daemon
+  crashed, not `idle`, not `stopped`, and not `undeployed`, and — when the
+  daemon reports readiness for it — the engine is ready. A `running` node whose daemon
   reports no readiness (an older daemon, or a runner with no known health
   check) counts as healthy too, rather than reporting a health tier the
   daemon cannot actually back.
@@ -30,9 +30,9 @@ heard from yet.
   outcome was a failure (`unreachable`, `unauthorized`, `config-error`,
   `failed`, or `unsupported`).
 - **Not serving**: the node answered its last refresh, no action is in
-  flight for it, and its engine is not serving — its state is `idle`,
-  nothing has been started, or `stopped`, the state of a stopped daemon
-  engine and of a remote environment that has scaled to zero.
+  flight for it, and its engine is not serving — its state is `idle`, the
+  daemon has started nothing, `stopped`, a daemon engine that was stopped,
+  or `undeployed`, a remote environment with no instance at all.
 - **Unknown**: no status can be determined for the node — it has not yet
   answered any refresh, or its last refresh answered without reporting an
   engine state.
@@ -95,8 +95,15 @@ heard from yet.
 #### Scenario: A stopped node reads not serving
 
 - **WHEN** a node's last completed refresh reports its engine `stopped` — a
-  daemon engine that was stopped, or a remote environment that has scaled to
-  zero — and no start or stop is in flight for it
+  daemon engine that was stopped — and no start or stop is in flight for it
+- **THEN** its panel's status glyph is the faded grey dot, not the green of
+  a serving node
+
+#### Scenario: An undeployed remote environment reads not serving
+
+- **WHEN** a remote environment's last completed refresh reports it
+  `undeployed` — it has no instance at all — and no start or stop is in
+  flight for it
 - **THEN** its panel's status glyph is the faded grey dot, not the green of
   a serving node
 
