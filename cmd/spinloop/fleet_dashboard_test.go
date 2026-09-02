@@ -330,7 +330,7 @@ func TestDashTileStoppedByteStable(t *testing.T) {
 		Metrics: metrics.Stats{State: "idle"},
 	}
 	want := dashTileExpected([]string{
-		dashHealthGlyph(dashHealthy) + " idle  idle",
+		dashHealthGlyph(dashNotServing) + " idle  idle",
 		"", "", "", "", "", "", "", "", "", "", "",
 	})
 	if got := dashTile("idle", r, false, dashAction{}); got != want {
@@ -441,8 +441,10 @@ func TestDashHealthTierFor(t *testing.T) {
 			Metrics: metrics.Stats{State: "running", Ready: "not-ready"}}, dashAction{}, dashAttention},
 		{"running with no readiness signal degrades to healthy", fleet.NodeResult{Outcome: fleet.OutcomeOK,
 			Metrics: metrics.Stats{State: "running"}}, dashAction{}, dashHealthy},
-		{"idle is healthy", fleet.NodeResult{Outcome: fleet.OutcomeOK,
-			Metrics: metrics.Stats{State: "idle"}}, dashAction{}, dashHealthy},
+		{"idle is not serving", fleet.NodeResult{Outcome: fleet.OutcomeOK,
+			Metrics: metrics.Stats{State: "idle"}}, dashAction{}, dashNotServing},
+		{"stopped is not serving", fleet.NodeResult{Outcome: fleet.OutcomeOK,
+			Metrics: metrics.Stats{State: "stopped"}}, dashAction{}, dashNotServing},
 		{"crashed is unhealthy", fleet.NodeResult{Outcome: fleet.OutcomeOK,
 			Metrics: metrics.Stats{State: "crashed"}}, dashAction{}, dashUnhealthy},
 		{"unreachable is unhealthy", fleet.NodeResult{Outcome: fleet.OutcomeUnreachable}, dashAction{}, dashUnhealthy},
@@ -458,6 +460,9 @@ func TestDashHealthTierFor(t *testing.T) {
 		{"action in flight over a crashed report is attention regardless",
 			fleet.NodeResult{Outcome: fleet.OutcomeOK, Metrics: metrics.Stats{State: "crashed"}},
 			dashAction{verb: "stop"}, dashAttention},
+		{"start in flight over an idle report is attention, never not serving",
+			fleet.NodeResult{Outcome: fleet.OutcomeOK, Metrics: metrics.Stats{State: "idle"}},
+			dashAction{verb: "start"}, dashAttention},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
