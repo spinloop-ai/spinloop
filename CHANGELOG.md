@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [1.30.0] - 2026-09-02
+### Added
+- feat(remote): split the AMI bake out of bootstrap into its own command
+- feat: grey the dashboard dot for undeployed nodes
+
+### Changed
+- docs: deduplicate AGENTS.md content vs specs
+- test: fix the fleet integration suite's flaky waits
+
+### Fixed
+- fix(remote): let the image recipe survive a new base AMI
+- fix(remote): report a boot that died instead of waiting it out
+
 ## [1.29.1] - 2026-09-01
 ### Changed
 - docs: cover fleet routing, seeding and the fleet file's newer fields
