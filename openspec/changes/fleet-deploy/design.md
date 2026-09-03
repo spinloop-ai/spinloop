@@ -18,6 +18,17 @@ walks the file's remote nodes and runs a deploy for each. See `proposal.md`
 for why this gap matters and `specs/fleet-config` and `specs/fleet-client` for
 the resulting behavior.
 
+This is a different `DeployConfig` use from the one `internal/fleet/wake.go`
+already has: `Config.Wake` also builds one (via `deployConfigForNode`) and
+pushes it to a node with `Node.StartWith`, but that happens per launch, for
+*any* node kind (daemon included), derived from whatever Spinloop the
+launch names, and stores nothing against the node. This change is about a
+`kind: remote` node's environment not existing at all yet — a one-time,
+persistent creation step with no daemon-node equivalent, since a daemon
+node's machine is already provisioned by the operator. The two never
+interact: a `fleet deploy`-created environment is simply a node that
+`Config.Wake` can later address like any other.
+
 ## Goals / Non-Goals
 
 **Goals:**

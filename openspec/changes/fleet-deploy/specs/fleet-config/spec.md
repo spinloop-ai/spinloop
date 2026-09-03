@@ -9,9 +9,13 @@ relative to the fleet file's directory, the same way other Spinloop-relative
 paths in the project resolve. The field SHALL NOT be required to parse a
 fleet file, since every other fleet command drives an already-deployed
 environment and has no use for it; it is consulted only by `fleet deploy`. A
-`kind: daemon` node declaring a `file` field SHALL have it ignored — the
-field describes what a *remote* environment is deployed from, and a daemon
-node's machine is the operator's own.
+`kind: daemon` node declaring a `file` field SHALL have it ignored — not
+because a daemon node has no notion of a Spinloop file describing what it
+serves (routing already wakes an idle daemon node with a deploy config
+derived from the Spinloop being launched), but because this field feeds only
+`fleet deploy`, which persistently creates the cloud environment a `kind:
+remote` node addresses — a step a daemon node's already-provisioned machine
+has no equivalent of.
 
 #### Scenario: A remote node names its Spinloop file
 

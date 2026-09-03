@@ -25,8 +25,15 @@ its remote nodes into existence.
 
   A node registered with `spinloop alias add <same-name> <path>`, or simply
   laid out as `<node-name>/Spinloop` beside the fleet file, therefore needs
-  no `file` field at all. Daemon nodes are unaffected; the field and both
-  fallbacks are meaningless for `kind: daemon`.
+  no `file` field at all. `kind: daemon` nodes declare no `file` field and
+  are never targeted by `fleet deploy` — not because a daemon node has no
+  notion of a Spinloop file telling it what to serve (it does: routing
+  already wakes an idle daemon node with a `DeployConfig` derived from
+  whatever Spinloop the launch names, via `Config.Wake`/`StartWith`), but
+  because that is a per-launch, dynamic push with nothing stored against the
+  node, whereas `fleet deploy` persistently creates the environment a
+  `kind: remote` node addresses — a step a daemon node's machine, already
+  provisioned by the operator, has no equivalent of.
 - Add `spinloop fleet deploy [node...]`: deploys the AWS environment for each
   named `kind: remote` node (or every `kind: remote` node in the file when
   none are named), reusing the same derivation, consent, and registration
