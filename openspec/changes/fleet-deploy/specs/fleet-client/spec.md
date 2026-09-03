@@ -40,12 +40,18 @@ as skipped, and not counted as a failure.
 
 ### Requirement: Fleet deploy derives and applies each node's config
 
-Each targeted node SHALL be deployed from the Spinloop file its `spinloop`
-field names, deriving the deploy config and registering the resulting
+Each targeted node SHALL be deployed from the Spinloop file its deploy
+source resolves to (see fleet-config's "Remote node deploy source" and
+"...falls back to name-based lookup" requirements: its `file` field, else an
+alias registered under its name, else a `<name>/` subdirectory beside the
+fleet file), deriving the deploy config and registering the resulting
 environment exactly as `spinloop remote deploy <file>` does for that same
 file — the two SHALL NOT be able to disagree about what a given Spinloop file
-deploys. A targeted node with no `spinloop` field SHALL fail for that node
-alone, naming the missing field, without touching the other targeted nodes.
+deploys. A targeted node for which no source resolves SHALL fail for that
+node alone, naming all three ways one could have been given, without
+touching the other targeted nodes. The resolved source (the path used, or
+the alias name when one was used) SHALL be reported alongside that node's
+plan, so which of the three supplied it is never left to be inferred.
 
 Nodes SHALL be deployed independently: one node already registered or live
 SHALL require `--overwrite` for that node exactly as a standalone `remote
@@ -61,17 +67,20 @@ any of them, exactly as a standalone `remote deploy --dry-run` does for one.
 
 #### Scenario: A node deploys from its own Spinloop file
 
-- **WHEN** `fleet deploy` targets a node declaring `spinloop:
+- **WHEN** `fleet deploy` targets a node declaring `file:
   ./envs/gpu.Spinloop`
 - **THEN** that node's environment is created and registered from that file,
-  the same as `spinloop remote deploy ./envs/gpu.Spinloop` would produce
+  the same as `spinloop remote deploy ./envs/gpu.Spinloop` would produce, and
+  the resolved path is reported against that node
 
-#### Scenario: A missing spinloop field fails only that node
+#### Scenario: A node with no resolvable source fails only that node
 
-- **WHEN** `fleet deploy` targets two remote nodes and one declares no
-  `spinloop` field
-- **THEN** the other node still deploys, and the command reports the missing
-  field against the one that lacks it
+- **WHEN** `fleet deploy` targets two remote nodes and one declares no `file`
+  field, has no alias registered under its name, and has no same-named
+  subdirectory beside the fleet file
+- **THEN** the other node still deploys, and the command reports against the
+  unresolved node that none of the `file` field, a matching alias, or a
+  matching subdirectory was found
 
 #### Scenario: One node's guard does not block the others
 

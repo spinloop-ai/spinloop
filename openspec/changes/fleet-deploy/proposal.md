@@ -10,16 +10,29 @@ its remote nodes into existence.
 
 ## What Changes
 
-- Add a `spinloop:` field to `kind: remote` fleet-file node entries, naming
-  the Spinloop file that node deploys from (resolved relative to the fleet
-  file, the way other Spinloop-relative paths already resolve). Daemon nodes
-  are unaffected; the field is meaningless for `kind: daemon`.
+- Add an optional `file:` field to `kind: remote` fleet-file node entries,
+  naming the Spinloop file that node deploys from (resolved relative to the
+  fleet file, the way other Spinloop-relative paths already resolve). It is
+  optional because a node's `name` already doubles as a lookup key, resolved
+  in order when `file` is absent:
+  1. the node's own `name` resolved through the existing `spinloop alias`
+     registry, exactly as a bare argument to `spinloop remote deploy <name>`
+     already resolves today;
+  2. a subdirectory named after the node, beside the fleet file (e.g.
+     `dev-1/Spinloop` beside a `fleet.yaml` naming node `dev-1`) — the same
+     "a name is also a directory to look in" convention a bare `spinloop
+     apply <dir>` already follows for a local Spinloop.
+
+  A node registered with `spinloop alias add <same-name> <path>`, or simply
+  laid out as `<node-name>/Spinloop` beside the fleet file, therefore needs
+  no `file` field at all. Daemon nodes are unaffected; the field and both
+  fallbacks are meaningless for `kind: daemon`.
 - Add `spinloop fleet deploy [node...]`: deploys the AWS environment for each
   named `kind: remote` node (or every `kind: remote` node in the file when
   none are named), reusing the same derivation, consent, and registration
   behavior as `spinloop remote deploy` — one node's deploy config comes from
-  its own `spinloop:` file exactly as a standalone `remote deploy` reads its
-  Spinloop argument.
+  its own `file` field, or failing that its name resolved as an alias, or
+  failing that a `<node-name>/Spinloop` beside the fleet file.
 - Node deploys run independently and concurrently; one node's failure or a
   registered/live guard on it is reported against that node and does not
   stop the others.
@@ -37,18 +50,21 @@ its remote nodes into existence.
 
 ### Modified Capabilities
 
-- `fleet-config`: `kind: remote` node entries gain an optional `spinloop:`
-  path field naming the Spinloop file that node deploys from.
+- `fleet-config`: `kind: remote` node entries gain an optional `file` path
+  field naming the Spinloop file that node deploys from, falling back to
+  resolving the node's own name as a registered alias, then to a
+  `<node-name>/Spinloop` subdirectory beside the fleet file, when absent.
 - `fleet-client`: add the `spinloop fleet deploy` command — its node
   selection, per-node deploy behavior, concurrency, and reporting.
 
 ## Impact
 
-- `internal/fleet/config.go`: `NodeConfig` gains a `Spinloop` field
-  (`yaml:"spinloop"`), resolved relative to the fleet file's directory.
-- `cmd/spinloop/fleet.go`: new `fleetDeployCmd`, reusing `deployConfigFor`,
-  `applySpinloopEnv`, and the registration/consent logic factored out of
-  `runRemoteDeploy` in `cmd/spinloop/remote.go`.
+- `internal/fleet/config.go`: `NodeConfig` gains a `File` field
+  (`yaml:"file"`), resolved relative to the fleet file's directory when set.
+- `cmd/spinloop/fleet.go`: new `fleetDeployCmd`, reusing `readSpinloop`'s
+  alias-then-path resolution, `deployConfigFor`, `applySpinloopEnv`, and the
+  registration/consent logic factored out of `runRemoteDeploy` in
+  `cmd/spinloop/remote.go`.
 - `docs/commands/fleet.md` and `docs/commands/remote.md`: document the new
   field and command, and cross-reference the now-two ways to deploy a remote
   environment.
