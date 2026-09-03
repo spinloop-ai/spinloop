@@ -114,25 +114,22 @@ any of them, exactly as a standalone `remote deploy --dry-run` does for one.
 
 ### Requirement: Driving one node
 
-`spinloop fleet stop <node>` SHALL call the named node's daemon stop
-endpoint. Stop SHALL require exactly one node name: invoked without one it
-SHALL fail and list the available nodes, rather than acting on the whole
-fleet, and it SHALL NOT accept `--all` or more than one name. An unknown
-node name SHALL fail, naming the known nodes. A stop is idempotent.
-
 `spinloop fleet start <node...>` SHALL call each named node's daemon start
 endpoint (or push a resolved deploy config, for a `kind: daemon` node — see
-below). `spinloop fleet start --all` SHALL target every node in the file
-instead, of either kind. Start invoked with neither a node name nor `--all`
-SHALL fail and list the available nodes. `--all` combined with one or more
-node names SHALL fail as ambiguous. An unknown node name SHALL fail the
-command, naming the known nodes, before anything is started. The daemon's
-own rules still hold — a start while that node's engine is running is
-reported as the daemon's conflict for that node. Multiple targeted nodes
-SHALL start independently: one node's failure (including an unresolved
-Spinloop source, see below) SHALL be reported against that node alone and
-SHALL NOT stop the others; the command SHALL exit non-zero when any targeted
-node failed.
+below); `spinloop fleet stop <node...>` SHALL call each named node's daemon
+stop endpoint. `spinloop fleet start --all`/`spinloop fleet stop --all`
+SHALL target every node in the file instead, of either kind. Either command
+invoked with neither a node name nor `--all` SHALL fail and list the
+available nodes, rather than acting on the whole fleet by default. `--all`
+combined with one or more node names SHALL fail as ambiguous, for either
+command. An unknown node name SHALL fail the command, naming the known
+nodes, before anything is started or stopped. The daemon's own rules still
+hold — a start while that node's engine is running is reported as the
+daemon's conflict for that node, and a stop is idempotent. Multiple targeted
+nodes SHALL be driven independently, for either command: one node's failure
+(including, for start, an unresolved Spinloop source, see below) SHALL be
+reported against that node alone and SHALL NOT stop the others; the command
+SHALL exit non-zero when any targeted node failed.
 
 For a `kind: daemon` node, `fleet start` SHALL first resolve that node's
 Spinloop source (see fleet-config's "Node Spinloop source" and "...falls
@@ -176,8 +173,9 @@ not pushed at start time, so it always uses a plain start.
 
 #### Scenario: Combining --all with node names is an error
 
-- **WHEN** `spinloop fleet start --all gpu-a` runs
-- **THEN** it fails as ambiguous and starts nothing
+- **WHEN** `spinloop fleet start --all gpu-a` or `spinloop fleet stop --all
+  gpu-a` runs
+- **THEN** it fails as ambiguous and neither starts nor stops anything
 
 #### Scenario: Unknown node
 
@@ -188,6 +186,28 @@ not pushed at start time, so it always uses a plain start.
 
 - **WHEN** `spinloop fleet start gpu-a nope` runs and no node is named `nope`
 - **THEN** the command fails, naming the known nodes, and starts neither node
+
+#### Scenario: Stop several named nodes
+
+- **WHEN** `spinloop fleet stop gpu-a gpu-b` runs
+- **THEN** both nodes are stopped, independently, whatever else the file
+  lists
+
+#### Scenario: Stop every node
+
+- **WHEN** `spinloop fleet stop --all` runs against a file mixing `kind:
+  remote` and `kind: daemon` nodes
+- **THEN** every node in the file is stopped
+
+#### Scenario: Stop with no node names the fleet
+
+- **WHEN** `spinloop fleet stop` runs with no node argument and no `--all`
+- **THEN** it fails, listing the nodes, and stops nothing
+
+#### Scenario: An unknown name among several fails before stopping any
+
+- **WHEN** `spinloop fleet stop gpu-a nope` runs and no node is named `nope`
+- **THEN** the command fails, naming the known nodes, and stops neither node
 
 #### Scenario: Starting a daemon node with a resolved source pushes it
 

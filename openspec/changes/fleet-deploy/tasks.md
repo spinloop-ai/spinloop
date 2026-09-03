@@ -72,7 +72,7 @@
       completion (`compRegister(c, "fleet", compFiles)`, node-name
       completion for positional args as `start`/`stop` already do).
 
-## 5. `spinloop fleet start` takes multiple nodes or `--all`
+## 5. `spinloop fleet start`/`stop` take multiple nodes or `--all`
 
 - [ ] 5.1 Add `func (c *Config) OnlyNames(names []string) (*Config, error)`
       to `internal/fleet/config.go`, narrowing to several named nodes in the
@@ -81,27 +81,28 @@
       its existing callers (`cmd/spinloop/fleet_logs.go`,
       `internal/fleet/select.go`'s `--node` pin) and tests
       (`internal/fleet/logs_test.go`) are unaffected.
-- [ ] 5.2 Rewrite `fleetStartCmd` in `cmd/spinloop/fleet.go` on `OnlyNames`/
-      `FanOut` instead of `driveOneNode`: `Use: "start"`, `Args:
-      cobra.ArbitraryArgs`, add `--all`; no node args and no `--all` fails
-      listing the fleet's nodes; `--all` plus node args fails as ambiguous;
-      named args resolve via `cfg.OnlyNames(args)` (fails before starting
-      anything on an unknown name); `--all` runs `cfg.FanOut` directly over
-      every node in the file.
-- [ ] 5.3 Build the shared `fleet.Call` closure once per invocation, closing
-      over `cfg`: inside, look up `entry, _ := cfg.Node(n.Name())` to
-      recover the targeted node's `NodeConfig`. For a `kind: daemon` entry,
-      call `resolveNodeSpinloop`; on failure, return a failed `NodeResult`
-      naming all three ways a source could have been given (no fallback to
-      a plain start). On success, `readSpinloop` + `applySpinloopEnv` +
-      `deployConfigForNode` to derive a `dc`, then `n.StartWith(ctx, &dc,
-      engineKey)`, reporting the resolved source and derived config
-      alongside the result. For a `kind: remote` entry, always use plain
-      `n.Start(ctx)`.
-- [ ] 5.4 Render one line per targeted node (started / guarded / failed) the
-      same way `fleet deploy` does; exit non-zero if any targeted node
-      failed. Leave `driveOneNode` and `fleetStopCmd` untouched — stop keeps
-      taking exactly one node name, no `--all`.
+- [ ] 5.2 Add a shared `runFleetDrive(cfg *fleet.Config, all bool, names
+      []string, call fleet.Call) ([]fleet.NodeResult, error)` in
+      `cmd/spinloop/fleet.go`, replacing `driveOneNode` (deleted): no names
+      and no `--all` fails, listing the fleet's nodes; `--all` plus names
+      fails as ambiguous; `--all` runs `cfg.FanOut(ctx, call)`; named nodes
+      run `cfg.OnlyNames(names)` then `.FanOut(ctx, call)` (an unknown name
+      fails before anything is touched).
+- [ ] 5.3 Rewrite `fleetStartCmd` and `fleetStopCmd` in `cmd/spinloop/fleet.go`
+      on `runFleetDrive`: `Args: cobra.ArbitraryArgs`, add `--all` to both.
+      `fleetStartCmd`'s `call` closes over `cfg`, looks up `entry, _ :=
+      cfg.Node(n.Name())` to recover the targeted node's `NodeConfig`; for a
+      `kind: daemon` entry, calls `resolveNodeSpinloop` (on failure, returns
+      a failed `NodeResult` naming all three ways a source could have been
+      given — no fallback to a plain start; on success, `readSpinloop` +
+      `applySpinloopEnv` + `deployConfigForNode` to derive a `dc`, then
+      `n.StartWith(ctx, &dc, engineKey)`, reporting the resolved source and
+      derived config); for `kind: remote`, always plain `n.Start(ctx)`.
+      `fleetStopCmd`'s `call` is unchanged from today — `n.Stop(ctx)` — it
+      needs no node lookup, only the new target-selection wrapper.
+- [ ] 5.4 Render one line per targeted node (started/stopped, guarded,
+      failed) through a shared renderer both commands call; exit non-zero
+      if any targeted node failed.
 - [ ] 5.5 Confirm `remoteNode.StartWith`'s existing refusal
       (`internal/fleet/remote_node.go:77-83`) means a `kind: remote` node
       is never sent a resolved config by `fleet start` — resolution is only
@@ -148,9 +149,12 @@
       abort the first); `fleet start --all` starts every node in the file,
       daemon and remote alike; `fleet start` with no args and no `--all`
       fails listing the nodes; `--all` plus node args fails as ambiguous; an
-      unknown name among several fails before starting any; `fleet stop`
-      still rejects more than one node and has no `--all` flag.
-- [ ] 6.12 `go test ./... -cover` stays at or above the project's 80% floor.
+      unknown name among several fails before starting any.
+- [ ] 6.12 `cmd/spinloop/fleet_test.go`: the same set, mirrored for `fleet
+      stop` (`stop gpu-a gpu-b`, `stop --all`, no-target failure, `--all`
+      plus names ambiguous, unknown name among several) — `stop`'s `call`
+      needs no Spinloop-resolution coverage since it takes no config.
+- [ ] 6.13 `go test ./... -cover` stays at or above the project's 80% floor.
 
 ## 7. Docs and examples
 
@@ -158,9 +162,10 @@
       alias/subdirectory fallbacks (generalized beyond "remote environments"
       to any node), add a `## Deploying remote nodes` section (command,
       flags, `--all`/named-arg requirement, guard/failure reporting), and
-      update the "Starting and stopping" section to state plainly that a
-      `kind: daemon` node now needs a resolvable Spinloop source or `fleet
-      start` fails for it — **BREAKING**, called out as such.
+      rewrite the "Starting and stopping" section: both `start` and `stop`
+      now take one or more node names or `--all` (no more "one node at a
+      time"), and `start` on a `kind: daemon` node now needs a resolvable
+      Spinloop source or fails for it — **BREAKING**, called out as such.
 - [ ] 7.2 `docs/commands/remote.md`: cross-reference `fleet deploy` as the
       batch alternative to running `remote deploy` once per environment.
 - [ ] 7.3 Every existing example with a `kind: daemon` node
@@ -187,7 +192,6 @@
       confirm the engine starts with the resolved config; confirm a node
       with no resolvable source fails naming the three ways one could have
       been given, rather than starting.
-- [ ] 8.5 Manually exercise `spinloop fleet start --all` against
-      `fleet-docker` or `fleet-mixed` (several nodes, mixed kinds) and
-      confirm every node starts in one command; confirm `spinloop fleet
-      stop` still refuses more than one node name.
+- [ ] 8.5 Manually exercise `spinloop fleet start --all` and `spinloop fleet
+      stop --all` against `fleet-docker` or `fleet-mixed` (several nodes,
+      mixed kinds) and confirm every node starts/stops in one command each.

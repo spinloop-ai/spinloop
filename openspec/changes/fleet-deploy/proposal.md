@@ -46,17 +46,14 @@ node's own local configuration rather than the fleet file.
   registered/live guard on it is reported against that node and does not
   stop the others. `--dry-run` and `--overwrite` carry the same meaning as
   on `spinloop remote deploy`, applied per node.
-- Add `spinloop fleet start <node...>` (or `--all`): `fleet start` now takes
-  one or more node names, or `--all` for every node in the file — the same
-  target-selection rule `fleet deploy` uses (no target is an error; `--all`
-  plus names is ambiguous; an unknown name fails before anything starts).
-  Unlike `deploy`, `start` is not restricted to one kind: a `kind: remote`
-  name is as valid a target as a `kind: daemon` one. Targeted nodes start
-  concurrently and independently — one node's failure is reported against
-  it alone and does not stop the others. `fleet stop` is deliberately left
-  as it is: exactly one node, no `--all` — stopping several engines at once
-  is a different risk than starting them, and nothing about this change
-  requires touching it.
+- `spinloop fleet start <node...>` and `spinloop fleet stop <node...>` now
+  take one or more node names, or `--all` for every node in the file — the
+  same target-selection rule `fleet deploy` uses (no target is an error;
+  `--all` plus names is ambiguous; an unknown name fails before anything
+  starts or stops). Neither is restricted to one kind: a `kind: remote` name
+  is as valid a target as a `kind: daemon` one, for either command. Targeted
+  nodes are driven concurrently and independently — one node's failure is
+  reported against it alone and does not stop the others.
 - **BREAKING**: on a `kind: daemon` node, `fleet start` now requires that
   node's Spinloop source to resolve, the same way `fleet deploy` requires
   one for a `kind: remote` node. The client derives a deploy config from it
@@ -85,10 +82,11 @@ node's own local configuration rather than the fleet file.
   back to resolving the node's own name as a registered alias, then to a
   `<node-name>/Spinloop` subdirectory beside the fleet file, when absent.
 - `fleet-client`: add the `spinloop fleet deploy` command (node selection,
-  per-node deploy behavior, concurrency, reporting), and modify `spinloop
-  fleet start` to take multiple node names or `--all`, and to require and
-  use a `kind: daemon` node's resolved Spinloop source (**BREAKING** for a
-  node with none). `fleet stop` is unchanged.
+  per-node deploy behavior, concurrency, reporting); modify `spinloop fleet
+  start` and `spinloop fleet stop` to both take multiple node names or
+  `--all`; and modify `start` to require and use a `kind: daemon` node's
+  resolved Spinloop source (**BREAKING** for a node with none — `stop` needs
+  no such source and is unaffected by that part).
 
 ## Impact
 
@@ -96,11 +94,12 @@ node's own local configuration rather than the fleet file.
   (`yaml:"file"`), resolved relative to the fleet file's directory when set;
   `Config` gains `OnlyNames([]string)`, narrowing to several named nodes the
   way `Only` already narrows to one (`Only` becomes a one-name call to it).
-- `cmd/spinloop/fleet.go`: new `fleetDeployCmd`; `fleetStartCmd` is
-  rewritten on `OnlyNames`/`FanOut` (multiple names or `--all`) rather than
-  `driveOneNode`, requiring and using the resolved source for daemon nodes
-  via `StartWith`. `fleetStopCmd`/`driveOneNode` are untouched. All three
-  reuse `readSpinloop`'s alias-then-path resolution, `deployConfigFor`/
+- `cmd/spinloop/fleet.go`: new `fleetDeployCmd`; `fleetStartCmd` and
+  `fleetStopCmd` are rewritten on a shared node-selection helper
+  (`OnlyNames`/`FanOut`, multiple names or `--all`) replacing `driveOneNode`,
+  which is deleted; `fleetStartCmd`'s call additionally requires and uses
+  the resolved source for daemon nodes via `StartWith`. All reuse
+  `readSpinloop`'s alias-then-path resolution, `deployConfigFor`/
   `deployConfigForNode`, `applySpinloopEnv`, and (for deploy) the
   registration/consent logic factored out of `runRemoteDeploy` in
   `cmd/spinloop/remote.go`.
