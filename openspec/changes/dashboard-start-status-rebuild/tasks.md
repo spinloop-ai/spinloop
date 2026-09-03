@@ -17,7 +17,7 @@
 - [ ] 3.2 Read a node with an action in flight on the short interval whatever its kind, returning to its kind's cadence once the action settles
 - [ ] 3.3 Test that a remote node is read more often for the duration of a start and returns to its own cadence afterwards, and that a node with an old reading greys out and recovers when it answers again
 
-## 4. One function decides what a tile says
+## 4. One function produces a tile's contents
 
 - [ ] 4.1 Merge `dashNodeContentLines` and `dashHealthTierFor` into one function taking the phase, the reading, how old it is and the current time, returning the tile's lines and its health colour
 - [ ] 4.2 Write one test listing every phase against every state a reading can be in — no reading yet, fresh answer, stale answer, failed round — including a start waiting for capacity next to a reading that says the node is running, which is the case that caused the original bug

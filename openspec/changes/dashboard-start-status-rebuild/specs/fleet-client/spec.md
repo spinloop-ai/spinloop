@@ -250,7 +250,7 @@ round SHALL NOT stretch the local machines' cadence.
 - **THEN** the panel keeps showing the later read, and the earlier one is
   discarded
 
-#### Scenario: A stale panel says so
+#### Scenario: A panel with an out-of-date reading shows its age
 
 - **WHEN** a node stops answering and its newest reading ages well past its
   cadence

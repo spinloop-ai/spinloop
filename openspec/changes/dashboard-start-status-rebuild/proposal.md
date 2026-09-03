@@ -1,13 +1,12 @@
 ## Why
 
-The dashboard has no single account of what a node is doing. It draws two
-independent things side by side — the status lines a start reports as it works,
-and the last completed refresh round — and has no rule for which is fresher or
-what to do when they contradict each other. The result is a board that states
-things confidently and wrongly.
+The dashboard maintains two separate descriptions of a node — the status lines a
+start writes as it runs, and the last completed refresh round — and no code
+compares them for recency or resolves a contradiction between them. The tile
+renders both as though each were current.
 
-The reported symptom: a remote start refused for capacity, then granted, left
-the tile showing
+The reported symptom: a remote start refused for capacity, then granted, left the
+tile displaying
 
 ```
 dev-1  starting
@@ -15,65 +14,67 @@ instance no-capacity; retrying in 120s
 running  (up 2m 58s)
 ```
 
-for the rest of the boot — a capacity wait and a running instance, on one tile,
-presented as equally current. That specific line was fixed in `03718af` by
-wiring `remote.Start`'s `onState` through to the tile, and an elapsed counter
-was added so a line that stands still is visibly live. The shape that produced
-the bug is still in place, and it produces more than one:
+for the remainder of the boot — a capacity wait and a running instance on one
+tile, rendered identically. That line was corrected in `03718af` by passing
+`remote.Start`'s `onState` callback through to the tile, and an elapsed counter
+was added so that a line which stays constant is still visibly updating. The
+structure that allowed the defect is unchanged, and it allows more than one:
 
-- **A transcript is rendered as a status.** `dashAction.line` is a `string`
-  with no timestamp and no notion of being superseded. A line written before a
-  wait ("retrying in 120s") is true in a scrolling terminal, where it is a
-  historical entry, and false on a tile that never scrolls, where it is a claim
-  about the present. Every producer of those lines has to remember to overwrite
-  them; the one that forgot caused this bug.
-- **Nothing records when it was read.** `fleet.NodeResult` carries no time, so a
-  60-second-old `running (up 58s)` is drawn identically to one read a moment
-  ago. It also means a refresh round that *started* before an action finished
-  and *landed* after it repaints pre-action data over the result of the action:
-  `dashRefreshMsg` only checks a per-group generation counter, which does not
-  catch that ordering.
-- **Cadence ignores attention.** A remote node stays on its 60-second interval
-  throughout a start — the one window in which its state is changing and being
-  watched.
-- **No single place decides what a tile says.** `dashNodeContentLines`
-  concatenates the action narrative and the refresh report through an ad-hoc
-  switch. There is no function whose inputs are everything the tile depends on,
-  so the contradictory combinations — the ones that produce bugs — have nowhere
-  to be tested.
+- **A log line is rendered as current state.** `dashAction.line` is a `string`
+  with no timestamp and no expiry. A line written before a wait ("retrying in
+  120s") is accurate in a scrolling terminal, where it is one entry in a
+  sequence, and inaccurate on a tile that redraws in place, where it is the only
+  text shown. Keeping it accurate requires every write site to overwrite it at
+  every transition; `remoteNode.StartWithProgress` did not, which produced this
+  defect.
+- **No reading records when it was taken.** `fleet.NodeResult` carries no
+  timestamp, so a 60-second-old `running (up 58s)` is drawn identically to one
+  read a moment ago. It also means a refresh round issued before an action
+  completes and returned after it will overwrite the post-action report with
+  pre-action data: `dashRefreshMsg` checks only a per-group counter, which does
+  not order a round against an action completing.
+- **The read interval does not vary with what the operator is doing.** A remote
+  node stays on its 60-second interval throughout a start — the period in which
+  its state changes most and is being watched.
+- **No single function produces a tile's contents.** `dashNodeContentLines`
+  concatenates the action's lines and the refresh report through a switch over
+  several fields. No function takes every input the tile depends on as
+  arguments, so the combinations in which the two descriptions contradict each
+  other cannot be enumerated in a test.
 
 ## What Changes
 
 - **A start reports a phase, not a line.** `fleet.ProgressStarter` carries a
   `StartPhase` value — what the start is doing, when that began, and when the
-  next attempt is due — instead of `func(string)`. Each transition replaces the
-  phase; nothing accumulates, so there is no store for a superseded line to sit
-  in. `remoteNode` builds phases from the `progress`/`onState` pair
-  `remote.Start` already offers.
-- **Wait text becomes a live countdown.** Rendering a phase is a pure function
-  of the phase and the current time, so "retrying in 120s" counts down and
-  "waiting for capacity" counts up, rather than freezing at whatever the number
-  was when the line was written.
-- **One renderer for both surfaces.** `cmd/spinloop`'s `startProgress` (the CLI's
-  stderr heartbeat) renders the same phase stream, so the dashboard and
-  `spinloop remote start` cannot word the same situation differently — the same
-  reason the tile and the detail view already share `dashNodeContentLines`.
+  next attempt is due — in place of `func(string)`. Each transition replaces the
+  value, and nothing accumulates, so a superseded situation is not retained.
+  `remoteNode` builds phases from the `progress` and `onState` callbacks
+  `remote.Start` already provides.
+- **Wait text is computed at draw time.** The rendered text is a pure function of
+  the phase and the current time, so "retrying in 120s" counts down and "waiting
+  for capacity" counts up, rather than remaining at the value held when the line
+  was written.
+- **Both screens render the same phases.** `cmd/spinloop`'s `startProgress` (the
+  CLI's stderr output) formats the same values, so the dashboard and `spinloop
+  remote start` cannot render the same phase differently — the same reason the
+  tile and the detail view already share `dashNodeContentLines`.
 - **Every reading records when it was taken.** `fleet.NodeResult` gains the time
-  its read happened, and the dashboard follows one rule everywhere: never show a
-  reading older than the one already on screen. This replaces the existing
-  generation counters and fixes the case where a slow round lands late and
-  repaints old data over new.
-- **An old reading stops being drawn as if it were current.** A node whose last
-  answer is older than a few of its own intervals shows its age and drops to the
-  unknown health tier, instead of presenting an out-of-date state as fact.
-- **A node being acted on is read more often.** A node with an action in flight
-  refreshes on the short interval until it settles, then returns to its kind's
-  cadence. The extra cost is limited to the nodes the operator is touching.
-- **One function decides what a tile says.** It takes the phase, the last
-  reading, how old that reading is and the current time, and returns the tile's
-  lines and its health colour. Everything the tile depends on is an argument, so
-  every combination can be listed in one test — including the contradictory ones
-  that have nowhere to be tested today.
+  of its read, and the dashboard applies one rule throughout: never display a
+  reading older than the one currently displayed. This replaces the existing
+  counters and corrects the case where a slow round returns late and overwrites
+  newer data.
+- **An old reading is no longer rendered as current.** A node whose last answer
+  is older than a few of its own intervals displays its age and is assigned the
+  unknown health tier, rather than presenting an out-of-date state as current.
+- **A node with an action in flight is read more often.** It refreshes on the
+  short interval until the action completes, then returns to its kind's
+  interval. The additional call volume is limited to nodes the operator is
+  acting on.
+- **One function produces a tile's contents.** It takes the phase, the last
+  reading, that reading's age and the current time, and returns the tile's lines
+  and its health tier. Every input is an argument, so every combination can be
+  enumerated in one test — including the contradictory ones the current code
+  cannot test.
 
 ## Capabilities
 
@@ -87,35 +88,36 @@ the bug is still in place, and it produces more than one:
   in-flight clause is restated in terms of a start's phase rather than its
   status lines, with the countdown and the elapsed time; "The fleet refreshes
   without stalling" gains the rule that an older reading never replaces a newer
-  one, and the faster cadence for a node being acted on; "Dashboard panels show
-  a health indicator" adds an out-of-date reading as a reason to show unknown.
+  one, and the shorter interval for a node with an action in flight; "Dashboard
+  panels show a health indicator" adds an out-of-date reading as a reason to
+  show unknown.
 
 ### Unchanged
 
-The keys, the grid, the detail view, the abort semantics, the confirmation on
-stop, and the settled (no action in flight) tile's layout are all untouched.
+The keys, the grid, the detail view, the abort behaviour, the confirmation on
+stop, and the layout of a tile with no action in flight.
 
 ## Impact
 
 - Code: `internal/fleet/node.go` (`ProgressStarter` signature, `StartPhase`,
-  `NodeResult.At`), `internal/fleet/remote_node.go` (phase construction),
-  `internal/fleet/fanout.go` (stamping results as each read returns),
-  `cmd/spinloop/dashboard_model.go` (only showing newer readings, the faster
-  cadence during an action, and the one function that decides a tile's
-  contents), `cmd/spinloop/dashboard_render.go` (drawing a phase),
-  `cmd/spinloop/remote.go` (`startProgress` drawing the same phases).
-- `internal/remote` is untouched: `Start`'s `progress`/`onState` pair already
-  carries what the phases are built from, including `StateInFlight`.
-- Tests: one test listing every phase against every state a reading can be in,
-  tests that an older reading never replaces a newer one, and a test that a
+  `NodeResult.At`), `internal/fleet/remote_node.go` (building phases),
+  `internal/fleet/fanout.go` (timestamping results as each read returns),
+  `cmd/spinloop/dashboard_model.go` (displaying only newer readings, the shorter
+  interval during an action, and the single function producing a tile's
+  contents), `cmd/spinloop/dashboard_render.go` (rendering a phase),
+  `cmd/spinloop/remote.go` (`startProgress` rendering the same phases).
+- `internal/remote` is unchanged: `Start`'s `progress` and `onState` callbacks
+  already supply everything the phases are built from, `StateInFlight` included.
+- Tests: one test enumerating every phase against every state a reading can be
+  in, tests that an older reading never replaces a newer one, and a test that a
   remote node is read more often while an action is in flight.
-- Docs: `AGENTS.md`'s dashboard pointer and `docs/internals.md` if the phase
-  contract warrants a note there.
+- Docs: `AGENTS.md`'s dashboard entry, and `docs/internals.md` if the phase
+  contract needs a note there.
 
 ## Non-goals
 
 - Changing what the control plane reports, or adding states to it.
-- Any change to `fleet metrics --watch`, the one-shot surfaces, or the daemon
+- Any change to `fleet metrics --watch`, the one-shot commands, or the daemon
   API.
-- Making a start's work abortable. An abort still ends the dashboard's wait
-  only, exactly as specified today.
+- Cancelling a start's work. An abort still ends only the dashboard's wait, as
+  currently specified.

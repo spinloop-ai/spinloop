@@ -433,14 +433,15 @@ func TestRemoteNodeStartWithProgressReportsTheBoot(t *testing.T) {
 	}
 }
 
-// The bug this guards: a start refused for capacity, then granted. The refusal
-// writes "instance no-capacity; retrying in 120s" — true until the next
-// attempt goes out, and the attempt that finds capacity then holds its single
-// request for the whole boot without writing anything more. A caller that
-// shows the latest line as the node's current situation (the dashboard tile)
-// would go on reporting a capacity wait for the rest of the start, beside its
-// own refreshes reporting the instance running. The last line a start reports
-// must never be the retired capacity notice.
+// The defect this covers: a start refused for capacity, then granted. The
+// refusal writes "instance no-capacity; retrying in 120s", which is accurate
+// only until the next attempt is issued; the attempt that obtains capacity then
+// holds a single request open for the duration of the boot and writes no
+// further line. A caller that renders the most recent line as the node's
+// current state (the dashboard tile) would display a capacity wait for the
+// remainder of the start, alongside its own refreshes reporting the instance
+// running. The final line a start writes must therefore not be the capacity
+// notice.
 func TestRemoteNodeStartWithProgressRetiresACapacityWait(t *testing.T) {
 	stubAWSCreds(t)
 	var (
@@ -492,9 +493,9 @@ func TestRemoteNodeStartWithProgressRetiresACapacityWait(t *testing.T) {
 	}
 }
 
-// A start that wants no progress lines says so with a nil callback, and is not
-// relying on which paths the start happens to take: remote.Start writes its
-// lines unconditionally, so every one of them has to land somewhere safe.
+// A nil progress callback is valid. remote.Start invokes progress on every
+// retry path, so StartWithProgress must substitute a no-op rather than depend
+// on which paths a given start takes; this exercises a start that retries.
 func TestRemoteNodeStartWithProgressAcceptsNoReporter(t *testing.T) {
 	stubAWSCreds(t)
 	var attempts int

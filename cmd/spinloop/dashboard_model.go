@@ -116,21 +116,21 @@ func dashVerbProgress(verb string) string {
 	return verb + "ing"
 }
 
-// dashNow is the board's clock. A variable so a test can pin what an in-flight
-// tile draws for elapsed time.
+// dashNow returns the board's current time. A variable so a test can fix the
+// elapsed time an in-flight tile renders.
 var dashNow = time.Now
 
-// dashActionProgress is the tile's in-flight heading: the verb, with how long
-// the action has been running once the board has a clock on it.
+// dashActionProgress returns the tile's in-flight heading: the verb, followed by
+// how long the action has been running when a.since is set.
 //
-// The elapsed time is the tile's heartbeat. A start's own status lines can
-// legitimately stand unchanged for minutes — the attempt that finds capacity
-// holds one request for the whole boot and says nothing while it does — so
-// without a moving number there is no way to tell a tile that is waiting from
-// one that is wedged. It is computed on every repaint rather than baked into a
-// line when that line arrives, which is the difference between a heartbeat and
-// another thing that can go stale; the board's tick repaints a couple of times
-// a second's worth of the way there, often enough for the number to move.
+// A start's status lines can remain unchanged for minutes: the attempt that
+// obtains capacity holds one request open for the duration of the boot and
+// writes no further line. Without an elapsed time, a tile in that state renders
+// identically to one whose start has stopped making progress. The value is
+// recomputed from dashNow on each repaint rather than stored when a status line
+// arrives, so it cannot itself go stale; the board's tick repaints every
+// dashboardRefreshInterval, which is often enough for the value to advance
+// visibly.
 func dashActionProgress(a dashAction) string {
 	verb := dashVerbProgress(a.verb)
 	if a.since.IsZero() {

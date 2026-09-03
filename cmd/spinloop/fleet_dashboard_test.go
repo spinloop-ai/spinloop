@@ -375,12 +375,12 @@ func TestDashTileActionInFlight(t *testing.T) {
 	}
 }
 
-// The elapsed time beside the verb is the tile's heartbeat. A start's own
-// status lines can legitimately stand unchanged for minutes — the attempt that
-// finds capacity holds one request for the whole boot and says nothing while
-// it does — so the moving number is what tells the operator the tile is
-// waiting rather than wedged. It is drawn from the board's clock on every
-// repaint, not baked into a line when that line arrives.
+// A start's status lines can remain unchanged for minutes: the attempt that
+// obtains capacity holds one request open for the duration of the boot and
+// writes no further line. The elapsed time beside the verb is therefore the
+// only part of an in-flight tile that changes in that state. It is computed
+// from the board's clock on each repaint, not stored when a status line
+// arrives, so it advances even while the rest of the tile is static.
 func TestDashTileActionInFlightShowsElapsed(t *testing.T) {
 	lipgloss.SetColorProfile(termenv.Ascii)
 	now := time.Now()

@@ -66,15 +66,15 @@ func (n *remoteNode) Start(ctx context.Context) (daemon.StatusResponse, error) {
 	return n.StartWithProgress(ctx, func(string) {})
 }
 
-// StartWithProgress is Start carrying the control plane's own status lines up
-// as the boot proceeds — the environment's state and the wait to the next
-// poll, one line per retry, plus a line of its own each time a fresh attempt
-// goes out. The caller shows or drops them.
+// StartWithProgress is Start with the control plane's status lines passed to
+// progress as the boot proceeds: the environment's state and the wait until the
+// next poll, one line per retry, plus one line each time a new attempt is
+// issued. Callers may render or discard them.
 func (n *remoteNode) StartWithProgress(ctx context.Context, progress func(string)) (daemon.StatusResponse, error) {
 	if progress == nil {
-		// remote.Start writes its lines unconditionally; a caller that wants
-		// none says so by passing nil rather than by being lucky about which
-		// paths the start happens to take.
+		// remote.Start invokes progress on every retry path, so nil is
+		// substituted with a no-op here rather than left to whichever paths a
+		// given start takes.
 		progress = func(string) {}
 	}
 	onState := func(state string) {
@@ -89,18 +89,19 @@ func (n *remoteNode) StartWithProgress(ctx context.Context, progress func(string
 	return statusFromRemote(*resp), nil
 }
 
-// startStateLine is the progress line a poll's state earns, or "" for the
-// states that already have one.
+// startStateLine returns the progress line for a poll's state, or "" for states
+// that remote.Start already writes a line for.
 //
-// Only StateInFlight earns one, and it exists to retire a stale wait notice.
-// remote.Start's own progress lines are written immediately before a wait
-// ("instance no-capacity; retrying in 120s") and are true only until the next
-// attempt goes out — but the attempt that finds capacity holds its single
-// request for the whole boot, minutes, and writes nothing more. A caller that
-// scrolls its lines is fine either way; a caller that shows the latest line as
-// the node's current situation — the dashboard tile — would otherwise go on
-// reporting a capacity wait long after the instance was up and serving. This
-// is the client-side report StateInFlight was added for.
+// Only StateInFlight returns a line, and it exists to overwrite a wait notice
+// that is no longer current. remote.Start writes its progress lines immediately
+// before a wait ("instance no-capacity; retrying in 120s"); each is accurate
+// only until the next attempt is issued. The attempt that obtains capacity then
+// holds a single request open for the duration of the boot — minutes — and
+// writes no further line. A caller that appends lines to a scrolling log is
+// unaffected either way. A caller that renders the most recent line as the
+// node's current state, such as the dashboard tile, would otherwise display a
+// capacity wait for the remainder of the start, after the instance is up and
+// serving. StateInFlight was added to the remote client for this case.
 func startStateLine(state string) string {
 	if state == remote.StateInFlight {
 		return "waking the instance…"
