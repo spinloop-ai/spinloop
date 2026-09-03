@@ -695,6 +695,19 @@ SHALL change nothing on the tile. Each finished action SHALL clear the action
 from its node's tile, which is then the node's report alone, and leave its
 outcome on the status line, the one-shot wording.
 
+The tile SHALL show the verb with how long the action has been running, counted
+from when the operator issued it and recomputed as the tile is repainted rather
+than fixed when a status line arrives. A start's status lines can stand
+unchanged for minutes — the attempt that succeeds holds one request for the
+whole boot and reports nothing while it does — so the elapsed time is what
+distinguishes a tile that is waiting from one that is wedged.
+
+A status line a node reports SHALL describe the node's situation now, not a
+situation that has since been superseded. A line that is true only until the
+node's next attempt — a wait before a retry, and the reason for it — SHALL be
+replaced when that attempt is issued, so a tile never goes on reporting a
+refused start beside its own refreshes reporting the node running.
+
 The outcome of an action SHALL be shown inside the dashboard (a status line the
 operator can read before the next refresh replaces attention), and a refused or
 unreachable action SHALL NOT close the dashboard. What an action changes in state
@@ -753,6 +766,20 @@ never invited to press a key that would do nothing there.
   and whatever it measures on the same tile, beneath the start's lines
 - **AND** when the start finishes, the tile is the node's report alone and the
   outcome is on the status line
+
+#### Scenario: A start's elapsed time keeps moving
+
+- **WHEN** a start is in flight and reports no new status line for some time
+- **THEN** the elapsed time beside the verb keeps advancing on the tile, so the
+  operator can tell the start is still waiting rather than wedged
+
+#### Scenario: A refused start does not outlive its refusal
+
+- **WHEN** a node's start is refused for want of capacity, and a later attempt
+  is issued once capacity is free
+- **THEN** the tile reports the capacity wait while it holds, and stops
+  reporting it once the next attempt is under way, rather than showing it
+  beside a refresh that reports the node running
 
 #### Scenario: An in-flight start before any report
 

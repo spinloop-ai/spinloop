@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -424,8 +425,99 @@ func TestRemoteNodeStartWithProgressReportsTheBoot(t *testing.T) {
 	if attempts != 2 {
 		t.Errorf("start attempts = %d (want 2)", attempts)
 	}
-	if len(lines) < 1 || !strings.Contains(lines[0], "instance starting; retrying in 1s") {
-		t.Errorf("progress lines = %q (want the boot's retry line)", lines)
+	// Each attempt announces itself, and the retry between them carries the
+	// control plane's own wording.
+	want := []string{"waking the instance…", "instance starting; retrying in 1s", "waking the instance…"}
+	if !slices.Equal(lines, want) {
+		t.Errorf("progress lines = %q (want %q)", lines, want)
+	}
+}
+
+// The bug this guards: a start refused for capacity, then granted. The refusal
+// writes "instance no-capacity; retrying in 120s" — true until the next
+// attempt goes out, and the attempt that finds capacity then holds its single
+// request for the whole boot without writing anything more. A caller that
+// shows the latest line as the node's current situation (the dashboard tile)
+// would go on reporting a capacity wait for the rest of the start, beside its
+// own refreshes reporting the instance running. The last line a start reports
+// must never be the retired capacity notice.
+func TestRemoteNodeStartWithProgressRetiresACapacityWait(t *testing.T) {
+	stubAWSCreds(t)
+	var (
+		mu       sync.Mutex
+		lines    []string
+		attempts int
+	)
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /start", func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		attempts++
+		first := attempts == 1
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		if first { // no GPU to be had in any zone yet
+			w.WriteHeader(http.StatusServiceUnavailable)
+			w.Write([]byte(`{"state":"no-capacity","retryAfterSeconds":1}`))
+			return
+		}
+		w.Write([]byte(`{"state":"ready","healthy":true}`))
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	cfg := remote.Config{StartURL: srv.URL + "/start", StopURL: srv.URL + "/start", Region: "us-east-1"}
+	node, err := NewRemoteNode("env", cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	starter := node.(ProgressStarter)
+	if _, err := starter.StartWithProgress(context.Background(), func(line string) {
+		mu.Lock()
+		lines = append(lines, line)
+		mu.Unlock()
+	}); err != nil {
+		t.Fatalf("StartWithProgress: %v", err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(lines) == 0 {
+		t.Fatal("the start reported nothing at all")
+	}
+	// The wait was reported when it was true...
+	if !slices.ContainsFunc(lines, func(l string) bool { return strings.Contains(l, "no-capacity") }) {
+		t.Errorf("progress lines = %q (want the capacity refusal reported)", lines)
+	}
+	// ...and retired by the attempt that superseded it.
+	if last := lines[len(lines)-1]; strings.Contains(last, "no-capacity") {
+		t.Errorf("the start's last line is the retired capacity wait: %q (all: %q)", last, lines)
+	}
+}
+
+// A start that wants no progress lines says so with a nil callback, and is not
+// relying on which paths the start happens to take: remote.Start writes its
+// lines unconditionally, so every one of them has to land somewhere safe.
+func TestRemoteNodeStartWithProgressAcceptsNoReporter(t *testing.T) {
+	stubAWSCreds(t)
+	var attempts int
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /start", func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		w.Header().Set("Content-Type", "application/json")
+		if attempts == 1 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			w.Write([]byte(`{"state":"no-capacity","retryAfterSeconds":1}`))
+			return
+		}
+		w.Write([]byte(`{"state":"ready","healthy":true}`))
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	cfg := remote.Config{StartURL: srv.URL + "/start", StopURL: srv.URL + "/start", Region: "us-east-1"}
+	node, err := NewRemoteNode("env", cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := node.(ProgressStarter).StartWithProgress(context.Background(), nil); err != nil {
+		t.Fatalf("StartWithProgress with no reporter: %v", err)
 	}
 }
 

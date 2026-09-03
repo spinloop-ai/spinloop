@@ -41,12 +41,13 @@ type dashEntry struct {
 }
 
 // dashAction is the board's account of a start or stop in flight on one
-// node: the verb, the last line the call has reported, and the call's own
-// context — the abort's door. A node with nothing in flight carries the zero
-// value.
+// node: the verb, the last line the call has reported, when the action began,
+// and the call's own context — the abort's door. A node with nothing in
+// flight carries the zero value.
 type dashAction struct {
 	verb    string             // "start" or "stop"
 	line    string             // the call's latest status line; empty until it reports one
+	since   time.Time          // when the action was issued; zero where the board has no clock on it
 	cancel  context.CancelFunc // end the wait on the call; nil where the zero value sits
 	aborted bool               // the operator ended the wait, so the line says so
 }
@@ -113,6 +114,33 @@ func dashVerbProgress(verb string) string {
 		return "stopping"
 	}
 	return verb + "ing"
+}
+
+// dashNow is the board's clock. A variable so a test can pin what an in-flight
+// tile draws for elapsed time.
+var dashNow = time.Now
+
+// dashActionProgress is the tile's in-flight heading: the verb, with how long
+// the action has been running once the board has a clock on it.
+//
+// The elapsed time is the tile's heartbeat. A start's own status lines can
+// legitimately stand unchanged for minutes — the attempt that finds capacity
+// holds one request for the whole boot and says nothing while it does — so
+// without a moving number there is no way to tell a tile that is waiting from
+// one that is wedged. It is computed on every repaint rather than baked into a
+// line when that line arrives, which is the difference between a heartbeat and
+// another thing that can go stale; the board's tick repaints a couple of times
+// a second's worth of the way there, often enough for the number to move.
+func dashActionProgress(a dashAction) string {
+	verb := dashVerbProgress(a.verb)
+	if a.since.IsZero() {
+		return verb
+	}
+	elapsed := dashNow().Sub(a.since)
+	if elapsed < 0 {
+		elapsed = 0
+	}
+	return verb + "  " + formatDuration(int(elapsed.Seconds()))
 }
 
 // dashActionProgressMsg is one intermediate line of a call behind an in-
@@ -424,7 +452,7 @@ func (m *dashModel) beginAction(verb string) tea.Cmd {
 		return nil
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	m.actions[m.cursor] = dashAction{verb: verb, cancel: cancel}
+	m.actions[m.cursor] = dashAction{verb: verb, since: dashNow(), cancel: cancel}
 	m.statusLine = dashVerbProgress(verb) + " " + e.name + "…"
 	send := m.send
 	progress := func(line string) {
