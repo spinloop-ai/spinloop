@@ -2,13 +2,16 @@ package fleet
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/spinloop-ai/spinloop/internal/daemon"
 	"github.com/spinloop-ai/spinloop/internal/metrics"
@@ -89,18 +92,106 @@ func TestStatsFromRemote(t *testing.T) {
 }
 
 func TestLogsFromRemote(t *testing.T) {
-	if got := logsFromRemote(remote.LogResult{}); !got.Missing {
-		t.Errorf("an empty tail should be reported as a missing log, got %+v", got)
+	if got := logsFromRemote(nil, true); !got.Missing {
+		t.Errorf("no fresh events on a from-the-beginning read should be reported missing, got %+v", got)
 	}
-	got := logsFromRemote(remote.LogResult{Events: []remote.LogEvent{
-		{Message: "loading model"}, {Message: "server ready"},
-	}})
-	want := "loading model\nserver ready"
+	// No fresh events on a later poll — the common steady state once a follow
+	// is caught up — must not be reported missing: the log is not gone, it is
+	// just quiet right now.
+	if got := logsFromRemote(nil, false); got.Missing {
+		t.Errorf("no fresh events on a later poll should not be reported missing, got %+v", got)
+	}
+
+	t1 := time.UnixMilli(1000)
+	t2 := time.UnixMilli(2000)
+	got := logsFromRemote([]remote.LogEvent{
+		{Message: "loading model", Timestamp: t1}, {Message: "server ready", Timestamp: t2},
+	}, false)
+	want := "loading model\nserver ready\n"
 	if got.Content != want {
 		t.Errorf("content = %q, want %q", got.Content, want)
 	}
-	if got.NextOffset != int64(len(want)) || got.Size != int64(len(want)) {
-		t.Errorf("offset/size = %d/%d, want %d", got.NextOffset, got.Size, len(want))
+	if got.NextOffset != t2.UnixMilli() {
+		t.Errorf("nextOffset = %d, want the newest event's millisecond %d", got.NextOffset, t2.UnixMilli())
+	}
+	if got.Size != int64(len(want)) {
+		t.Errorf("size = %d, want %d", got.Size, len(want))
+	}
+}
+
+// A remote node's log follow uses the exact same cursor as `spinloop remote
+// logs -f` (remote.FollowCursor, seeded with remote.FollowOverlap) — not a
+// lookalike reimplementation — so a second poll bounds its query behind the
+// newest event already shown by the same overlap window, and does not show
+// that event again. The bug this guards is the tail being replayed in full
+// on every poll regardless of what was already shown.
+func TestRemoteNodeLogsSharesTheFollowCursorWithRemoteLogsCommand(t *testing.T) {
+	stubAWSCreds(t)
+	eventMs := time.Date(2026, 8, 9, 11, 30, 0, 0, time.UTC).UnixMilli()
+
+	var mu sync.Mutex
+	served := map[string]bool{}
+	var starts []*int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var in struct {
+			LogGroupName string `json:"logGroupName"`
+			StartTime    *int64 `json:"startTime"`
+		}
+		json.Unmarshal(body, &in)
+
+		mu.Lock()
+		starts = append(starts, in.StartTime)
+		first := !served[in.LogGroupName]
+		served[in.LogGroupName] = true
+		mu.Unlock()
+
+		w.Header().Set("Content-Type", "application/x-amz-json-1.1")
+		if first {
+			// Each group ships the same one event, the first time it is asked —
+			// the fixture's stand-in for "the engine's log group has this".
+			fmt.Fprintf(w, `{"events":[{"eventId":"e1","timestamp":%d,"logStreamName":"env-1/i-1","message":"hello"}]}`, eventMs)
+			return
+		}
+		w.Write([]byte(`{"events":[]}`))
+	}))
+	t.Cleanup(srv.Close)
+	t.Setenv("AWS_ENDPOINT_URL_CLOUDWATCH_LOGS", srv.URL)
+	cfg := remote.Config{StartURL: "http://x", StopURL: "http://x", Environment: "env-1", Region: "us-east-1"}
+	node, err := NewRemoteNode("env", cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	resp1, err := node.Logs(context.Background(), daemon.TailLog, 0)
+	if err != nil {
+		t.Fatalf("tail poll: %v", err)
+	}
+	if !strings.Contains(resp1.Content, "hello") {
+		t.Fatalf("the tail poll should show the event, got %+v", resp1)
+	}
+	for _, s := range starts {
+		if s != nil {
+			t.Errorf("the tail poll (offset TailLog) sent a start bound: %v", *s)
+		}
+	}
+
+	starts = nil
+	resp2, err := node.Logs(context.Background(), 0, 0)
+	if err != nil {
+		t.Fatalf("follow-up poll: %v", err)
+	}
+	if resp2.Content != "" || resp2.Missing {
+		t.Errorf("the follow-up poll should show nothing new and not report missing, got %+v", resp2)
+	}
+	wantStart := eventMs - remote.FollowOverlap.Milliseconds()
+	for _, s := range starts {
+		if s == nil {
+			t.Fatal("the follow-up poll sent no start bound")
+		}
+		if *s != wantStart {
+			t.Errorf("start bound = %d, want the shared overlap behind the last event (%d)", *s, wantStart)
+		}
 	}
 }
 
