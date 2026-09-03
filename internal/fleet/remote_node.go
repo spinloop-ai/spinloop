@@ -23,6 +23,12 @@ import (
 type remoteNode struct {
 	name string
 	cfg  remote.Config
+	// logs holds the position a follow of this node's engine log has reached.
+	// It is the same cursor `spinloop remote logs -f` uses, and for the same
+	// reason: CloudWatch has no resumable read position of its own, so a poll
+	// re-asks a little behind the newest event already seen and this
+	// suppresses what the overlap re-reads, by event id.
+	logs *remote.FollowCursor
 }
 
 // NewRemoteNode builds the live node for a named remote environment. The config
@@ -35,7 +41,7 @@ func NewRemoteNode(name string, cfg remote.Config) (Node, error) {
 			"remote environment %q is not fully configured: start_url, stop_url and region are all required",
 			name)
 	}
-	return &remoteNode{name: name, cfg: cfg}, nil
+	return &remoteNode{name: name, cfg: cfg, logs: remote.NewFollowCursor(remote.FollowOverlap)}, nil
 }
 
 func (n *remoteNode) Name() string { return n.name }
@@ -96,18 +102,28 @@ func (n *remoteNode) Stop(ctx context.Context) (daemon.StatusResponse, error) {
 const remoteEngineTail = 1000
 
 func (n *remoteNode) Logs(ctx context.Context, offset int64, limit int) (daemon.LogsResponse, error) {
-	// The offset is accepted to satisfy the node contract, but remote logs are a
-	// tail of the log store, not a position to resume from, so it is not a cursor.
-	_ = offset
+	// daemon.TailLog means a fresh open of the view: start the cursor over,
+	// so this open shows its own tail rather than having it suppressed as
+	// already seen by whatever this node last followed.
+	if offset == daemon.TailLog {
+		n.logs.Reset()
+	}
+	start := n.logs.Start()
 	res, err := remote.FetchLogs(ctx, n.cfg, remote.LogQuery{
 		Environment: n.cfg.Environment,
 		Source:      remote.LogSourceEngine,
 		Limit:       remoteEngineTail,
+		Start:       start,
 	})
 	if err != nil {
 		return daemon.LogsResponse{}, err
 	}
-	return logsFromRemote(res), nil
+	fresh := n.logs.Advance(res.Events)
+	// Missing only on the read that had no lower bound yet finding nothing:
+	// that is genuinely no log, ever. A later poll with nothing new is a
+	// quiet log, not a missing one.
+	missing := start.IsZero() && len(res.Events) == 0
+	return logsFromRemote(fresh, missing), nil
 }
 
 // statusFromRemote maps the control plane's status reply onto the node's status.
@@ -142,22 +158,31 @@ func statsFromRemote(resp remote.StatsResponse) metrics.Stats {
 	}
 }
 
-// logsFromRemote maps a fetched log tail onto the node's log reply. Events arrive
-// oldest first, so the content reads top to bottom. An empty tail is reported as
-// a missing log rather than an empty one: that is the state a reader can act on
-// (the engine has not run here, or has sent nothing).
-func logsFromRemote(res remote.LogResult) daemon.LogsResponse {
-	if len(res.Events) == 0 {
-		return daemon.LogsResponse{Missing: true}
+// logsFromRemote maps one poll's fresh events — the ones remoteNode.Logs's
+// FollowCursor has not already returned — onto the node's log reply. Events
+// arrive oldest first, so the content reads top to bottom. missing reports
+// that this was a from-the-beginning read that found nothing: the state a
+// reader can act on (the engine has not run here, or has sent nothing),
+// distinct from a later poll simply having nothing new to add. NextOffset
+// only needs to say "not a fresh open" to the next call — the real position
+// lives in the node's own cursor — so it carries the newest event shown for
+// whoever finds that useful to see, and 0 has the same effect when there is
+// none.
+func logsFromRemote(fresh []remote.LogEvent, missing bool) daemon.LogsResponse {
+	if len(fresh) == 0 {
+		return daemon.LogsResponse{Missing: missing}
 	}
-	msgs := make([]string, len(res.Events))
-	for i, e := range res.Events {
+	msgs := make([]string, len(fresh))
+	for i, e := range fresh {
 		msgs[i] = e.Message
 	}
-	content := strings.Join(msgs, "\n")
+	// Each event is already one complete, discrete line — unlike a byte-stream
+	// tail, there is never a trailing partial line to leave unterminated — so
+	// the join ends in a newline the same way a local engine log's lines do.
+	content := strings.Join(msgs, "\n") + "\n"
 	return daemon.LogsResponse{
 		Content:    content,
-		NextOffset: int64(len(content)),
+		NextOffset: fresh[len(fresh)-1].Timestamp.UnixMilli(),
 		Size:       int64(len(content)),
 	}
 }

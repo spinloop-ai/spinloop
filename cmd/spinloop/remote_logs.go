@@ -22,12 +22,6 @@ var logsFetchFn = remote.FetchLogs
 // on it.
 var logsFollowInterval = 5 * time.Second
 
-// logsFollowOverlap is how far back of the last event a follow re-asks from.
-// The shipping agent's delivery lag means an event can land with a timestamp
-// slightly behind one already returned, so each poll deliberately re-reads a
-// little and suppresses what it has already printed by event id.
-const logsFollowOverlap = 10 * time.Second
-
 // cmdRemoteLogs prints the logs an environment's instances shipped to
 // CloudWatch. It reads the durable store rather than the instance, so a boot
 // that failed and an instance that has since terminated are both still
@@ -193,8 +187,7 @@ func followLogs(cfg remote.Config, q remote.LogQuery, format string) error {
 // caller so it can be driven directly.
 func followLogsLoop(ctx context.Context, cfg remote.Config, q remote.LogQuery,
 	format string, w io.Writer) error {
-	printed := map[string]time.Time{}
-	newest := time.Time{}
+	cursor := remote.NewFollowCursor(remote.FollowOverlap)
 	// Labelling is decided across the whole session, not per batch: a poll that
 	// happened to return one instance's lines must not drop the prefix the
 	// previous poll's lines carried. Once a second origin appears the output
@@ -214,17 +207,9 @@ func followLogsLoop(ctx context.Context, cfg remote.Config, q remote.LogQuery,
 		if first && res.Omitted > 0 && format != "json" {
 			fmt.Fprintf(w, "... %d earlier events omitted (raise --limit to see more)\n", res.Omitted)
 		}
-		fresh := make([]remote.LogEvent, 0, len(res.Events))
-		for _, e := range res.Events {
-			if _, seen := printed[e.ID]; seen {
-				continue
-			}
-			printed[e.ID] = e.Timestamp
+		fresh := cursor.Advance(res.Events)
+		for _, e := range fresh {
 			origins[e.Source+"/"+e.Instance] = true
-			fresh = append(fresh, e)
-			if e.Timestamp.After(newest) {
-				newest = e.Timestamp
-			}
 		}
 		if len(fresh) > 0 {
 			if format == "json" {
@@ -235,15 +220,8 @@ func followLogsLoop(ctx context.Context, cfg remote.Config, q remote.LogQuery,
 				writeLogsText(w, fresh, len(origins) > 1)
 			}
 		}
-		// Only the overlap window can produce a duplicate, so ids older than
-		// it are forgotten and the map cannot grow with the session.
-		for id, ts := range printed {
-			if ts.Before(newest.Add(-2 * logsFollowOverlap)) {
-				delete(printed, id)
-			}
-		}
-		if !newest.IsZero() {
-			q.Start = newest.Add(-logsFollowOverlap)
+		if start := cursor.Start(); !start.IsZero() {
+			q.Start = start
 		}
 		select {
 		case <-ctx.Done():
