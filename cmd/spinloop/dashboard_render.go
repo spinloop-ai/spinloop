@@ -194,7 +194,7 @@ func dashNodeContentLines(name string, r fleet.NodeResult, a dashAction) []strin
 	var b strings.Builder
 	switch {
 	case a.verb != "":
-		fmt.Fprintf(&b, "%s  %s\n", name, dashVerbProgress(a.verb))
+		fmt.Fprintf(&b, "%s  %s\n", name, dashActionProgress(a))
 		if a.line != "" {
 			fmt.Fprintln(&b, a.line)
 		}

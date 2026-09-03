@@ -375,6 +375,36 @@ func TestDashTileActionInFlight(t *testing.T) {
 	}
 }
 
+// The elapsed time beside the verb is the tile's heartbeat. A start's own
+// status lines can legitimately stand unchanged for minutes — the attempt that
+// finds capacity holds one request for the whole boot and says nothing while
+// it does — so the moving number is what tells the operator the tile is
+// waiting rather than wedged. It is drawn from the board's clock on every
+// repaint, not baked into a line when that line arrives.
+func TestDashTileActionInFlightShowsElapsed(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.Ascii)
+	now := time.Now()
+	dashNow = func() time.Time { return now }
+	t.Cleanup(func() { dashNow = time.Now })
+
+	a := dashAction{verb: "start", since: now.Add(-150 * time.Second),
+		line: "instance no-capacity; retrying in 120s"}
+	want := dashTileExpected([]string{
+		dashHealthGlyph(dashAttention) + " dev-2  starting  2m 30s",
+		"instance no-capacity; retrying in 120s",
+		"", "", "", "", "", "", "", "", "", "",
+	})
+	if got := dashTile("dev-2", fleet.NodeResult{Name: "dev-2"}, false, a); got != want {
+		t.Errorf("elapsed in-flight tile mismatch:\ngot:\n%q\nwant:\n%q", got, want)
+	}
+	// The same tile a minute later, with nothing else having changed: the
+	// number has moved, which is the whole point of it.
+	now = now.Add(time.Minute)
+	if got := dashTile("dev-2", fleet.NodeResult{Name: "dev-2"}, false, a); !strings.Contains(got, "starting  3m 30s") {
+		t.Errorf("the elapsed time did not move with the clock:\n%q", got)
+	}
+}
+
 // A report that lands while an action is in flight shows on the tile beside
 // the call's own lines: the call says what the operator asked for, the report
 // says what the node is doing — a boot half done already carries a state and
