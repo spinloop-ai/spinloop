@@ -329,6 +329,12 @@ or a seed you want to run again. It starts the same ~20-minute seed instance a
 first deploy does, and re-downloads the weights, so it is opt-in rather than
 something to reach for by habit.
 
+Deploying several environments this way means running `remote deploy` once
+per Spinloop file. [`spinloop fleet deploy`](fleet.md#deploying-remote-nodes)
+does the same derivation, consent, and registration for every `kind: remote`
+node a fleet file names — or a chosen few — in one command, each from its own
+resolved Spinloop source.
+
 ## Flags
 
 | Flag | Meaning |

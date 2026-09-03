@@ -9,6 +9,12 @@
 # token; the engine is on loopback too, which is fine because the node is
 # reached over loopback; and llama.cpp's port is the one the daemon reports, so
 # there is no `engine:` block to write. Everything in this file is the default.
+#
+# `file` points `spinloop fleet start local` at the same Spinloop `spinloop
+# harness -O` wears — the one Spinloop file describes what this node runs
+# either way, so `fleet start` works from cold, before any launch has told
+# the daemon anything.
 nodes:
   - name: local
     host: 127.0.0.1
+    file: ./Spinloop

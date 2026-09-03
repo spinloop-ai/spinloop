@@ -1,0 +1,8 @@
+# What the "llama" environment serves. Found by fleet deploy through the
+# subdirectory convention — llama/Spinloop, matching the node's own name in
+# ../fleet.yaml, so no `file` field is needed there.
+PROVIDER llamacpp
+ALIAS    llama-3-70b
+MODEL    meta-llama/Llama-3.3-70B-Instruct-GGUF:Q4_K_M
+CONTEXT  65536
+REMOTE   llama

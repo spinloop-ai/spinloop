@@ -109,6 +109,15 @@ type NodeConfig struct {
 	// publishing it on a different port than it binds inside, a node
 	// reached through a tunnel.
 	Engine *EngineOverride `yaml:"engine"`
+	// File names the Spinloop file that describes what this node runs —
+	// what `spinloop fleet deploy` reads to create a kind: remote node's
+	// environment, and what `spinloop fleet start` reads to tell a kind:
+	// daemon node's engine what to run. Resolved relative to the fleet
+	// file's directory. Optional: a node's own Name is tried as a
+	// registered `spinloop alias`, then as a same-named subdirectory
+	// beside the fleet file, before either command gives up on it. Not
+	// read by any other fleet command.
+	File string `yaml:"file"`
 }
 
 // EngineOverride is a node's declared engine endpoint. Each field is optional
@@ -228,13 +237,25 @@ func (c *Config) Node(name string) (NodeConfig, bool) {
 // fan-out still runs, over a fleet of one. An unknown name fails here, naming
 // what could have been typed, rather than at the socket.
 func (c *Config) Only(name string) (*Config, error) {
-	entry, ok := c.Node(name)
-	if !ok {
-		return nil, fmt.Errorf("no node %q in %s (known nodes: %s)",
-			name, c.Path, strings.Join(c.Names(), ", "))
+	return c.OnlyNames([]string{name})
+}
+
+// OnlyNames narrows the config to several named nodes, in the order given,
+// so a command that fans out by default can be pointed at exactly the nodes
+// named rather than the whole fleet. An unknown name fails here, before any
+// node is touched, naming what could have been typed.
+func (c *Config) OnlyNames(names []string) (*Config, error) {
+	nodes := make([]NodeConfig, 0, len(names))
+	for _, name := range names {
+		entry, ok := c.Node(name)
+		if !ok {
+			return nil, fmt.Errorf("no node %q in %s (known nodes: %s)",
+				name, c.Path, strings.Join(c.Names(), ", "))
+		}
+		nodes = append(nodes, entry)
 	}
 	narrowed := *c
-	narrowed.Nodes = []NodeConfig{entry}
+	narrowed.Nodes = nodes
 	return &narrowed, nil
 }
 

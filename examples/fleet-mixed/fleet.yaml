@@ -10,15 +10,21 @@
 # in each environment's remote.json — so it names machines and environments,
 # never secrets or accounts.
 nodes:
-  # A GPU box on the network, reached over the daemon's control API.
+  # A GPU box on the network, reached over the daemon's control API. `file`
+  # is what `fleet start gpu-box` reads to tell the daemon what to run.
   - name: gpu-box
     host: 198.51.100.7
     port: 4242
     tokenEnv: GPU_BOX_TOKEN
+    file: ./gpu-box.Spinloop
 
-  # Two cloud environments, driven through their control plane.
+  # Two cloud environments, driven through their control plane. qwen names
+  # its Spinloop explicitly; llama relies on the subdirectory convention
+  # (llama/Spinloop beside this file) instead — both are what `fleet deploy`
+  # reads to create the environment.
   - name: qwen
     kind: remote
+    file: ./qwen.Spinloop
 
   - name: llama
     kind: remote

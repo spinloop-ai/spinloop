@@ -16,10 +16,16 @@ prefer: idle
 
 nodes:
   # A Mac on the LAN serving MLX models. Its daemon listens on the default
-  # port, and it is reachable over the network — so it needs a token.
+  # port, and it is reachable over the network — so it needs a token. `file`
+  # names the Spinloop describing what it runs, so `fleet start studio`
+  # knows what to push — without it, a node has nothing to start with until
+  # some other client tells it. Optional: a registered `spinloop alias`
+  # named "studio", or a `studio/` subdirectory beside this file, would
+  # resolve the same way with no field here at all.
   - name: studio
     host: studio.local
     tokenEnv: STUDIO_TOKEN
+    file: ./studio.Spinloop
 
   # A GPU box reached over tailscale, on a non-default port.
   - name: gpu-box

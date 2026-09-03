@@ -10,8 +10,10 @@ spinloop fleet metrics         # each node's engine + system metrics
 spinloop fleet metrics -w      # the same, redrawn in place until interrupted
 spinloop fleet dashboard       # the interactive tiled view — watch it, drive it
 spinloop fleet route my-spinloop # which node a harness launch would pick
-spinloop fleet start gpu-box   # start one node's engine
-spinloop fleet stop gpu-box    # stop it
+spinloop fleet start gpu-box   # start one or more nodes' engines
+spinloop fleet start --all     # start every node in the fleet
+spinloop fleet stop gpu-box    # stop one or more nodes' engines
+spinloop fleet deploy --all    # create every kind: remote node's AWS environment
 ```
 
 A fleet is also where [`spinloop harness`](harness.md#launching-against-your-fleet)
@@ -94,12 +96,59 @@ nodes:
 ```
 
 The environment's control URLs live in its `remote.json` (under
-`~/.config/spinloop/remotes/<name>/`), written by `spinloop remote deploy` and never
-stored in the fleet file. So a daemon and an environment sit side by side as the
-same kind of row, and an environment that has not been deployed yet shows as
-`config-error` on its row rather than blanking the fleet. See
+`~/.config/spinloop/remotes/<name>/`), written by `spinloop remote deploy` — or by
+[`spinloop fleet deploy`](#deploying-remote-nodes), which creates it from the
+fleet file itself — and never stored in the fleet file. So a daemon and an
+environment sit side by side as the same kind of row, and an environment that
+has not been deployed yet shows as `config-error` on its row rather than
+blanking the fleet. See
 [`examples/fleet-remote`](../../examples/fleet-remote/README.md) and
 [`examples/fleet-mixed`](../../examples/fleet-mixed/README.md).
+
+### A node's Spinloop source
+
+Both `fleet deploy` (for a `kind: remote` node's environment) and `fleet
+start` (for a `kind: daemon` node's engine) need to know what Spinloop file
+describes what a node runs. A node names it with `file`, resolved relative to
+the fleet file:
+
+```yaml
+nodes:
+  - name: qwen
+    kind: remote
+    file: ./envs/qwen.Spinloop
+```
+
+`file` is optional, because the node's own `name` already doubles as a lookup
+key. When it is absent, resolution tries, in order:
+
+1. `name` registered as a `spinloop alias` (`spinloop alias add qwen
+   ./envs/qwen.Spinloop`) — the same lookup a bare `spinloop remote deploy
+   qwen` already performs;
+2. a subdirectory named after the node, beside the fleet file — `qwen/Spinloop`
+   next to `fleet.yaml` for a node named `qwen`, no fields needed on either
+   side.
+
+A fleet laid out as one subdirectory per node therefore needs nothing beyond
+each node's own `name`:
+
+```
+fleet.yaml
+qwen/Spinloop
+llama/Spinloop
+```
+
+Nothing resolving is a per-node error naming all three ways a source could
+have been given. For `fleet deploy` that always fails the node (there is
+nothing to create an environment from); for `fleet start` on a `kind: daemon`
+node it likewise fails that node's start — there is no fallback to a plain,
+config-less start once this field exists. A `kind: remote` node's `start` is
+unaffected by any of this: what it serves is fixed at deploy time, not pushed
+at start time.
+
+This does not apply to `spinloop fleet dashboard`'s `s` key, which still
+starts the selected node with a plain start, whatever the CLI's `fleet start`
+would resolve for it.
 
 ### Spreading or consolidating
 
@@ -378,29 +427,88 @@ Use it to check a route before an agent depends on it, to see what the other
 
 ## Starting and stopping
 
-`fleet start` and `fleet stop` take **one node**:
+`fleet start` and `fleet stop` take one or more node names, or `--all` for
+the whole fleet:
 
 ```sh
-spinloop fleet start gpu-box
+spinloop fleet start gpu-box           # one node
+spinloop fleet start gpu-box gpu-box-2 # several
+spinloop fleet start --all             # every node in the file
+spinloop fleet stop --all
 ```
 
-They deliberately refuse to act on the whole fleet — mutating every engine at
-once is a footgun — so with no node they list the fleet and do nothing. An
-unknown name fails, naming the nodes you could have meant. The daemon's own
-rules still hold: starting a node whose engine is already running reports its
-conflict, and stopping one that is not running succeeds quietly.
+With neither a node nor `--all` they list the fleet and do nothing, rather
+than acting on the whole fleet by accident; `--all` together with node names
+is refused as ambiguous. An unknown name fails before anything is touched,
+naming the nodes you could have meant. Several targeted nodes are driven
+independently — one node's failure is reported against it alone and does not
+stop the others, and the command exits non-zero if any of them failed. The
+daemon's own rules still hold: starting a node whose engine is already
+running reports its conflict, and stopping one that is not running succeeds
+quietly.
+
+**Starting a `kind: daemon` node now requires its [Spinloop
+source](#a-nodes-spinloop-source) to resolve.** When it does, `fleet start`
+derives a deploy config from it and pushes it with the start (`StartWith`) —
+telling the daemon what to run, the same way a routed `harness` launch
+already tells a node what to run when it wakes one. When it does not resolve,
+`fleet start` fails that node rather than starting it with whatever the
+daemon already happens to have configured. This is a breaking change: every
+fleet file with a `kind: daemon` node needs a `file` field, a matching alias,
+or a matching subdirectory added, or `fleet start` fails for that node. A
+`kind: remote` node's `start` is unaffected either way.
+
+## Deploying remote nodes
+
+`fleet deploy` creates the AWS environment for one or more `kind: remote`
+nodes — the step that otherwise has to happen outside the fleet file
+entirely, one `spinloop remote deploy <file>` at a time:
+
+```sh
+spinloop fleet deploy qwen           # one node
+spinloop fleet deploy qwen llama     # several
+spinloop fleet deploy --all          # every kind: remote node in the file
+```
+
+Each node deploys from its own resolved [Spinloop
+source](#a-nodes-spinloop-source), reusing the exact derivation, consent, and
+registration `spinloop remote deploy` uses for the same file — the two can
+never disagree about what a given Spinloop deploys. A `kind: daemon` node
+named explicitly fails the command, explaining that `deploy` provisions cloud
+environments and that node is not one; `--all` only ever selects `kind:
+remote` nodes, so a daemon node is never swept in by it. As with
+`start`/`stop`, no node and no `--all` lists the fleet's `kind: remote` nodes
+and deploys nothing, `--all` plus node names is refused as ambiguous, and
+several targeted nodes deploy independently — one node's guard or failure is
+reported against it alone.
+
+```sh
+spinloop fleet deploy --all --dry-run     # print every plan, deploy nothing
+spinloop fleet deploy qwen --overwrite    # redeploy over a registered environment
+```
+
+`--dry-run`, `--overwrite`, `--reseed`, `--allowed-cidr`, `--region`, and
+`--spinloop-version` mean exactly what they mean on [`spinloop remote
+deploy`](remote.md), applied per node.
 
 ## Flags
 
 | Flag | Meaning |
 | ---- | ------- |
 | `--fleet <path>` | The fleet file (default `./fleet.yaml`) |
+| `--all` | `start`/`stop`/`deploy`: act on every node (or every `kind: remote` node, for `deploy`) instead of named ones |
 | `--node <name>` | `route` only: report this node rather than choosing one |
 | `--prefer` | `route` only: rank by `idle` or `active`, overriding the file |
 | `--format` | `metrics`: `bar` (default), `table`, or `json`; `logs`: `text` (default) or `json` |
 | `-w`, `--watch` | `metrics` only: redraw on an interval until interrupted |
 | `-f`, `--follow` | `logs` only: keep printing new output until interrupted |
 | `--limit` | `logs` only: lines of backlog per node (default 200) |
+| `-n`, `--dry-run` | `deploy` only: print the plan for each targeted node without deploying |
+| `--overwrite` | `deploy` only: proceed against an already-registered or live environment |
+| `--reseed` | `deploy` only: re-fetch the weights even if already in S3 |
+| `--allowed-cidr` | `deploy` only: who may reach each environment's instance |
+| `--region` | `deploy` only: AWS region of the control plane |
+| `--spinloop-version` | `deploy` only: spinloop release each environment installs at boot |
 
 ## See also
 

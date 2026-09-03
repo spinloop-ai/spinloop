@@ -20,6 +20,17 @@ remote`](../../docs/commands/remote.md). List what you already have:
 spinloop remote ls
 ```
 
+Or create both of this fleet's environments straight from the file:
+
+```sh
+spinloop fleet deploy --all --dry-run   # see the plan for qwen and llama first
+spinloop fleet deploy --all             # then create them
+```
+
+That reads [`qwen.Spinloop`](qwen.Spinloop) and
+[`llama/Spinloop`](llama/Spinloop) — see the next section for how a node finds
+its own Spinloop file.
+
 ### 2. Name them as a fleet
 
 [fleet.yaml](fleet.yaml) lists the environments — the node's name is the environment:
@@ -28,7 +39,18 @@ spinloop remote ls
 nodes:
   - name: qwen        # the registered environment, and what you type at `fleet start qwen`
     kind: remote
+    file: ./qwen.Spinloop   # what fleet deploy reads to create it
+
+  - name: llama
+    kind: remote            # no file: resolved from llama/Spinloop instead — see fleet.yaml
 ```
+
+`file` is optional — a node's own name doubles as a lookup key. `qwen` names
+its Spinloop explicitly; `llama` relies on the subdirectory convention
+(`llama/Spinloop` beside this file) instead, and a registered `spinloop
+alias` named after a node is a third way, tried before the subdirectory. See
+[`spinloop fleet`](../../docs/commands/fleet.md#a-nodes-spinloop-source) for
+the full resolution order.
 
 ### 3. Observe from anywhere
 

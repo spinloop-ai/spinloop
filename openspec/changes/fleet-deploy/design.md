@@ -135,10 +135,9 @@ func resolveNodeSpinloop(node fleet.NodeConfig, fleetDir string) (arg, source st
    would.
 2. `file` unset → check the node's own `Name` against the alias registry
    (`config.Load().Alias(name)`, the same lookup `resolveAlias` makes) — a
-   hit means `Name` becomes the argument, so `readSpinloop`'s own
-   `resolveAlias` step resolves it again the same way a standalone `remote
-   deploy <name>` would (printing the same "Using alias …" line), rather
-   than this code pre-resolving the path itself and skipping that step.
+   hit means the alias's own target path becomes the argument, resolved
+   here rather than by handing `Name` to `readSpinloop` and letting *its*
+   `resolveAlias` step resolve it.
 3. No alias named after the node → check whether `<fleetDir>/<Name>` exists
    as a directory; a hit means that directory becomes the argument, and
    `readSpinloop`'s own directory join finds `<fleetDir>/<Name>/Spinloop`
@@ -147,15 +146,20 @@ func resolveNodeSpinloop(node fleet.NodeConfig, fleetDir string) (arg, source st
    all three: no `file` field, no alias named `<Name>`, no `<Name>/`
    subdirectory beside the fleet file.
 
-Trying the alias registry before the subdirectory matches the existing
-precedence in `resolveAlias` itself, where a registered name is consulted
-before anything is looked for on disk. Steps 2 and 4 need one read of the
-alias registry to decide *whether* to try passing `Name` through — that read
-is unavoidable because the caller needs to know whether to fall through to
-the subdirectory check, not just call `deriveDeployTarget` once and inspect
-the error: `readSpinloop`'s own literal-path fallback after a failed alias
-lookup would otherwise silently resolve `Name` against the *current working
-directory* rather than the fleet file's directory, the wrong base.
+Step 2 resolves the alias's path itself rather than reusing `readSpinloop`'s
+own `resolveAlias` on the bare `Name` — an earlier version of this design did
+the latter, and it is wrong: `resolveAlias` deliberately lets a same-named
+path on disk beat a registered alias (documented at its definition: "every
+existing invocation passes a path, so registering an alias must never change
+what an already-working command does"). A node named the same as its own
+subdirectory (the common case for the layout step 3 exists to support) would
+then resolve to the subdirectory even with an alias registered — the
+opposite of this function's own precedence, alias before subdirectory. This
+was caught by `TestCmdFleetDeployAliasWinsOverSubdirectory` failing against
+the original implementation. Steps 2 and 4 need one read of the alias
+registry to decide *whether* to try it — that read is unavoidable because
+the caller needs to know whether to fall through to the subdirectory check,
+not just call `deriveDeployTarget` once and inspect the error.
 
 `resolveNodeSpinloop` is shared by both consumers, and both treat step 4 the
 same way: a hard per-node failure (see the next two decisions). Neither
