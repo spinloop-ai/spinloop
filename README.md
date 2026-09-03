@@ -3,11 +3,16 @@
 </p>
 
 <p align="center">
-  <code>spinloop</code> is a CLI for a model's whole lifecycle — deploy it, host it, watch it, and point a coding agent at it — driven from a static no-dependencies binary.
+  Spin up your agent loop. One CLI to run a fleet of LLMs on local machine / LAN / Tailscale or in AWS.
+</p>
+<p align="center">
+  <code>spinloop</code> is a CLI for deploying models, observing them via the command line and connecting them to your coding agent/harness.
+  <br/>
+  It's a static, zero-dependencies binary you can run anywhere.
 </p>
 
 <p align="center">
-  <em>// opencode, Pi or lucinate &middot; llama.cpp, vLLM or oMLX &middot; deploy local, LAN or cloud &middot; the whole fleet, on one dashboard.</em>
+  <em>llama.cpp, vLLM, MTPLX or oMLX &middot; deploy local, LAN or cloud &middot; opencode, Pi or Lucinate.</em>
 </p>
 
 ---
