@@ -54,7 +54,11 @@ the resulting behavior.
   requires one for a `kind: remote` node. No unreleased tool has existing
   users to protect, so there is no fallback path to design around: one
   resolution mechanism, required everywhere it is the only source of truth.
-- One node's deploy failure or guard does not stop the others.
+- `fleet deploy` and `fleet start` both take one or more explicit node names
+  or `--all`, so bringing up several nodes at once is one command rather
+  than one invocation per node.
+- One node's deploy or start failure does not stop the others targeted in
+  the same command.
 
 **Non-Goals:**
 - Provisioning `kind: daemon` nodes (installing the daemon on a bare
@@ -67,6 +71,9 @@ the resulting behavior.
 - Changing anything about how an already-deployed remote node's environment
   itself is driven (`stop`/`status`), or how a `kind: remote` node's `start`
   behaves — it always uses a plain start, resolved source or not.
+- Extending `fleet stop` to accept multiple nodes or `--all`. Out of scope —
+  it keeps its existing "exactly one node, never the whole fleet" behavior
+  unchanged; nothing here requires touching it.
 - A new deploy Lambda contract or control-plane change. `fleet deploy` is a
   client-side batching of the same calls `remote deploy` already makes.
 
@@ -197,55 +204,85 @@ same shape `NodeResult` already gives fan-out callers (ok / guarded /
 failed), rendered as one line per node plus a final non-zero exit when any
 node failed.
 
-### `fleet start` requires a daemon node's resolved source
+### `fleet start` takes multiple nodes or `--all`, reusing `FanOut`
 
-`driveOneNode`'s call closure currently only receives the live `fleet.Node`:
-
-```go
-func(ctx context.Context, n fleet.Node) fleet.NodeResult
+```
+spinloop fleet start <node...>
+spinloop fleet start --all
 ```
 
-`fleetStartCmd`'s closure needs the resolved `NodeConfig` and the fleet's
-directory too, to resolve a source before starting. `driveOneNode` gains
-those to its call signature:
+Same target-selection rule as `fleet deploy`: no node and no `--all` fails,
+listing the fleet's nodes; `--all` plus names is ambiguous; an unknown name
+fails before anything starts. Unlike `deploy`, `start` is not restricted to
+one kind — both a `kind: daemon` and a `kind: remote` name are valid
+targets, since starting (unlike creating a cloud environment) is meaningful
+for either. `--all` therefore selects every node in the file, not just the
+remote ones.
 
-```go
-func(ctx context.Context, cfg *fleet.Config, entry fleet.NodeConfig, n fleet.Node) fleet.NodeResult
-```
+Unlike a deploy target, every node `start` targets already exists as a
+`fleet.Node` — a `kind: daemon` node's daemon is already reachable, a
+`kind: remote` node's environment is already registered (`fleet deploy`, or
+a standalone `remote deploy`, already ran). So `start` reuses `Config.FanOut`
+directly instead of a bespoke loop, unlike `fleet deploy` (see that
+decision's reasoning about a deploy having no `Node` yet):
 
-`fleetStopCmd`'s closure ignores the additions — stopping needs no config.
+1. Add `func (c *Config) OnlyNames(names []string) (*Config, error)` to
+   `internal/fleet/config.go`, narrowing to several named nodes in the order
+   given — an unknown name fails immediately, naming the known nodes, before
+   any node is touched. `Only(name string)` becomes `OnlyNames([]string{name})`,
+   unchanged for its existing callers (`fleet logs <node>`,
+   `select.go`'s `--node` pin).
+2. `fleetStartCmd` builds a `fleet.Call` closure once, closing over `cfg`,
+   that looks up `cfg.Node(n.Name())` to recover the targeted node's
+   `NodeConfig` (kind, `File`) — `Call`'s signature (`func(ctx, Node)
+   NodeResult`) does not carry it, but every node `FanOut`/`FanOutNodes`
+   hands the closure came from `cfg` in the first place, so the lookup by
+   name always succeeds. No signature change to `fleet.Call` or `FanOut`
+   is needed.
+3. For a `kind: daemon` entry, the closure resolves a source
+   (`resolveNodeSpinloop`), derives a `dc` (`deployConfigForNode`), and
+   calls `n.StartWith`; for `kind: remote`, it calls `n.Start` unchanged.
+   Failure to resolve is a `NodeResult` like any other — `FanOut` already
+   treats a bad node as a row, not an abort, so a mix of resolved and
+   unresolved daemon nodes in the same `--all`/multi-name run behaves the
+   same way `fleet deploy` already does per node.
+4. `--all` calls `cfg.FanOut(ctx, call)` directly; named nodes call
+   `cfg.OnlyNames(names)` then `.FanOut(ctx, call)` on the narrowed config.
+   Rendering reuses the existing `NodeResult`-based row rendering
+   (`fleetRow`-style), extended to show which nodes started, which were
+   guarded by the daemon's own conflict rules, and which failed to resolve
+   or start; exit non-zero if any targeted node failed.
 
-`fleetStartCmd`'s closure, for a `kind: daemon` entry: call
-`resolveNodeSpinloop`; on failure, fail that node's start, naming the three
-ways a source could have been given, exactly as `fleet deploy` fails an
-unresolved `kind: remote` node. On success, `readSpinloop` +
-`applySpinloopEnv` + `deployConfigForNode` (the node-owned derivation
-`Config.Wake` already uses — no forced context size, the preset's bind
-survives) to get a `dc`, print which source resolved and what it derived
-(the same transparency `fleet deploy` gives), then `n.StartWith(ctx, &dc,
-engineKey)`. A `kind: remote` entry always uses a plain `n.Start(ctx)`
-regardless of whether a source resolves for it — `StartWith` refuses a
-config for that kind unconditionally, so there is nothing to resolve for.
+`driveOneNode` (`cmd/spinloop/fleet.go`) is untouched and now serves only
+`fleetStopCmd`: stop keeps its existing "exactly one node, no whole-fleet
+action" behavior, unaffected by anything in this change.
 
 **Alternative considered**: fall back to a plain, config-less `Start` when
-nothing resolves, so a fleet file with no `file`/alias/subdirectory for a
-node keeps working. Rejected: that fallback exists only to protect a user
-of today's `fleet start` who has not adopted this field, and there is no
-such user yet — carrying the fallback would mean permanently maintaining two
-start paths (config-less and config-driven) for a distinction that only
-matters during a migration nobody needs to make. A `kind: daemon` node
-without a resolvable source is a fleet-file omission to fix, the same as an
-undeployed `kind: remote` node is.
+nothing resolves for a `kind: daemon` node, so a fleet file with no
+`file`/alias/subdirectory for it keeps working. Rejected: that fallback
+exists only to protect a user of today's `fleet start` who has not adopted
+this field, and there is no such user yet — carrying it would mean
+permanently maintaining two start paths (config-less and config-driven) for
+a distinction that only matters during a migration nobody needs to make. A
+`kind: daemon` node without a resolvable source is a fleet-file omission to
+fix, the same as an undeployed `kind: remote` node is.
+
+**Alternative considered**: extend `driveOneNode` itself (adding `cfg`/
+`entry` parameters to its call closure) rather than giving `start` its own
+implementation. Rejected once `start` needed `FanOut`'s concurrency and
+`OnlyNames`' multi-node narrowing — `driveOneNode` is built around "resolve
+exactly one node, then call"; bending it to also fan out over several would
+leave `stop` carrying machinery it never uses.
 
 ### Command placement
 
 `fleetDeployCmd` lives in `cmd/spinloop/fleet.go` beside the other fleet
 subcommands, calling into `cmd/spinloop/remote.go`'s new
 `deriveDeployTarget` / `runDeploy` and the new `resolveNodeSpinloop` helper
-(same package, so no export needed); `fleetStartCmd`'s changed closure calls
-the same `resolveNodeSpinloop` and `deployConfigForNode`. No new
-`internal/fleet` dependency on `internal/remote`'s deploy internals beyond
-what `NewNode` already imports.
+(same package, so no export needed); `fleetStartCmd`'s new implementation
+calls the same `resolveNodeSpinloop` and `deployConfigForNode`, plus the new
+`internal/fleet` `OnlyNames`. No new `internal/fleet` dependency on
+`internal/remote`'s deploy internals beyond what `NewNode` already imports.
 
 ## Risks / Trade-offs
 
@@ -253,10 +290,18 @@ what `NewNode` already imports.
   environment (distinct Lambda invocation, distinct S3/EC2 resources), so
   there is no shared mutable state to race on; this mirrors `FanOut` already
   running concurrent calls against distinct nodes.
-- **Partial success is easy to misread as full success** → the command
-  prints one outcome line per node (deployed / guarded / failed) and exits
-  non-zero on any failure, the same "row, not a silent gap" convention
-  `fleet status` and `fleet metrics` already use for unreachable nodes.
+- **Partial success is easy to misread as full success** → both commands
+  print one outcome line per targeted node (deployed/started, guarded,
+  failed) and exit non-zero on any failure, the same "row, not a silent
+  gap" convention `fleet status` and `fleet metrics` already use for
+  unreachable nodes.
+- **`fleet start --all` wakes every node in the fleet at once, daemon and
+  remote alike** → each start is still gated by the daemon's or the control
+  plane's own conflict rules (an already-running engine reports its
+  conflict, per node), and a `kind: remote` wake is the same call
+  `spinloop remote start` already makes for one environment; `--all` costs
+  no more than running `start` against each node in turn, just concurrently
+  and in one command.
 - **A node's resolved Spinloop file drifts from its fleet-file entry
   unnoticed** → out of scope here; `fleet deploy`'s job is to run the deploy
   that file describes, not to detect drift. `spinloop fleet route` already

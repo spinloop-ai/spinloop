@@ -72,23 +72,37 @@
       completion (`compRegister(c, "fleet", compFiles)`, node-name
       completion for positional args as `start`/`stop` already do).
 
-## 5. `spinloop fleet start` requires a daemon node's resolved source
+## 5. `spinloop fleet start` takes multiple nodes or `--all`
 
-- [ ] 5.1 Change `driveOneNode`'s call closure signature in
-      `cmd/spinloop/fleet.go` from `func(ctx, fleet.Node) fleet.NodeResult`
-      to `func(ctx, *fleet.Config, fleet.NodeConfig, fleet.Node)
-      fleet.NodeResult`, passing the resolved `NodeConfig` and the fleet
-      `*Config` through. Update `fleetStopCmd`'s closure to ignore the new
-      parameters (unchanged behavior).
-- [ ] 5.2 Update `fleetStartCmd`'s closure: for a `kind: daemon` entry, call
-      `resolveNodeSpinloop`; on failure, fail that node's start, naming all
-      three ways a source could have been given (no fallback to a plain
-      start). On success, `readSpinloop` + `applySpinloopEnv` +
-      `deployConfigForNode` to derive a `dc`, report the resolved source and
-      derived config, then `n.StartWith(ctx, &dc, engineKey)`. For a `kind:
-      remote` entry, always use plain `n.Start(ctx)` regardless of whether a
-      source resolves.
-- [ ] 5.3 Confirm `remoteNode.StartWith`'s existing refusal
+- [ ] 5.1 Add `func (c *Config) OnlyNames(names []string) (*Config, error)`
+      to `internal/fleet/config.go`, narrowing to several named nodes in the
+      order given (unknown name fails immediately, naming the known nodes).
+      Reimplement `Only(name string)` as `OnlyNames([]string{name})`; confirm
+      its existing callers (`cmd/spinloop/fleet_logs.go`,
+      `internal/fleet/select.go`'s `--node` pin) and tests
+      (`internal/fleet/logs_test.go`) are unaffected.
+- [ ] 5.2 Rewrite `fleetStartCmd` in `cmd/spinloop/fleet.go` on `OnlyNames`/
+      `FanOut` instead of `driveOneNode`: `Use: "start"`, `Args:
+      cobra.ArbitraryArgs`, add `--all`; no node args and no `--all` fails
+      listing the fleet's nodes; `--all` plus node args fails as ambiguous;
+      named args resolve via `cfg.OnlyNames(args)` (fails before starting
+      anything on an unknown name); `--all` runs `cfg.FanOut` directly over
+      every node in the file.
+- [ ] 5.3 Build the shared `fleet.Call` closure once per invocation, closing
+      over `cfg`: inside, look up `entry, _ := cfg.Node(n.Name())` to
+      recover the targeted node's `NodeConfig`. For a `kind: daemon` entry,
+      call `resolveNodeSpinloop`; on failure, return a failed `NodeResult`
+      naming all three ways a source could have been given (no fallback to
+      a plain start). On success, `readSpinloop` + `applySpinloopEnv` +
+      `deployConfigForNode` to derive a `dc`, then `n.StartWith(ctx, &dc,
+      engineKey)`, reporting the resolved source and derived config
+      alongside the result. For a `kind: remote` entry, always use plain
+      `n.Start(ctx)`.
+- [ ] 5.4 Render one line per targeted node (started / guarded / failed) the
+      same way `fleet deploy` does; exit non-zero if any targeted node
+      failed. Leave `driveOneNode` and `fleetStopCmd` untouched — stop keeps
+      taking exactly one node name, no `--all`.
+- [ ] 5.5 Confirm `remoteNode.StartWith`'s existing refusal
       (`internal/fleet/remote_node.go:77-83`) means a `kind: remote` node
       is never sent a resolved config by `fleet start` — resolution is only
       ever attempted for `kind: daemon` entries.
@@ -125,7 +139,18 @@
       `Start` and `StartWith` are both never invoked.
 - [ ] 6.9 `fleet start` on a `kind: remote` node with a resolvable source
       still calls plain `Start`, never `StartWith`.
-- [ ] 6.10 `go test ./... -cover` stays at or above the project's 80% floor.
+- [ ] 6.10 `internal/fleet/config_test.go`: `OnlyNames` narrows to several
+      named nodes in the order given; an unknown name among several fails
+      immediately, naming the known nodes; `Only`'s existing behavior and
+      tests (`internal/fleet/logs_test.go`) are unaffected.
+- [ ] 6.11 `cmd/spinloop/fleet_test.go`: `fleet start gpu-a gpu-b` starts
+      both (independently — one succeeding while the other fails does not
+      abort the first); `fleet start --all` starts every node in the file,
+      daemon and remote alike; `fleet start` with no args and no `--all`
+      fails listing the nodes; `--all` plus node args fails as ambiguous; an
+      unknown name among several fails before starting any; `fleet stop`
+      still rejects more than one node and has no `--all` flag.
+- [ ] 6.12 `go test ./... -cover` stays at or above the project's 80% floor.
 
 ## 7. Docs and examples
 
@@ -162,3 +187,7 @@
       confirm the engine starts with the resolved config; confirm a node
       with no resolvable source fails naming the three ways one could have
       been given, rather than starting.
+- [ ] 8.5 Manually exercise `spinloop fleet start --all` against
+      `fleet-docker` or `fleet-mixed` (several nodes, mixed kinds) and
+      confirm every node starts in one command; confirm `spinloop fleet
+      stop` still refuses more than one node name.
