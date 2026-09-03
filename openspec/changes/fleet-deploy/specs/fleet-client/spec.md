@@ -2,29 +2,43 @@
 
 ### Requirement: Fleet deploy targets remote nodes
 
-`spinloop fleet deploy [node...]` SHALL deploy the AWS environment for one or
-more `kind: remote` nodes in the fleet file. Named with no arguments, it
-SHALL target every `kind: remote` node in the file. Named with one or more
-node names, it SHALL target exactly those. An unknown node name SHALL fail
-the command, naming the known nodes, without deploying anything. A named
-`kind: daemon` node SHALL fail the command, explaining that `fleet deploy`
-provisions cloud environments and that node is not one; a `kind: daemon` node
-present only because no nodes were named SHALL instead be skipped, reported
-as skipped, and not counted as a failure.
+`spinloop fleet deploy <node...>` SHALL deploy the AWS environment for one or
+more `kind: remote` nodes in the fleet file, named explicitly.
+`spinloop fleet deploy --all` SHALL target every `kind: remote` node in the
+file instead. Invoked with neither a node name nor `--all`, it SHALL fail,
+listing the fleet's `kind: remote` nodes, and deploy nothing — mutating
+however many cloud environments a fleet file lists SHALL NOT happen by
+default. `--all` combined with one or more node names SHALL fail as
+ambiguous. An unknown node name SHALL fail the command, naming the known
+nodes, without deploying anything. A named `kind: daemon` node SHALL fail
+the command, explaining that `fleet deploy` provisions cloud environments
+and that node is not one; `--all` SHALL only ever select `kind: remote`
+nodes, so a `kind: daemon` node is never targeted by it and is not reported
+at all.
 
-#### Scenario: Deploy the whole remote fleet
+#### Scenario: Deploy every remote node
 
-- **WHEN** `spinloop fleet deploy` runs with no node arguments against a file
-  mixing `kind: remote` and `kind: daemon` nodes
-- **THEN** every `kind: remote` node is deployed, every `kind: daemon` node is
-  reported as skipped, and the command's success does not depend on the
-  skipped nodes
+- **WHEN** `spinloop fleet deploy --all` runs against a file mixing `kind:
+  remote` and `kind: daemon` nodes
+- **THEN** every `kind: remote` node is deployed and no `kind: daemon` node
+  is touched or mentioned
 
 #### Scenario: Deploy named nodes
 
 - **WHEN** `spinloop fleet deploy gpu-a gpu-b` runs and both are `kind:
   remote` nodes in the file
 - **THEN** only those two are deployed, whatever else the file lists
+
+#### Scenario: No target is an error
+
+- **WHEN** `spinloop fleet deploy` runs with no node arguments and no `--all`
+- **THEN** it fails, listing the fleet's `kind: remote` nodes, and deploys
+  nothing
+
+#### Scenario: Combining --all with node names is an error
+
+- **WHEN** `spinloop fleet deploy --all gpu-a` runs
+- **THEN** it fails as ambiguous and deploys nothing
 
 #### Scenario: An unknown node name fails the command
 
@@ -41,17 +55,17 @@ as skipped, and not counted as a failure.
 ### Requirement: Fleet deploy derives and applies each node's config
 
 Each targeted node SHALL be deployed from the Spinloop file its deploy
-source resolves to (see fleet-config's "Remote node deploy source" and
-"...falls back to name-based lookup" requirements: its `file` field, else an
-alias registered under its name, else a `<name>/` subdirectory beside the
-fleet file), deriving the deploy config and registering the resulting
-environment exactly as `spinloop remote deploy <file>` does for that same
-file — the two SHALL NOT be able to disagree about what a given Spinloop file
-deploys. A targeted node for which no source resolves SHALL fail for that
-node alone, naming all three ways one could have been given, without
-touching the other targeted nodes. The resolved source (the path used, or
-the alias name when one was used) SHALL be reported alongside that node's
-plan, so which of the three supplied it is never left to be inferred.
+source resolves to (see fleet-config's "Node Spinloop source" and "...falls
+back to name-based lookup" requirements: its `file` field, else an alias
+registered under its name, else a `<name>/` subdirectory beside the fleet
+file), deriving the deploy config and registering the resulting environment
+exactly as `spinloop remote deploy <file>` does for that same file — the two
+SHALL NOT be able to disagree about what a given Spinloop file deploys. A
+targeted node for which no source resolves SHALL fail for that node alone,
+naming all three ways one could have been given, without touching the other
+targeted nodes. The resolved source (the path used, or the alias name when
+one was used) SHALL be reported alongside that node's plan, so which of the
+three supplied it is never left to be inferred.
 
 Nodes SHALL be deployed independently: one node already registered or live
 SHALL require `--overwrite` for that node exactly as a standalone `remote
@@ -92,6 +106,70 @@ any of them, exactly as a standalone `remote deploy --dry-run` does for one.
 
 #### Scenario: Dry run previews every targeted node
 
-- **WHEN** `spinloop fleet deploy --dry-run` runs with no node arguments
+- **WHEN** `spinloop fleet deploy --dry-run --all` runs
 - **THEN** the plan for every `kind: remote` node in the file is printed and
   no environment is created or registered
+
+## MODIFIED Requirements
+
+### Requirement: Driving one node
+
+`spinloop fleet start <node>` and `spinloop fleet stop <node>` SHALL call the named
+node's daemon start and stop endpoints. Start and stop SHALL require a node
+name: invoked without one they SHALL fail and list the available nodes, rather
+than acting on the whole fleet. An unknown node name SHALL fail, naming the
+known nodes. The daemon's own rules still hold — a start while that node's
+engine is running is reported as the daemon's conflict, and a stop is
+idempotent.
+
+For a `kind: daemon` node, `fleet start` SHALL first attempt to resolve that
+node's Spinloop source (see fleet-config's "Node Spinloop source" and
+"...falls back to name-based lookup" requirements). When one resolves, the
+client SHALL derive a deploy config from it — the same node-owned derivation
+a routed wake already uses (`deployConfigForNode`) — report the resolved
+source and derived config alongside the node's name, and start the node's
+engine with that config (`StartWith`) rather than a plain start, exactly as a
+routed wake tells a node what to serve. When no source resolves for that
+node, `start` SHALL fall back to a plain start unchanged from today's
+behavior — a fleet file that declares no source for any node behaves exactly
+as it did before this requirement existed. A `kind: remote` node's start is
+unaffected regardless of whether a source resolves for it: what it serves is
+fixed at deploy time, not pushed at start time.
+
+#### Scenario: Start a named node
+
+- **WHEN** `spinloop fleet start gpu-box` runs and that node is idle
+- **THEN** the client calls that node's daemon start endpoint and reports the
+  resulting state
+
+#### Scenario: Start with no node names the fleet
+
+- **WHEN** `spinloop fleet start` runs with no node argument
+- **THEN** it fails, listing the nodes, and starts nothing
+
+#### Scenario: Unknown node
+
+- **WHEN** `spinloop fleet stop nope` runs and no node is named `nope`
+- **THEN** it fails, naming the known nodes, and stops nothing
+
+#### Scenario: Starting a daemon node with a resolved source pushes it
+
+- **WHEN** `spinloop fleet start dev-1` runs, `dev-1` is a `kind: daemon`
+  node, and its Spinloop source resolves (by `file`, alias, or subdirectory)
+- **THEN** the client derives a deploy config from the resolved Spinloop,
+  reports the resolved source, and starts `dev-1`'s engine with that config
+
+#### Scenario: Starting a daemon node with no resolved source is unchanged
+
+- **WHEN** `spinloop fleet start studio` runs, `studio` is a `kind: daemon`
+  node, and no `file` field, alias, or subdirectory resolves for it
+- **THEN** the client starts `studio`'s engine with a plain start, exactly as
+  it would have before `fleet deploy` or this resolution existed
+
+#### Scenario: Starting a remote node is unaffected by a resolved source
+
+- **WHEN** `spinloop fleet start gpu-env` runs, `gpu-env` is a `kind: remote`
+  node, and a Spinloop source resolves for it
+- **THEN** the client starts it with a plain start; the resolved source is
+  not used, since a `kind: remote` node's `StartWith` always refuses a
+  deploy config

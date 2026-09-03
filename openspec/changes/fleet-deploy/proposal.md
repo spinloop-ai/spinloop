@@ -1,20 +1,25 @@
 ## Why
 
-A `kind: remote` fleet node only works once its AWS environment has been
-deployed — but that deployment happens entirely outside `fleet.yaml`, one
-environment at a time, via `spinloop remote deploy <spinloop-file>` run by
-hand for each. Standing up a multi-node remote fleet today means deploying
-each environment separately and then, separately again, listing them in
-`fleet.yaml`. There is no single command that reads a fleet file and brings
-its remote nodes into existence.
+A fleet-file node has no declared link to the Spinloop file that says what it
+runs. For a `kind: remote` node this means its AWS environment can only be
+brought into existence outside `fleet.yaml` entirely, one environment at a
+time, via `spinloop remote deploy <spinloop-file>` run by hand. For a `kind:
+daemon` node it means `spinloop fleet start <node>` can only start whatever
+the daemon already happens to be configured to run — it has no way to say
+"start this node serving what this Spinloop names," the way a routed launch
+already can via `Config.Wake`/`StartWith` for the Spinloop it happens to be
+launching. Standing up a multi-node remote fleet today means deploying each
+environment separately and then, separately again, listing them in
+`fleet.yaml`; naming what a daemon node should run means editing that
+node's own local configuration rather than the fleet file.
 
 ## What Changes
 
-- Add an optional `file:` field to `kind: remote` fleet-file node entries,
-  naming the Spinloop file that node deploys from (resolved relative to the
-  fleet file, the way other Spinloop-relative paths already resolve). It is
-  optional because a node's `name` already doubles as a lookup key, resolved
-  in order when `file` is absent:
+- Add an optional `file:` field to a fleet-file node entry (either kind),
+  naming the Spinloop file that describes what the node runs. The path
+  resolves relative to the fleet file, the way other Spinloop-relative paths
+  already resolve. It is optional because a node's `name` already doubles as
+  a lookup key, resolved in order when `file` is absent:
   1. the node's own `name` resolved through the existing `spinloop alias`
      registry, exactly as a bare argument to `spinloop remote deploy <name>`
      already resolves today;
@@ -25,29 +30,32 @@ its remote nodes into existence.
 
   A node registered with `spinloop alias add <same-name> <path>`, or simply
   laid out as `<node-name>/Spinloop` beside the fleet file, therefore needs
-  no `file` field at all. `kind: daemon` nodes declare no `file` field and
-  are never targeted by `fleet deploy` — not because a daemon node has no
-  notion of a Spinloop file telling it what to serve (it does: routing
-  already wakes an idle daemon node with a `DeployConfig` derived from
-  whatever Spinloop the launch names, via `Config.Wake`/`StartWith`), but
-  because that is a per-launch, dynamic push with nothing stored against the
-  node, whereas `fleet deploy` persistently creates the environment a
-  `kind: remote` node addresses — a step a daemon node's machine, already
-  provisioned by the operator, has no equivalent of.
-- Add `spinloop fleet deploy [node...]`: deploys the AWS environment for each
-  named `kind: remote` node (or every `kind: remote` node in the file when
-  none are named), reusing the same derivation, consent, and registration
+  no `file` field at all.
+- Add `spinloop fleet deploy <node...>` (or `--all`): deploys the AWS
+  environment for each named `kind: remote` node, or every `kind: remote`
+  node with `--all`, reusing the same derivation, consent, and registration
   behavior as `spinloop remote deploy` — one node's deploy config comes from
-  its own `file` field, or failing that its name resolved as an alias, or
-  failing that a `<node-name>/Spinloop` beside the fleet file.
+  its resolved Spinloop source. Naming no node and passing no `--all` fails,
+  listing the fleet's `kind: remote` nodes, rather than silently deploying
+  the whole fleet — the same "an explicit target is required" rule
+  `start`/`stop` already enforce for mutating fleet commands. Naming a
+  `kind: daemon` node fails, explaining that `fleet deploy` provisions cloud
+  environments and that node is not one; `--all` only ever selects `kind:
+  remote` nodes, so a daemon node is never swept in by it.
 - Node deploys run independently and concurrently; one node's failure or a
   registered/live guard on it is reported against that node and does not
-  stop the others.
-- `--dry-run` and `--overwrite` carry the same meaning as on
-  `spinloop remote deploy`, applied per node.
-- `kind: daemon` nodes named on the command line, or present when no nodes
-  are named, are skipped with an explanation — `fleet deploy` provisions
-  cloud environments; a daemon node's machine is the operator's own.
+  stop the others. `--dry-run` and `--overwrite` carry the same meaning as
+  on `spinloop remote deploy`, applied per node.
+- `spinloop fleet start <node>` on a `kind: daemon` node now tries the same
+  resolution first: when the node's Spinloop source resolves, the client
+  derives a deploy config from it (`deployConfigForNode`, the same
+  derivation a routed wake already uses) and starts the node's engine with
+  it via `StartWith`, exactly as a routed launch wakes a node — telling the
+  daemon what to run rather than trusting it already knows. When nothing
+  resolves for that node, `start` is unchanged: a plain start against
+  whatever the daemon already has configured. A `kind: remote` node's start
+  is unaffected either way — what it serves is fixed at deploy time, and its
+  `StartWith` already refuses a deploy config for that reason.
 
 ## Capabilities
 
@@ -57,22 +65,25 @@ its remote nodes into existence.
 
 ### Modified Capabilities
 
-- `fleet-config`: `kind: remote` node entries gain an optional `file` path
-  field naming the Spinloop file that node deploys from, falling back to
-  resolving the node's own name as a registered alias, then to a
+- `fleet-config`: a fleet-file node (either kind) gains an optional `file`
+  path field naming the Spinloop file that describes what it runs, falling
+  back to resolving the node's own name as a registered alias, then to a
   `<node-name>/Spinloop` subdirectory beside the fleet file, when absent.
-- `fleet-client`: add the `spinloop fleet deploy` command — its node
-  selection, per-node deploy behavior, concurrency, and reporting.
+- `fleet-client`: add the `spinloop fleet deploy` command (node selection,
+  per-node deploy behavior, concurrency, reporting), and modify `spinloop
+  fleet start` to use a `kind: daemon` node's resolved Spinloop source when
+  one resolves.
 
 ## Impact
 
 - `internal/fleet/config.go`: `NodeConfig` gains a `File` field
   (`yaml:"file"`), resolved relative to the fleet file's directory when set.
-- `cmd/spinloop/fleet.go`: new `fleetDeployCmd`, reusing `readSpinloop`'s
-  alias-then-path resolution, `deployConfigFor`, `applySpinloopEnv`, and the
+- `cmd/spinloop/fleet.go`: new `fleetDeployCmd`; `fleetStartCmd`/
+  `driveOneNode` gain the resolve-then-`StartWith` path for daemon nodes.
+  Both reuse `readSpinloop`'s alias-then-path resolution, `deployConfigFor`/
+  `deployConfigForNode`, `applySpinloopEnv`, and (for deploy) the
   registration/consent logic factored out of `runRemoteDeploy` in
   `cmd/spinloop/remote.go`.
 - `docs/commands/fleet.md` and `docs/commands/remote.md`: document the new
-  field and command, and cross-reference the now-two ways to deploy a remote
-  environment.
+  field, its fallbacks, the new command, and the changed `start` behavior.
 - `examples/fleet-remote/`: extend to show a deployable node.
