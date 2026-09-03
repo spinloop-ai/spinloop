@@ -89,6 +89,17 @@ export async function handler(event: LambdaFunctionURLEvent): Promise<LambdaFunc
   }
   const reseed = parsedBody.reseed === true;
 
+  // An externally provided key to store as the environment's key. A property
+  // of this request, not of what the environment serves — read from the raw
+  // body the way reseed is, never persisted, and never logged: it lands in
+  // the environment's secret, and the reply carries only what happened to it.
+  if (parsedBody.apiKey !== undefined && typeof parsedBody.apiKey !== 'string') {
+    return jsonResponse(400, {
+      error: `apiKey must be a string, got ${JSON.stringify(parsedBody.apiKey)}`,
+    });
+  }
+  const apiKey = typeof parsedBody.apiKey === 'string' ? parsedBody.apiKey : '';
+
   // Seed before anything else: if the weights are missing and the seed cannot
   // even be launched, the environment (and any current working config) is left
   // alone rather than half-created.
@@ -123,6 +134,7 @@ export async function handler(event: LambdaFunctionURLEvent): Promise<LambdaFunc
   // the first time — a security group that admits nobody is useless — and
   // optional afterwards, when an absent value means "leave ingress alone".
   let baseUrl: string;
+  let apiKeyAction: string;
   try {
     const eip = await ensureEnvEip(env);
     baseUrl = baseUrlFor(eip.publicIp, PORT);
@@ -133,7 +145,10 @@ export async function handler(event: LambdaFunctionURLEvent): Promise<LambdaFunc
         error: `environment ${JSON.stringify(env)} has no security group yet — provide allowedCidr`,
       });
     }
-    await ensureEnvApiKey(env);
+    // A supplied key is a rotation (created or replaced, per the secret's
+    // state); without one the secret is generated only if absent and never
+    // regenerated. The reply carries the action, never the value.
+    apiKeyAction = await ensureEnvApiKey(env, apiKey || undefined);
   } catch (err) {
     console.log(JSON.stringify({ action: 'deploy', environment: env, error: errorName(err) }));
     return jsonResponse(502, {
@@ -167,6 +182,9 @@ export async function handler(event: LambdaFunctionURLEvent): Promise<LambdaFunc
     weightsPrefix: config.weightsPrefix,
     seeding,
     ...(seedId ? { seedId } : {}),
+    // Present only when the deploy supplied a key — the action taken on the
+    // environment's secret, never the value.
+    ...(apiKey ? { apiKeyAction } : {}),
     // A wake before the seed finishes would sync an incomplete prefix, so the
     // reply names the command that says when it is done rather than quoting an
     // estimate and leaving the operator to guess.

@@ -617,6 +617,101 @@ func TestRemoteDeploy_SpinloopVersion(t *testing.T) {
 	})
 }
 
+// A supplied key is resolved from the environment the Spinloop's local
+// environment populated, reaches the signed body as a request-scoped field,
+// and the report says what happened to it — the action, never the value.
+func TestRemoteDeploy_APIKeyEnvReachesTheRequest(t *testing.T) {
+	isolateConfig(t)
+	stubAWSEnv(t)
+
+	var gotAPIKey string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var got struct {
+			APIKey string `json:"apiKey"`
+		}
+		_ = json.Unmarshal(body, &got)
+		gotAPIKey = got.APIKey
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"deployed":true,"environment":"testenv","base_url":"http://198.51.100.9:8000/v1","apiKeyAction":"rotated"}`))
+	}))
+	defer server.Close()
+	stubDeploySeams(t, server.URL, "undeployed")
+	writeDeployEnvSpinloop(t, "testenv")
+	t.Setenv("SHARED_KEY", "sk-supplied")
+
+	out := captureStdout(t, func() {
+		if err := cmdRemoteDeploy([]string{"--api-key-env", "SHARED_KEY"}); err != nil {
+			t.Fatalf("cmdRemoteDeploy: %v", err)
+		}
+	})
+
+	if gotAPIKey != "sk-supplied" {
+		t.Errorf("the request carried apiKey %q, want the resolved value", gotAPIKey)
+	}
+	// The report names the action and never the value.
+	if !strings.Contains(out, "api key: rotated") {
+		t.Errorf("the report should say the key was rotated, got:\n%s", out)
+	}
+	if strings.Contains(out, "sk-supplied") {
+		t.Errorf("the report printed the key value:\n%s", out)
+	}
+}
+
+// A named variable that is set nowhere fails before anything is sent.
+func TestRemoteDeploy_APIKeyEnvUnsetFailsBeforeSending(t *testing.T) {
+	isolateConfig(t)
+	stubAWSEnv(t)
+
+	sent := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sent = true
+		w.Write([]byte(`{"deployed":true}`))
+	}))
+	defer server.Close()
+	stubDeploySeams(t, server.URL, "undeployed")
+	writeDeployEnvSpinloop(t, "testenv")
+	os.Unsetenv("NOWHERE_DEPLOY_KEY")
+
+	err := cmdRemoteDeploy([]string{"--api-key-env", "NOWHERE_DEPLOY_KEY"})
+	if err == nil || !strings.Contains(err.Error(), "NOWHERE_DEPLOY_KEY") {
+		t.Errorf("want an error naming the variable, got %v", err)
+	}
+	if sent {
+		t.Error("the deploy was sent despite the key failing to resolve")
+	}
+}
+
+// A dry run with a key names the variable it will store from — never the
+// value — and still touches nothing.
+func TestRemoteDeploy_APIKeyEnvDryRunNamesTheVariable(t *testing.T) {
+	isolateConfig(t)
+	called := false
+	origDiscover := deployDiscoverFn
+	t.Cleanup(func() { deployDiscoverFn = origDiscover })
+	deployDiscoverFn = func(context.Context, aws.Config, string) (remote.ControlPlane, error) {
+		called = true
+		return remote.ControlPlane{}, fmt.Errorf("must not be called")
+	}
+	writeDeployEnvSpinloop(t, "testenv")
+	t.Setenv("SHARED_KEY", "sk-supplied")
+
+	out := captureStdout(t, func() {
+		if err := cmdRemoteDeploy([]string{"--dry-run", "--api-key-env", "SHARED_KEY"}); err != nil {
+			t.Fatalf("cmdRemoteDeploy --dry-run: %v", err)
+		}
+	})
+	if called {
+		t.Error("--dry-run must touch nothing — not even discovery")
+	}
+	if !strings.Contains(out, "api key:  stored from SHARED_KEY") {
+		t.Errorf("--dry-run should name the key's variable, got:\n%s", out)
+	}
+	if strings.Contains(out, "sk-supplied") {
+		t.Errorf("--dry-run printed the key value:\n%s", out)
+	}
+}
+
 // Guard the assumption deployConfigFor relies on: PROVIDER names the engine.
 func TestRunnerFor(t *testing.T) {
 	for _, provider := range []string{"llamacpp", "vllm"} {

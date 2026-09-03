@@ -335,6 +335,14 @@ serve locally and deploy unchanged. The request SHALL describe only what to
 serve, never where the weights are stored. A `--dry-run` SHALL print the
 derived deployment without sending it.
 
+`deploy` SHALL additionally accept a `--api-key-env <VAR>` flag naming the
+environment variable that holds the API key to store for the environment. The
+flag names a variable, never a literal, and the CLI resolves it from the
+process environment before sending it to the control plane to be stored as the
+environment's key (see the Environment Deployment specification for how it is
+stored and rotated). When a key is supplied, the deploy report SHALL say so
+without printing the value.
+
 Deploy SHALL target a named environment: in addition to deriving what to serve,
 it SHALL create and register that environment on the control plane (its Elastic
 IP, instance configuration, per-environment API key and ingress, and SSM state),
@@ -377,6 +385,13 @@ the instance.
 - **WHEN** a deployment succeeds
 - **THEN** the environment is configured but not started, and the report says
   whether the weights still have to be fetched before it can serve
+
+#### Scenario: Deploying with a supplied key
+
+- **WHEN** `spinloop remote deploy` is given `--api-key-env SHARED_KEY` and that
+  variable is set
+- **THEN** the key is sent to the control plane to be stored for the
+  environment, and the report says a key was applied without printing the value
 
 ### Requirement: Status reports when the endpoint last did work
 

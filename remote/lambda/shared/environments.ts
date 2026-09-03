@@ -24,6 +24,7 @@ import {
   CreateSecretCommand,
   DescribeSecretCommand,
   GetSecretValueCommand,
+  PutSecretValueCommand,
   SecretsManagerClient,
 } from '@aws-sdk/client-secrets-manager';
 import { randomBytes } from 'node:crypto';
@@ -207,19 +208,50 @@ export async function ensureEnvSecurityGroup(
 }
 
 /**
+ * What ensureEnvApiKey did to the environment's API-key secret. The caller
+ * reports it — the action, never the value: a rotated key invalidates the one
+ * a live agent may still be holding, and that must be visible.
+ */
+export type EnvApiKeyAction = 'created' | 'rotated' | 'unchanged';
+
+/**
  * Ensure the environment's API-key secret exists, generating a value on first
  * creation. The key is per environment, so revoking or rotating one endpoint
  * never touches another.
+ *
+ * A supplied key is stored: the secret is created with it when absent, and
+ * set to it (PutSecretValue) when present — a deliberate rotation, invalidating
+ * the previous key. Without one the secret is generated on first creation and
+ * otherwise left alone: a redeploy must never mint a new key out from under a
+ * live agent, and rotation is only ever explicit.
  */
-export async function ensureEnvApiKey(env: string): Promise<void> {
+export async function ensureEnvApiKey(env: string, providedKey?: string): Promise<EnvApiKeyAction> {
   const name = apiKeySecretName(env);
+  let exists = false;
   try {
     await secretsManager.send(new DescribeSecretCommand({ SecretId: name }));
-    return;
+    exists = true;
   } catch (err) {
     if (errorName(err) !== 'ResourceNotFoundException') {
       throw err;
     }
+  }
+  if (providedKey) {
+    if (exists) {
+      await secretsManager.send(new PutSecretValueCommand({ SecretId: name, SecretString: providedKey }));
+      return 'rotated';
+    }
+    await secretsManager.send(
+      new CreateSecretCommand({
+        Name: name,
+        Description: `API key for the cloud-vm-llm environment ${env}`,
+        SecretString: providedKey,
+      }),
+    );
+    return 'created';
+  }
+  if (exists) {
+    return 'unchanged';
   }
   await secretsManager.send(
     new CreateSecretCommand({
@@ -228,6 +260,7 @@ export async function ensureEnvApiKey(env: string): Promise<void> {
       SecretString: randomBytes(36).toString('base64url'),
     }),
   );
+  return 'created';
 }
 
 /** Read an environment's API key. */

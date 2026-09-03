@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/spinloop-ai/spinloop/internal/daemon"
 )
 
@@ -341,6 +343,128 @@ nodes:
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error should name %s, got %q", want, err)
 		}
+	}
+}
+
+// The fleet-wide key is a remote-only default: resolved like every other
+// secret in the file, a node's own reference overrides it, and a remote that
+// names no resolvable key is named for it.
+func TestRemoteEngineTokenResolution(t *testing.T) {
+	path := writeFleet(t, `
+apiKeyEnv: FLEET_KEY
+nodes:
+  - name: shared
+    kind: remote
+  - name: own
+    kind: remote
+    engineTokenEnv: OWN_KEY
+  - name: box
+    host: box.local
+`, "FLEET_KEY=from-dotenv\nOWN_KEY=own-dotenv\n")
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	shared, _ := cfg.Node("shared")
+	// The fleet's variable, from the .env beside the file.
+	if got, err := cfg.RemoteEngineToken(shared); err != nil || got != "from-dotenv" {
+		t.Errorf("key = %q, %v; want the fleet .env value", got, err)
+	}
+	// An exported value wins, as everywhere else in spinloop.
+	t.Setenv("FLEET_KEY", "exported")
+	if got, err := cfg.RemoteEngineToken(shared); err != nil || got != "exported" {
+		t.Errorf("key = %q, %v; want the exported value", got, err)
+	}
+
+	// A node's own reference overrides the fleet-wide one.
+	own, _ := cfg.Node("own")
+	if got, err := cfg.RemoteEngineToken(own); err != nil || got != "own-dotenv" {
+		t.Errorf("key = %q, %v; want the node's own value", got, err)
+	}
+
+	// A daemon is gated only by its own reference: the fleet-wide key does
+	// not reach it.
+	box, _ := cfg.Node("box")
+	if got, err := cfg.EngineToken(box); err != nil || got != "" {
+		t.Errorf("daemon engine token = %q, %v; want empty and no error", got, err)
+	}
+}
+
+func TestRemoteEngineTokenUnsetNamesTheVariable(t *testing.T) {
+	path := writeFleet(t, `
+apiKeyEnv: NOWHERE_FLEET_KEY
+nodes:
+  - name: shared
+    kind: remote
+`, "")
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	node, _ := cfg.Node("shared")
+	_, err = cfg.RemoteEngineToken(node)
+	if err == nil {
+		t.Fatal("an unset fleet key variable should be a config error")
+	}
+	for _, want := range []string{"NOWHERE_FLEET_KEY", "shared", "fleet.yaml"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error should name %s, got %q", want, err)
+		}
+	}
+}
+
+func TestRemoteEngineTokenMissingNamesBothPlaces(t *testing.T) {
+	path := writeFleet(t, `
+nodes:
+  - name: shared
+    kind: remote
+`, "")
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	node, _ := cfg.Node("shared")
+	_, err = cfg.RemoteEngineToken(node)
+	if err == nil {
+		t.Fatal("a remote naming no key anywhere should be a config error")
+	}
+	for _, want := range []string{"shared", "engineTokenEnv", "apiKeyEnv"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error should mention %s, got %q", want, err)
+		}
+	}
+}
+
+// A fleet file written for a newer spinloop — carrying fields this one does not
+// know — must still parse: yaml.Unmarshal ignores unknown fields, so an older
+// binary reading a newer file is a no-op, not an error.
+func TestLoadIgnoresUnknownFleetFields(t *testing.T) {
+	path := writeFleet(t, `
+apiKeyEnv: SHARED_KEY
+nodes:
+  - name: shared
+    kind: remote
+`, "")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The same file into a struct without the field, the way an older binary
+	// would read it.
+	var legacy struct {
+		Nodes []NodeConfig `yaml:"nodes"`
+	}
+	if err := yaml.Unmarshal(data, &legacy); err != nil {
+		t.Fatalf("a fleet file with an unknown field must parse: %v", err)
+	}
+	// And the current one keeps the field.
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.APIKeyEnv != "SHARED_KEY" {
+		t.Errorf("apiKeyEnv = %q, want SHARED_KEY", cfg.APIKeyEnv)
 	}
 }
 

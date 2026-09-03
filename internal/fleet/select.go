@@ -369,7 +369,14 @@ func hostIsLoopback(host string) bool {
 // known. A gated engine whose
 // node names no variable fails here, before anything is launched: an agent that
 // cannot authenticate is worse than a message saying so.
+//
+// A remote is the constant case: its engine is always gated by its key, and
+// the control plane reports the instance, never the gate, so its key is looked
+// up whatever the status says — from the node's own reference or the fleet's.
 func (c *Config) engineKeyFor(n NodeConfig, status daemon.StatusResponse) (string, error) {
+	if n.Kind == KindRemote {
+		return c.RemoteEngineToken(n)
+	}
 	if status.Engine == nil || !status.Engine.RequiresKey {
 		return "", nil
 	}

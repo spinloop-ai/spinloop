@@ -17,6 +17,7 @@ from the environment or a `.env` beside the Spinloop — never written into an
 | `SPINLOOP_LOG_LEVEL` | `spinloop daemon`, `spinloop serve` | How much spinloop records about the control API and the supervised engine: `debug`, `info` (default), `warn` or `error`. Precedence: `--log-level` flag > `SPINLOOP_LOG_LEVEL` > `info`. An unrecognised value refuses to start rather than falling back to the default. Under `spinloop serve` the `.env` beside the Spinloop can set it; the daemon reads no Spinloop, so there it comes from the environment its service manager gives it. Records go to stderr; see [what gets logged](commands/serve.md#what-gets-logged). |
 | *(per-node, named by `tokenEnv`)* | `spinloop fleet` | A fleet node's bearer token. `fleet.yaml` names the variable rather than holding the value; it resolves from the environment, then the `.env` beside the fleet file. See [fleet](commands/fleet.md). |
 | *(per-node, named by `engineTokenEnv`)* | `spinloop fleet`, `spinloop harness` | The key a fleet node's **engine** is gated with. Resolved the same way, and supplied by the client when it starts that engine — so the node holds no key of its own and the two ends cannot disagree. See [fleet](commands/fleet.md). |
+| *(fleet-wide, named by `apiKeyEnv`)* | `spinloop fleet`, `spinloop harness` | The default key for a `kind: remote` environment's engine, for every remote node that does not name its own `engineTokenEnv`. Resolved the same way. See [fleet](commands/fleet.md). |
 
 ## Remote (`spinloop remote`)
 
