@@ -215,6 +215,40 @@ func TestCmdFleetDeployUnresolvedNodeFailsOnlyThatNode(t *testing.T) {
 	}
 }
 
+// A node whose source *resolves* but whose Spinloop is itself undeployable
+// (missing REMOTE, here) must fail only that node — resolveNodeSpinloop
+// succeeding is not the same as deriveDeployTarget succeeding, and the two
+// failure sites must not be conflated.
+func TestCmdFleetDeployResolvedButUndeployableSpinloopFailsOnlyThatNode(t *testing.T) {
+	dir := writeFleetDeploySetup(t)
+	stubAWSEnv(t)
+	server := fleetDeployServer(t)
+	stubFleetDeploySeams(t, server)
+
+	// gpu-a's own file, minus REMOTE — deriveDeployTarget refuses this, but
+	// resolveNodeSpinloop has already succeeded by the time it does.
+	noRemote := filepath.Join(dir, "gpu-a.Spinloop")
+	if err := os.WriteFile(noRemote, []byte("PROVIDER llamacpp\nMODEL org/m:Q4\nCONTEXT 8192\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	out := captureStdout(t, func() {
+		err := cmdFleet([]string{"deploy", "gpu-a", "gpu-b"})
+		if err == nil {
+			t.Fatal("want a failure because gpu-a's Spinloop names no REMOTE")
+		}
+		if !strings.Contains(err.Error(), "gpu-a") {
+			t.Errorf("error should name gpu-a, got %v", err)
+		}
+	})
+	if !strings.Contains(out, "REMOTE") {
+		t.Errorf("output should explain the missing REMOTE: %s", out)
+	}
+	if _, statErr := os.Stat(mustEnvConfigPath(t, "gpu-b")); statErr != nil {
+		t.Errorf("gpu-b should still have deployed despite gpu-a's Spinloop being undeployable: %v", statErr)
+	}
+}
+
 func TestCmdFleetDeployAliasWinsOverSubdirectory(t *testing.T) {
 	dir := writeFleetDeploySetup(t)
 	stubAWSEnv(t)

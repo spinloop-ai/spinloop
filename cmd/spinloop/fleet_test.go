@@ -451,6 +451,71 @@ func TestFleetStartCallDaemonNodeUsesStartWith(t *testing.T) {
 	}
 }
 
+// A resolved source that is itself broken — unparseable, or naming a
+// provider StartWith's derivation cannot serve — must fail without ever
+// calling Start or StartWith. This is the guard coverage of a bare 0%/100%
+// count misses: resolveNodeSpinloop succeeding is not the same as the node
+// being safe to start.
+func TestFleetStartCallResolvedButBrokenSourceNeverStarts(t *testing.T) {
+	cases := map[string]string{
+		"unparseable Spinloop": "this is not a Spinloop\x00\x01",
+		// deployConfigForNode shares remote deploy's runnerFor, which only
+		// accepts llamacpp/vllm — the same limit that already applies to a
+		// routed wake. An MLX (or any other) provider is resolved but
+		// cannot be turned into a deploy config.
+		"unsupported provider": "PROVIDER mlx\nMODEL org/m\n",
+		"no model at all":      "PROVIDER llamacpp\n",
+	}
+	for name, body := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Setenv("SPINLOOP_CONFIG_DIR", t.TempDir())
+			dir := writeFleetFile(t, "nodes:\n  - name: dev-1\n    host: dev1.local\n    file: ./dev-1.Spinloop\n")
+			if err := os.WriteFile(filepath.Join(dir, "dev-1.Spinloop"), []byte(body), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			cfg, err := fleet.Resolve(filepath.Join(dir, "fleet.yaml"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			node := &fakeFleetNode{name: "dev-1"}
+			r := fleetStartCall(cfg)(context.Background(), node)
+			if r.OK() {
+				t.Fatalf("fleetStartCall on a broken source = %+v, want a failure", r)
+			}
+			if node.startCalls != 0 || node.startWithCalls != 0 {
+				t.Errorf("Start/StartWith were called (%d/%d) for a broken source, want neither",
+					node.startCalls, node.startWithCalls)
+			}
+		})
+	}
+}
+
+// An engine token that resolves to nothing must fail the node before
+// StartWith is ever attempted, exactly as an unset tokenEnv does for the
+// daemon's own bearer token.
+func TestFleetStartCallUnresolvedEngineTokenNeverStarts(t *testing.T) {
+	t.Setenv("SPINLOOP_CONFIG_DIR", t.TempDir())
+	dir := writeFleetFile(t, "nodes:\n  - name: dev-1\n    host: dev1.local\n    file: ./dev-1.Spinloop\n    engineTokenEnv: NOWHERE_ENGINE_KEY\n")
+	if err := os.WriteFile(filepath.Join(dir, "dev-1.Spinloop"), []byte("PROVIDER llamacpp\nMODEL org/m:Q4\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := fleet.Resolve(filepath.Join(dir, "fleet.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	node := &fakeFleetNode{name: "dev-1"}
+	r := fleetStartCall(cfg)(context.Background(), node)
+	if r.OK() {
+		t.Fatalf("fleetStartCall with an unresolved engine token = %+v, want a failure", r)
+	}
+	if !strings.Contains(r.Detail(), "NOWHERE_ENGINE_KEY") {
+		t.Errorf("failure %q should name the unresolved variable", r.Detail())
+	}
+	if node.startWithCalls != 0 {
+		t.Errorf("StartWith was called %d times, want 0", node.startWithCalls)
+	}
+}
+
 func TestCmdFleetUnknownNodeNamesTheKnownOnes(t *testing.T) {
 	twoNodeFleet(t, "idle")
 	err := cmdFleet([]string{"stop", "nope"})
