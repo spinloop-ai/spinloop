@@ -77,30 +77,33 @@ This is what makes a frozen number impossible rather than merely unlikely: there
 is no stored number to freeze. The elapsed time added by the quick fix is the
 same idea applied to the verb, and it collapses into this.
 
-## Decision 3: stamp observations, apply monotonically
+## Decision 3: record when each reading was taken, and never go backwards
 
 `fleet.NodeResult` gains `At time.Time`, set by `FanOutNodes` when the read
-returns. The dashboard applies:
+returns. The dashboard then follows one rule:
 
-> An observation is painted only if its `At` is later than that of the
-> observation currently displayed for that node.
+> Show a reading only if it was taken later than the one currently on screen for
+> that node.
 
-This replaces the `fastGen`/`slowGen` counters — it is strictly stronger, since
-it also orders a round against an action's completion, which generations cannot.
-The case it fixes: a refresh round starts at T0 during a start, the start
-finishes at T3 and the tile clears to the node's post-start report, the round
-lands at T5 carrying what the node looked like at T0, and today it paints.
+This replaces the `fastGen`/`slowGen` counters, and covers more than they can:
+the counters put rounds in order against each other, but cannot put a round in
+order against an action finishing. The case that fixes: a refresh round starts
+at T0 during a start, the start finishes at T3 and the tile clears to the node's
+report from after the start, the round lands at T5 carrying what the node looked
+like at T0 — and today the tile paints it.
 
-`At` also gives the tile an age, which drives Decision 4.
+`At` also tells the tile how old its reading is, which Decision 4 needs.
 
-**Alternative rejected:** a per-node sequence number. Same ordering guarantee,
-but no age, so the staleness marking would need a second mechanism.
+**Alternative rejected:** a counter per node. It orders readings just as well,
+but says nothing about age, so showing how old a reading is would need a second
+mechanism alongside it.
 
-## Decision 4: staleness is visible
+## Decision 4: an old reading says so
 
-A node whose newest observation is older than `3 ×` its kind's interval is drawn
-with its age (`· 3m ago`) and drops to the unknown health tier. Three intervals,
-not one, so an ordinary late round does not flicker the board grey.
+A node whose newest reading is older than three times its kind's interval is
+drawn with its age (`· 3m ago`) and drops to the unknown health tier. Three
+intervals rather than one, so an ordinary late round does not flicker the board
+grey.
 
 This is the general form of the reported bug: the board's failure was not that it
 showed old data, it was that it showed old data *indistinguishably from fresh
@@ -117,28 +120,32 @@ state changes slowly — both true of an idle environment, neither true of one t
 operator just pressed start on. The cost is bounded by the number of nodes with
 an action in flight, which is bounded by the operator's hands.
 
-## Decision 6: one fold
+## Decision 6: one function decides what a tile says
 
 ```go
-func dashNodeView(p *StartPhase, obs Observation, now time.Time) (lines []string, tier dashHealthTier)
+func dashNodeView(p *StartPhase, reading Reading, now time.Time) (lines []string, tier dashHealthTier)
 ```
 
-Everything the tile depends on is an argument; nothing is read from a clock or a
-field inside. The existing `dashNodeContentLines` switch and
-`dashHealthTierFor` switch are merged, because they already have to agree on
-priority order and currently do so by duplicated comment rather than by
-construction.
+Everything the tile depends on is an argument. Nothing is read from a clock or
+from a field on the model, so the same arguments always produce the same tile.
+This merges the existing `dashNodeContentLines` and `dashHealthTierFor`
+switches, which already have to agree on the order they check things in and
+currently manage it by saying so in a comment on each.
 
-The point is the test: a table over `{no phase, each phase} × {no observation,
-fresh OK, stale OK, failed} `, which is 20 rows and includes the combination
-that produced this bug — and which today has no natural home, because the two
-sources meet only inside a `strings.Builder`.
+The reason to do it is the test. With one function there is a single place to
+list every phase against every state a reading can be in — no reading yet, a
+fresh answer, a stale answer, a failed round — which is twenty cases, and
+includes a start waiting for capacity next to a reading that says the node is
+running. That is the case that caused this bug, and today it has nowhere to be
+tested, because the two accounts of the node only meet inside a
+`strings.Builder`.
 
 ## Risks
 
-- **Signature churn.** `ProgressStarter` is implemented once (`remoteNode`) and
-  consumed twice (dashboard, `n.Start`), so the blast radius is small, but the
-  CLI's `startProgress` is rewritten as a phase renderer in the same change.
+- **The interface changes.** `ProgressStarter` is implemented once
+  (`remoteNode`) and called from two places (the dashboard, and `n.Start`), so
+  not much has to change, but the CLI's `startProgress` is rewritten in the same
+  change to draw the same phases.
 - **Behavioural drift in the CLI.** `spinloop remote start`'s stderr lines change
   wording. They are progress output, not parsed by anything (the eval-able
   `export` lines go to stdout and are untouched), but the change is user-visible

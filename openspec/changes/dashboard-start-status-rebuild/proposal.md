@@ -58,20 +58,22 @@ the bug is still in place, and it produces more than one:
   stderr heartbeat) renders the same phase stream, so the dashboard and
   `spinloop remote start` cannot word the same situation differently — the same
   reason the tile and the detail view already share `dashNodeContentLines`.
-- **Every observation is stamped.** `fleet.NodeResult` gains the time its read
-  was taken, and the dashboard applies one rule everywhere: never paint an
-  observation older than the one already displayed. This subsumes the existing
-  generation counters and fixes the late-round-repaints-stale-data case.
-- **A stale reading stops being drawn as fact.** A node whose last answer is
-  older than a few of its own intervals is marked as such and drops to the
-  unknown health tier, rather than showing an aged state confidently.
-- **Attention drives cadence.** A node with an action in flight refreshes on the
-  fast interval until it settles, then returns to its kind's cadence. Bounded
-  cost: only nodes the operator is currently acting on.
-- **One fold, table-tested.** A single function takes the phase, the last
-  observation, its age and the current time, and returns the tile's lines and
-  its health tier. Every combination becomes a row in a table test, including
-  the contradictory ones that have no coverage today.
+- **Every reading records when it was taken.** `fleet.NodeResult` gains the time
+  its read happened, and the dashboard follows one rule everywhere: never show a
+  reading older than the one already on screen. This replaces the existing
+  generation counters and fixes the case where a slow round lands late and
+  repaints old data over new.
+- **An old reading stops being drawn as if it were current.** A node whose last
+  answer is older than a few of its own intervals shows its age and drops to the
+  unknown health tier, instead of presenting an out-of-date state as fact.
+- **A node being acted on is read more often.** A node with an action in flight
+  refreshes on the short interval until it settles, then returns to its kind's
+  cadence. The extra cost is limited to the nodes the operator is touching.
+- **One function decides what a tile says.** It takes the phase, the last
+  reading, how old that reading is and the current time, and returns the tile's
+  lines and its health colour. Everything the tile depends on is an argument, so
+  every combination can be listed in one test — including the contradictory ones
+  that have nowhere to be tested today.
 
 ## Capabilities
 
@@ -84,9 +86,9 @@ the bug is still in place, and it produces more than one:
 - `fleet-client`: the "The dashboard drives the selected node" requirement's
   in-flight clause is restated in terms of a start's phase rather than its
   status lines, with the countdown and the elapsed time; "The fleet refreshes
-  without stalling" gains the monotonic-observation rule and the attention
-  cadence; "Dashboard panels show a health indicator" gains staleness as a
-  route to the unknown tier.
+  without stalling" gains the rule that an older reading never replaces a newer
+  one, and the faster cadence for a node being acted on; "Dashboard panels show
+  a health indicator" adds an out-of-date reading as a reason to show unknown.
 
 ### Unchanged
 
@@ -98,14 +100,15 @@ stop, and the settled (no action in flight) tile's layout are all untouched.
 - Code: `internal/fleet/node.go` (`ProgressStarter` signature, `StartPhase`,
   `NodeResult.At`), `internal/fleet/remote_node.go` (phase construction),
   `internal/fleet/fanout.go` (stamping results as each read returns),
-  `cmd/spinloop/dashboard_model.go` (monotonic apply, attention cadence, the
-  fold), `cmd/spinloop/dashboard_render.go` (phase rendering),
-  `cmd/spinloop/remote.go` (`startProgress` as a phase renderer).
+  `cmd/spinloop/dashboard_model.go` (only showing newer readings, the faster
+  cadence during an action, and the one function that decides a tile's
+  contents), `cmd/spinloop/dashboard_render.go` (drawing a phase),
+  `cmd/spinloop/remote.go` (`startProgress` drawing the same phases).
 - `internal/remote` is untouched: `Start`'s `progress`/`onState` pair already
   carries what the phases are built from, including `StateInFlight`.
-- Tests: a table test over the fold covering every phase against every
-  observation state, ordering tests for the monotonic rule, and a cadence test
-  for a remote node with an action in flight.
+- Tests: one test listing every phase against every state a reading can be in,
+  tests that an older reading never replaces a newer one, and a test that a
+  remote node is read more often while an action is in flight.
 - Docs: `AGENTS.md`'s dashboard pointer and `docs/internals.md` if the phase
   contract warrants a note there.
 
