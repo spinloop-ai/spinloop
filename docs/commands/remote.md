@@ -336,6 +336,12 @@ beside the Spinloop) and sends the value: the deploy creates or **rotates** the
 environment's key, so the old value stops working — and the reply says which
 happened, never the value itself.
 
+Deploying several environments this way means running `remote deploy` once
+per Spinloop file. [`spinloop fleet deploy`](fleet.md#deploying-remote-nodes)
+does the same derivation, consent, and registration (`--api-key-env`
+included) for every `kind: remote` node a fleet file names — or a chosen few
+— in one command, each from its own resolved Spinloop source.
+
 ## Flags
 
 | Flag | Meaning |

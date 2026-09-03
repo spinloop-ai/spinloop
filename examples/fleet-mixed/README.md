@@ -9,22 +9,40 @@ single table.
 
 ### 1. Bring up a daemon (a machine node)
 
-On the box you want in the fleet, run the daemon:
+On the box you want in the fleet, run the daemon — it takes no Spinloop of
+its own, just its flags:
 
 ```sh
-SPINLOOP_API_TOKEN=… spinloop daemon ./Spinloop
+SPINLOOP_API_TOKEN=… spinloop daemon
 ```
 
 Put that token in a `.env` beside `fleet.yaml` (copy [`.env.example`](.env.example)).
 This is the same as [`examples/fleet`](../fleet/README.md); for daemons in
 containers rather than real machines, see
-[`examples/fleet-docker`](../fleet-docker/README.md).
+[`examples/fleet-docker`](../fleet-docker/README.md). What it runs is decided
+by whoever starts it — see the next section.
 
-### 2. Register the environments (the cloud nodes)
+### 2. Give each node a Spinloop source, then bring them up
 
-Each remote environment is created and registered by a `spinloop remote deploy`
-of a `Spinloop` that says `REMOTE <name>` — see [`spinloop
-remote`](../../docs/commands/remote.md).
+Every node here finds its Spinloop through the subdirectory convention —
+[`gpu-box/Spinloop`](gpu-box/Spinloop) for the machine,
+[`qwen/Spinloop`](qwen/Spinloop) and [`llama/Spinloop`](llama/Spinloop) for
+the two environments — so none of them declares a `file` field in
+`fleet.yaml`. A registered `spinloop alias` named after a node would resolve
+the same way, and win over the subdirectory; an explicit `file` field can
+point anywhere else again, which is what
+[`examples/fleet-docker`](../fleet-docker/) uses instead. See
+[`spinloop fleet`](../../docs/commands/fleet.md#a-nodes-spinloop-source) for
+the full resolution order.
+
+```sh
+spinloop fleet start gpu-box   # tell the daemon what to run, and start it
+spinloop fleet deploy --all    # create both environments from this file
+```
+
+Creating the environments this way is the same as running `spinloop remote
+deploy` once per `Spinloop` that says `REMOTE <name>` — see [`spinloop
+remote`](../../docs/commands/remote.md) — just one command for both.
 
 ### 3. Observe the whole fleet
 

@@ -39,10 +39,13 @@ them. Nothing about the Spinloop or the command changes.
 nodes:
   - name: local
     host: 127.0.0.1
+    file: ./Spinloop
 ```
 
-Everything else is a default worth knowing about, because each becomes a
-decision on a real network:
+`file` is the one line worth pausing on: it is what lets `fleet start local`
+resolve what to run without a prior launch (more on that below). Everything
+else is a default worth knowing about, because each becomes a decision on a
+real network:
 
 - **No token.** A daemon on loopback needs none. Any node reachable across a
   network does — the daemon refuses to listen on a non-loopback address without
@@ -94,9 +97,11 @@ spinloop fleet route         # which node a launch would pick, changing nothing
 spinloop harness -O          # wear ./Spinloop, route, wake if needed, launch
 ```
 
-The first launch is what tells the node anything at all: until then it has no
-config and a bare `spinloop fleet start local` would say so. After one launch it
-has the config stored, so `fleet start` restarts the same thing.
+`fleet.yaml`'s `file: ./Spinloop` means `spinloop fleet start local` works from
+cold, before any launch — it resolves the same Spinloop a routed launch would,
+and pushes it. A launch still does more (waits for the engine to load, then
+launches your agent against it), but starting the node no longer needs one to
+have happened first.
 
 `spinloop fleet route` before your first launch:
 

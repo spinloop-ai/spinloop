@@ -1,7 +1,8 @@
 // The `fleet` command group: one spinloop observing every engine you run.
 // It reads a fleet.yaml naming the machines, fans out over their daemon
-// control APIs, and renders the cluster. Observation is fleet-wide; starting
-// and stopping an engine is deliberately one node at a time.
+// control APIs, and renders the cluster. Observation is fleet-wide; starting,
+// stopping and deploying take one or more named nodes, or --all — never the
+// whole fleet by default.
 
 package main
 
@@ -13,11 +14,17 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
+
+	"github.com/spinloop-ai/spinloop/internal/config"
+	"github.com/spinloop-ai/spinloop/internal/daemon"
 	"github.com/spinloop-ai/spinloop/internal/fleet"
 )
 
@@ -242,83 +249,478 @@ func renderFleetMetricsJSON(w io.Writer, results []fleet.NodeResult) error {
 	return nil
 }
 
-// fleetStartCmd starts one named node's engine.
+// fleetStartCmd starts one or more nodes' engines, or every node with --all.
+// A kind: daemon node whose Spinloop source resolves is started with the
+// deploy config that source derives (StartWith) — telling the daemon what to
+// run, exactly as a routed wake already does for the Spinloop being
+// launched. A kind: daemon node with no resolvable source, and a kind:
+// remote node regardless, get a plain start: a remote environment's
+// StartWith always refuses a config, since what it serves is fixed at
+// deploy time.
 func fleetStartCmd() *cobra.Command {
-	var path string
+	var (
+		path string
+		all  bool
+	)
 	c := &cobra.Command{
 		Use:           "start",
-		Short:         "start an engine on one node",
+		Short:         "start one or more nodes' engines",
 		Args:          cobra.ArbitraryArgs,
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		RunE: func(c *cobra.Command, args []string) error {
 			resolve(c)
-			return driveOneNode("start", path, args, func(ctx context.Context, n fleet.Node) fleet.NodeResult {
-				status, err := n.Start(ctx)
-				return fleet.Result(n.Name(), err, status)
-			})
+			cfg, err := fleet.Resolve(path)
+			if err != nil {
+				return err
+			}
+			return runFleetDrive("start", cfg, all, args, fleetStartCall(cfg))
 		},
 	}
-	c.Flags().StringVar(&path, "fleet", "", fleetFileUsage)
+	fs := c.Flags()
+	fs.StringVar(&path, "fleet", "", fleetFileUsage)
+	fs.BoolVar(&all, "all", false, "start every node in the fleet")
 	c.ValidArgsFunction = noPositionals
 	compRegister(c, "fleet", compFiles)
 	return c
 }
 
-// fleetStopCmd stops one named node's engine.
+// fleetStopCmd stops one or more nodes' engines, or every node with --all.
+// Stopping takes no config, so unlike start it has nothing to resolve — only
+// its target selection is shared with start.
 func fleetStopCmd() *cobra.Command {
-	var path string
+	var (
+		path string
+		all  bool
+	)
 	c := &cobra.Command{
 		Use:           "stop",
-		Short:         "stop an engine on one node",
+		Short:         "stop one or more nodes' engines",
 		Args:          cobra.ArbitraryArgs,
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		RunE: func(c *cobra.Command, args []string) error {
 			resolve(c)
-			return driveOneNode("stop", path, args, func(ctx context.Context, n fleet.Node) fleet.NodeResult {
+			cfg, err := fleet.Resolve(path)
+			if err != nil {
+				return err
+			}
+			call := func(ctx context.Context, n fleet.Node) fleet.NodeResult {
 				status, err := n.Stop(ctx)
 				return fleet.Result(n.Name(), err, status)
-			})
+			}
+			return runFleetDrive("stop", cfg, all, args, call)
 		},
 	}
-	c.Flags().StringVar(&path, "fleet", "", fleetFileUsage)
+	fs := c.Flags()
+	fs.StringVar(&path, "fleet", "", fleetFileUsage)
+	fs.BoolVar(&all, "all", false, "stop every node in the fleet")
 	c.ValidArgsFunction = noPositionals
 	compRegister(c, "fleet", compFiles)
 	return c
 }
 
-// driveOneNode runs a mutating call against exactly one node. Fan-out is for
-// observation: starting or stopping every engine at once is a footgun, so
-// these demand a node name and otherwise list the fleet without touching
-// anything.
-func driveOneNode(verb, path string, args []string, call fleet.Call) error {
+// fleetStartCall builds fleet start's per-node call, closing over cfg so it
+// can recover each targeted node's NodeConfig (kind, File) from the bare
+// Node fleet.Call is handed — Call's signature carries no NodeConfig, but
+// every node it is called with came from cfg in the first place, so the
+// lookup by name always succeeds.
+func fleetStartCall(cfg *fleet.Config) fleet.Call {
+	return func(ctx context.Context, n fleet.Node) fleet.NodeResult {
+		entry, _ := cfg.Node(n.Name())
+		if entry.Kind != fleet.KindDaemon {
+			status, err := n.Start(ctx)
+			return fleet.Result(n.Name(), err, status)
+		}
+		arg, source, err := resolveNodeSpinloop(entry, cfg.Dir)
+		if err != nil {
+			return fleet.Result(n.Name(), err, daemon.StatusResponse{})
+		}
+		sel, spinloopPath, err := readSpinloop(fmt.Sprintf("spinloop fleet start %s", n.Name()), arg)
+		if err != nil {
+			return fleet.Result(n.Name(), err, daemon.StatusResponse{})
+		}
+		if err := applySpinloopEnv(sel, spinloopPath); err != nil {
+			return fleet.Result(n.Name(), err, daemon.StatusResponse{})
+		}
+		dc, err := deployConfigForNode(sel, spinloopPath)
+		if err != nil {
+			return fleet.Result(n.Name(), err, daemon.StatusResponse{})
+		}
+		engineKey, err := cfg.EngineToken(entry)
+		if err != nil {
+			return fleet.Result(n.Name(), err, daemon.StatusResponse{})
+		}
+		fmt.Printf("%s: using %s (%s)\n", n.Name(), spinloopPath, source)
+		status, err := n.StartWith(ctx, &dc, engineKey)
+		return fleet.Result(n.Name(), err, status)
+	}
+}
+
+// runFleetDrive selects the nodes a mutating fleet command targets and fans
+// call out over them: no names and no --all fails, listing the fleet's
+// nodes; --all and names together fails as ambiguous; named nodes fail
+// before anything is touched if any name is unknown. Replaces the old
+// driveOneNode now that start and stop both take several nodes or --all,
+// not just one.
+func runFleetDrive(verb string, cfg *fleet.Config, all bool, names []string, call fleet.Call) error {
+	if all && len(names) > 0 {
+		return fmt.Errorf("spinloop fleet %s: --all is ambiguous with node names", verb)
+	}
+	var target *fleet.Config
+	if all {
+		target = cfg
+	} else {
+		if len(names) == 0 {
+			return fmt.Errorf(
+				"spinloop fleet %s needs a node, or --all: %s",
+				verb, strings.Join(cfg.Names(), ", "))
+		}
+		narrowed, err := cfg.OnlyNames(names)
+		if err != nil {
+			return err
+		}
+		target = narrowed
+	}
+	results := target.FanOut(context.Background(), call)
+	var bad []string
+	for _, r := range results {
+		if !r.OK() {
+			bad = append(bad, r.Name)
+			fmt.Printf("%s  %s: %s\n", r.Name, r.Outcome, r.Detail())
+			continue
+		}
+		fmt.Printf("%s  %s\n", r.Name, r.Status.State)
+	}
+	if len(bad) > 0 {
+		return fmt.Errorf("%s: failed: %s", verb, strings.Join(bad, ", "))
+	}
+	return nil
+}
+
+// fleetDeployCmd creates the AWS environment for one or more kind: remote
+// nodes, or every kind: remote node with --all, deriving what each serves
+// from its resolved Spinloop source — the same derivation and registration
+// a standalone `spinloop remote deploy` performs for one file, so the two
+// can never disagree about what a given Spinloop deploys.
+func fleetDeployCmd() *cobra.Command {
+	var (
+		path            string
+		all             bool
+		dryRun          bool
+		overwrite       bool
+		reseed          bool
+		allowedCidr     string
+		region          string
+		spinloopVersion string
+		apiKeyEnv       string
+	)
+	c := &cobra.Command{
+		Use:   "deploy",
+		Short: "create the AWS environment for one or more remote nodes",
+		Long: `deploys the AWS environment for each named kind: remote node, or
+every kind: remote node with --all, deriving what to serve from each node's
+own Spinloop source: its file field, or its name resolved as a registered
+alias or a same-named subdirectory beside the fleet file. Reuses the same
+derivation, consent, and registration behavior as "spinloop remote deploy".`,
+		Args:          cobra.ArbitraryArgs,
+		SilenceErrors: true,
+		SilenceUsage:  true,
+		RunE: func(c *cobra.Command, args []string) error {
+			resolve(c)
+			return runFleetDeploy(path, all, args, deployOpts{
+				dryRun:          dryRun,
+				overwrite:       overwrite,
+				reseed:          reseed,
+				allowedCidr:     allowedCidr,
+				region:          region,
+				spinloopVersion: spinloopVersion,
+				apiKeyEnv:       apiKeyEnv,
+			})
+		},
+	}
+	fs := c.Flags()
+	fs.StringVar(&path, "fleet", "", fleetFileUsage)
+	fs.BoolVar(&all, "all", false, "deploy every kind: remote node in the fleet")
+	fs.BoolVarP(&dryRun, "dry-run", "n", false, "print the config that would be deployed, without sending it")
+	fs.BoolVar(&overwrite, "overwrite", false, "proceed against an already-registered or live environment")
+	fs.BoolVar(&reseed, "reseed", false, "re-fetch the weights even if they are already in S3 (starts a ~20-minute seed)")
+	fs.StringVar(&allowedCidr, "allowed-cidr", "", "who may reach each environment's instance (default: your public IP as a /32, on first deploy)")
+	fs.StringVar(&region, "region", "", "AWS region of the control plane (default: AWS_REGION or us-east-1)")
+	fs.StringVar(&spinloopVersion, "spinloop-version", "", "spinloop release each environment's instances install at boot (default: latest)")
+	fs.StringVar(&apiKeyEnv, "api-key-env", "", "name the environment variable holding the engine key to create or rotate, applied to every targeted node; with no flag each environment keeps its stored key")
+	c.ValidArgsFunction = noPositionals
+	compRegister(c, "fleet", compFiles)
+	return c
+}
+
+// runFleetDeploy is the body of `spinloop fleet deploy`.
+func runFleetDeploy(path string, all bool, names []string, opts deployOpts) error {
 	cfg, err := fleet.Resolve(path)
 	if err != nil {
 		return err
 	}
-	rest := args
-	if len(rest) == 0 {
+	if all && len(names) > 0 {
+		return fmt.Errorf("spinloop fleet deploy: --all is ambiguous with node names")
+	}
+
+	remoteNames := make([]string, 0, len(cfg.Nodes))
+	for _, n := range cfg.Nodes {
+		if n.Kind == fleet.KindRemote {
+			remoteNames = append(remoteNames, n.Name)
+		}
+	}
+
+	var targets []string
+	switch {
+	case all:
+		targets = remoteNames
+	case len(names) == 0:
 		return fmt.Errorf(
-			"spinloop fleet %s needs a node: %s\n(%s acts on one node at a time, never the whole fleet)",
-			verb, strings.Join(cfg.Names(), ", "), verb)
+			"spinloop fleet deploy needs a node, or --all: %s",
+			strings.Join(remoteNames, ", "))
+	default:
+		for _, name := range names {
+			entry, ok := cfg.Node(name)
+			if !ok {
+				return fmt.Errorf("no node %q in %s (known nodes: %s)",
+					name, cfg.Path, strings.Join(cfg.Names(), ", "))
+			}
+			if entry.Kind != fleet.KindRemote {
+				return fmt.Errorf(
+					"node %q is kind %q: fleet deploy provisions cloud environments, and %[1]s is not one",
+					name, entry.Kind)
+			}
+		}
+		targets = names
 	}
-	name := rest[0]
-	entry, ok := cfg.Node(name)
-	if !ok {
-		return fmt.Errorf("no node %q in %s (known nodes: %s)",
-			name, cfg.Path, strings.Join(cfg.Names(), ", "))
+
+	results := make([]fleetDeployResult, len(targets))
+	done := make([]bool, len(targets))
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+
+	// A live spinner only makes sense where the previous frame can be
+	// erased — skip it entirely for a piped or redirected run (a log file,
+	// CI) rather than spamming it with escape codes.
+	var stop, spinnerDone chan struct{}
+	if term.IsTerminal(int(os.Stdout.Fd())) {
+		stop = make(chan struct{})
+		spinnerDone = make(chan struct{})
+		go renderDeploySpinner(targets, results, done, &mu, stop, spinnerDone)
 	}
-	node, err := cfg.NewNode(entry)
-	if err != nil {
-		return err
+
+	for i, name := range targets {
+		wg.Add(1)
+		go func(i int, name string) {
+			defer wg.Done()
+			r := deployOneNode(cfg, name, opts)
+			mu.Lock()
+			results[i] = r
+			done[i] = true
+			mu.Unlock()
+		}(i, name)
 	}
-	r := call(context.Background(), node)
-	if !r.OK() {
-		return fmt.Errorf("%s %s: %s", verb, name, r.Detail())
+	wg.Wait()
+	if stop != nil {
+		// Stop and wait for the spinner's own erase before printing the
+		// report below it — otherwise the two interleave.
+		close(stop)
+		<-spinnerDone
 	}
-	fmt.Printf("%s  %s\n", name, r.Status.State)
+
+	var bad []string
+	for i, r := range results {
+		if i > 0 {
+			fmt.Println()
+		}
+		fmt.Println(deployHeader(r.node, r.outcome))
+		fmt.Print(r.text())
+		if r.outcome != deployRowOK {
+			bad = append(bad, r.node)
+		}
+	}
+	fmt.Println()
+	fmt.Println(deploySummary(len(targets), len(bad)))
+	if len(bad) > 0 {
+		return fmt.Errorf("fleet deploy: failed or guarded: %s", strings.Join(bad, ", "))
+	}
 	return nil
+}
+
+// deploySpinnerFrames are the classic Braille dots, cycled while a node's
+// deploy is still in flight.
+var deploySpinnerFrames = [...]string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+
+const (
+	ansiGreen  = "\033[92m"
+	ansiRed    = "\033[31m"
+	ansiYellow = "\033[33m"
+	ansiGrey   = "\033[90m"
+	ansiReset  = "\033[0m"
+)
+
+// renderDeploySpinner redraws one line per target in place — a spinner
+// beside whichever nodes are still deploying, a coloured mark beside
+// whichever have finished — until stop is closed, then erases its own
+// lines and closes done. A `fleet deploy --all` can be several concurrent
+// AWS calls running for minutes; this is what keeps it from looking hung.
+func renderDeploySpinner(targets []string, results []fleetDeployResult, done []bool, mu *sync.Mutex, stop <-chan struct{}, closeWhenDone chan<- struct{}) {
+	defer close(closeWhenDone)
+	ticker := time.NewTicker(120 * time.Millisecond)
+	defer ticker.Stop()
+	frame := 0
+	drawn := 0
+	redraw := func() {
+		if drawn > 0 {
+			fmt.Printf("\033[%dA\033[J", drawn)
+		}
+		mu.Lock()
+		for i, name := range targets {
+			if done[i] {
+				fmt.Printf("%s %s\n", nodeGlyph(results[i].outcome), name)
+			} else {
+				fmt.Printf("%s%s%s %s deploying...\n", ansiGrey, deploySpinnerFrames[frame%len(deploySpinnerFrames)], ansiReset, name)
+			}
+		}
+		mu.Unlock()
+		drawn = len(targets)
+		frame++
+	}
+	for {
+		select {
+		case <-stop:
+			if drawn > 0 {
+				fmt.Printf("\033[%dA\033[J", drawn)
+			}
+			return
+		case <-ticker.C:
+			redraw()
+		}
+	}
+}
+
+// nodeGlyph is the coloured mark a finished node's spinner line, and its
+// report header, both show for the same outcome.
+func nodeGlyph(outcome deployRowOutcome) string {
+	switch outcome {
+	case deployRowOK:
+		return ansiGreen + "✓" + ansiReset
+	case deployRowGuarded:
+		return ansiYellow + "⚠" + ansiReset
+	default:
+		return ansiRed + "✗" + ansiReset
+	}
+}
+
+// deployHeader is the line that separates one node's report from the next —
+// the gap `fleet deploy --all`'s output used to lack entirely.
+func deployHeader(node string, outcome deployRowOutcome) string {
+	return nodeGlyph(outcome) + " " + node
+}
+
+// deploySummary is the final line naming how many of the targeted nodes
+// deployed clean, so a large --all run's result is legible at a glance
+// without counting rows.
+func deploySummary(total, bad int) string {
+	ok := total - bad
+	if bad == 0 {
+		return fmt.Sprintf("%s%d/%d deployed%s", ansiGreen, ok, total, ansiReset)
+	}
+	return fmt.Sprintf("%s%d/%d deployed%s, %s%d failed or guarded%s", ansiGreen, ok, total, ansiReset, ansiRed, bad, ansiReset)
+}
+
+// deployRowOutcome is one node's fleet-deploy outcome — a row, not an abort:
+// one node's guard or failure never stops the others.
+type deployRowOutcome int
+
+const (
+	deployRowOK deployRowOutcome = iota
+	deployRowGuarded
+	deployRowFailed
+)
+
+// fleetDeployResult is one targeted node's fleet-deploy outcome.
+type fleetDeployResult struct {
+	node    string
+	outcome deployRowOutcome
+	detail  string // guard/failure message, or the deploy's plan/result text on success
+}
+
+// text renders one node's result: the deploy's own plan/result text on
+// success, or a labelled one-liner on guard or failure.
+func (r fleetDeployResult) text() string {
+	switch r.outcome {
+	case deployRowGuarded:
+		return fmt.Sprintf("  guarded: %s\n", r.detail)
+	case deployRowFailed:
+		return fmt.Sprintf("  failed: %s\n", r.detail)
+	default:
+		return r.detail
+	}
+}
+
+// deployOneNode resolves and deploys a single targeted node. It never
+// returns an error itself — a bad node becomes a fleetDeployResult, so the
+// caller's fan-out can label it without aborting the others.
+func deployOneNode(cfg *fleet.Config, name string, opts deployOpts) fleetDeployResult {
+	entry, _ := cfg.Node(name)
+	arg, source, err := resolveNodeSpinloop(entry, cfg.Dir)
+	if err != nil {
+		return fleetDeployResult{node: name, outcome: deployRowFailed, detail: err.Error()}
+	}
+	_, spinloopPath, dc, env, err := deriveDeployTarget(fmt.Sprintf("spinloop fleet deploy %s", name), arg)
+	if err != nil {
+		return fleetDeployResult{node: name, outcome: deployRowFailed, detail: err.Error()}
+	}
+	outcome, err := runDeploy(spinloopPath, env, dc, opts)
+	if err != nil {
+		var guarded *errDeployGuarded
+		if errors.As(err, &guarded) {
+			return fleetDeployResult{node: name, outcome: deployRowGuarded, detail: err.Error()}
+		}
+		return fleetDeployResult{node: name, outcome: deployRowFailed, detail: err.Error()}
+	}
+	text := fmt.Sprintf("using %s (%s)\n%s", spinloopPath, source, outcome.Text)
+	return fleetDeployResult{node: name, outcome: deployRowOK, detail: text}
+}
+
+// resolveNodeSpinloop resolves the argument to hand readSpinloop for one
+// node's declared Spinloop source, trying in order and stopping at the
+// first that resolves: node.File (relative to fleetDir), node.Name as a
+// registered `spinloop alias`, node.Name as a subdirectory beside the fleet
+// file containing a Spinloop file. source labels which one supplied it, for
+// reporting. Neither `fleet deploy` nor `fleet start` falls back to acting
+// without one — a node for which none resolves is a per-node failure naming
+// all three.
+//
+// The alias tier resolves to the alias's own target path directly, rather
+// than handing node.Name to readSpinloop and letting it resolve the alias
+// itself: readSpinloop's resolveAlias deliberately lets a same-named path on
+// disk beat a registered alias (so an existing invocation never changes
+// meaning just because an alias gets registered later) — the opposite of
+// this function's own precedence, alias before subdirectory. A node named
+// the same as its own subdirectory would otherwise silently resolve to the
+// subdirectory even with an alias registered, contradicting the order this
+// function documents.
+func resolveNodeSpinloop(node fleet.NodeConfig, fleetDir string) (arg, source string, err error) {
+	if node.File != "" {
+		return filepath.Join(fleetDir, node.File), fmt.Sprintf("file %s", node.File), nil
+	}
+	cfgFile, err := config.Load()
+	if err != nil {
+		return "", "", err
+	}
+	if aliasPath, ok := cfgFile.Alias(node.Name); ok {
+		return aliasPath, fmt.Sprintf("alias %q", node.Name), nil
+	}
+	subdir := filepath.Join(fleetDir, node.Name)
+	if info, statErr := os.Stat(subdir); statErr == nil && info.IsDir() {
+		return subdir, fmt.Sprintf("subdirectory %s", subdir), nil
+	}
+	return "", "", fmt.Errorf(
+		"node %q names no Spinloop source: no `file` field, no `spinloop alias` named %q, and no %s subdirectory beside the fleet file",
+		node.Name, node.Name, node.Name)
 }
 
 // fleetRouteCmd reports the node a harness launch would choose for a Spinloop,

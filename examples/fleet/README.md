@@ -2,17 +2,20 @@
 
 Observing several machines' engines from one place.
 
-Each machine runs the daemon:
+Each machine runs the daemon — it takes no Spinloop of its own, just its flags:
 
 ```sh
 # on studio.local and gpu-box, with a token since they are network-reachable
-SPINLOOP_API_TOKEN=… spinloop daemon ./Spinloop
+SPINLOOP_API_TOKEN=… spinloop daemon
 
 # on this machine, loopback-only needs no token
-spinloop daemon --api-addr 127.0.0.1:4242 ./Spinloop
+spinloop daemon --api-addr 127.0.0.1:4242
 ```
 
-Then from anywhere that can reach them:
+What a node runs is decided by whoever starts it — `fleet.yaml` names the
+Spinloop that describes it (see `studio`'s entry: `studio/Spinloop`, found
+automatically since the subdirectory's name matches the node's), so
+`fleet start` knows what to push. Then from anywhere that can reach them:
 
 ```sh
 cp .env.example .env    # fill in each node's token

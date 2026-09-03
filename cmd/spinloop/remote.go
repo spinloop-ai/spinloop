@@ -1378,87 +1378,174 @@ installs the latest published release.`,
 
 // runRemoteDeploy is the body of `spinloop remote deploy`.
 func runRemoteDeploy(args []string, dryRun, overwrite, reseed bool, allowedCidr, region, spinloopVersion, apiKeyEnv string) error {
-	// deploy reads the Spinloop for what to serve, so unlike the other
-	// subcommands it always needs one — the per-user remote config alone is not
-	// enough.
-	sel, spinloopPath, err := readSpinloop("spinloop remote deploy <file>", spinloopArg(args))
+	_, spinloopPath, dc, env, err := deriveDeployTarget("spinloop remote deploy <file>", spinloopArg(args))
 	if err != nil {
 		return err
+	}
+	outcome, err := runDeploy(spinloopPath, env, dc, deployOpts{
+		dryRun:          dryRun,
+		overwrite:       overwrite,
+		reseed:          reseed,
+		allowedCidr:     allowedCidr,
+		region:          region,
+		spinloopVersion: spinloopVersion,
+		apiKeyEnv:       apiKeyEnv,
+	})
+	if err != nil {
+		return err
+	}
+	fmt.Print(outcome.Text)
+	return nil
+}
+
+// deriveDeployTarget turns a raw Spinloop argument (a bare alias name, a
+// path, or a URL — whatever readSpinloop accepts) into everything a deploy
+// needs: the Spinloop it read, the deploy config it derives, and the
+// environment name it registers under. usage is readSpinloop's error-message
+// context, so a caller other than `remote deploy` (namely `fleet deploy`)
+// gets a message naming itself rather than a hard-coded command line.
+//
+// This is deliberately the same derivation `remote deploy` has always done —
+// readSpinloop's alias-or-path resolution, the Spinloop's local environment,
+// deployConfigFor, then the REMOTE name — so a node's resolved Spinloop
+// source and a standalone `remote deploy` of the same file can never
+// disagree about what they deploy.
+func deriveDeployTarget(usage, spinloopArg string) (sel spinloop.Selection, spinloopPath string, dc remote.DeployConfig, env string, err error) {
+	sel, spinloopPath, err = readSpinloop(usage, spinloopArg)
+	if err != nil {
+		return
 	}
 	// Respect the Spinloop's local environment (.env beside it, then its ENV
 	// lines) before any AWS work, so the credentials the deploy signs with, the
 	// region, and the SPINLOOP_REMOTE_* overrides all see it. ENV stays local — it
 	// never enters dc, so nothing here reaches the deployed instance.
-	if err := applySpinloopEnv(sel, spinloopPath); err != nil {
-		return err
+	if err = applySpinloopEnv(sel, spinloopPath); err != nil {
+		return
 	}
-	// A supplied key arrives the way every other secret does: as a reference
-	// to an environment variable, never a literal on the command line. The
-	// Spinloop's local environment has just been applied, so the variable is
-	// resolvable from the process environment; one set nowhere fails before
-	// anything is sent.
-	var apiKey string
-	if apiKeyEnv != "" {
-		apiKey = os.Getenv(apiKeyEnv)
-		if apiKey == "" {
-			return fmt.Errorf(
-				"--api-key-env: %s is not set: export it, or put it in the .env beside the Spinloop",
-				apiKeyEnv)
-		}
-	}
-	dc, err := deployConfigFor(sel, spinloopPath)
+	dc, err = deployConfigFor(sel, spinloopPath)
 	if err != nil {
-		return err
+		return
 	}
 	// The environment name is the Spinloop's REMOTE — the committed link between
 	// the Spinloop and its deployment. One source of truth: deploy registers the
 	// environment under exactly the name the same Spinloop's REMOTE resolves to.
-	env := sel.Remote
+	env = sel.Remote
 	if env == "" || !remote.IsEnvName(env) {
-		return fmt.Errorf(
+		err = fmt.Errorf(
 			"%s must name its environment with `REMOTE <name>` (e.g. REMOTE %s) — deploy creates and registers that environment",
 			spinloopPath, dc.ServedModelName)
+		return
 	}
-	if allowedCidr != "" && !cidrPattern.MatchString(allowedCidr) {
-		return fmt.Errorf("--allowed-cidr must be an IPv4 CIDR (e.g. 203.0.113.7/32), got %q", allowedCidr)
+	return
+}
+
+// deployOpts are the flags a deploy takes, independent of the Spinloop file
+// itself — shared by `remote deploy` and `fleet deploy`, which each collect
+// them from their own flag set.
+type deployOpts struct {
+	dryRun          bool
+	overwrite       bool
+	reseed          bool
+	allowedCidr     string
+	region          string
+	spinloopVersion string
+	// apiKeyEnv names the environment variable holding an externally
+	// supplied key to store as the environment's engine key, never a
+	// literal on the command line. Empty means the control plane manages
+	// its own key as it always has.
+	apiKeyEnv string
+}
+
+// deployOutcome is a successful (or dry-run) deploy's result: the plan/result
+// text a standalone `remote deploy` prints verbatim, plus the values a
+// caller driving several nodes wants without re-parsing that text. A failed
+// or guarded deploy is reported through the error runDeploy returns instead
+// — an errDeployGuarded distinguishes "needs --overwrite" from any other
+// failure.
+type deployOutcome struct {
+	Text          string
+	DryRun        bool
+	BaseURL       string
+	Seeding       bool
+	SeedID        string
+	EnvConfigPath string
+}
+
+// errDeployGuarded means the named environment is already registered or
+// live, and --overwrite was not given. Distinct from any other deploy
+// failure so a caller driving several nodes (fleet deploy) can label this
+// one "guarded" rather than "failed".
+type errDeployGuarded struct {
+	env, what string
+}
+
+func (e *errDeployGuarded) Error() string {
+	return fmt.Sprintf("environment %q %s — pass --overwrite to redeploy over it", e.env, e.what)
+}
+
+// runDeploy is everything a deploy does once its target is known: validate
+// the deploy-only flags, print the plan, and — unless --dry-run — clobber-
+// guard, discover the control plane, deploy, and register the environment.
+// It writes nothing to stdout itself; the caller decides what to do with
+// deployOutcome.Text, which is how `fleet deploy` labels several nodes'
+// outcomes instead of interleaving raw prints from concurrent goroutines.
+func runDeploy(spinloopPath, env string, dc remote.DeployConfig, opts deployOpts) (deployOutcome, error) {
+	if opts.allowedCidr != "" && !cidrPattern.MatchString(opts.allowedCidr) {
+		return deployOutcome{}, fmt.Errorf("--allowed-cidr must be an IPv4 CIDR (e.g. 203.0.113.7/32), got %q", opts.allowedCidr)
 	}
 	// The spinloop release a fresh boot installs: empty (or `latest`) means the
 	// boot's own default, a pin means exactly that release. Normalised the way
 	// the control plane is — the v a tag carries is not part of the version —
 	// and checked here, so a typo is named now rather than as a 404 inside a
 	// boot nobody is watching.
-	if pin := strings.TrimPrefix(strings.TrimSpace(spinloopVersion), "v"); pin != "" && pin != "latest" {
+	if pin := strings.TrimPrefix(strings.TrimSpace(opts.spinloopVersion), "v"); pin != "" && pin != "latest" {
 		if !spinloopVersionPattern.MatchString(pin) {
-			return fmt.Errorf("--spinloop-version must be a release version (e.g. 1.26.1) or latest, got %q", spinloopVersion)
+			return deployOutcome{}, fmt.Errorf("--spinloop-version must be a release version (e.g. 1.26.1) or latest, got %q", opts.spinloopVersion)
 		}
 		dc.SpinloopVersion = pin
 	}
+	// A supplied key arrives the way every other secret does: as a reference
+	// to an environment variable, never a literal on the command line. By
+	// this point deriveDeployTarget has already applied the Spinloop's local
+	// environment (a process-wide side effect), so the variable is
+	// resolvable from here whichever caller is deploying; one set nowhere
+	// fails before anything is sent.
+	var apiKey string
+	if opts.apiKeyEnv != "" {
+		apiKey = os.Getenv(opts.apiKeyEnv)
+		if apiKey == "" {
+			return deployOutcome{}, fmt.Errorf(
+				"--api-key-env: %s is not set: export it, or put it in the .env beside the Spinloop",
+				opts.apiKeyEnv)
+		}
+	}
 
-	fmt.Printf("Deploying from %s\n", spinloopPath)
-	fmt.Printf("  environment: %s\n", env)
-	fmt.Printf("  runner:  %s\n", dc.Runner)
-	fmt.Printf("  model:   %s", dc.ModelID)
+	var buf strings.Builder
+	fmt.Fprintf(&buf, "Deploying from %s\n", spinloopPath)
+	fmt.Fprintf(&buf, "  environment: %s\n", env)
+	fmt.Fprintf(&buf, "  runner:  %s\n", dc.Runner)
+	fmt.Fprintf(&buf, "  model:   %s", dc.ModelID)
 	if dc.Quant != "" {
-		fmt.Printf(" (%s)", dc.Quant)
+		fmt.Fprintf(&buf, " (%s)", dc.Quant)
 	}
-	fmt.Println()
-	fmt.Printf("  context: %d\n", dc.ContextSize)
+	buf.WriteByte('\n')
+	fmt.Fprintf(&buf, "  context: %d\n", dc.ContextSize)
 	if dc.Parallel > 0 {
-		fmt.Printf("  parallel: %d\n", dc.Parallel)
+		fmt.Fprintf(&buf, "  parallel: %d\n", dc.Parallel)
 	}
-	fmt.Printf("  served:  %s\n", dc.ServedModelName)
+	fmt.Fprintf(&buf, "  served:  %s\n", dc.ServedModelName)
 	// Companions are easy to get wrong quietly — a renamed file yields no
 	// drafter and a slower endpoint with no error — so show what was picked up.
 	for _, role := range slices.Sorted(maps.Keys(dc.Companions)) {
-		fmt.Printf("  %-8s %s\n", role+":", dc.Companions[role])
+		fmt.Fprintf(&buf, "  %-8s %s\n", role+":", dc.Companions[role])
 	}
 	if len(dc.ServeArgs) > 0 {
-		fmt.Printf("  args:    %s\n", strings.Join(dc.ServeArgs, " "))
+		fmt.Fprintf(&buf, "  args:    %s\n", strings.Join(dc.ServeArgs, " "))
 	}
 	// Worth stating: a re-seed costs a ~20-minute instance and re-downloads the
 	// weights, so --reseed --dry-run must not look like a plain deploy.
-	if reseed {
-		fmt.Println("  reseed:  yes — the weights will be re-fetched even if already in S3")
+	if opts.reseed {
+		buf.WriteString("  reseed:  yes — the weights will be re-fetched even if already in S3\n")
 	}
 	// A fresh boot's spinloop: latest is a promise, not an absence, so the plan
 	// always says which release a boot will install.
@@ -1466,26 +1553,26 @@ func runRemoteDeploy(args []string, dryRun, overwrite, reseed bool, allowedCidr,
 	if spinloopVer == "" {
 		spinloopVer = "latest"
 	}
-	fmt.Printf("  spinloop:  %s\n", spinloopVer)
+	fmt.Fprintf(&buf, "  spinloop:  %s\n", spinloopVer)
 	// A key is worth stating too — it rotates — but the value is never
 	// printed, in the dry run or the report.
-	if apiKeyEnv != "" {
-		fmt.Printf("  api key:  stored from %s\n", apiKeyEnv)
+	if opts.apiKeyEnv != "" {
+		fmt.Fprintf(&buf, "  api key:  stored from %s\n", opts.apiKeyEnv)
 	}
-	if dryRun {
-		return nil
+	if opts.dryRun {
+		return deployOutcome{Text: buf.String(), DryRun: true}, nil
 	}
 
 	// The control URLs come from the control plane's stack outputs — the
 	// environment may not exist yet, so there is nothing local to resolve.
 	ctx := context.Background()
-	awsCfg, err := remote.LoadAWSConfig(ctx, resolveRegion(region))
+	awsCfg, err := remote.LoadAWSConfig(ctx, resolveRegion(opts.region))
 	if err != nil {
-		return err
+		return deployOutcome{}, err
 	}
 	layer, err := deployDiscoverFn(ctx, awsCfg, controlPlaneStackName)
 	if err != nil {
-		return err
+		return deployOutcome{}, err
 	}
 	cfg := layer.Config
 	cfg.Environment = env
@@ -1494,7 +1581,7 @@ func runRemoteDeploy(args []string, dryRun, overwrite, reseed bool, allowedCidr,
 	// whose instance is live, needs explicit consent to redeploy over.
 	envConfigPath, err := remote.EnvConfigPath(env)
 	if err != nil {
-		return err
+		return deployOutcome{}, err
 	}
 	registered := false
 	if _, err := os.Stat(envConfigPath); err == nil {
@@ -1504,57 +1591,64 @@ func runRemoteDeploy(args []string, dryRun, overwrite, reseed bool, allowedCidr,
 	if status, err := remoteStatusFn(ctx, cfg); err == nil {
 		live = status.State == "running" || status.State == "pending" || status.State == "starting"
 	}
-	if (registered || live) && !overwrite {
+	if (registered || live) && !opts.overwrite {
 		what := "is already registered"
 		if live {
 			what = "has a live instance"
 		}
-		return fmt.Errorf(
-			"environment %q %s — pass --overwrite to redeploy over it", env, what)
+		return deployOutcome{}, &errDeployGuarded{env: env, what: what}
 	}
 
 	// Ingress is per environment. A fresh environment needs a CIDR (default:
 	// the caller's public address); an existing one keeps its ingress unless a
 	// CIDR is given explicitly.
+	allowedCidr := opts.allowedCidr
 	if allowedCidr == "" && !registered {
 		allowedCidr, err = detectPublicCIDRFn(ctx)
 		if err != nil {
-			return fmt.Errorf("detecting your public IP for the allowed CIDR: %w (pass --allowed-cidr)", err)
+			return deployOutcome{}, fmt.Errorf("detecting your public IP for the allowed CIDR: %w (pass --allowed-cidr)", err)
 		}
-		fmt.Printf("  ingress: %s (your public IP; override with --allowed-cidr)\n", allowedCidr)
+		fmt.Fprintf(&buf, "  ingress: %s (your public IP; override with --allowed-cidr)\n", allowedCidr)
 	}
 
-	resp, err := remoteDeployFn(ctx, cfg, dc, allowedCidr, reseed, apiKey)
+	resp, err := remoteDeployFn(ctx, cfg, dc, allowedCidr, opts.reseed, apiKey)
 	if err != nil {
-		return err
+		return deployOutcome{}, err
 	}
 
 	// Register the environment so REMOTE <env> (and the other remote
 	// subcommands) resolve to it from now on.
 	cfg.BaseURL = resp.BaseURL
 	if err := remote.SaveEnvironment(env, cfg); err != nil {
-		return err
+		return deployOutcome{}, err
 	}
 
-	fmt.Println()
-	fmt.Printf("deployed: environment %s at %s\n", env, resp.BaseURL)
-	fmt.Printf("registered: %s\n", envConfigPath)
+	buf.WriteByte('\n')
+	fmt.Fprintf(&buf, "deployed: environment %s at %s\n", env, resp.BaseURL)
+	fmt.Fprintf(&buf, "registered: %s\n", envConfigPath)
 	// A rotation is worth stating out loud: it invalidates the key a live
 	// agent may still be holding, and the action — never the value — is all
 	// the reply carries.
 	if resp.APIKeyAction == "rotated" {
-		fmt.Println("api key: rotated — the previous key no longer works")
+		buf.WriteString("api key: rotated — the previous key no longer works\n")
 	} else if resp.APIKeyAction != "" {
-		fmt.Println("api key: created")
+		buf.WriteString("api key: created\n")
 	}
 	if resp.Seeding {
-		fmt.Printf("seeding the weights — follow it with `spinloop remote seed status %s`.\n", resp.SeedID)
-		fmt.Println("Wait for it to finish before `spinloop remote start`, or the instance will")
-		fmt.Println("start against an incomplete download.")
+		fmt.Fprintf(&buf, "seeding the weights — follow it with `spinloop remote seed status %s`.\n", resp.SeedID)
+		buf.WriteString("Wait for it to finish before `spinloop remote start`, or the instance will\n")
+		buf.WriteString("start against an incomplete download.\n")
 	} else {
-		fmt.Println("weights already in place — `spinloop remote start` will serve this.")
+		buf.WriteString("weights already in place — `spinloop remote start` will serve this.\n")
 	}
-	return nil
+
+	return deployOutcome{
+		Text:          buf.String(),
+		BaseURL:       resp.BaseURL,
+		Seeding:       resp.Seeding,
+		SeedID:        resp.SeedID,
+		EnvConfigPath: envConfigPath,
+	}, nil
 }
 
 // cidrPattern matches an IPv4 CIDR, the same shape the deploy Lambda accepts.

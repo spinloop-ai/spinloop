@@ -1,0 +1,6 @@
+# What the "qwen" environment serves — read by `spinloop fleet deploy qwen`.
+PROVIDER llamacpp
+ALIAS    qwen3.6-27b
+MODEL    unsloth/Qwen3.6-27B-MTP-GGUF:UD-Q6_K_XL
+CONTEXT  131072
+REMOTE   qwen

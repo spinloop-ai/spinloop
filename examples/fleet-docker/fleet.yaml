@@ -8,6 +8,13 @@
 # daemon's; the engine is a different port, and normally the daemon reports it
 # — but here it binds 8080 inside the container and is published on another
 # port outside, which the daemon cannot know. That is what `engine:` is for.
+#
+# studio and gpu-box declare a `file`, so `spinloop fleet start` knows what to
+# run on them — it points at the same Spinloop client/Spinloop wears for a
+# routed launch, so a plain `fleet start` and a routed wake agree on what
+# "this fleet's fake model" means. laptop deliberately declares none: it is
+# what `fleet start laptop` (and `--all`) demonstrate failing on, rather than
+# falling back to a plain, config-less start.
 prefer: idle
 
 nodes:
@@ -19,6 +26,7 @@ nodes:
     port: 14242
     tokenEnv: STUDIO_TOKEN
     engineTokenEnv: STUDIO_ENGINE_KEY
+    file: ./client/Spinloop
     engine:
       port: 18080
 
@@ -26,6 +34,7 @@ nodes:
     host: 127.0.0.1
     port: 14243
     tokenEnv: GPU_BOX_TOKEN
+    file: ./client/Spinloop
     engine:
       port: 18081
 

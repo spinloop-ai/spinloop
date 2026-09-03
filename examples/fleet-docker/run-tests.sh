@@ -304,16 +304,18 @@ cleanup() {
 }
 
 #######################################
-# Assert a node that has never been told anything cannot be started. The
-# daemon reads no Spinloop, so until a client sends a config there is nothing
-# for `fleet start` to run — and it says so rather than guessing.
+# Assert a node with no declared Spinloop source cannot be started. laptop
+# names no `file`, no matching `spinloop alias`, and has no same-named
+# subdirectory beside fleet.yaml — so `fleet start` refuses it client-side,
+# before the daemon is ever contacted, rather than falling back to a plain
+# start with nothing to run.
 #######################################
 test_untold_node_cannot_start() {
-  echo "A node that has been told nothing"
+  echo "A node with no Spinloop source"
   local out
   out="$(fleet_with_stderr start laptop || true)"
-  assert_contains "starting an untold node says there is nothing to serve" \
-    "${out}" "nothing to serve"
+  assert_contains "starting a sourceless node names the three ways one could resolve" \
+    "${out}" "no Spinloop source"
   assert_equals "and nothing started" "$(node_state laptop)" "idle"
 }
 
@@ -339,8 +341,9 @@ test_cold_start() {
 #######################################
 test_start_stop_one_node() {
   echo "Driving one node"
-  # By now routing has woken studio once, so it has a config stored. Before
-  # that it had nothing: a node is told what to run, it does not know.
+  # studio declares a file field, so fleet start resolves what to run on it
+  # and pushes that config — the same one client/Spinloop names, which
+  # routing (test_routing, run before this) already woke it with once.
   fleet start studio >/dev/null
   if wait_for_state studio running 30; then
     pass "fleet start studio brings it up"
@@ -366,6 +369,35 @@ test_start_stop_one_node() {
 }
 
 #######################################
+# Assert --all drives every node at once, and one node's failure to resolve
+# a Spinloop source (laptop, still sourceless) does not stop the others from
+# starting.
+#######################################
+test_start_all() {
+  echo "Starting the whole fleet with --all"
+  local out
+  out="$(fleet_with_stderr start --all || true)"
+  if wait_for_state studio running 30 && wait_for_state gpu-box running 30; then
+    pass "fleet start --all brings up studio and gpu-box"
+  else
+    fail "fleet start --all brings up studio and gpu-box" "running" \
+      "studio=$(node_state studio) gpu-box=$(node_state gpu-box)"
+  fi
+  assert_equals "laptop is left idle -- it has no Spinloop source" \
+    "$(node_state laptop)" "idle"
+  assert_contains "the summary names laptop as the one that failed" \
+    "${out}" "laptop"
+
+  fleet stop --all >/dev/null
+  if wait_for_state studio stopped 30 && wait_for_state gpu-box stopped 30; then
+    pass "fleet stop --all stops studio and gpu-box"
+  else
+    fail "fleet stop --all stops studio and gpu-box" "stopped" \
+      "studio=$(node_state studio) gpu-box=$(node_state gpu-box)"
+  fi
+}
+
+#######################################
 # Assert routing picks a node and wakes one when nothing is serving. This is
 # the published-port case: the engine binds 8080 inside each container and is
 # published on another port outside, so it only works because fleet.yaml
@@ -375,7 +407,10 @@ test_start_stop_one_node() {
 #######################################
 test_routing() {
   echo "Routing a launch at a node"
-  # The only Spinloop here: the nodes hold none.
+  # client/Spinloop is also what studio and gpu-box's fleet.yaml file field
+  # points fleet start at; a routed wake derives its config the same way,
+  # independently, from whatever Spinloop is being launched rather than from
+  # the node's own declared source.
   local spinloop_file="${HERE}/client/Spinloop"
   local out
 
@@ -592,6 +627,8 @@ main() {
   test_routing
   echo
   test_start_stop_one_node
+  echo
+  test_start_all
   echo
   test_metrics
   echo

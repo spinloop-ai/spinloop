@@ -313,10 +313,11 @@ func fleetCmd() *cobra.Command {
 		Short: "observe and drive the engines in a fleet file",
 		Long: `observes and drives the engines named in a fleet file (fleet.yaml by
 default; --fleet names another). Observation is fleet-wide (status, metrics,
-logs, and dashboard — the live tiled view); start, stop and route act on a
-single node, and with no node they list the fleet and touch nothing. A node
-that fails is a rendered row, never an error — only a problem with the fleet
-file itself fails a command.`,
+logs, and dashboard — the live tiled view); start and stop take one or more
+node names, or --all for the whole fleet, and with neither they list the
+fleet and touch nothing; deploy provisions kind: remote nodes' AWS
+environments the same way. A node that fails is a rendered row, never an
+error — only a problem with the fleet file itself fails a command.`,
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		RunE:          groupFallback,
@@ -329,6 +330,7 @@ file itself fails a command.`,
 		fleetRouteCmd(),
 		fleetStartCmd(),
 		fleetStopCmd(),
+		fleetDeployCmd(),
 	)
 	return fleet
 }

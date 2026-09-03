@@ -487,6 +487,78 @@ func TestPreferSetting(t *testing.T) {
 	}
 }
 
+// The file field names a node's Spinloop source; it is stored as declared
+// (resolution relative to the fleet directory is resolveNodeSpinloop's job,
+// not parsing's), needs no particular kind, and is optional.
+func TestFileField(t *testing.T) {
+	path := writeFleet(t, `
+nodes:
+  - name: gpu-env
+    kind: remote
+    file: ./envs/gpu.Spinloop
+  - name: dev-1
+    host: dev1.local
+    file: ../shared/dev.Spinloop
+  - name: plain
+    host: plain.local
+`, "")
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	remote, _ := cfg.Node("gpu-env")
+	if remote.File != "./envs/gpu.Spinloop" {
+		t.Errorf("remote node File = %q", remote.File)
+	}
+	daemonNode, _ := cfg.Node("dev-1")
+	if daemonNode.File != "../shared/dev.Spinloop" {
+		t.Errorf("daemon node File = %q, want it to parse the same as any other kind", daemonNode.File)
+	}
+	plain, _ := cfg.Node("plain")
+	if plain.File != "" {
+		t.Errorf("plain node File = %q, want empty", plain.File)
+	}
+}
+
+func TestOnlyNames(t *testing.T) {
+	path := writeFleet(t, `
+nodes:
+  - name: a
+    host: a.local
+  - name: b
+    host: b.local
+  - name: c
+    host: c.local
+`, "")
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	narrowed, err := cfg.OnlyNames([]string{"c", "a"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := narrowed.Names(); len(got) != 2 || got[0] != "c" || got[1] != "a" {
+		t.Errorf("OnlyNames order = %v, want [c a] (the order given, not file order)", got)
+	}
+
+	if _, err := cfg.OnlyNames([]string{"a", "nope"}); err == nil {
+		t.Fatal("an unknown name among several should fail")
+	} else if !strings.Contains(err.Error(), "nope") {
+		t.Errorf("error %q does not name the unknown node", err)
+	}
+
+	// Only(name) is OnlyNames([]string{name}), unchanged for its own callers.
+	one, err := cfg.Only("b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := one.Names(); len(got) != 1 || got[0] != "b" {
+		t.Errorf("Only(b).Names() = %v, want [b]", got)
+	}
+}
+
 func TestPreferRejectsUnknownValue(t *testing.T) {
 	_, err := Load(writeFleet(t, "prefer: whatever\nnodes:\n  - name: a\n    host: a.local\n", ""))
 	if err == nil {

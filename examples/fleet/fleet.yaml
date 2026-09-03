@@ -17,6 +17,11 @@ prefer: idle
 nodes:
   # A Mac on the LAN serving MLX models. Its daemon listens on the default
   # port, and it is reachable over the network — so it needs a token.
+  # `fleet start studio` needs to know what to push — without a source, a
+  # node has nothing to start with until some other client tells it. Here
+  # that source is `studio/Spinloop`, resolved automatically because the
+  # subdirectory's name matches the node's; a `file` field or a registered
+  # `spinloop alias` named "studio" are the other two ways to give it.
   - name: studio
     host: studio.local
     tokenEnv: STUDIO_TOKEN

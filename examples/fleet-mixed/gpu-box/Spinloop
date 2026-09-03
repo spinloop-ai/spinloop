@@ -1,0 +1,6 @@
+# What gpu-box runs — read by `spinloop fleet start gpu-box`, which derives
+# a deploy config from it and pushes it to the daemon.
+PROVIDER llamacpp
+ALIAS    gemma-4-12b-it
+MODEL    unsloth/gemma-4-12b-it-GGUF:Q6_K
+CONTEXT  32768

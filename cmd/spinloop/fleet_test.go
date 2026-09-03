@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -13,6 +14,11 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/spinloop-ai/spinloop/internal/daemon"
+	"github.com/spinloop-ai/spinloop/internal/fleet"
+	"github.com/spinloop-ai/spinloop/internal/metrics"
+	"github.com/spinloop-ai/spinloop/internal/remote"
 )
 
 // stubNode serves a daemon control API for one fleet node.
@@ -79,13 +85,20 @@ func writeFleetFile(t *testing.T, body string) string {
 }
 
 // twoNodeFleet writes a fleet of one reachable node and one that is down.
+// "up" declares a file field naming a minimal Spinloop, so `fleet start`
+// resolves a source for it — required for any kind: daemon node since
+// resolution became mandatory (see resolveNodeSpinloop).
 func twoNodeFleet(t *testing.T, state string) *httptest.Server {
 	t.Helper()
+	t.Setenv("SPINLOOP_CONFIG_DIR", t.TempDir())
 	up := stubNode(t, state)
 	host, port := hostPort(t, up)
-	writeFleetFile(t, fmt.Sprintf(
-		"nodes:\n  - name: up\n    host: %s\n    port: %d\n  - name: down\n    host: 127.0.0.1\n    port: 1\n",
+	dir := writeFleetFile(t, fmt.Sprintf(
+		"nodes:\n  - name: up\n    host: %s\n    port: %d\n    file: ./up.Spinloop\n  - name: down\n    host: 127.0.0.1\n    port: 1\n",
 		host, port))
+	if err := os.WriteFile(filepath.Join(dir, "up.Spinloop"), []byte("PROVIDER llamacpp\nMODEL org/m:Q4\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	return up
 }
 
@@ -217,8 +230,9 @@ func TestCmdFleetStartStopDriveOneNode(t *testing.T) {
 	}
 }
 
-// Mutating verbs are single-node by contract: with no node they list the
-// fleet and touch nothing.
+// Mutating verbs demand an explicit target: with no node and no --all they
+// list the fleet and touch nothing, rather than acting on the whole fleet
+// by accident.
 func TestCmdFleetStartStopRequireANode(t *testing.T) {
 	twoNodeFleet(t, "idle")
 	for _, verb := range []string{"start", "stop"} {
@@ -232,6 +246,273 @@ func TestCmdFleetStartStopRequireANode(t *testing.T) {
 				t.Errorf("fleet %s error %q does not list node %q", verb, err, want)
 			}
 		}
+	}
+}
+
+// threeStubNodesFleet writes a fleet of three reachable daemon nodes, each
+// declaring a file field naming a minimal Spinloop, so `fleet start` (which
+// now requires a resolvable source for every kind: daemon node) can start
+// any of them.
+func threeStubNodesFleet(t *testing.T, state string) {
+	t.Helper()
+	t.Setenv("SPINLOOP_CONFIG_DIR", t.TempDir())
+	var lines strings.Builder
+	for _, name := range []string{"a", "b", "c"} {
+		srv := stubNode(t, state)
+		host, port := hostPort(t, srv)
+		fmt.Fprintf(&lines, "  - name: %s\n    host: %s\n    port: %d\n    file: ./%s.Spinloop\n", name, host, port, name)
+	}
+	dir := writeFleetFile(t, "nodes:\n"+lines.String())
+	for _, name := range []string{"a", "b", "c"} {
+		path := filepath.Join(dir, name+".Spinloop")
+		if err := os.WriteFile(path, []byte("PROVIDER llamacpp\nMODEL org/m:Q4\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestCmdFleetStartSeveralNamedNodes(t *testing.T) {
+	threeStubNodesFleet(t, "idle")
+	out := captureStdout(t, func() {
+		if err := cmdFleet([]string{"start", "a", "b"}); err != nil {
+			t.Error(err)
+		}
+	})
+	for _, want := range []string{"a  running", "b  running"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("start a b output missing %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "c") {
+		t.Errorf("start a b should not touch c:\n%s", out)
+	}
+}
+
+func TestCmdFleetStartAll(t *testing.T) {
+	threeStubNodesFleet(t, "idle")
+	out := captureStdout(t, func() {
+		if err := cmdFleet([]string{"start", "--all"}); err != nil {
+			t.Error(err)
+		}
+	})
+	for _, want := range []string{"a  running", "b  running", "c  running"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("start --all output missing %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestCmdFleetStopSeveralNamedNodesAndAll(t *testing.T) {
+	threeStubNodesFleet(t, "running")
+	out := captureStdout(t, func() {
+		if err := cmdFleet([]string{"stop", "a", "b"}); err != nil {
+			t.Error(err)
+		}
+	})
+	for _, want := range []string{"a  stopped", "b  stopped"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("stop a b output missing %q:\n%s", want, out)
+		}
+	}
+
+	out = captureStdout(t, func() {
+		if err := cmdFleet([]string{"stop", "--all"}); err != nil {
+			t.Error(err)
+		}
+	})
+	for _, want := range []string{"a  stopped", "b  stopped", "c  stopped"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("stop --all output missing %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestCmdFleetStartStopAllPlusNamesIsAmbiguous(t *testing.T) {
+	threeStubNodesFleet(t, "idle")
+	for _, verb := range []string{"start", "stop"} {
+		err := cmdFleet([]string{verb, "--all", "a"})
+		if err == nil || !strings.Contains(err.Error(), "ambiguous") {
+			t.Errorf("fleet %s --all a: want an ambiguous-target error, got %v", verb, err)
+		}
+	}
+}
+
+func TestCmdFleetStartUnknownNameAmongSeveralFailsBeforeStartingAny(t *testing.T) {
+	threeStubNodesFleet(t, "idle")
+	out := captureStdout(t, func() {
+		err := cmdFleet([]string{"start", "a", "nope"})
+		if err == nil || !strings.Contains(err.Error(), "nope") {
+			t.Errorf("want an unknown-node error naming it, got %v", err)
+		}
+	})
+	if out != "" {
+		t.Errorf("nothing should have started, got output:\n%s", out)
+	}
+}
+
+// A kind: daemon node with no file field, no matching alias, and no
+// matching subdirectory cannot resolve a Spinloop source, so fleet start
+// fails for it — no fallback to a plain, config-less start.
+func TestCmdFleetStartDaemonNodeWithNoResolvableSourceFails(t *testing.T) {
+	twoNodeFleet(t, "idle") // "down" declares no file field
+	var err error
+	out := captureStdout(t, func() {
+		err = cmdFleet([]string{"start", "down"})
+	})
+	if err == nil {
+		t.Fatal("start on a node with no resolvable Spinloop source was accepted")
+	}
+	if !strings.Contains(err.Error(), "down") {
+		t.Errorf("error %q should name the failed node", err)
+	}
+	for _, want := range []string{"file", "alias", "subdirectory"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output %q should mention %q", out, want)
+		}
+	}
+}
+
+// fakeFleetNode is a minimal fleet.Node for exercising fleetStartCall's
+// dispatch directly, without a real daemon or control plane — it just
+// counts which of Start/StartWith was called.
+type fakeFleetNode struct {
+	name                       string
+	startCalls, startWithCalls int
+}
+
+func (f *fakeFleetNode) Name() string { return f.name }
+func (f *fakeFleetNode) Status(context.Context) (daemon.StatusResponse, error) {
+	return daemon.StatusResponse{}, nil
+}
+func (f *fakeFleetNode) Metrics(context.Context) (metrics.Stats, error) { return metrics.Stats{}, nil }
+func (f *fakeFleetNode) Start(context.Context) (daemon.StatusResponse, error) {
+	f.startCalls++
+	return daemon.StatusResponse{State: "running"}, nil
+}
+func (f *fakeFleetNode) StartWith(context.Context, *remote.DeployConfig, string) (daemon.StatusResponse, error) {
+	f.startWithCalls++
+	return daemon.StatusResponse{State: "running"}, nil
+}
+func (f *fakeFleetNode) Stop(context.Context) (daemon.StatusResponse, error) {
+	return daemon.StatusResponse{}, nil
+}
+func (f *fakeFleetNode) Logs(context.Context, int64, int) (daemon.LogsResponse, error) {
+	return daemon.LogsResponse{}, nil
+}
+
+// A kind: remote node's start always uses a plain start, never StartWith —
+// StartWith refuses a config for that kind unconditionally (see
+// remoteNode.StartWith), so fleetStartCall must not even attempt it.
+func TestFleetStartCallRemoteNodeUsesPlainStart(t *testing.T) {
+	t.Setenv("SPINLOOP_CONFIG_DIR", t.TempDir())
+	dir := writeFleetFile(t, "nodes:\n  - name: gpu-env\n    kind: remote\n    file: ./gpu-env.Spinloop\n")
+	if err := os.WriteFile(filepath.Join(dir, "gpu-env.Spinloop"), []byte("PROVIDER llamacpp\nMODEL org/m:Q4\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := fleet.Resolve(filepath.Join(dir, "fleet.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	node := &fakeFleetNode{name: "gpu-env"}
+	r := fleetStartCall(cfg)(context.Background(), node)
+	if !r.OK() {
+		t.Fatalf("fleetStartCall on a remote node = %+v", r)
+	}
+	if node.startWithCalls != 0 {
+		t.Errorf("StartWith was called %d times for a remote node, want 0", node.startWithCalls)
+	}
+	if node.startCalls != 1 {
+		t.Errorf("Start was called %d times, want 1", node.startCalls)
+	}
+}
+
+// A kind: daemon node with a resolvable source is started via StartWith,
+// never a plain Start — the whole point of the resolved config.
+func TestFleetStartCallDaemonNodeUsesStartWith(t *testing.T) {
+	t.Setenv("SPINLOOP_CONFIG_DIR", t.TempDir())
+	dir := writeFleetFile(t, "nodes:\n  - name: dev-1\n    host: dev1.local\n    file: ./dev-1.Spinloop\n")
+	if err := os.WriteFile(filepath.Join(dir, "dev-1.Spinloop"), []byte("PROVIDER llamacpp\nMODEL org/m:Q4\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := fleet.Resolve(filepath.Join(dir, "fleet.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	node := &fakeFleetNode{name: "dev-1"}
+	r := fleetStartCall(cfg)(context.Background(), node)
+	if !r.OK() {
+		t.Fatalf("fleetStartCall on a daemon node = %+v", r)
+	}
+	if node.startCalls != 0 {
+		t.Errorf("Start was called %d times for a daemon node with a resolved source, want 0", node.startCalls)
+	}
+	if node.startWithCalls != 1 {
+		t.Errorf("StartWith was called %d times, want 1", node.startWithCalls)
+	}
+}
+
+// A resolved source that is itself broken — unparseable, or naming a
+// provider StartWith's derivation cannot serve — must fail without ever
+// calling Start or StartWith. This is the guard coverage of a bare 0%/100%
+// count misses: resolveNodeSpinloop succeeding is not the same as the node
+// being safe to start.
+func TestFleetStartCallResolvedButBrokenSourceNeverStarts(t *testing.T) {
+	cases := map[string]string{
+		"unparseable Spinloop": "this is not a Spinloop\x00\x01",
+		// deployConfigForNode shares remote deploy's runnerFor, which only
+		// accepts llamacpp/vllm — the same limit that already applies to a
+		// routed wake. An MLX (or any other) provider is resolved but
+		// cannot be turned into a deploy config.
+		"unsupported provider": "PROVIDER mlx\nMODEL org/m\n",
+		"no model at all":      "PROVIDER llamacpp\n",
+	}
+	for name, body := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Setenv("SPINLOOP_CONFIG_DIR", t.TempDir())
+			dir := writeFleetFile(t, "nodes:\n  - name: dev-1\n    host: dev1.local\n    file: ./dev-1.Spinloop\n")
+			if err := os.WriteFile(filepath.Join(dir, "dev-1.Spinloop"), []byte(body), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			cfg, err := fleet.Resolve(filepath.Join(dir, "fleet.yaml"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			node := &fakeFleetNode{name: "dev-1"}
+			r := fleetStartCall(cfg)(context.Background(), node)
+			if r.OK() {
+				t.Fatalf("fleetStartCall on a broken source = %+v, want a failure", r)
+			}
+			if node.startCalls != 0 || node.startWithCalls != 0 {
+				t.Errorf("Start/StartWith were called (%d/%d) for a broken source, want neither",
+					node.startCalls, node.startWithCalls)
+			}
+		})
+	}
+}
+
+// An engine token that resolves to nothing must fail the node before
+// StartWith is ever attempted, exactly as an unset tokenEnv does for the
+// daemon's own bearer token.
+func TestFleetStartCallUnresolvedEngineTokenNeverStarts(t *testing.T) {
+	t.Setenv("SPINLOOP_CONFIG_DIR", t.TempDir())
+	dir := writeFleetFile(t, "nodes:\n  - name: dev-1\n    host: dev1.local\n    file: ./dev-1.Spinloop\n    engineTokenEnv: NOWHERE_ENGINE_KEY\n")
+	if err := os.WriteFile(filepath.Join(dir, "dev-1.Spinloop"), []byte("PROVIDER llamacpp\nMODEL org/m:Q4\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := fleet.Resolve(filepath.Join(dir, "fleet.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	node := &fakeFleetNode{name: "dev-1"}
+	r := fleetStartCall(cfg)(context.Background(), node)
+	if r.OK() {
+		t.Fatalf("fleetStartCall with an unresolved engine token = %+v, want a failure", r)
+	}
+	if !strings.Contains(r.Detail(), "NOWHERE_ENGINE_KEY") {
+		t.Errorf("failure %q should name the unresolved variable", r.Detail())
+	}
+	if node.startWithCalls != 0 {
+		t.Errorf("StartWith was called %d times, want 0", node.startWithCalls)
 	}
 }
 
