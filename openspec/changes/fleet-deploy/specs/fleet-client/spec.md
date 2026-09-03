@@ -110,6 +110,50 @@ any of them, exactly as a standalone `remote deploy --dry-run` does for one.
 - **THEN** the plan for every `kind: remote` node in the file is printed and
   no environment is created or registered
 
+### Requirement: Fleet deploy reports progress and results legibly
+
+`fleet deploy` SHALL indicate that a targeted node's deploy is still in
+progress for as long as it is running, on an output capable of an in-place
+update, so a run against several nodes — which can take AWS-call minutes per
+node — is never silently unresponsive. Each targeted node's final report
+SHALL be clearly delimited from every other targeted node's, identifying
+which node it describes, so one node's report cannot be mistaken for
+bleeding into the next. The command SHALL close with a summary stating how
+many of the targeted nodes succeeded.
+
+On an output that is not an interactive terminal (piped, redirected, or
+otherwise non-interactive), the command SHALL NOT emit an in-place progress
+indicator or other terminal-control escape sequences — a downstream consumer
+of that output (a log file, a script, CI) SHALL see only the per-node
+reports and the summary, in the order the nodes were targeted.
+
+#### Scenario: Progress is shown while nodes are still deploying
+
+- **WHEN** `fleet deploy --all` targets several nodes on an interactive
+  terminal, and their deploys are still in progress
+- **THEN** each still-deploying node is shown as in progress until it
+  finishes
+
+#### Scenario: Node reports are clearly separated
+
+- **WHEN** `fleet deploy` targets two or more nodes
+- **THEN** each node's report is headed by something identifying that node,
+  so the boundary between one node's report and the next is unambiguous
+
+#### Scenario: A summary closes the report
+
+- **WHEN** `fleet deploy` finishes against several targeted nodes
+- **THEN** the command's output ends with a line stating how many of the
+  targeted nodes deployed successfully
+
+#### Scenario: Piped output carries no escape sequences
+
+- **WHEN** `fleet deploy`'s output is piped or redirected rather than an
+  interactive terminal
+- **THEN** the output contains no in-place progress indicator and no
+  terminal-control escape sequences, only the per-node reports and the
+  summary
+
 ## MODIFIED Requirements
 
 ### Requirement: Driving one node
