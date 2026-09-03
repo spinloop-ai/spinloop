@@ -6,13 +6,11 @@
   Spin up your agent loop. One CLI to run a fleet of LLMs on local machine / LAN / Tailscale or in AWS.
 </p>
 <p align="center">
-  <code>spinloop</code> is a CLI for deploying models, observing them via the command line and connecting them to your coding agent/harness.
-  <br/>
-  It's a static, zero-dependencies binary you can run anywhere.
+  <code>spinloop</code> is a CLI for deploying models, observing them, fetching metrics and connecting them to your coding agent/harness. A static, zero-dependencies binary you can run anywhere.
 </p>
 
 <p align="center">
-  <em>llama.cpp, vLLM, MTPLX or oMLX &middot; deploy local, LAN or cloud &middot; opencode, Pi or Lucinate.</em>
+  <em>llama.cpp, vLLM, MTPLX or oMLX &middot; deploy local, LAN or cloud &middot; connect opencode, Pi, Lucinate, OpenClaw, Hermes etc.</em>
 </p>
 
 ---
