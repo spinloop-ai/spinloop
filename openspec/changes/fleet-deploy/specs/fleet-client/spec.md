@@ -122,25 +122,26 @@ known nodes. The daemon's own rules still hold — a start while that node's
 engine is running is reported as the daemon's conflict, and a stop is
 idempotent.
 
-For a `kind: daemon` node, `fleet start` SHALL first attempt to resolve that
-node's Spinloop source (see fleet-config's "Node Spinloop source" and
-"...falls back to name-based lookup" requirements). When one resolves, the
-client SHALL derive a deploy config from it — the same node-owned derivation
-a routed wake already uses (`deployConfigForNode`) — report the resolved
-source and derived config alongside the node's name, and start the node's
-engine with that config (`StartWith`) rather than a plain start, exactly as a
-routed wake tells a node what to serve. When no source resolves for that
-node, `start` SHALL fall back to a plain start unchanged from today's
-behavior — a fleet file that declares no source for any node behaves exactly
-as it did before this requirement existed. A `kind: remote` node's start is
-unaffected regardless of whether a source resolves for it: what it serves is
-fixed at deploy time, not pushed at start time.
+For a `kind: daemon` node, `fleet start` SHALL first resolve that node's
+Spinloop source (see fleet-config's "Node Spinloop source" and "...falls
+back to name-based lookup" requirements), and SHALL fail that node's start,
+naming all three ways a source could have been given, when none resolves.
+When one resolves, the client SHALL derive a deploy config from it — the
+same node-owned derivation a routed wake already uses
+(`deployConfigForNode`) — report the resolved source and derived config
+alongside the node's name, and start the node's engine with that config
+(`StartWith`) rather than a plain start, exactly as a routed wake tells a
+node what to serve. A `kind: remote` node's start is unaffected regardless
+of whether a source resolves for it: what it serves is fixed at deploy time,
+not pushed at start time, so it always uses a plain start.
 
 #### Scenario: Start a named node
 
-- **WHEN** `spinloop fleet start gpu-box` runs and that node is idle
-- **THEN** the client calls that node's daemon start endpoint and reports the
-  resulting state
+- **WHEN** `spinloop fleet start gpu-box` runs, that node is idle, and its
+  Spinloop source resolves
+- **THEN** the client derives a deploy config from the resolved source and
+  calls that node's daemon start endpoint with it, reporting the resulting
+  state
 
 #### Scenario: Start with no node names the fleet
 
@@ -159,12 +160,13 @@ fixed at deploy time, not pushed at start time.
 - **THEN** the client derives a deploy config from the resolved Spinloop,
   reports the resolved source, and starts `dev-1`'s engine with that config
 
-#### Scenario: Starting a daemon node with no resolved source is unchanged
+#### Scenario: Starting a daemon node with no resolvable source fails
 
 - **WHEN** `spinloop fleet start studio` runs, `studio` is a `kind: daemon`
   node, and no `file` field, alias, or subdirectory resolves for it
-- **THEN** the client starts `studio`'s engine with a plain start, exactly as
-  it would have before `fleet deploy` or this resolution existed
+- **THEN** the command fails for `studio`, naming the `file` field, the
+  alias registry, and the subdirectory convention as the three ways a source
+  could have been given, and nothing is started
 
 #### Scenario: Starting a remote node is unaffected by a resolved source
 

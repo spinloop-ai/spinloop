@@ -50,8 +50,10 @@ the resulting behavior.
   the same resolution and the same derivation code.
 - `fleet start` on a `kind: daemon` node uses the same resolved source to
   tell the daemon what to run, the same way a routed wake already does for
-  the Spinloop being launched — without breaking a fleet that declares no
-  source for a node, which must keep behaving exactly as it does today.
+  the Spinloop being launched — and requires it, exactly as `fleet deploy`
+  requires one for a `kind: remote` node. No unreleased tool has existing
+  users to protect, so there is no fallback path to design around: one
+  resolution mechanism, required everywhere it is the only source of truth.
 - One node's deploy failure or guard does not stop the others.
 
 **Non-Goals:**
@@ -63,8 +65,8 @@ the resulting behavior.
   as today; a node's own resolved source is a separate, independent input
   used only by `fleet start` run directly.
 - Changing anything about how an already-deployed remote node's environment
-  itself is driven (`stop`/`status`) — only `start`'s selection between
-  `Start` and `StartWith` changes, for daemon nodes.
+  itself is driven (`stop`/`status`), or how a `kind: remote` node's `start`
+  behaves — it always uses a plain start, resolved source or not.
 - A new deploy Lambda contract or control-plane change. `fleet deploy` is a
   client-side batching of the same calls `remote deploy` already makes.
 
@@ -151,10 +153,9 @@ the error: `readSpinloop`'s own literal-path fallback after a failed alias
 lookup would otherwise silently resolve `Name` against the *current working
 directory* rather than the fleet file's directory, the wrong base.
 
-`resolveNodeSpinloop` is shared by both consumers, but they treat step 4
-differently (see the next two decisions): `fleet deploy` treats it as a hard
-per-node failure, `fleet start` treats it as "fall back to today's plain
-start."
+`resolveNodeSpinloop` is shared by both consumers, and both treat step 4 the
+same way: a hard per-node failure (see the next two decisions). Neither
+falls back to acting without a resolved source.
 
 **Alternative considered**: make `file` required whenever no alias named
 after the node exists, dropping the subdirectory convention. Rejected per
@@ -196,7 +197,7 @@ same shape `NodeResult` already gives fan-out callers (ok / guarded /
 failed), rendered as one line per node plus a final non-zero exit when any
 node failed.
 
-### `fleet start` tries a daemon node's resolved source, falls back unchanged
+### `fleet start` requires a daemon node's resolved source
 
 `driveOneNode`'s call closure currently only receives the live `fleet.Node`:
 
@@ -205,8 +206,8 @@ func(ctx context.Context, n fleet.Node) fleet.NodeResult
 ```
 
 `fleetStartCmd`'s closure needs the resolved `NodeConfig` and the fleet's
-directory too, to attempt resolution before deciding between `Start` and
-`StartWith`. `driveOneNode` gains those to its call signature:
+directory too, to resolve a source before starting. `driveOneNode` gains
+those to its call signature:
 
 ```go
 func(ctx context.Context, cfg *fleet.Config, entry fleet.NodeConfig, n fleet.Node) fleet.NodeResult
@@ -214,23 +215,27 @@ func(ctx context.Context, cfg *fleet.Config, entry fleet.NodeConfig, n fleet.Nod
 
 `fleetStopCmd`'s closure ignores the additions — stopping needs no config.
 
-`fleetStartCmd`'s closure, for a `kind: daemon` entry only (a `kind: remote`
-node's `StartWith` always refuses a config, so resolution is skipped for
-it): call `resolveNodeSpinloop`; on success, `readSpinloop` +
+`fleetStartCmd`'s closure, for a `kind: daemon` entry: call
+`resolveNodeSpinloop`; on failure, fail that node's start, naming the three
+ways a source could have been given, exactly as `fleet deploy` fails an
+unresolved `kind: remote` node. On success, `readSpinloop` +
 `applySpinloopEnv` + `deployConfigForNode` (the node-owned derivation
 `Config.Wake` already uses — no forced context size, the preset's bind
 survives) to get a `dc`, print which source resolved and what it derived
 (the same transparency `fleet deploy` gives), then `n.StartWith(ctx, &dc,
-engineKey)`. On failure to resolve (step 4 above), fall through silently to
-today's `n.Start(ctx)` — an existing fleet that declares no source for any
-node keeps behaving exactly as it does now.
+engineKey)`. A `kind: remote` entry always uses a plain `n.Start(ctx)`
+regardless of whether a source resolves for it — `StartWith` refuses a
+config for that kind unconditionally, so there is nothing to resolve for.
 
-**Alternative considered**: require an explicit flag (e.g. `--from
-<spinloop>`) to opt into `StartWith` on `fleet start`, leaving bare `Start`
-as the unconditional default. Rejected per the request that `fleet start
-dev-1` use the fleet file's own mapping for `dev-1` the same way `fleet
-deploy` would — an explicit flag would just be `file` under another name,
-duplicating the resolution this change already adds for `fleet deploy`.
+**Alternative considered**: fall back to a plain, config-less `Start` when
+nothing resolves, so a fleet file with no `file`/alias/subdirectory for a
+node keeps working. Rejected: that fallback exists only to protect a user
+of today's `fleet start` who has not adopted this field, and there is no
+such user yet — carrying the fallback would mean permanently maintaining two
+start paths (config-less and config-driven) for a distinction that only
+matters during a migration nobody needs to make. A `kind: daemon` node
+without a resolvable source is a fleet-file omission to fix, the same as an
+undeployed `kind: remote` node is.
 
 ### Command placement
 
@@ -261,23 +266,22 @@ what `NewNode` already imports.
   source (the path used, or the alias name) before acting, the same way
   `remote deploy` already announces "Using alias …"; nothing happens
   silently from an unexpected source.
-- **A pre-existing alias or subdirectory coincidentally named after a daemon
-  node changes what `fleet start` does to it** → an operator who already had
-  `spinloop alias add gpu-box <unrelated-spinloop>` registered for
-  convenience, and a fleet node also named `gpu-box`, would see `fleet
-  start gpu-box` begin pushing that Spinloop's config instead of leaving the
-  daemon's own configuration alone. Mitigated by always announcing the
-  resolved source before starting (previous bullet), so the behavior is
-  visible immediately rather than silently surprising; not eliminated,
-  since automatic resolution is the explicit request this change implements
-  and a flag to suppress it would reintroduce the `file` field under another
-  name.
+- **`fleet start` on a `kind: daemon` node with no resolvable source now
+  fails instead of starting** → deliberate (see the "requires a daemon
+  node's resolved source" decision); every fleet file with a `kind: daemon`
+  node needs a `file` field, a matching alias, or a matching subdirectory
+  before this ships, including the example fleets (task 7.3).
+- **An alias or subdirectory coincidentally named after a node resolves to
+  the wrong Spinloop** → mitigated by always announcing the resolved source
+  before acting (previous bullet); an operator who wants a specific source
+  can always pin it with an explicit `file` field, which wins over both
+  fallbacks.
 
 ## Migration Plan
 
-Additive only: a new optional field, a new subcommand, and a `fleet start`
-behavior change that is a strict no-op for any node with no resolvable
-Spinloop source (the common case today, since the field is new). Existing
-fleet files and existing `remote deploy` behavior are unchanged. No data
-migration, no flag renames, nothing to roll back beyond reverting the
-change.
+A new field and a new subcommand, plus a breaking change to `fleet start`
+for any `kind: daemon` node with no resolvable Spinloop source (see
+proposal.md, marked **BREAKING**) — every fleet file needs a `file` field,
+alias, or subdirectory added for each `kind: daemon` node it lists,
+including this repo's own example fleets (task 7.3). `remote deploy` itself
+is unchanged. No data migration, no flag renames.

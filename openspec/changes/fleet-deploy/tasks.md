@@ -72,7 +72,7 @@
       completion (`compRegister(c, "fleet", compFiles)`, node-name
       completion for positional args as `start`/`stop` already do).
 
-## 5. `spinloop fleet start` uses a daemon node's resolved source
+## 5. `spinloop fleet start` requires a daemon node's resolved source
 
 - [ ] 5.1 Change `driveOneNode`'s call closure signature in
       `cmd/spinloop/fleet.go` from `func(ctx, fleet.Node) fleet.NodeResult`
@@ -81,16 +81,17 @@
       `*Config` through. Update `fleetStopCmd`'s closure to ignore the new
       parameters (unchanged behavior).
 - [ ] 5.2 Update `fleetStartCmd`'s closure: for a `kind: daemon` entry, call
-      `resolveNodeSpinloop`; on success, `readSpinloop` + `applySpinloopEnv`
-      + `deployConfigForNode` to derive a `dc`, report the resolved source
-      and derived config, then `n.StartWith(ctx, &dc, engineKey)`. On
-      failure to resolve, or for a `kind: remote` entry, fall through to
-      today's plain `n.Start(ctx)` unchanged.
+      `resolveNodeSpinloop`; on failure, fail that node's start, naming all
+      three ways a source could have been given (no fallback to a plain
+      start). On success, `readSpinloop` + `applySpinloopEnv` +
+      `deployConfigForNode` to derive a `dc`, report the resolved source and
+      derived config, then `n.StartWith(ctx, &dc, engineKey)`. For a `kind:
+      remote` entry, always use plain `n.Start(ctx)` regardless of whether a
+      source resolves.
 - [ ] 5.3 Confirm `remoteNode.StartWith`'s existing refusal
       (`internal/fleet/remote_node.go:77-83`) means a `kind: remote` node
-      is never sent a resolved config by `fleet start`, even if one
-      resolves for it — resolution is attempted for `kind: daemon` entries
-      only.
+      is never sent a resolved config by `fleet start` — resolution is only
+      ever attempted for `kind: daemon` entries.
 
 ## 6. Tests
 
@@ -120,8 +121,8 @@
       push the expected `StartWith` config; report includes the resolved
       source.
 - [ ] 6.8 `fleet start` on a `kind: daemon` node with no resolvable source
-      falls back to a plain `Start` call — assert `StartWith` is never
-      invoked.
+      fails, naming all three ways a source could have been given — assert
+      `Start` and `StartWith` are both never invoked.
 - [ ] 6.9 `fleet start` on a `kind: remote` node with a resolvable source
       still calls plain `Start`, never `StartWith`.
 - [ ] 6.10 `go test ./... -cover` stays at or above the project's 80% floor.
@@ -131,17 +132,22 @@
 - [ ] 7.1 `docs/commands/fleet.md`: document the `file` field and the
       alias/subdirectory fallbacks (generalized beyond "remote environments"
       to any node), add a `## Deploying remote nodes` section (command,
-      flags, `--all`/named-arg requirement, skip/guard/failure reporting),
-      and update the "Starting and stopping" section to describe the
-      resolved-source push for daemon nodes.
+      flags, `--all`/named-arg requirement, guard/failure reporting), and
+      update the "Starting and stopping" section to state plainly that a
+      `kind: daemon` node now needs a resolvable Spinloop source or `fleet
+      start` fails for it — **BREAKING**, called out as such.
 - [ ] 7.2 `docs/commands/remote.md`: cross-reference `fleet deploy` as the
       batch alternative to running `remote deploy` once per environment.
-- [ ] 7.3 Extend `examples/fleet-remote/` (or `examples/fleet-mixed/`) with a
-      node using each resolution tier — one with an explicit `file` field,
-      one relying on a same-named subdirectory — so the example is
-      deployable via `fleet deploy`, and add a `kind: daemon` node with a
-      resolvable source to demonstrate `fleet start`'s new behavior. Update
-      the example's README accordingly.
+- [ ] 7.3 Every existing example with a `kind: daemon` node
+      (`examples/fleet-local/`, `examples/fleet-docker/`,
+      `examples/fleet-mixed/`) needs a `file` field, a matching alias, or a
+      matching subdirectory added for each such node, or `spinloop fleet
+      start` breaks for it — this is required, not optional, for the
+      examples to keep working. Also extend `examples/fleet-remote/` (or
+      `fleet-mixed/`) with a node using each resolution tier — one with an
+      explicit `file` field, one relying on a same-named subdirectory — so
+      it is deployable via `fleet deploy`. Update each example's README
+      accordingly.
 
 ## 8. Validation
 
@@ -151,8 +157,8 @@
       `examples/fleet-remote/` (or `fleet-mixed/`) and confirm the printed
       plan matches what standalone `remote deploy --dry-run` prints for the
       same Spinloop file.
-- [ ] 8.4 Manually exercise `spinloop fleet start <daemon-node>` against a
-      local daemon (e.g. `examples/fleet-local/` or `fleet-docker/`) with a
-      resolvable source and confirm the engine starts with that config, then
-      again with no resolvable source and confirm it starts exactly as
-      before this change.
+- [ ] 8.4 Manually exercise `spinloop fleet start <daemon-node>` against each
+      updated example (`fleet-local`, `fleet-docker`, `fleet-mixed`) and
+      confirm the engine starts with the resolved config; confirm a node
+      with no resolvable source fails naming the three ways one could have
+      been given, rather than starting.
