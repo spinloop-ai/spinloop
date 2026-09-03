@@ -172,6 +172,7 @@ describe('LlmStack (control plane)', () => {
       'ec2:AuthorizeSecurityGroupIngress',
       'ec2:RevokeSecurityGroupIngress',
       'secretsmanager:CreateSecret',
+      'secretsmanager:PutSecretValue',
     ]) {
       expect(actions).toContain(action);
     }

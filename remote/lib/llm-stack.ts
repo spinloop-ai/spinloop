@@ -531,9 +531,16 @@ export class LlmStack extends cdk.Stack {
       }),
     );
     seedLaunchStatements().forEach((s) => deployFn.addToRolePolicy(s));
+    // CreateSecret/DescribeSecret mint the environment's key on first deploy;
+    // PutSecretValue rotates it when a deploy supplies a key, which
+    // invalidates the old value. All scoped to the per-environment secrets.
     deployFn.addToRolePolicy(
       new iam.PolicyStatement({
-        actions: ['secretsmanager:CreateSecret', 'secretsmanager:DescribeSecret'],
+        actions: [
+          'secretsmanager:CreateSecret',
+          'secretsmanager:DescribeSecret',
+          'secretsmanager:PutSecretValue',
+        ],
         resources: [envSecretArn],
       }),
     );
