@@ -27,7 +27,7 @@ spinloop fleet deploy --all --dry-run   # see the plan for qwen and llama first
 spinloop fleet deploy --all             # then create them
 ```
 
-That reads [`qwen.Spinloop`](qwen.Spinloop) and
+That reads [`qwen/Spinloop`](qwen/Spinloop) and
 [`llama/Spinloop`](llama/Spinloop) — see the next section for how a node finds
 its own Spinloop file.
 
@@ -38,17 +38,19 @@ its own Spinloop file.
 ```yaml
 nodes:
   - name: qwen        # the registered environment, and what you type at `fleet start qwen`
-    kind: remote
-    file: ./qwen.Spinloop   # what fleet deploy reads to create it
+    kind: remote       # resolved from qwen/Spinloop — see fleet.yaml
 
   - name: llama
-    kind: remote            # no file: resolved from llama/Spinloop instead — see fleet.yaml
+    kind: remote        # resolved from llama/Spinloop the same way
 ```
 
-`file` is optional — a node's own name doubles as a lookup key. `qwen` names
-its Spinloop explicitly; `llama` relies on the subdirectory convention
-(`llama/Spinloop` beside this file) instead, and a registered `spinloop
-alias` named after a node is a third way, tried before the subdirectory. See
+Neither node declares a `file` field: each one's own name is already a
+subdirectory beside this file (`qwen/Spinloop`, `llama/Spinloop`), so there is
+nothing more to declare. A registered `spinloop alias` named after a node
+would resolve the same way, and win over the subdirectory if both existed —
+or a `file` field can point anywhere else entirely, which is what
+[`examples/fleet-docker`](../fleet-docker/) uses to reuse one Spinloop
+(`client/Spinloop`) whose name matches neither node that runs it. See
 [`spinloop fleet`](../../docs/commands/fleet.md#a-nodes-spinloop-source) for
 the full resolution order.
 

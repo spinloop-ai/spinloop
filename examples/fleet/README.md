@@ -12,8 +12,9 @@ SPINLOOP_API_TOKEN=… spinloop daemon
 spinloop daemon --api-addr 127.0.0.1:4242
 ```
 
-What a node runs is decided by whoever starts it — `fleet.yaml`'s `file` field
-(see `studio`'s entry) names the Spinloop that describes it, so
+What a node runs is decided by whoever starts it — `fleet.yaml` names the
+Spinloop that describes it (see `studio`'s entry: `studio/Spinloop`, found
+automatically since the subdirectory's name matches the node's), so
 `fleet start` knows what to push. Then from anywhere that can reach them:
 
 ```sh

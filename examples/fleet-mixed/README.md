@@ -24,11 +24,14 @@ by whoever starts it — see the next section.
 
 ### 2. Give each node a Spinloop source, then bring them up
 
-`fleet.yaml`'s `file` field (or a registered `spinloop alias`, or a
-same-named subdirectory) names the Spinloop that describes what a node runs
-— [`gpu-box.Spinloop`](gpu-box.Spinloop) for the machine,
-[`qwen.Spinloop`](qwen.Spinloop) and [`llama/Spinloop`](llama/Spinloop) for
-the two environments. See
+Every node here finds its Spinloop through the subdirectory convention —
+[`gpu-box/Spinloop`](gpu-box/Spinloop) for the machine,
+[`qwen/Spinloop`](qwen/Spinloop) and [`llama/Spinloop`](llama/Spinloop) for
+the two environments — so none of them declares a `file` field in
+`fleet.yaml`. A registered `spinloop alias` named after a node would resolve
+the same way, and win over the subdirectory; an explicit `file` field can
+point anywhere else again, which is what
+[`examples/fleet-docker`](../fleet-docker/) uses instead. See
 [`spinloop fleet`](../../docs/commands/fleet.md#a-nodes-spinloop-source) for
 the full resolution order.
 
