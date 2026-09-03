@@ -211,3 +211,39 @@
       mixed resolvable/unresolvable) via the new `test_start_all` — every
       resolvable node starts/stops in one command each, the unresolvable one
       is reported without blocking the others.
+
+## 9. `fleet deploy` progress and readability (post-review UX fix)
+
+Raised against real usage of `fleet deploy --all`: output for each node only
+appeared once every node had finished (no feedback during what can be a
+multi-minute AWS call), and successive nodes' output ran together with
+nothing marking where one ended and the next began.
+
+- [x] 9.1 `runFleetDeploy` now shows a live per-node status line while
+      targeted nodes are still deploying — a grey Braille spinner beside a
+      pending node's name, redrawn in place (cursor-up + clear, matching the
+      codebase's existing `fleet metrics --watch` redraw convention) roughly
+      every 120ms — replaced by a coloured mark for that node the moment it
+      finishes, while the others keep spinning. Gated on
+      `golang.org/x/term.IsTerminal(os.Stdout.Fd())`, matching the existing
+      TTY check `fleet dashboard` already uses: a piped or redirected run
+      (a log file, CI) gets no spinner and no mid-flight escape codes.
+- [x] 9.2 Every node's final report is now headed by a coloured mark plus
+      its name (`✓`/`⚠`/`✗`, green/yellow/red — the same association
+      `deployRowOK`/`Guarded`/`Failed` already carried) and followed by a
+      blank line before the next node's block, so one node's output can no
+      longer be mistaken for bleeding into the next. A final coloured
+      summary line (`N/M deployed`, or `N/M deployed, K failed or guarded`)
+      closes the report — legible at a glance for a large `--all` run
+      without counting rows.
+- [x] 9.3 Verified by hand under a real TTY (`script`) against
+      `examples/fleet-remote/`: `--dry-run` shows the coloured headers and
+      summary; a real (credential-less, harmless) deploy attempt shows the
+      spinner genuinely cycling frames for both nodes concurrently before
+      timing out on AWS's own credential lookup. Verified again with stdout
+      piped to confirm the spinner is skipped and no escape codes leak into
+      redirected output.
+- [x] 9.4 `go build`/`go vet`/`gofmt` clean; full `go test ./... -cover`
+      passing (existing tests run non-TTY, so they exercise the no-spinner
+      path — the coloured headers/summary still show and are covered by the
+      existing substring assertions).

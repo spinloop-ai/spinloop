@@ -1,7 +1,8 @@
 // The `fleet` command group: one spinloop observing every engine you run.
 // It reads a fleet.yaml naming the machines, fans out over their daemon
-// control APIs, and renders the cluster. Observation is fleet-wide; starting
-// and stopping an engine is deliberately one node at a time.
+// control APIs, and renders the cluster. Observation is fleet-wide; starting,
+// stopping and deploying take one or more named nodes, or --all — never the
+// whole fleet by default.
 
 package main
 
@@ -20,6 +21,8 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
+
 	"github.com/spinloop-ai/spinloop/internal/config"
 	"github.com/spinloop-ai/spinloop/internal/daemon"
 	"github.com/spinloop-ai/spinloop/internal/fleet"
@@ -493,27 +496,138 @@ func runFleetDeploy(path string, all bool, names []string, opts deployOpts) erro
 	}
 
 	results := make([]fleetDeployResult, len(targets))
+	done := make([]bool, len(targets))
+	var mu sync.Mutex
 	var wg sync.WaitGroup
+
+	// A live spinner only makes sense where the previous frame can be
+	// erased — skip it entirely for a piped or redirected run (a log file,
+	// CI) rather than spamming it with escape codes.
+	var stop, spinnerDone chan struct{}
+	if term.IsTerminal(int(os.Stdout.Fd())) {
+		stop = make(chan struct{})
+		spinnerDone = make(chan struct{})
+		go renderDeploySpinner(targets, results, done, &mu, stop, spinnerDone)
+	}
+
 	for i, name := range targets {
 		wg.Add(1)
 		go func(i int, name string) {
 			defer wg.Done()
-			results[i] = deployOneNode(cfg, name, opts)
+			r := deployOneNode(cfg, name, opts)
+			mu.Lock()
+			results[i] = r
+			done[i] = true
+			mu.Unlock()
 		}(i, name)
 	}
 	wg.Wait()
+	if stop != nil {
+		// Stop and wait for the spinner's own erase before printing the
+		// report below it — otherwise the two interleave.
+		close(stop)
+		<-spinnerDone
+	}
 
 	var bad []string
-	for _, r := range results {
+	for i, r := range results {
+		if i > 0 {
+			fmt.Println()
+		}
+		fmt.Println(deployHeader(r.node, r.outcome))
 		fmt.Print(r.text())
 		if r.outcome != deployRowOK {
 			bad = append(bad, r.node)
 		}
 	}
+	fmt.Println()
+	fmt.Println(deploySummary(len(targets), len(bad)))
 	if len(bad) > 0 {
 		return fmt.Errorf("fleet deploy: failed or guarded: %s", strings.Join(bad, ", "))
 	}
 	return nil
+}
+
+// deploySpinnerFrames are the classic Braille dots, cycled while a node's
+// deploy is still in flight.
+var deploySpinnerFrames = [...]string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+
+const (
+	ansiGreen  = "\033[92m"
+	ansiRed    = "\033[31m"
+	ansiYellow = "\033[33m"
+	ansiGrey   = "\033[90m"
+	ansiReset  = "\033[0m"
+)
+
+// renderDeploySpinner redraws one line per target in place — a spinner
+// beside whichever nodes are still deploying, a coloured mark beside
+// whichever have finished — until stop is closed, then erases its own
+// lines and closes done. A `fleet deploy --all` can be several concurrent
+// AWS calls running for minutes; this is what keeps it from looking hung.
+func renderDeploySpinner(targets []string, results []fleetDeployResult, done []bool, mu *sync.Mutex, stop <-chan struct{}, closeWhenDone chan<- struct{}) {
+	defer close(closeWhenDone)
+	ticker := time.NewTicker(120 * time.Millisecond)
+	defer ticker.Stop()
+	frame := 0
+	drawn := 0
+	redraw := func() {
+		if drawn > 0 {
+			fmt.Printf("\033[%dA\033[J", drawn)
+		}
+		mu.Lock()
+		for i, name := range targets {
+			if done[i] {
+				fmt.Printf("%s %s\n", nodeGlyph(results[i].outcome), name)
+			} else {
+				fmt.Printf("%s%s%s %s deploying...\n", ansiGrey, deploySpinnerFrames[frame%len(deploySpinnerFrames)], ansiReset, name)
+			}
+		}
+		mu.Unlock()
+		drawn = len(targets)
+		frame++
+	}
+	for {
+		select {
+		case <-stop:
+			if drawn > 0 {
+				fmt.Printf("\033[%dA\033[J", drawn)
+			}
+			return
+		case <-ticker.C:
+			redraw()
+		}
+	}
+}
+
+// nodeGlyph is the coloured mark a finished node's spinner line, and its
+// report header, both show for the same outcome.
+func nodeGlyph(outcome deployRowOutcome) string {
+	switch outcome {
+	case deployRowOK:
+		return ansiGreen + "✓" + ansiReset
+	case deployRowGuarded:
+		return ansiYellow + "⚠" + ansiReset
+	default:
+		return ansiRed + "✗" + ansiReset
+	}
+}
+
+// deployHeader is the line that separates one node's report from the next —
+// the gap `fleet deploy --all`'s output used to lack entirely.
+func deployHeader(node string, outcome deployRowOutcome) string {
+	return nodeGlyph(outcome) + " " + node
+}
+
+// deploySummary is the final line naming how many of the targeted nodes
+// deployed clean, so a large --all run's result is legible at a glance
+// without counting rows.
+func deploySummary(total, bad int) string {
+	ok := total - bad
+	if bad == 0 {
+		return fmt.Sprintf("%s%d/%d deployed%s", ansiGreen, ok, total, ansiReset)
+	}
+	return fmt.Sprintf("%s%d/%d deployed%s, %s%d failed or guarded%s", ansiGreen, ok, total, ansiReset, ansiRed, bad, ansiReset)
 }
 
 // deployRowOutcome is one node's fleet-deploy outcome — a row, not an abort:
@@ -538,9 +652,9 @@ type fleetDeployResult struct {
 func (r fleetDeployResult) text() string {
 	switch r.outcome {
 	case deployRowGuarded:
-		return fmt.Sprintf("%s: guarded: %s\n", r.node, r.detail)
+		return fmt.Sprintf("  guarded: %s\n", r.detail)
 	case deployRowFailed:
-		return fmt.Sprintf("%s: failed: %s\n", r.node, r.detail)
+		return fmt.Sprintf("  failed: %s\n", r.detail)
 	default:
 		return r.detail
 	}
@@ -567,7 +681,7 @@ func deployOneNode(cfg *fleet.Config, name string, opts deployOpts) fleetDeployR
 		}
 		return fleetDeployResult{node: name, outcome: deployRowFailed, detail: err.Error()}
 	}
-	text := fmt.Sprintf("%s: using %s (%s)\n%s", name, spinloopPath, source, outcome.Text)
+	text := fmt.Sprintf("using %s (%s)\n%s", spinloopPath, source, outcome.Text)
 	return fleetDeployResult{node: name, outcome: deployRowOK, detail: text}
 }
 

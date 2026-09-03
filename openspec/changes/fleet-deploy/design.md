@@ -301,7 +301,12 @@ calls the same `resolveNodeSpinloop` and `deployConfigForNode`, plus the new
   print one outcome line per targeted node (deployed/started, guarded,
   failed) and exit non-zero on any failure, the same "row, not a silent
   gap" convention `fleet status` and `fleet metrics` already use for
-  unreachable nodes.
+  unreachable nodes. `fleet deploy` specifically: real usage surfaced that
+  several nodes' full plan/result text run together with nothing marking
+  where one ends and the next begins, and that a `--all` run gives no
+  feedback while AWS calls are still in flight (task 9) — fixed with a
+  live per-node spinner while deploying, a coloured ✓/⚠/✗ header per node's
+  report, and a closing summary line, all skipped for a non-TTY run.
 - **`fleet start --all`/`fleet stop --all` act on every node in the fleet at
   once, daemon and remote alike** → each start or stop is still gated by
   the daemon's or the control plane's own rules (an already-running engine
