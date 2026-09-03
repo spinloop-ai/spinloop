@@ -410,6 +410,7 @@ func fleetDeployCmd() *cobra.Command {
 		allowedCidr     string
 		region          string
 		spinloopVersion string
+		apiKeyEnv       string
 	)
 	c := &cobra.Command{
 		Use:   "deploy",
@@ -431,6 +432,7 @@ derivation, consent, and registration behavior as "spinloop remote deploy".`,
 				allowedCidr:     allowedCidr,
 				region:          region,
 				spinloopVersion: spinloopVersion,
+				apiKeyEnv:       apiKeyEnv,
 			})
 		},
 	}
@@ -443,6 +445,7 @@ derivation, consent, and registration behavior as "spinloop remote deploy".`,
 	fs.StringVar(&allowedCidr, "allowed-cidr", "", "who may reach each environment's instance (default: your public IP as a /32, on first deploy)")
 	fs.StringVar(&region, "region", "", "AWS region of the control plane (default: AWS_REGION or us-east-1)")
 	fs.StringVar(&spinloopVersion, "spinloop-version", "", "spinloop release each environment's instances install at boot (default: latest)")
+	fs.StringVar(&apiKeyEnv, "api-key-env", "", "name the environment variable holding the engine key to create or rotate, applied to every targeted node; with no flag each environment keeps its stored key")
 	c.ValidArgsFunction = noPositionals
 	compRegister(c, "fleet", compFiles)
 	return c

@@ -71,6 +71,15 @@ type Config struct {
 	// should be used — spread the work, or consolidate it. Empty means
 	// PreferIdle.
 	Prefer Prefer `yaml:"prefer"`
+	// APIKeyEnv names the environment variable holding the key this fleet's
+	// remote nodes require, shared by every one of them: a remote's engine is
+	// always gated by its key, so a fleet of remotes can name the variable
+	// once rather than on each node — a node's own EngineTokenEnv overrides
+	// it. It is a remote-only default: a daemon gates on its own
+	// EngineTokenEnv, and a fleet-wide key must not start gating an engine
+	// that was never set up to accept one. As with every other secret in
+	// this file, the value is never written here.
+	APIKeyEnv string `yaml:"apiKeyEnv"`
 
 	// Path is the file this was read from, and Dir its directory — the .env
 	// beside it fills token references.
@@ -286,6 +295,24 @@ func (c *Config) Token(n NodeConfig) (string, error) {
 // fleet file.
 func (c *Config) EngineToken(n NodeConfig) (string, error) {
 	return c.resolveTokenEnv(n, n.EngineTokenEnv)
+}
+
+// RemoteEngineToken resolves the key a remote node's engine requires: the
+// variable the node names when it names one, else the fleet-wide APIKeyEnv.
+// A remote's engine is always gated by its key, so a node that names no
+// resolvable key fails here, before a launch depends on it — the way every
+// other missing secret in this file is named, the node and the fix.
+func (c *Config) RemoteEngineToken(n NodeConfig) (string, error) {
+	name := n.EngineTokenEnv
+	if name == "" {
+		name = c.APIKeyEnv
+	}
+	if name == "" {
+		return "", fmt.Errorf(
+			"node %q is a remote environment, so its engine key must be set: name the variable holding it, in this node's `engineTokenEnv` or the file's fleet-wide `apiKeyEnv` (%s)",
+			n.Name, c.Path)
+	}
+	return c.resolveTokenEnv(n, name)
 }
 
 // resolveTokenEnv reads one of a node's token references: the process

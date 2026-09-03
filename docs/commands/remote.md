@@ -329,11 +329,18 @@ or a seed you want to run again. It starts the same ~20-minute seed instance a
 first deploy does, and re-downloads the weights, so it is opt-in rather than
 something to reach for by habit.
 
+By default deploy stores the engine key the environment was first deployed
+with — one generated per environment, held in its secret. To choose or change
+it, `--api-key-env VAR` resolves `VAR` from your environment (or the `.env`
+beside the Spinloop) and sends the value: the deploy creates or **rotates** the
+environment's key, so the old value stops working — and the reply says which
+happened, never the value itself.
+
 Deploying several environments this way means running `remote deploy` once
 per Spinloop file. [`spinloop fleet deploy`](fleet.md#deploying-remote-nodes)
-does the same derivation, consent, and registration for every `kind: remote`
-node a fleet file names — or a chosen few — in one command, each from its own
-resolved Spinloop source.
+does the same derivation, consent, and registration (`--api-key-env`
+included) for every `kind: remote` node a fleet file names — or a chosen few
+— in one command, each from its own resolved Spinloop source.
 
 ## Flags
 
@@ -345,6 +352,7 @@ resolved Spinloop source.
 | `-n`, `--dry-run` | `deploy` only: print what would be sent, without sending it |
 | `--reseed` | `deploy` only: re-fetch the weights even if they are already in S3 |
 | `--spinloop-version` | `deploy` only: the spinloop release fresh boots install (default: the latest published release) |
+| `--api-key-env` | `deploy` only: name the environment variable holding the engine key to create or rotate; with no flag the stored key is kept |
 
 `bootstrap` and `bake` have their own too (`--ref`, `--dir`, `--region`,
 `--package-manager`, and `--no-wait` on bake) — see their sections above.

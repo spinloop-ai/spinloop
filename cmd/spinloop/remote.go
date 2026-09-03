@@ -1346,6 +1346,7 @@ func remoteDeployCmd() *cobra.Command {
 		allowedCidr     string
 		region          string
 		spinloopVersion string
+		apiKeyEnv       string
 	)
 	c := &cobra.Command{
 		Use:   "deploy",
@@ -1361,7 +1362,7 @@ installs the latest published release.`,
 		ValidArgsFunction: aliasSlot,
 		RunE: func(c *cobra.Command, args []string) error {
 			resolve(c)
-			return runRemoteDeploy(args, dryRun, overwrite, reseed, allowedCidr, region, spinloopVersion)
+			return runRemoteDeploy(args, dryRun, overwrite, reseed, allowedCidr, region, spinloopVersion, apiKeyEnv)
 		},
 	}
 	fs := c.Flags()
@@ -1371,11 +1372,12 @@ installs the latest published release.`,
 	fs.StringVar(&allowedCidr, "allowed-cidr", "", "who may reach this environment's instance (default: your public IP as a /32, on first deploy)")
 	fs.StringVar(&region, "region", "", "AWS region of the control plane (default: AWS_REGION or us-east-1)")
 	fs.StringVar(&spinloopVersion, "spinloop-version", "", "spinloop release the environment's instances install at boot (default: latest)")
+	fs.StringVar(&apiKeyEnv, "api-key-env", "", "the environment variable holding the API key to store for this environment (a variable name, never the key itself)")
 	return c
 }
 
 // runRemoteDeploy is the body of `spinloop remote deploy`.
-func runRemoteDeploy(args []string, dryRun, overwrite, reseed bool, allowedCidr, region, spinloopVersion string) error {
+func runRemoteDeploy(args []string, dryRun, overwrite, reseed bool, allowedCidr, region, spinloopVersion, apiKeyEnv string) error {
 	_, spinloopPath, dc, env, err := deriveDeployTarget("spinloop remote deploy <file>", spinloopArg(args))
 	if err != nil {
 		return err
@@ -1387,6 +1389,7 @@ func runRemoteDeploy(args []string, dryRun, overwrite, reseed bool, allowedCidr,
 		allowedCidr:     allowedCidr,
 		region:          region,
 		spinloopVersion: spinloopVersion,
+		apiKeyEnv:       apiKeyEnv,
 	})
 	if err != nil {
 		return err
@@ -1446,6 +1449,11 @@ type deployOpts struct {
 	allowedCidr     string
 	region          string
 	spinloopVersion string
+	// apiKeyEnv names the environment variable holding an externally
+	// supplied key to store as the environment's engine key, never a
+	// literal on the command line. Empty means the control plane manages
+	// its own key as it always has.
+	apiKeyEnv string
 }
 
 // deployOutcome is a successful (or dry-run) deploy's result: the plan/result
@@ -1496,6 +1504,21 @@ func runDeploy(spinloopPath, env string, dc remote.DeployConfig, opts deployOpts
 		}
 		dc.SpinloopVersion = pin
 	}
+	// A supplied key arrives the way every other secret does: as a reference
+	// to an environment variable, never a literal on the command line. By
+	// this point deriveDeployTarget has already applied the Spinloop's local
+	// environment (a process-wide side effect), so the variable is
+	// resolvable from here whichever caller is deploying; one set nowhere
+	// fails before anything is sent.
+	var apiKey string
+	if opts.apiKeyEnv != "" {
+		apiKey = os.Getenv(opts.apiKeyEnv)
+		if apiKey == "" {
+			return deployOutcome{}, fmt.Errorf(
+				"--api-key-env: %s is not set: export it, or put it in the .env beside the Spinloop",
+				opts.apiKeyEnv)
+		}
+	}
 
 	var buf strings.Builder
 	fmt.Fprintf(&buf, "Deploying from %s\n", spinloopPath)
@@ -1531,6 +1554,11 @@ func runDeploy(spinloopPath, env string, dc remote.DeployConfig, opts deployOpts
 		spinloopVer = "latest"
 	}
 	fmt.Fprintf(&buf, "  spinloop:  %s\n", spinloopVer)
+	// A key is worth stating too — it rotates — but the value is never
+	// printed, in the dry run or the report.
+	if opts.apiKeyEnv != "" {
+		fmt.Fprintf(&buf, "  api key:  stored from %s\n", opts.apiKeyEnv)
+	}
 	if opts.dryRun {
 		return deployOutcome{Text: buf.String(), DryRun: true}, nil
 	}
@@ -1583,7 +1611,7 @@ func runDeploy(spinloopPath, env string, dc remote.DeployConfig, opts deployOpts
 		fmt.Fprintf(&buf, "  ingress: %s (your public IP; override with --allowed-cidr)\n", allowedCidr)
 	}
 
-	resp, err := remoteDeployFn(ctx, cfg, dc, allowedCidr, opts.reseed)
+	resp, err := remoteDeployFn(ctx, cfg, dc, allowedCidr, opts.reseed, apiKey)
 	if err != nil {
 		return deployOutcome{}, err
 	}
@@ -1598,6 +1626,14 @@ func runDeploy(spinloopPath, env string, dc remote.DeployConfig, opts deployOpts
 	buf.WriteByte('\n')
 	fmt.Fprintf(&buf, "deployed: environment %s at %s\n", env, resp.BaseURL)
 	fmt.Fprintf(&buf, "registered: %s\n", envConfigPath)
+	// A rotation is worth stating out loud: it invalidates the key a live
+	// agent may still be holding, and the action — never the value — is all
+	// the reply carries.
+	if resp.APIKeyAction == "rotated" {
+		buf.WriteString("api key: rotated — the previous key no longer works\n")
+	} else if resp.APIKeyAction != "" {
+		buf.WriteString("api key: created\n")
+	}
 	if resp.Seeding {
 		fmt.Fprintf(&buf, "seeding the weights — follow it with `spinloop remote seed status %s`.\n", resp.SeedID)
 		buf.WriteString("Wait for it to finish before `spinloop remote start`, or the instance will\n")

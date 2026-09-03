@@ -115,6 +115,17 @@ weights are not in the bucket, the Lambda launches a seed itself and replies
 prefix, so wait for it. The id is stable (derived from the weights), unlike the
 instance it replaced, so it is what `spinloop remote seed status` takes.
 
+The environment's engine API key is the same shape: a property of the *request*,
+not of what the environment serves. `spinloop remote deploy --api-key-env VAR`
+resolves the variable and sends the value beside the deploy body; the Lambda
+stores it in the environment's Secrets Manager secret (the one the start Lambda
+fetches into the daemon) and never writes it into the SSM parameter. A supplied
+key is a rotation — `create` when the secret is absent, `PutSecretValue` (which
+invalidates the old value) when it exists — and the reply carries only the
+action (`apiKeyAction: "created" | "rotated"`), never the value. A deploy that
+sends no key leaves the secret alone: first creation generates one, and an
+existing value is never regenerated.
+
 ## Seeding
 
 A seed is a supervised job, not a fire-and-forget script.
