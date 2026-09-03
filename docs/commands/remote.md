@@ -369,7 +369,9 @@ included) for every `kind: remote` node a fleet file names — or a chosen few
 - `deploy_url` is optional: a config written before `deploy` existed still
   works for `start`, `stop`, and `status`.
 - Only a self-hosted engine can be deployed (`llamacpp` or `vllm`). A hosted
-  provider has nothing to deploy.
+  provider has nothing to deploy. `mtplx` is a self-hosted engine too, but it is
+  Apple-Silicon-only and has no machine image, so it is not a cloud runner — it
+  serves locally and on a [fleet node](fleet.md), never on the cloud GPU.
 
 ## See also
 

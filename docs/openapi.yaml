@@ -294,7 +294,7 @@ components:
         runner:
           type: string
           description: The engine being served, when known.
-          examples: [llamacpp, vllm]
+          examples: [llamacpp, omlx, vllm, mtplx]
         model:
           type: string
           description: What it is serving, when known.
@@ -489,7 +489,10 @@ components:
       properties:
         runner:
           type: string
-          enum: [llamacpp, vllm]
+          # The engines a deploy config can name. mtplx appears because a fleet
+          # node can be woken with it; it is not a cloud runner (no machine
+          # image). omlx is not a wakeable runner yet.
+          enum: [llamacpp, vllm, mtplx]
         modelId:
           type: string
           description: The weights to serve — a Hugging Face repo, or a local path on the instance.

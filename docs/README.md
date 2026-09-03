@@ -15,8 +15,8 @@ Four words carry the whole tool:
   Pi and lucinate are also supported. Chosen at runtime, so the same selection
   works for any of them. See [`spinloop harness`](commands/harness.md).
 - **Provider** — what `spinloop` can configure, from a built-in
-  catalogue: OpenRouter, AWS Bedrock, Ollama, llama.cpp, vLLM, oMLX (Apple
-  Silicon), or any OpenAI-compatible endpoint. See
+  catalogue: OpenRouter, AWS Bedrock, Ollama, llama.cpp, vLLM, oMLX and MTPLX
+  (both Apple Silicon), or any OpenAI-compatible endpoint. See
   [`spinloop list`](commands/list.md).
 - **Spinloop file** — a small, declarative file (like a `Dockerfile`, but for
   your agent's model) that captures one selection so you can commit it and
@@ -83,7 +83,7 @@ including the `SPINLOOP_REMOTE_*` overrides:
 | `SPINLOOP_LOG_LEVEL` | How much `spinloop daemon`/`spinloop serve` record — `debug`, `info` (default), `warn`, `error` (`--log-level` beats it) |
 | *(named by `tokenEnv`)* | A [fleet](commands/fleet.md) node's bearer token — `fleet.yaml` names the variable, never the value |
 | `DEEPSEEK_API_KEY`, `OPENAI_API_KEY`, … | Provider API keys — `spinloop list` shows which each provider reads |
-| `OLLAMA_BASE_URL`, `LLAMACPP_BASE_URL`, `OMLX_BASE_URL`, `VLLM_BASE_URL`, `OPENAI_BASE_URL` | Per-provider endpoint overrides |
+| `OLLAMA_BASE_URL`, `LLAMACPP_BASE_URL`, `OMLX_BASE_URL`, `VLLM_BASE_URL`, `MTPLX_BASE_URL`, `OPENAI_BASE_URL` | Per-provider endpoint overrides |
 | `AWS_REGION` | Region for AWS Bedrock |
 
 Keys are looked up in a `.env` file **beside the `Spinloop` being applied** first
@@ -93,5 +93,6 @@ it, the same way `PRESET` and `REMOTE` travel with a Spinloop. They are **never 
 a reference the agent resolves when it runs, and `spinloop harness` passes the
 keys it can resolve to the agent it launches. If you start the agent yourself,
 set the variable in your own environment. Local providers on localhost (Ollama,
-llama.cpp) need no key; Bedrock uses your AWS credentials. oMLX needs one only if
-you enabled its API-key auth — set `OPENAI_API_KEY` before applying if you did.
+llama.cpp) need no key; Bedrock uses your AWS credentials. oMLX and MTPLX need
+one only if you enabled their API-key auth — set `OPENAI_API_KEY` before
+applying if you did.

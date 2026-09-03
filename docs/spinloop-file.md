@@ -195,11 +195,12 @@ Rules:
   budget it divides across its `--parallel` slots, a `llamacpp` Spinloop with
   both `CONTEXT` and `PARALLEL` set gets a `--ctx-size` scaled by the slot
   count so each slot still gets what `CONTEXT` promised (`CONTEXT 128k` +
-  `PARALLEL 2` → `--ctx-size 256000 --parallel 2`). `vllm` and `omlx` have no
-  such coupling — `PARALLEL` becomes `--max-num-seqs`/`--max-concurrent-requests`
-  respectively, and `CONTEXT` is never scaled by it. See
-  [`spinloop serve`](commands/serve.md#parallelism) for the full per-engine
-  mapping.
+   `PARALLEL 2` → `--ctx-size 256000 --parallel 2`). `vllm`, `mtplx`, and `omlx`
+   have no such coupling — `PARALLEL` becomes `--max-num-seqs`/
+   `--max-active-requests`/`--max-concurrent-requests` respectively, and
+   `CONTEXT` is never scaled by it. See
+   [`spinloop serve`](commands/serve.md#parallelism) for the full per-engine
+   mapping.
 - `BASEURL` overrides the provider's API base URL — handy for a gateway or a
   llama.cpp server on a non-default port. `URL`, `BASE-URL`, and `BASE_URL` are
   accepted as aliases.

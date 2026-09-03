@@ -278,9 +278,10 @@ while true; do sleep 0.05; done`)
 	}
 }
 
-// TestSampleOnceNoTarget covers the two quiet paths: an engine with no metrics
-// endpoint is skipped, and an unreachable one records nothing rather than
-// being read as either active or idle.
+// TestSampleOnceNoTarget covers the quiet paths: an engine with no metrics
+// endpoint — or an address with no dialect to parse — is skipped, and an
+// unreachable one records nothing rather than being read as either active or
+// idle.
 func TestSampleOnceNoTarget(t *testing.T) {
 	d := testDaemon(t, `trap 'exit 0' TERM
 while true; do sleep 0.05; done`)
@@ -300,6 +301,14 @@ while true; do sleep 0.05; done`)
 	d.sampleOnce(context.Background())
 	if _, ok := d.act.snapshot(); ok {
 		t.Error("sampled with no scrape target")
+	}
+
+	// An address with no dialect has no /metrics to parse — the address exists
+	// for the readiness check, not for the sampler.
+	d.SetScrape(metrics.ScrapeTarget{BaseURL: "http://127.0.0.1:1", Engine: ""})
+	d.sampleOnce(context.Background())
+	if _, ok := d.act.snapshot(); ok {
+		t.Error("sampled an engine with no metrics dialect")
 	}
 
 	// A target that does not answer: a non-observation, not activity.

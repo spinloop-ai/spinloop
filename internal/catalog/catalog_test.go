@@ -648,6 +648,74 @@ func TestBuildProviderBlock_LlamacppReferencesKeyForRemote(t *testing.T) {
 	}
 }
 
+// MTPLX, like oMLX and llama.cpp, is an optional-key local OpenAI-compatible
+// engine: a local server gets no key, a set key is referenced (never written
+// as a literal), and Pi/lucinate get their usual keyless and resolved forms.
+func TestMtplxProviderKeyHandling(t *testing.T) {
+	cat, _ := Load()
+	p, ok := cat.Providers["mtplx"]
+	if !ok {
+		t.Fatal("catalogue has no mtplx provider")
+	}
+	if !p.APIKeyOptional {
+		t.Fatal("mtplx key should be optional")
+	}
+
+	withKey := func(name string) string {
+		if name == "OPENAI_API_KEY" {
+			return "sk-mtplx"
+		}
+		return ""
+	}
+
+	// opencode, keyless local: no apiKey option at all.
+	block, _, err := BuildProviderBlock("mtplx", p, "local-model", "", noEnv)
+	if err != nil {
+		t.Fatalf("BuildProviderBlock: %v", err)
+	}
+	if _, ok := block["options"].(map[string]any)["apiKey"]; ok {
+		t.Error("a keyless local mtplx server should get no apiKey option")
+	}
+
+	// opencode, key set: an env reference, never the literal secret.
+	block, _, err = BuildProviderBlock("mtplx", p, "local-model", "", withKey)
+	if err != nil {
+		t.Fatalf("BuildProviderBlock: %v", err)
+	}
+	opts := block["options"].(map[string]any)
+	if opts["apiKey"] != "{env:OPENAI_API_KEY}" {
+		t.Errorf("apiKey = %v, want the env reference", opts["apiKey"])
+	}
+	if opts["apiKey"] == "sk-mtplx" {
+		t.Error("the resolved key must never be written into the block")
+	}
+
+	// Pi: the placeholder when keyless, the $VAR reference when set.
+	prov, _, err := BuildPiProvider("mtplx", p, "local-model", "", noEnv)
+	if err != nil {
+		t.Fatalf("BuildPiProvider: %v", err)
+	}
+	if prov.APIKey != piPlaceholderAPIKey {
+		t.Errorf("Pi apiKey (keyless) = %q, want the placeholder", prov.APIKey)
+	}
+	prov, _, err = BuildPiProvider("mtplx", p, "local-model", "", withKey)
+	if err != nil {
+		t.Fatalf("BuildPiProvider: %v", err)
+	}
+	if prov.APIKey != "$OPENAI_API_KEY" {
+		t.Errorf("Pi apiKey (set) = %q, want the $VAR reference", prov.APIKey)
+	}
+
+	// lucinate: accepted, resolving a concrete endpoint.
+	conn, _, err := BuildLucinateConnection("mtplx", p, "local-model", "", noEnv)
+	if err != nil {
+		t.Fatalf("BuildLucinateConnection: %v", err)
+	}
+	if conn.BaseURL == "" {
+		t.Error("lucinate connection should carry a resolved base URL")
+	}
+}
+
 func TestIsLocalEndpoint(t *testing.T) {
 	for _, u := range []string{
 		"", "http://localhost:8080/v1", "http://127.0.0.1:8080/v1",

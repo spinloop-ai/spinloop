@@ -29,12 +29,29 @@
 
 ## Readiness
 
-`readinessCheckedRunners` gains `mtplx: "/health"`. MTPLX's `/health`
-answers `200 {"ok":true}` once its OpenAI server is up, which may be before
-the weights finish loading. That is fine: routing treats `running` as "a
-process exists" and launches only once the engine endpoint actually answers,
-so a still-loading node is waited for — the existing "A started engine that
-is not yet loaded is waited for" behaviour, unchanged.
+`readinessCheckedRunners` gains `mtplx`. MTPLX's `/health` answers
+`200 {"ok":true}` once its OpenAI server is up, which may be before the
+weights finish loading. That is fine: routing treats `running` as "a process
+exists" and launches only once the engine endpoint actually answers, so a
+still-loading node is waited for — the existing "A started engine that is not
+yet loaded is waited for" behaviour, unchanged.
+
+The map alone is not enough, because the readiness check needs the engine's
+*address*, and that was only being carried on the metrics scrape target —
+which mtplx has none of, since it has no /metrics dialect. So the address is
+decoupled from the dialect:
+
+- `scrapeTargetFor` always resolves the address (the engine's own `--host`/
+  `--port`, else BASEURL, else the engine default) even when the engine has no
+  metrics dialect; the target's dialect field stays empty in that case.
+- The activity sampler skips a target that has an address but no dialect —
+  there is no /metrics to parse, so an engine that cannot be scraped still
+  costs nothing.
+- The readiness check is keyed on the **runner**, not the dialect. That is
+  what the daemon-api spec's "the runner has a known health-check convention"
+  actually means, and it is what lets a dialect-less engine like mtplx be
+  probed at `/health` on its own address. omlx stays unchecked: it is not in
+  the map, so its readiness field remains absent.
 
 ## Metrics: none
 

@@ -127,6 +127,32 @@ func TestCheckReadyOnceUnknownRunnerSkipped(t *testing.T) {
 	}
 }
 
+// TestCheckReadyOnceNoMetricsDialectStillChecked covers mtplx: the engine has
+// no /metrics to scrape, so its scrape target carries an address but no
+// dialect, yet it still answers /health. The readiness check must run on the
+// address alone — keying it on the runner, not the dialect — so a node that
+// cannot be scraped can still be read as ready or not.
+func TestCheckReadyOnceNoMetricsDialectStillChecked(t *testing.T) {
+	health := &fakeHealth{status: http.StatusOK}
+	srv := httptest.NewServer(health)
+	defer srv.Close()
+
+	d := startRunningDaemon(t, "mtplx")
+	// No dialect: this is exactly what scrapeTargetFor yields for mtplx.
+	d.SetScrape(metrics.ScrapeTarget{BaseURL: srv.URL, Engine: ""})
+
+	d.checkReadyOnce(context.Background())
+	if got := d.readinessField(); got != "ready" {
+		t.Fatalf("readinessField for a dialect-less engine = %q, want ready", got)
+	}
+	if got := d.Status().Ready; got != "ready" {
+		t.Errorf("Status().Ready for a dialect-less engine = %q, want ready", got)
+	}
+	if got := d.Metrics(context.Background()).Ready; got != "ready" {
+		t.Errorf("Metrics().Ready for a dialect-less engine = %q, want ready", got)
+	}
+}
+
 // TestReadinessAbsentWhenNotRunning covers idle, stopped, and crashed alike:
 // Status and Metrics only consult readiness inside their running branch, so
 // a stale reading never leaks out once the engine is not running.

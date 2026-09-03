@@ -399,11 +399,12 @@ func withMetricsArgs(argv []string, engine serveEngine) []string {
 	return append(argv, engine.metricsArgs...)
 }
 
-// scrapeTargetFor locates the engine's own /metrics for the collector, with
+// scrapeTargetFor locates the engine's own endpoint for the collector, with
 // the API key lifted from the command — a literal --api-key, or the contents
 // of an --api-key-file (how the cloud delivers it) — so a gated /metrics still
-// answers. An engine with no metrics endpoint yields the zero target (no
-// scrape).
+// answers. The address is always resolved, even for an engine with no metrics
+// dialect: the readiness check probes the engine's own /health there, and an
+// engine with no /metrics to parse simply has an empty Engine.
 //
 // The address is taken from the engine's own --host/--port when it states
 // them, because that is where the process actually binds. Only then the
@@ -414,9 +415,6 @@ func withMetricsArgs(argv []string, engine serveEngine) []string {
 // deploy config's --port 8000. Every scrape was refused, silently, and the
 // activity record — derived from those counters — never moved.
 func scrapeTargetFor(engine serveEngine, baseURL string, argv []string) metrics.ScrapeTarget {
-	if engine.metricsEngine == "" {
-		return metrics.ScrapeTarget{}
-	}
 	bind := engineBindFrom(argv)
 	if b := bindBaseURL(bind.host, bind.port); b != "" {
 		baseURL = b

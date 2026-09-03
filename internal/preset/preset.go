@@ -191,6 +191,11 @@ var VLLM = Dialect{}
 // aliasing is applied and keys pass through as written.
 var OMLX = Dialect{}
 
+// MTPLX is the dialect `mtplx serve` speaks. Every flag is long form
+// (`--model`, `--context-window`, `--max-active-requests`), so no aliasing is
+// applied and keys pass through as written.
+var MTPLX = Dialect{}
+
 // Flags merges ordered layers of params into flag tokens. Later layers override
 // earlier ones by canonical flag name, in place, so the first layer fixes the
 // order: pass globals, then the section, then any overrides. It does not

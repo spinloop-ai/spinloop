@@ -1050,6 +1050,21 @@ func runnerFor(provider string) (string, error) {
 	}
 }
 
+// nodeRunnerFor is the runner resolver for the node path — waking a fleet node
+// that already exists. It accepts every engine `serve` can run and a daemon can
+// supervise: llamacpp, vllm, and mtplx. MTPLX is Apple-Silicon-only and has no
+// machine image, so it never becomes a cloud runner (see runnerFor).
+func nodeRunnerFor(provider string) (string, error) {
+	switch provider {
+	case "llamacpp", "vllm", "mtplx":
+		return provider, nil
+	default:
+		return "", fmt.Errorf(
+			"PROVIDER %q cannot be woken: a fleet node runs a self-hosted engine, so use llamacpp, vllm or mtplx",
+			provider)
+	}
+}
+
 // splitModelQuant splits a model reference into the Hugging Face repo and an
 // optional quant tag, as used by llama.cpp's -hf (org/model:QUANT). Repo ids
 // cannot contain a colon, so the first one separates them.
@@ -1072,6 +1087,12 @@ var cloudOwnedFlags = map[string]bool{
 	"hf-repo": true, "hf-file": true, "hf-token": true,
 	"api-key": true, "api-key-file": true,
 	"ctx-size": true, "alias": true, "metrics": true,
+	// MTPLX's own spellings of the settings the destination computes from the
+	// deploy config: the served name, the context window, and the slot count.
+	// Keyed by canonical name like the rest, so a preset's raw values do not
+	// double-define the computed flags. They collide with no llama.cpp or vLLM
+	// key, so the cloud path is untouched.
+	"model-id": true, "context-window": true, "max-active-requests": true,
 	// Companion weights: the cloud syncs these from S3 and names them at its
 	// own paths, so the preset's local paths must not travel. Only the
 	// location is cloud-owned — how the engine is asked to use a drafter
@@ -1111,6 +1132,35 @@ func parallelPresetKey(runner string) string {
 		return "max-num-seqs"
 	case "omlx":
 		return "max-concurrent-requests"
+	case "mtplx":
+		return "max-active-requests"
+	default:
+		return ""
+	}
+}
+
+// modelPresetKey names the preset key holding the model, in that runner's own
+// vocabulary — the same split the *ServeParams functions make when they read
+// it. A runner with no preset model key yields "", which reads as "not set".
+func modelPresetKey(runner string) string {
+	switch runner {
+	case "mtplx":
+		return "model"
+	case "llamacpp", "vllm":
+		return "hf"
+	default:
+		return ""
+	}
+}
+
+// contextPresetKey names the preset key holding the context window, in that
+// runner's own vocabulary.
+func contextPresetKey(runner string) string {
+	switch runner {
+	case "mtplx":
+		return "context-window"
+	case "llamacpp", "vllm":
+		return "ctx-size"
 	default:
 		return ""
 	}
@@ -1157,6 +1207,7 @@ func dropOwned(owned func(string) bool, params []preset.Param) []preset.Param {
 // caller where that is not true.
 func deployConfigFor(sel spinloop.Selection, spinloopPath string) (remote.DeployConfig, error) {
 	return deployConfig(sel, spinloopPath, deployTarget{
+		runner:         runnerFor,
 		requireContext: true,
 		seedsWeights:   true,
 		owns:           isCloudOwned,
@@ -1170,13 +1221,18 @@ func deployConfigFor(sel spinloop.Selection, spinloopPath string) (remote.Deploy
 // that `spinloop serve` runs happily needs no CONTEXT added merely to be routed;
 // and the preset's bind survives, so an engine told to listen on 0.0.0.0 does.
 func deployConfigForNode(sel spinloop.Selection, spinloopPath string) (remote.DeployConfig, error) {
-	return deployConfig(sel, spinloopPath, deployTarget{owns: isNodeOwned})
+	return deployConfig(sel, spinloopPath, deployTarget{
+		runner: nodeRunnerFor,
+		owns:   isNodeOwned,
+	})
 }
 
-// deployTarget is what the derivation cannot decide for itself: whether a
-// context size is required, which preset flags the destination assigns, and
-// whether it fetches the weights itself (and so needs companions named).
+// deployTarget is what the derivation cannot decide for itself: which runners
+// it accepts, whether a context size is required, which preset flags the
+// destination assigns, and whether it fetches the weights itself (and so needs
+// companions named).
 type deployTarget struct {
+	runner         func(provider string) (string, error)
 	requireContext bool
 	seedsWeights   bool
 	owns           func(key string) bool
@@ -1185,7 +1241,7 @@ type deployTarget struct {
 func deployConfig(sel spinloop.Selection, spinloopPath string, target deployTarget) (remote.DeployConfig, error) {
 	var dc remote.DeployConfig
 
-	runner, err := runnerFor(sel.Provider)
+	runner, err := target.runner(sel.Provider)
 	if err != nil {
 		return dc, err
 	}
@@ -1219,14 +1275,19 @@ func deployConfig(sel spinloop.Selection, spinloopPath string, target deployTarg
 
 	model := sel.Model
 	if model == "" {
-		model = presetValue("hf", global, params)
+		model = presetValue(modelPresetKey(dc.Runner), global, params)
 	}
 	if model == "" {
 		return dc, fmt.Errorf(
-			"nothing to deploy: set MODEL (an HF repo like org/model:QUANT) in %s, or hf in its preset",
-			spinloopPath)
+			"nothing to deploy: set MODEL in %s, or %s in its preset",
+			spinloopPath, modelPresetKey(dc.Runner))
 	}
-	if isModelPath(model) {
+	// A local model path is refused only where the destination fetches the
+	// weights itself — the cloud, which cannot ship a file. A node has the file
+	// the Spinloop points at, so the node path carries the path as the model to
+	// load; today's unconditional check also blocked llamacpp and vllm node
+	// wakes with local weights, which moving it unblocks too.
+	if target.seedsWeights && isModelPath(model) {
 		return dc, fmt.Errorf(
 			"cannot deploy the local model file %q: the cloud downloads weights from Hugging Face, so name a repo (org/model:QUANT)",
 			model)
@@ -1235,10 +1296,10 @@ func deployConfig(sel spinloop.Selection, spinloopPath string, target deployTarg
 
 	context := sel.Context
 	if context == "" {
-		context = presetValue("ctx-size", global, params)
+		context = presetValue(contextPresetKey(dc.Runner), global, params)
 	}
 	if context == "" && target.requireContext {
-		return dc, fmt.Errorf("no context size: set CONTEXT in %s, or ctx-size in its preset", spinloopPath)
+		return dc, fmt.Errorf("no context size: set CONTEXT in %s, or %s in its preset", spinloopPath, contextPresetKey(dc.Runner))
 	}
 	if context != "" {
 		n, err := contextsize.Parse(context)

@@ -41,7 +41,7 @@ on their `PATH` can still serve.
 - **WHEN** the Spinloop says `PROVIDER mtplx` with `ALIAS qwen` and
   `CONTEXT 128k`
 - **THEN** the printed command carries `--model-id qwen` and
-  `--context-window 131072`
+  `--context-window 128000`
 
 #### Scenario: A provider that is not a local engine
 
@@ -136,7 +136,7 @@ against a preset's `ctx-size`.
 - **WHEN** a Spinloop states `PROVIDER mtplx`, `CONTEXT 128k`, and
   `PARALLEL 4`
 - **THEN** the printed command includes `--max-active-requests 4` and
-  `--context-window 131072`, with neither value derived from the other
+  `--context-window 128000`, with neither value derived from the other
 
 #### Scenario: No PARALLEL means no change
 

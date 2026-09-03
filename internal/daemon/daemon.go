@@ -86,9 +86,11 @@ func (d *Daemon) now() time.Time {
 	return time.Now()
 }
 
-// SetScrape records where the running engine's own /metrics lives; an empty
-// BaseURL means no engine scrape (an engine with no metrics endpoint). It is
-// set alongside each start, so it always describes the engine that runs.
+// SetScrape records where the running engine's own endpoint lives; an empty
+// BaseURL means the address could not be determined. The Engine names the
+// metrics dialect to scrape — empty for an engine with no /metrics — while
+// the BaseURL is still used to probe /health for readiness. It is set
+// alongside each start, so it always describes the engine that runs.
 func (d *Daemon) SetScrape(target metrics.ScrapeTarget) {
 	d.mu.Lock()
 	d.scrape = target
