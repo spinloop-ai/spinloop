@@ -509,7 +509,7 @@ deploy`](remote.md), applied per node.
 
 | Flag | Meaning |
 | ---- | ------- |
-| `--fleet <path>` | The fleet file (default `./fleet.yaml`) |
+| `-f`, `--fleet <path>` | The fleet file (default `./fleet.yaml`) — `logs` takes it long-form only, since `-f` is its follow flag |
 | `--all` | `start`/`stop`/`deploy`: act on every node (or every `kind: remote` node, for `deploy`) instead of named ones |
 | `--node <name>` | `route` only: report this node rather than choosing one |
 | `--prefer` | `route` only: rank by `idle` or `active`, overriding the file |

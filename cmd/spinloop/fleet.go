@@ -59,7 +59,7 @@ func fleetStatusCmd() *cobra.Command {
 			return nil
 		},
 	}
-	c.Flags().StringVar(&path, "fleet", "", fleetFileUsage)
+	c.Flags().StringVarP(&path, "fleet", "f", "", fleetFileUsage)
 	c.ValidArgsFunction = noPositionals
 	compRegister(c, "fleet", compFiles)
 	return c
@@ -133,7 +133,7 @@ func fleetMetricsCmd() *cobra.Command {
 		},
 	}
 	fs := c.Flags()
-	fs.StringVar(&path, "fleet", "", fleetFileUsage)
+	fs.StringVarP(&path, "fleet", "f", "", fleetFileUsage)
 	fs.StringVar(&format, "format", "bar", "output format: bar (default), table or json")
 	fs.BoolVarP(&watch, "watch", "w", false, "redraw the fleet every 60 seconds")
 	c.ValidArgsFunction = noPositionals
@@ -278,7 +278,7 @@ func fleetStartCmd() *cobra.Command {
 		},
 	}
 	fs := c.Flags()
-	fs.StringVar(&path, "fleet", "", fleetFileUsage)
+	fs.StringVarP(&path, "fleet", "f", "", fleetFileUsage)
 	fs.BoolVar(&all, "all", false, "start every node in the fleet")
 	c.ValidArgsFunction = noPositionals
 	compRegister(c, "fleet", compFiles)
@@ -313,7 +313,7 @@ func fleetStopCmd() *cobra.Command {
 		},
 	}
 	fs := c.Flags()
-	fs.StringVar(&path, "fleet", "", fleetFileUsage)
+	fs.StringVarP(&path, "fleet", "f", "", fleetFileUsage)
 	fs.BoolVar(&all, "all", false, "stop every node in the fleet")
 	c.ValidArgsFunction = noPositionals
 	compRegister(c, "fleet", compFiles)
@@ -440,7 +440,7 @@ derivation, consent, and registration behavior as "spinloop remote deploy".`,
 		},
 	}
 	fs := c.Flags()
-	fs.StringVar(&path, "fleet", "", fleetFileUsage)
+	fs.StringVarP(&path, "fleet", "f", "", fleetFileUsage)
 	fs.BoolVar(&all, "all", false, "deploy every kind: remote node in the fleet")
 	fs.BoolVarP(&dryRun, "dry-run", "n", false, "print the config that would be deployed, without sending it")
 	fs.BoolVar(&overwrite, "overwrite", false, "proceed against an already-registered or live environment")
@@ -741,7 +741,7 @@ func fleetRouteCmd() *cobra.Command {
 		},
 	}
 	fs := c.Flags()
-	fs.StringVar(&path, "fleet", "", fleetFileUsage)
+	fs.StringVarP(&path, "fleet", "f", "", fleetFileUsage)
 	fs.StringVar(&node, "node", "", "report this node rather than choosing one")
 	fs.StringVar(&prefer, "prefer", "", "rank nodes by `idle` or `active` (overrides the fleet file)")
 	c.ValidArgsFunction = aliasSlot

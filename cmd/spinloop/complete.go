@@ -243,6 +243,7 @@ var harnessValueFlags = map[string]bool{
 	"-H":             true,
 	"--providers":    true,
 	"--fleet":        true,
+	"-f":             true,
 	"--node":         true,
 	"--prefer":       true,
 	"--wake-timeout": true,
@@ -275,7 +276,7 @@ func harnessSlot(_ *cobra.Command, args []string, toComplete string) ([]string, 
 			switch last {
 			case "--set", "--harness", "-H":
 				return harness.Names(), cobra.ShellCompDirectiveNoFileComp
-			case "--providers", "--fleet":
+			case "--providers", "--fleet", "-f":
 				return nil, cobra.ShellCompDirectiveDefault
 			case "--node", "--prefer", "--wake-timeout":
 				return nil, cobra.ShellCompDirectiveNoFileComp

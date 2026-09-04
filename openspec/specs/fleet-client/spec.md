@@ -403,6 +403,11 @@ named it SHALL read every node in the fleet; naming a node SHALL restrict it to
 that one. Nodes SHALL be read concurrently, so the command's latency is that of
 the slowest reachable node rather than their sum.
 
+The fleet file SHALL be named by the long form `--fleet` only: unlike the other
+`spinloop fleet` commands, `logs` SHALL NOT accept `-f` for it, because `-f` is
+that command's `--follow` short form and a flag cannot carry two meanings on one
+command line.
+
 #### Scenario: Reading the whole fleet
 
 - **WHEN** the operator runs `spinloop fleet logs` with no node named
@@ -419,6 +424,12 @@ the slowest reachable node rather than their sum.
 - **WHEN** a node's engine has crashed, as `spinloop fleet status` reports
 - **THEN** its output up to the crash is printed, explaining what status can
   only report
+
+#### Scenario: The fleet file has no short flag here
+
+- **WHEN** the operator runs `spinloop fleet logs -f --fleet ./cluster.yaml`
+- **THEN** the flag is accepted as follow mode plus the fleet file, with `-f`
+  not treated as a fleet-file flag
 
 ### Requirement: Fleet log lines are attributed to their node
 
