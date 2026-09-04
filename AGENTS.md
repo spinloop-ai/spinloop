@@ -1,3 +1,13 @@
+## How the CLI should look and sound
+
+`cli-ux` records the conventions every command follows: one accent colour used
+only for the tool's own chrome, a stdout a program consumes carrying nothing
+else, decoration only where there is a terminal to draw it on, errors that name
+the fix, help as a lowercase imperative phrase, British spelling, and what a
+long operation must keep saying while it works. Read it before adding a
+surface, rather than copying whichever neighbour is nearest.
+
+- `cmd/spinloop/palette.go` — the colours and the spinner every surface draws from, in two groups that must not be swapped: the brand colours for the tool's own chrome, the state colours for what an engine is doing. (`cli-ux`)
 # AGENTS.md
 
 This file provides guidance to coding agents, such as Claude Code, when working with code in this repository.

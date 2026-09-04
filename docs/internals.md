@@ -1,3 +1,4 @@
+- The colours and the spinner live in `palette.go`, in two groups that must not be swapped for one another. The brand colours (`brandAccent`, `brandInk`, `brandInkDim`) carry the same values as the web repo's `--accent`, `--ink` and `--ink-2` tokens, written as hex and downsampled by lipgloss, and the accent is used only where nothing about a node is being reported — the title bar's product name and the selected panel's border. The state colours (`ansiGreen` and friends) are raw ANSI and report what an engine is doing: the resource bars and the health glyph draw from them. `spinnerFrames` is one cycle for the whole tool, shared by `fleet deploy`'s progress lines and the dashboard's in-flight tiles.
 # Implementation notes
 
 This is maintainer reference, not a user guide (see [`docs/README.md`](README.md)

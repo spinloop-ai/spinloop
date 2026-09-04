@@ -422,7 +422,7 @@ func fleetDeployCmd() *cobra.Command {
 every kind: remote node with --all, deriving what to serve from each node's
 own Spinloop source: its file field, or its name resolved as a registered
 alias or a same-named subdirectory beside the fleet file. Reuses the same
-derivation, consent, and registration behavior as "spinloop remote deploy".`,
+derivation, consent, and registration behaviour as "spinloop remote deploy".`,
 		Args:          cobra.ArbitraryArgs,
 		SilenceErrors: true,
 		SilenceUsage:  true,
