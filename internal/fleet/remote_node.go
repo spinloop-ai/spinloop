@@ -63,50 +63,27 @@ func (n *remoteNode) Metrics(ctx context.Context) (metrics.Stats, error) {
 }
 
 func (n *remoteNode) Start(ctx context.Context) (daemon.StatusResponse, error) {
-	return n.StartWithProgress(ctx, func(string) {})
+	return n.StartWithProgress(ctx, func(StartPhase) {})
 }
 
-// StartWithProgress is Start with the control plane's status lines passed to
-// progress as the boot proceeds: the environment's state and the wait until the
-// next poll, one line per retry, plus one line each time a new attempt is
-// issued. Callers may render or discard them.
-func (n *remoteNode) StartWithProgress(ctx context.Context, progress func(string)) (daemon.StatusResponse, error) {
-	if progress == nil {
-		// remote.Start invokes progress on every retry path, so nil is
+// StartWithProgress is Start with each phase of the boot passed to report as
+// the start enters it: the attempt going out, a refusal for want of capacity
+// and when the next attempt is due, the instance coming up, a dropped
+// connection. Each phase replaces the one before it. Callers may render or
+// discard them.
+func (n *remoteNode) StartWithProgress(ctx context.Context, report func(StartPhase)) (daemon.StatusResponse, error) {
+	if report == nil {
+		// remote.Start invokes its callbacks on every retry path, so nil is
 		// substituted with a no-op here rather than left to whichever paths a
 		// given start takes.
-		progress = func(string) {}
+		report = func(StartPhase) {}
 	}
-	onState := func(state string) {
-		if line := startStateLine(state); line != "" {
-			progress(line)
-		}
-	}
+	progress, onState := StartPhases(report)
 	resp, err := remote.Start(ctx, n.cfg, progress, onState, nil)
 	if err != nil {
 		return daemon.StatusResponse{}, err
 	}
 	return statusFromRemote(*resp), nil
-}
-
-// startStateLine returns the progress line for a poll's state, or "" for states
-// that remote.Start already writes a line for.
-//
-// Only StateInFlight returns a line, and it exists to overwrite a wait notice
-// that is no longer current. remote.Start writes its progress lines immediately
-// before a wait ("instance no-capacity; retrying in 120s"); each is accurate
-// only until the next attempt is issued. The attempt that obtains capacity then
-// holds a single request open for the duration of the boot — minutes — and
-// writes no further line. A caller that appends lines to a scrolling log is
-// unaffected either way. A caller that renders the most recent line as the
-// node's current state, such as the dashboard tile, would otherwise display a
-// capacity wait for the remainder of the start, after the instance is up and
-// serving. StateInFlight was added to the remote client for this case.
-func startStateLine(state string) string {
-	if state == remote.StateInFlight {
-		return "waking the instance…"
-	}
-	return ""
 }
 
 // StartWith is how a router wakes a node to serve something. A remote environment

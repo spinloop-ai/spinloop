@@ -762,76 +762,95 @@ func TestStartProgress_HeartbeatsAndStops(t *testing.T) {
 		p.close()
 		time.Sleep(40 * time.Millisecond)
 	})
-	if !strings.Contains(stderr, "still starting") {
+	// Before any poll has reported, the start is one attempt in flight.
+	if !strings.Contains(stderr, "waking the instance") {
 		t.Errorf("expected a heartbeat while waiting, got:\n%s", stderr)
 	}
 	// Closing must stop it: 40ms of 10ms ticks after close would add ~4 more.
-	if got := strings.Count(stderr, "still starting"); got > 8 {
+	if got := strings.Count(stderr, "waking the instance"); got > 8 {
 		t.Errorf("heartbeat kept running after close (%d lines):\n%s", got, stderr)
 	}
 }
 
 // The heartbeat must describe what is really happening: while the endpoint
 // reports no capacity, nothing is booting, so it must not claim the instance is
-// still starting.
-func TestStartProgress_HeartbeatReflectsState(t *testing.T) {
+// coming up. It renders the phase the start is in, so the wording is the tile's
+// wording and the numbers in it move as the heartbeat repeats.
+func TestStartProgress_HeartbeatReflectsPhase(t *testing.T) {
+	// driveStart feeds one start's callbacks the way remote.Start would.
+	driveStart := func(p *startProgress, do func(progress, onState func(string))) {
+		progress, onState := p.callbacks()
+		do(progress, onState)
+	}
+
 	t.Run("no-capacity says waiting for capacity", func(t *testing.T) {
 		stderr := captureStderr(t, func() {
 			p := newStartProgress(10 * time.Millisecond)
-			p.setState("no-capacity")
+			driveStart(p, func(progress, onState func(string)) {
+				onState("no-capacity")
+				progress("instance no-capacity; retrying in 120s")
+			})
 			time.Sleep(45 * time.Millisecond)
 			p.close()
 		})
 		if !strings.Contains(stderr, "waiting for capacity") {
 			t.Errorf("expected a capacity-wait heartbeat, got:\n%s", stderr)
 		}
-		if strings.Contains(stderr, "still starting") {
-			t.Errorf("must not claim it is starting while out of capacity, got:\n%s", stderr)
+		if !strings.Contains(stderr, "retrying in") {
+			t.Errorf("the wait does not say when the next attempt is due, got:\n%s", stderr)
+		}
+		if strings.Contains(stderr, "booting") {
+			t.Errorf("must not claim it is booting while out of capacity, got:\n%s", stderr)
 		}
 	})
 
-	t.Run("a booting state says still starting", func(t *testing.T) {
+	t.Run("a booting state says booting", func(t *testing.T) {
 		stderr := captureStderr(t, func() {
 			p := newStartProgress(10 * time.Millisecond)
-			p.setState("starting")
+			driveStart(p, func(progress, onState func(string)) { onState("starting") })
 			time.Sleep(45 * time.Millisecond)
 			p.close()
 		})
-		if !strings.Contains(stderr, "still starting") {
-			t.Errorf("expected a starting heartbeat while booting, got:\n%s", stderr)
+		if !strings.Contains(stderr, "booting") {
+			t.Errorf("expected a booting heartbeat, got:\n%s", stderr)
 		}
 		if strings.Contains(stderr, "waiting for capacity") {
 			t.Errorf("a booting instance is not a capacity wait, got:\n%s", stderr)
 		}
 	})
 
-	// The line tracks the latest poll: once capacity is found and the instance
-	// starts booting, the heartbeat must stop reporting a capacity wait.
-	t.Run("the latest state wins after a transition", func(t *testing.T) {
+	// The heartbeat tracks the latest phase: once capacity is found and the
+	// instance starts booting, it must stop reporting a capacity wait.
+	t.Run("the latest phase wins after a transition", func(t *testing.T) {
 		p := newStartProgress(time.Hour) // no ticks; drive the line directly
-		p.setState("no-capacity")
+		progress, onState := p.callbacks()
+		onState("no-capacity")
+		progress("instance no-capacity; retrying in 120s")
 		if got := p.heartbeat(); !strings.Contains(got, "waiting for capacity") {
 			t.Errorf("after no-capacity, heartbeat = %q, want a capacity wait", got)
 		}
-		p.setState("starting")
-		if got := p.heartbeat(); !strings.Contains(got, "still starting") {
-			t.Errorf("after booting, heartbeat = %q, want a starting line", got)
+		onState(remote.StateInFlight)
+		onState("starting")
+		if got := p.heartbeat(); !strings.Contains(got, "booting") {
+			t.Errorf("after booting, heartbeat = %q, want a booting line", got)
 		}
 		p.close()
 	})
 
 	// The attempt that finds capacity reports no state until it is ready — its
-	// in-flight report is what tells the heartbeat the capacity wait is over.
-	t.Run("in-flight after a capacity wait says starting", func(t *testing.T) {
+	// in-flight report is what retires the capacity wait.
+	t.Run("in-flight after a capacity wait retires it", func(t *testing.T) {
 		p := newStartProgress(time.Hour) // no ticks; drive the line directly
-		p.setState("no-capacity")
+		progress, onState := p.callbacks()
+		onState("no-capacity")
+		progress("instance no-capacity; retrying in 120s")
 		if got := p.heartbeat(); !strings.Contains(got, "waiting for capacity") {
 			t.Errorf("after no-capacity, heartbeat = %q, want a capacity wait", got)
 		}
-		p.setState(remote.StateInFlight)
+		onState(remote.StateInFlight)
 		got := p.heartbeat()
-		if !strings.Contains(got, "still starting") {
-			t.Errorf("in-flight after a capacity wait, heartbeat = %q, want a starting line", got)
+		if !strings.Contains(got, "waking the instance") {
+			t.Errorf("in-flight after a capacity wait, heartbeat = %q, want the attempt", got)
 		}
 		if strings.Contains(got, "waiting for capacity") {
 			t.Errorf("an in-flight attempt supersedes the capacity wait, got:\n%q", got)
@@ -842,10 +861,9 @@ func TestStartProgress_HeartbeatReflectsState(t *testing.T) {
 
 // The end-to-end shape of the capacity-wait bug: the first attempt is refused
 // for lack of capacity, the retry finds capacity and holds its request while
-// the instance boots. The heartbeat must say it is waiting for capacity during
-// the wait and switch to saying it is starting once the booting attempt is in
-// flight — the refused attempt's report must not outlive the attempt it
-// described.
+// the instance boots. The output must say it is waiting for capacity during the
+// wait and stop saying so once the booting attempt is in flight — the refused
+// attempt's report must not outlive the attempt it described.
 func TestRemoteStart_HeartbeatTracksTheCapacityWaitEnding(t *testing.T) {
 	isolateConfig(t)
 	stubAWSEnv(t)
@@ -899,20 +917,20 @@ func TestRemoteStart_HeartbeatTracksTheCapacityWaitEnding(t *testing.T) {
 	})
 
 	lines := strings.Split(strings.TrimSpace(stderr), "\n")
-	lastWaiting, startingAfterWaiting := -1, false
+	lastWaiting, attemptAfterWaiting := -1, false
 	for i, line := range lines {
 		switch {
 		case strings.Contains(line, "waiting for capacity"):
 			lastWaiting = i
-		case lastWaiting != -1 && strings.Contains(line, "still starting"):
-			startingAfterWaiting = true
+		case lastWaiting != -1 && strings.Contains(line, "waking the instance"):
+			attemptAfterWaiting = true
 		}
 	}
 	if lastWaiting == -1 {
-		t.Fatalf("no capacity-wait heartbeat in the output, so the wait was not observed:\n%s", stderr)
+		t.Fatalf("no capacity wait in the output, so the wait was not observed:\n%s", stderr)
 	}
-	if !startingAfterWaiting {
-		t.Errorf("no 'still starting' heartbeat after the last capacity-wait line; the booting attempt still reads as a capacity wait:\n%s", stderr)
+	if !attemptAfterWaiting {
+		t.Errorf("nothing after the last capacity-wait line says a further attempt went out; the booting attempt still reads as a capacity wait:\n%s", stderr)
 	}
 	if calls != 2 {
 		t.Errorf("expected the start to be attempted twice, got %d", calls)

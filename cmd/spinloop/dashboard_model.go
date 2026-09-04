@@ -41,12 +41,16 @@ type dashEntry struct {
 }
 
 // dashAction is the board's account of a start or stop in flight on one
-// node: the verb, the last line the call has reported, when the action began,
-// and the call's own context — the abort's door. A node with nothing in
-// flight carries the zero value.
+// node: the verb, the call's current phase, when the action began, and the
+// call's own context — the abort's door. A node with nothing in flight carries
+// the zero value.
+//
+// The phase is one value that each report replaces outright, so a situation
+// the call has moved on from is never left on the tile; it is nil until the
+// call reports one, and for a stop, whose call reports none.
 type dashAction struct {
 	verb    string             // "start" or "stop"
-	line    string             // the call's latest status line; empty until it reports one
+	phase   *fleet.StartPhase  // what the call is doing now; nil until it reports
 	since   time.Time          // when the action was issued; zero where the board has no clock on it
 	cancel  context.CancelFunc // end the wait on the call; nil where the zero value sits
 	aborted bool               // the operator ended the wait, so the line says so
@@ -74,9 +78,8 @@ type dashModel struct {
 	// is driven directly and nothing is wired to the program.
 	send func(msg tea.Msg)
 
-	fastGen, slowGen   int       // rounds started in each group; each answer carries its number
-	fastBusy, slowBusy bool      // a round in flight in that group
-	nextSlowAt         time.Time // when the cloud group is next due; zero means due now
+	fastBusy, slowBusy bool        // a round in flight in that group
+	nextReadAt         []time.Time // parallel to entries; when each node is next due to be read
 
 	width, height int
 
@@ -97,12 +100,11 @@ type dashModel struct {
 type dashTickMsg time.Time
 
 // dashRefreshMsg is one completed round of one group. idx and results are
-// parallel: the entries this round re-read, and what each answered. An
-// answer whose round is no longer the newest in its group is dropped: a late
-// reply must not paint over a fresher board.
+// parallel: the entries this round re-read, and what each answered. Which of
+// them are drawn is decided by each reading's own time, not by the round's:
+// see the message's handling in Update.
 type dashRefreshMsg struct {
 	remote  bool // the cloud group's round
-	gen     int
 	idx     []int
 	results []fleet.NodeResult
 }
@@ -120,35 +122,34 @@ func dashVerbProgress(verb string) string {
 // elapsed time an in-flight tile renders.
 var dashNow = time.Now
 
-// dashActionProgress returns the tile's in-flight heading: the verb, followed by
-// how long the action has been running when a.since is set.
+// dashActionProgress returns the tile's in-flight heading: the spinner (the
+// tool's own, shared with `fleet deploy`), the verb, and how long the action
+// has been running when a.since is set.
 //
-// A start's status lines can remain unchanged for minutes: the attempt that
-// obtains capacity holds one request open for the duration of the boot and
-// writes no further line. Without an elapsed time, a tile in that state renders
-// identically to one whose start has stopped making progress. The value is
-// recomputed from dashNow on each repaint rather than stored when a status line
-// arrives, so it cannot itself go stale; the board's tick repaints every
-// dashboardRefreshInterval, which is often enough for the value to advance
-// visibly.
-func dashActionProgress(a dashAction) string {
-	verb := dashVerbProgress(a.verb)
+// A start's phase can hold unchanged for minutes: the attempt that obtains
+// capacity holds one request open for the duration of the boot and reports
+// nothing while it does. Without a spinner and an elapsed time, a tile in that
+// state draws identically to one whose start has stopped making progress. Both
+// are computed from now on each repaint rather than stored when a phase
+// arrives, so neither can itself go stale.
+func dashActionProgress(a dashAction, now time.Time) string {
+	verb := spinnerFrame(now) + " " + dashVerbProgress(a.verb)
 	if a.since.IsZero() {
 		return verb
 	}
-	elapsed := dashNow().Sub(a.since)
+	elapsed := now.Sub(a.since)
 	if elapsed < 0 {
 		elapsed = 0
 	}
 	return verb + "  " + formatDuration(int(elapsed.Seconds()))
 }
 
-// dashActionProgressMsg is one intermediate line of a call behind an in-
-// flight action, sent to the program by the call's own goroutine as the work
-// proceeds.
+// dashActionProgressMsg is one phase of a call behind an in-flight action,
+// sent to the program by the call's own goroutine as the work proceeds. Each
+// replaces the phase the node's action carries.
 type dashActionProgressMsg struct {
-	node string
-	line string
+	node  string
+	phase fleet.StartPhase
 }
 
 // dashActionMsg is one completed start or stop.
@@ -164,6 +165,31 @@ type dashActionMsg struct {
 // after the second round.
 func dashTickCmd() tea.Cmd {
 	return tea.Tick(dashboardRefreshInterval, func(time.Time) tea.Msg { return dashTickMsg{} })
+}
+
+// dashSpinInterval is how often the board repaints while an action is in
+// flight. The spinner and the elapsed time beside a verb are computed when the
+// tile is drawn, so they advance only as often as the board redraws, and the
+// refresh tick alone is far too slow for a spinner to read as one. A variable,
+// so a test never waits on it.
+var dashSpinInterval = 100 * time.Millisecond
+
+// dashSpinTickMsg fires on that interval while something is in flight.
+type dashSpinTickMsg time.Time
+
+func dashSpinTickCmd() tea.Cmd {
+	return tea.Tick(dashSpinInterval, func(time.Time) tea.Msg { return dashSpinTickMsg{} })
+}
+
+// actionInFlight reports whether any node has a start or stop running, which
+// is what the repaint chain runs for.
+func (m *dashModel) actionInFlight() bool {
+	for _, a := range m.actions {
+		if a.verb != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // Init starts the rounds the board is due for — the local round plus the
@@ -186,28 +212,43 @@ func (m *dashModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(append([]tea.Cmd{dashTickCmd()}, m.startRounds()...)...)
 	case dashRefreshMsg:
 		if msg.remote {
-			if msg.gen != m.slowGen {
-				return m, nil
-			}
 			m.slowBusy = false
 		} else {
-			if msg.gen != m.fastGen {
-				return m, nil
-			}
 			m.fastBusy = false
 		}
+		// One rule for every reading: draw it only if it was taken later than
+		// the one already on the board for that node. Reads run concurrently
+		// and take differing times, so a reading can land after one taken
+		// later than it — including a round issued before an action finished
+		// and landing after, which would otherwise repaint the node's
+		// pre-action state over its post-action report.
 		for i, idx := range msg.idx {
-			m.results[idx] = msg.results[i]
+			if r := msg.results[i]; r.At.After(m.results[idx].At) {
+				m.results[idx] = r
+			}
 		}
+	case dashSpinTickMsg:
+		// The repaint chain runs only while there is something to animate; a
+		// tick that finds nothing in flight stops it, and the next action
+		// starts it again.
+		if !m.actionInFlight() {
+			return m, nil
+		}
+		return m, dashSpinTickCmd()
 	case dashActionProgressMsg:
 		if i := m.indexOf(msg.node); i >= 0 && m.actions[i].verb != "" {
-			m.actions[i].line = msg.line
+			phase := msg.phase
+			m.actions[i].phase = &phase
 		}
 	case dashActionMsg:
 		aborted := false
 		if i := m.indexOf(msg.node); i >= 0 {
 			aborted = m.actions[i].aborted
 			m.actions[i] = dashAction{}
+			// The node returns to its kind's own cadence, and is read once
+			// more now: what the action changed is what the operator is
+			// waiting to see.
+			m.scheduleRead(i, time.Time{})
 		}
 		m.statusLine = dashActionLine(msg, aborted)
 	case detailLogTickMsg:
@@ -313,7 +354,7 @@ func (m *dashModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "r":
 			// A manual refresh is due for every node, cloud or local,
 			// whatever their own deadlines say.
-			m.nextSlowAt = time.Time{}
+			m.nextReadAt = make([]time.Time, len(m.entries))
 			cmds := m.startRounds()
 			if len(cmds) > 0 {
 				cmd = tea.Batch(cmds...)
@@ -328,43 +369,93 @@ func (m *dashModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// startRounds starts the rounds the board is due for: the local machines
-// whenever the tick fires, the cloud environments when their own deadline
-// has passed. A round is never started over one still in flight in the same
-// group, and a group with nothing to read starts nothing.
+// startRounds starts the rounds the board is due for, one per group, over
+// whichever of that group's nodes have reached their own next-read time. A
+// round is never started over one still in flight in the same group, and a
+// group with nothing due starts nothing.
 func (m *dashModel) startRounds() []tea.Cmd {
 	var cmds []tea.Cmd
-	if cmd := m.refreshRemoteGroup(false); cmd != nil {
-		cmds = append(cmds, cmd)
-	}
-	if !time.Now().Before(m.nextSlowAt) {
-		if cmd := m.refreshRemoteGroup(true); cmd != nil {
+	for _, remote := range []bool{false, true} {
+		if cmd := m.refreshRemoteGroup(remote); cmd != nil {
 			cmds = append(cmds, cmd)
 		}
 	}
 	return cmds
 }
 
-// refreshRemoteGroup starts one round over one group of live nodes — the
-// local daemon machines (remote false) or the cloud environments (remote
-// true) — and returns the round's command, or nil when the group is empty or
-// already has a round in flight. Starting the cloud round spends its
-// deadline: it moves to one interval away, so the next due round is a
-// whole interval later.
+// dashNodeInterval is how often one node is read: the short interval while an
+// action is in flight on it, and its kind's own cadence otherwise. The reasons
+// a cloud environment is read once a minute — each read is a signed call
+// through the control plane, and an idle environment's state changes on the
+// scale of minutes — hold for an environment nobody is touching and hold for
+// neither one the operator has just started.
+func dashNodeInterval(kind string, a dashAction) time.Duration {
+	if a.verb == "" && kind == fleet.KindRemote {
+		return dashboardRemoteRefreshInterval
+	}
+	return dashboardRefreshInterval
+}
+
+// isDue reports whether node i is to be read this tick. A node whose cadence
+// is the board's own tick interval is due on every tick — the tick is its
+// cadence, and comparing a deadline against it would skip a round to the
+// tick's own jitter and halve the rate. Only a node read less often than the
+// tick carries a deadline that can defer it, which is a cloud environment with
+// nothing in flight on it.
+func (m *dashModel) isDue(i int, now time.Time) bool {
+	if dashNodeInterval(m.entries[i].kind, m.actions[i]) <= dashboardRefreshInterval {
+		return true
+	}
+	return !now.Before(m.dueAt(i))
+}
+
+// dueAt is when node i is next due to be read, and scheduleRead records the
+// next one. The times are per node rather than per group because a node with
+// an action in flight is read on the short interval whatever its kind, while
+// the rest of its group keeps its own cadence. The slice grows to fit rather
+// than being required up front, so a model built without it reads every node
+// on its first round.
+func (m *dashModel) dueAt(i int) time.Time {
+	if i < len(m.nextReadAt) {
+		return m.nextReadAt[i]
+	}
+	return time.Time{}
+}
+
+func (m *dashModel) scheduleRead(i int, at time.Time) {
+	for len(m.nextReadAt) <= i {
+		m.nextReadAt = append(m.nextReadAt, time.Time{})
+	}
+	m.nextReadAt[i] = at
+}
+
+// refreshRemoteGroup starts one round over the due nodes of one group of live
+// nodes — the local daemon machines (remote false) or the cloud environments
+// (remote true) — and returns the round's command, or nil when nothing in the
+// group is due or a round is already in flight there. Starting the round
+// spends each read node's deadline: each moves to one of its own intervals
+// away, so a node the operator is acting on comes round again on the short
+// interval while its neighbours keep their own cadence.
 //
-// The round carries a context with a deadline of its group's interval, so a
-// node slower than the cadence shows an outcome this round and gets its turn
-// again next. Each node answers independently — the fan-out calls them
-// concurrently — so one slow node delays no other, and a slow cloud round
-// stretches only its own group.
+// The round carries a context with a deadline of its group's kind interval,
+// not of the cadence it was started on: a cloud read is a signed call through
+// the control plane and takes what it takes, so shortening the cadence during
+// an action must not shorten what the call is given to answer in. Each node
+// answers independently — the fan-out calls them concurrently — so one slow
+// node delays no other, and a slow cloud round stretches only its own group.
 func (m *dashModel) refreshRemoteGroup(remote bool) tea.Cmd {
+	now := time.Now()
 	idx := make([]int, 0, len(m.entries))
 	nodes := make([]fleet.Node, 0, len(m.entries))
 	for i, e := range m.entries {
-		if e.node != nil && (e.kind == fleet.KindRemote) == remote {
-			idx = append(idx, i)
-			nodes = append(nodes, e.node)
+		if e.node == nil || (e.kind == fleet.KindRemote) != remote {
+			continue
 		}
+		if !m.isDue(i, now) {
+			continue
+		}
+		idx = append(idx, i)
+		nodes = append(nodes, e.node)
 	}
 	if len(nodes) == 0 {
 		return nil
@@ -374,29 +465,21 @@ func (m *dashModel) refreshRemoteGroup(remote bool) tea.Cmd {
 			return nil
 		}
 		m.slowBusy = true
-		m.slowGen++
-		m.nextSlowAt = time.Now().Add(dashboardRemoteRefreshInterval)
 	} else {
 		if m.fastBusy {
 			return nil
 		}
 		m.fastBusy = true
-		m.fastGen++
 	}
-	gen := m.generationFor(remote)
+	for _, i := range idx {
+		m.scheduleRead(i, now.Add(dashNodeInterval(m.entries[i].kind, m.actions[i])))
+	}
 	interval := m.intervalFor(remote)
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), interval)
 		defer cancel()
-		return dashRefreshMsg{remote: remote, gen: gen, idx: idx, results: fleet.FanOutNodes(ctx, fleet.MetricsCall, nodes)}
+		return dashRefreshMsg{remote: remote, idx: idx, results: fleet.FanOutNodes(ctx, fleet.MetricsCall, nodes)}
 	}
-}
-
-func (m *dashModel) generationFor(remote bool) int {
-	if remote {
-		return m.slowGen
-	}
-	return m.fastGen
 }
 
 func (m *dashModel) intervalFor(remote bool) time.Duration {
@@ -451,13 +534,19 @@ func (m *dashModel) beginAction(verb string) tea.Cmd {
 		m.statusLine = e.name + ": still " + dashVerbProgress(m.actions[m.cursor].verb)
 		return nil
 	}
+	// The repaint chain runs for as long as anything is in flight, so it is
+	// started only when this action is the first.
+	spin := !m.actionInFlight()
 	ctx, cancel := context.WithCancel(context.Background())
 	m.actions[m.cursor] = dashAction{verb: verb, since: dashNow(), cancel: cancel}
+	// The node is read on the short interval for the duration of the action,
+	// starting now rather than at its kind's next due time.
+	m.scheduleRead(m.cursor, time.Time{})
 	m.statusLine = dashVerbProgress(verb) + " " + e.name + "…"
 	send := m.send
-	progress := func(line string) {
+	report := func(p fleet.StartPhase) {
 		if send != nil {
-			send(dashActionProgressMsg{node: e.name, line: line})
+			send(dashActionProgressMsg{node: e.name, phase: p})
 		}
 	}
 	starter, isStarter := e.node.(fleet.ProgressStarter)
@@ -467,16 +556,20 @@ func (m *dashModel) beginAction(verb string) tea.Cmd {
 		act = e.node.Stop
 	case isStarter:
 		act = func(ctx context.Context) (daemon.StatusResponse, error) {
-			return starter.StartWithProgress(ctx, progress)
+			return starter.StartWithProgress(ctx, report)
 		}
 	default:
 		act = e.node.Start
 	}
-	return func() tea.Msg {
+	run := func() tea.Msg {
 		status, err := act(ctx)
 		cancel()
 		return dashActionMsg{node: e.name, verb: verb, status: status, err: err}
 	}
+	if spin {
+		return tea.Batch(run, dashSpinTickCmd())
+	}
+	return run
 }
 
 // abortAction ends the wait on the selected node's in-flight start. Only a
@@ -561,9 +654,11 @@ func (m dashModel) View() string {
 		return m.detailView()
 	}
 	w, h := m.effWidth(), m.effHeight()
+	now := dashNow()
 	tiles := make([]string, len(m.entries))
 	for i := range m.entries {
-		tiles[i] = dashTile(m.entries[i].name, m.results[i], i == m.cursor, m.actions[i])
+		tiles[i] = dashTile(m.entries[i].name, m.results[i], i == m.cursor, m.actions[i],
+			now, dashStaleAfter(m.entries[i].kind))
 	}
 	rows := dashGridRows(tiles, dashCols(w))
 	lo := m.scrollRow
@@ -587,7 +682,8 @@ func (m dashModel) headerLine(w int) string {
 	if len(m.entries) == 1 {
 		word = "node"
 	}
-	return dashClip(fmt.Sprintf("fleet dashboard  %s  (%d %s)", m.fleetPath, len(m.entries), word), w)
+	return dashTitleBar("fleet dashboard",
+		fmt.Sprintf("%s   (%d %s)", m.fleetPath, len(m.entries), word), w)
 }
 
 // dashGridKeys is the grid's own key help; the detail view's footer shares
@@ -598,10 +694,15 @@ const dashGridKeys = "↑↓←→ move   s start   a abort   x stop   r refresh
 // stop confirmation prompt while one is pending, with the status line and a
 // "refreshing" marker appended — shared by the grid and the detail view so
 // the two cannot word the confirmation or a status outcome differently.
+//
+// Only the key help is drawn as key-and-meaning pairs. The prompt's own
+// question, the status line and the refreshing marker are prose, not keys, and
+// splitting them on a space would draw their first word as though it were one.
 func (m dashModel) footerLine(w int, keys string) string {
-	line := keys
+	line := dashKeyHints(keys)
 	if m.confirm && len(m.entries) > 0 {
-		line = "stop " + m.entries[m.cursor].name + "?   y yes   n no"
+		line = "stop " + m.entries[m.cursor].name + "?" + dashHintGap +
+			dashKeyHints("y yes"+dashHintGap+"n no")
 	}
 	if m.statusLine != "" {
 		line += "   " + m.statusLine

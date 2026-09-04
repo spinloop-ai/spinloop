@@ -44,6 +44,12 @@ start's situation can hold unchanged for minutes — the attempt that succeeds
 keeps one request open for the whole boot and reports nothing while it does — so
 these are what distinguish an action that is waiting from one that is wedged.
 
+An action in flight SHALL also carry a spinner beside its verb, whose frame is
+likewise chosen when the tile is drawn, and the board SHALL redraw often enough
+for it to turn. It says the same thing as the elapsed time to an operator
+glancing rather than reading, and it says it on a tile whose every other line
+can hold still for minutes.
+
 The outcome of an action SHALL be shown inside the dashboard (a status line the
 operator can read before the next refresh replaces attention), and a refused or
 unreachable action SHALL NOT close the dashboard. What an action changes in state
@@ -125,6 +131,7 @@ never invited to press a key that would do nothing there.
 - **THEN** the time until that attempt counts down on the tile, and the time
   since the operator issued the start counts up, both advancing as the tile is
   redrawn rather than standing at the values they held when the wait began
+- **AND** the spinner beside the verb turns while they do
 
 #### Scenario: An in-flight start before any report
 
@@ -282,6 +289,13 @@ panel's text. The glyph SHALL be shown in every panel shape: a settled
 answer, an action in flight, a panel awaiting its first refresh, and a panel
 showing a failed outcome.
 
+A tile SHALL draw its first line — the glyph, the node's name, and what the
+node is doing — as a header bar: light text on one background colour running
+the tile's full width, so the name reads as the panel's title rather than as
+another line of the panel's body. That background SHALL be a single neutral
+colour, the same on every tile, so it never competes with the glyph's own
+colour for what a node's health is read from.
+
 A node's health SHALL fall into exactly one of five tiers: healthy,
 attention, unhealthy, not serving, and unknown. Healthy is coloured green,
 attention yellow, and unhealthy red. Not serving and unknown are both
@@ -401,6 +415,56 @@ heard from yet.
   that has not yet answered any refresh
 - **THEN** the first shows the faded grey filled dot and the second the grey
   `?`, so the two greys are told apart by their mark
+
+The board SHALL carry a title bar of its own along the top of the frame, on
+the same surface a tile's header bar uses: the product's name, the screen in
+view, and — pushed to the right — the fleet file and what is on that screen. A
+terminal too narrow for both halves SHALL keep the left one rather than wrap
+the bar onto a second row. The grid and the detail view SHALL draw their title
+bar from one place, so the two screens cannot title themselves differently.
+
+The board SHALL use exactly one accent colour, the mint of the spinloop logo,
+and SHALL use it only where nothing about a node is being reported: the title
+bar's product name, and the border of the selected panel. A node's own state —
+the health glyph, the resource bars — SHALL keep the terminal's green, amber
+and red, which say what an engine is doing rather than whose product this is.
+
+In the frame's key help, each entry SHALL be drawn as the key and what that
+key does: the key in the terminal's own text colour, and what it does a step
+back in the muted ink, so the keys are what a glance over the footer picks out.
+The prose beside them — a confirmation's question, an action's outcome — SHALL
+be left as it is.
+
+#### Scenario: A key stands out from what it does
+
+- **WHEN** the key help is drawn
+- **THEN** each key keeps the terminal's own text colour and what it does is
+  drawn in the muted ink beside it
+- **AND** the status line and a confirmation's question are not drawn that way
+
+#### Scenario: The selected panel is marked in the accent
+
+- **WHEN** the operator moves the selection onto a panel
+- **THEN** that panel's border is drawn in the brand accent, and no colour that
+  reports a node's state is used for it
+
+#### Scenario: The title bar names the product and the screen
+
+- **WHEN** the dashboard is open on the grid or on a node's detail view
+- **THEN** the top of the frame carries a title bar naming the product and that
+  screen, with the fleet file and the screen's own details to the right
+
+#### Scenario: A narrow terminal keeps the left half of the title bar
+
+- **WHEN** the terminal is too narrow for both halves of the title bar
+- **THEN** the product and the screen are kept and the right half is dropped,
+  and the bar stays one row
+
+#### Scenario: The header bar does not carry the health colour
+
+- **WHEN** two nodes of different health are shown side by side
+- **THEN** both tiles' header bars are the same colour, and the two nodes are
+  told apart by their glyphs
 
 #### Scenario: The glyph is distinct from the selection border
 

@@ -681,32 +681,40 @@ Start SHALL proceed without confirmation. Stop SHALL require an explicit
 confirmation before it is sent, because it ends an engine that may be serving
 work: a declined or abandoned confirmation SHALL send nothing.
 
-While an action is in flight, the node's own tile SHALL carry it: the verb
-and the action's status lines as the call reports them, beside the node's last
-report rather than in place of it — the call's lines say what the operator
-asked for, the report says what the node is doing. For a node whose last
-completed refresh answered, the tile SHALL show that answer's state, what it
-serves, its last-active record, and its resource usage and token and request
-counters whenever the answer carries them, whatever the node's state — a boot
-half done is already measuring, and that is the truth the tile keeps showing
-while the call works. A node whose call reports nothing and whose refresh has
+While an action is in flight, the node's own tile SHALL carry it: the verb, the
+action's current situation, and how long the action has been running, beside the
+node's last report rather than in place of it — the action's own account says
+what the operator asked for, the report says what the node is doing. For a node
+whose last completed refresh answered, the tile SHALL show that answer's state,
+what it serves, its last-active record, and its resource usage and token and
+request counters whenever the answer carries them, whatever the node's state — a
+boot half done is already measuring, and that is the truth the tile keeps showing
+while the call works. A node whose action reports nothing and whose refresh has
 not yet answered SHALL show the verb alone, and a latest refresh that failed
 SHALL change nothing on the tile. Each finished action SHALL clear the action
 from its node's tile, which is then the node's report alone, and leave its
 outcome on the status line, the one-shot wording.
 
-The tile SHALL show the verb with how long the action has been running, counted
-from when the operator issued it and recomputed as the tile is repainted rather
-than fixed when a status line arrives. A start's status lines can stand
-unchanged for minutes — the attempt that succeeds holds one request for the
-whole boot and reports nothing while it does — so the elapsed time is what
-distinguishes a tile that is waiting from one that is wedged.
+An action SHALL have exactly one current situation at a time, and a new one
+SHALL replace its predecessor outright rather than being added to it. A
+situation that was true of an attempt the action has moved on from SHALL NOT be
+shown: the tile reports what the action is doing now, never what it was doing
+before. In particular, a start refused for want of capacity SHALL stop reporting
+that refusal once a further attempt is under way — so a tile never shows a
+capacity wait beside a refresh reporting the node up and running.
 
-A status line a node reports SHALL describe the node's situation now, not a
-situation that has since been superseded. A line that is true only until the
-node's next attempt — a wait before a retry, and the reason for it — SHALL be
-replaced when that attempt is issued, so a tile never goes on reporting a
-refused start beside its own refreshes reporting the node running.
+Anything the tile says about time SHALL be computed when the tile is drawn, not
+when the situation it describes arose: a wait counts down towards the attempt it
+is waiting for, and an action counts up from when the operator issued it. A
+start's situation can hold unchanged for minutes — the attempt that succeeds
+keeps one request open for the whole boot and reports nothing while it does — so
+these are what distinguish an action that is waiting from one that is wedged.
+
+An action in flight SHALL also carry a spinner beside its verb, whose frame is
+likewise chosen when the tile is drawn, and the board SHALL redraw often enough
+for it to turn. It says the same thing as the elapsed time to an operator
+glancing rather than reading, and it says it on a tile whose every other line
+can hold still for minutes.
 
 The outcome of an action SHALL be shown inside the dashboard (a status line the
 operator can read before the next refresh replaces attention), and a refused or
@@ -759,19 +767,14 @@ never invited to press a key that would do nothing there.
 
 #### Scenario: A start is watched on its own tile
 
-- **WHEN** the operator starts a node whose start reports progress as it works
-- **THEN** the node's tile shows the verb and the start's status lines while
-  the start is in flight
+- **WHEN** the operator starts a node whose start reports its situation as it
+  works
+- **THEN** the node's tile shows the verb and the start's current situation
+  while the start is in flight
 - **AND** a refresh that answers while the start is in flight shows its state
-  and whatever it measures on the same tile, beneath the start's lines
+  and whatever it measures on the same tile, beneath the start's own account
 - **AND** when the start finishes, the tile is the node's report alone and the
   outcome is on the status line
-
-#### Scenario: A start's elapsed time keeps moving
-
-- **WHEN** a start is in flight and reports no new status line for some time
-- **THEN** the elapsed time beside the verb keeps advancing on the tile, so the
-  operator can tell the start is still waiting rather than wedged
 
 #### Scenario: A refused start does not outlive its refusal
 
@@ -781,10 +784,25 @@ never invited to press a key that would do nothing there.
   reporting it once the next attempt is under way, rather than showing it
   beside a refresh that reports the node running
 
+#### Scenario: A start's elapsed time keeps moving
+
+- **WHEN** a start is in flight and its situation does not change for some time
+- **THEN** the elapsed time beside the verb keeps advancing on the tile, so the
+  operator can tell the start is still waiting rather than wedged
+
+#### Scenario: A wait counts down and an action counts up
+
+- **WHEN** a start is waiting for its next attempt and the operator watches
+  without pressing anything
+- **THEN** the time until that attempt counts down on the tile, and the time
+  since the operator issued the start counts up, both advancing as the tile is
+  redrawn rather than standing at the values they held when the wait began
+- **AND** the spinner beside the verb turns while they do
+
 #### Scenario: An in-flight start before any report
 
 - **WHEN** the operator starts a node before any refresh of it has answered
-- **THEN** its tile shows the verb and the start's status lines alone
+- **THEN** its tile shows the verb and the start's own account alone
 - **AND** the first answered refresh appears on the tile beside them
 
 #### Scenario: Two nodes wake at once
@@ -972,8 +990,26 @@ watch mode's minute — and a `kind: remote` environment SHALL refresh on a
 much slower cadence, a 60-second interval, one status call a minute, because
 its status is a signed call through the cloud control plane rather than a
 local socket, and its state changes on the scale of minutes. A manual refresh
-SHALL read every node, whether or not its kind's cadence was due. A refresh of a group SHALL read that group's nodes
-concurrently, as fan-out does elsewhere.
+SHALL read every node, whether or not its kind's cadence was due. A refresh of a
+group SHALL read that group's nodes concurrently, as fan-out does elsewhere.
+
+A node with an action in flight SHALL refresh on the short interval whatever its
+kind, and SHALL return to its kind's own cadence once the action settles. The
+reasons a cloud environment is read once a minute — the call is expensive and
+its state changes slowly — hold for an environment nobody is touching and hold
+for neither one the operator has just started.
+
+Every reading of a node SHALL carry the time it was taken, and the dashboard
+SHALL NOT show a reading older than the one it is already showing for that node.
+Reads are concurrent and of uneven duration, so a reading can land after one
+taken later than it; showing it would replace what the node is doing with what
+it was doing.
+
+A node whose newest reading has aged well past its cadence SHALL be shown as
+such — its age on the panel, and its health unknown rather than whatever the
+aged reading said. A stale reading is not a wrong reading, but presenting it
+indistinguishably from a current one is: the operator SHALL be able to tell how
+old what they are looking at is.
 
 One node that is slow or unanswerable SHALL NOT hold the rest of the fleet
 hostage to it: a refresh SHALL give up on a node that has not answered within
@@ -994,6 +1030,30 @@ round SHALL NOT stretch the local machines' cadence.
 - **WHEN** the operator presses the refresh key
 - **THEN** every node is re-read, local and cloud alike, rather than waiting
   for each kind's next cadence
+
+#### Scenario: A node being acted on is read more often
+
+- **WHEN** the operator starts a cloud environment
+- **THEN** that environment is re-read on the short interval for as long as the
+  start is in flight, and returns to its 60-second cadence once the start
+  settles
+- **AND** the other cloud environments keep their own cadence throughout
+
+#### Scenario: A late reading does not overwrite a newer one
+
+- **WHEN** a read of a node is issued, a later read of the same node answers
+  first, and the earlier read then answers
+- **THEN** the panel keeps showing the later read, and the earlier one is
+  discarded
+
+#### Scenario: A panel with an out-of-date reading shows its age
+
+- **WHEN** a node stops answering and its newest reading ages well past its
+  cadence
+- **THEN** its panel shows how old that reading is and its health reads
+  unknown, rather than continuing to present the aged state as current
+- **WHEN** the node answers again
+- **THEN** the panel returns to showing its state without an age
 
 #### Scenario: One hung node does not stall the board
 
@@ -1031,6 +1091,13 @@ panel's text. The glyph SHALL be shown in every panel shape: a settled
 answer, an action in flight, a panel awaiting its first refresh, and a panel
 showing a failed outcome.
 
+A tile SHALL draw its first line — the glyph, the node's name, and what the
+node is doing — as a header bar: light text on one background colour running
+the tile's full width, so the name reads as the panel's title rather than as
+another line of the panel's body. That background SHALL be a single neutral
+colour, the same on every tile, so it never competes with the glyph's own
+colour for what a node's health is read from.
+
 A node's health SHALL fall into exactly one of five tiers: healthy,
 attention, unhealthy, not serving, and unknown. Healthy is coloured green,
 attention yellow, and unhealthy red. Not serving and unknown are both
@@ -1040,24 +1107,25 @@ dot as the other tiers in a faded shade, and unknown keeps its `?` — so a
 node known to be undeployed never reads as a node the dashboard has not
 heard from yet.
 
-- **Healthy**: the node answered its last refresh, its engine is not
-  crashed, not `idle`, not `stopped`, and not `undeployed`, and — when the
-  daemon reports readiness for it — the engine is ready. A `running` node whose daemon
-  reports no readiness (an older daemon, or a runner with no known health
-  check) counts as healthy too, rather than reporting a health tier the
-  daemon cannot actually back.
+- **Healthy**: the node answered its last refresh, that answer is current, its
+  engine is not crashed, not `idle`, not `stopped`, and not `undeployed`, and —
+  when the daemon reports readiness for it — the engine is ready. A `running`
+  node whose daemon reports no readiness (an older daemon, or a runner with no
+  known health check) counts as healthy too, rather than reporting a health tier
+  the daemon cannot actually back.
 - **Attention**: the node has a start or stop action in flight for it, or is
   `running` with its daemon explicitly reporting the engine not yet ready.
 - **Unhealthy**: the node's engine has crashed, or its last refresh's
   outcome was a failure (`unreachable`, `unauthorized`, `config-error`,
   `failed`, or `unsupported`).
-- **Not serving**: the node answered its last refresh, no action is in
-  flight for it, and its engine is not serving — its state is `idle`, the
-  daemon has started nothing, `stopped`, a daemon engine that was stopped,
-  or `undeployed`, a remote environment with no instance at all.
-- **Unknown**: no status can be determined for the node — it has not yet
-  answered any refresh, or its last refresh answered without reporting an
-  engine state.
+- **Not serving**: the node answered its last refresh, that answer is current,
+  no action is in flight for it, and its engine is not serving — its state is
+  `idle`, the daemon has started nothing, `stopped`, a daemon engine that was
+  stopped, or `undeployed`, a remote environment with no instance at all.
+- **Unknown**: no current status can be determined for the node — it has not yet
+  answered any refresh, its last refresh answered without reporting an engine
+  state, or its newest answer has aged well past its cadence and no longer
+  describes the node now.
 
 #### Scenario: A running, ready node reads healthy
 
@@ -1099,6 +1167,13 @@ heard from yet.
 
 - **WHEN** a node's last refresh answered but reported no engine state
 - **THEN** its panel's status glyph is grey
+
+#### Scenario: A node whose answer has gone stale reads unknown
+
+- **WHEN** a node last answered `running` and has not answered since, long
+  enough that the answer no longer describes the node now
+- **THEN** its panel's status glyph is grey rather than the green that answer
+  earned when it was current
 
 #### Scenario: An action in flight reads attention
 
@@ -1143,8 +1218,59 @@ heard from yet.
 - **THEN** the first shows the faded grey filled dot and the second the grey
   `?`, so the two greys are told apart by their mark
 
+The board SHALL carry a title bar of its own along the top of the frame, on
+the same surface a tile's header bar uses: the product's name, the screen in
+view, and — pushed to the right — the fleet file and what is on that screen. A
+terminal too narrow for both halves SHALL keep the left one rather than wrap
+the bar onto a second row. The grid and the detail view SHALL draw their title
+bar from one place, so the two screens cannot title themselves differently.
+
+The board SHALL use exactly one accent colour, the mint of the spinloop logo,
+and SHALL use it only where nothing about a node is being reported: the title
+bar's product name, and the border of the selected panel. A node's own state —
+the health glyph, the resource bars — SHALL keep the terminal's green, amber
+and red, which say what an engine is doing rather than whose product this is.
+
+In the frame's key help, each entry SHALL be drawn as the key and what that
+key does: the key in the terminal's own text colour, and what it does a step
+back in the muted ink, so the keys are what a glance over the footer picks out.
+The prose beside them — a confirmation's question, an action's outcome — SHALL
+be left as it is.
+
+#### Scenario: A key stands out from what it does
+
+- **WHEN** the key help is drawn
+- **THEN** each key keeps the terminal's own text colour and what it does is
+  drawn in the muted ink beside it
+- **AND** the status line and a confirmation's question are not drawn that way
+
+#### Scenario: The selected panel is marked in the accent
+
+- **WHEN** the operator moves the selection onto a panel
+- **THEN** that panel's border is drawn in the brand accent, and no colour that
+  reports a node's state is used for it
+
+#### Scenario: The title bar names the product and the screen
+
+- **WHEN** the dashboard is open on the grid or on a node's detail view
+- **THEN** the top of the frame carries a title bar naming the product and that
+  screen, with the fleet file and the screen's own details to the right
+
+#### Scenario: A narrow terminal keeps the left half of the title bar
+
+- **WHEN** the terminal is too narrow for both halves of the title bar
+- **THEN** the product and the screen are kept and the right half is dropped,
+  and the bar stays one row
+
+#### Scenario: The header bar does not carry the health colour
+
+- **WHEN** two nodes of different health are shown side by side
+- **THEN** both tiles' header bars are the same colour, and the two nodes are
+  told apart by their glyphs
+
 #### Scenario: The glyph is distinct from the selection border
 
 - **WHEN** the operator moves the selection onto a panel
 - **THEN** the selected panel's border colour changes as it does today, and
   every panel's status glyph colour is unaffected by which panel is selected
+
