@@ -34,7 +34,10 @@ the local counterpart of the runner `spinloop remote deploy` selects from the sa
 instruction. `llamacpp` SHALL run `llama-server`; `omlx` SHALL run the oMLX CLI;
 `vllm` SHALL run `vllm serve`, with the model passed as its positional
 argument, the served name as `--served-model-name`, and the context window as
-`--max-model-len`. There SHALL be no default: a `PROVIDER` that is not a
+`--max-model-len`; `mtplx` SHALL run `mtplx serve`, with the model as
+`--model`, the served name as `--model-id`, the context window as
+`--context-window`, and a `--download` flag so the engine fetches a model it
+does not have itself. There SHALL be no default: a `PROVIDER` that is not a
 self-hosted engine SHALL fail, naming the providers that can be served, rather
 than launching an engine the Spinloop did not ask for.
 
@@ -52,6 +55,20 @@ on their `PATH` can still serve.
 - **WHEN** the Spinloop says `PROVIDER vllm` with a `MODEL`
 - **THEN** the printed command runs `vllm serve` with that model as the
   positional argument
+
+#### Scenario: MTPLX is servable
+
+- **WHEN** the Spinloop says `PROVIDER mtplx` with a `MODEL` naming an MTPLX
+  optimised repo or a local path
+- **THEN** the printed command runs `mtplx serve` with that model as `--model`
+  and includes `--download`
+
+#### Scenario: MTPLX served name and context
+
+- **WHEN** the Spinloop says `PROVIDER mtplx` with `ALIAS qwen` and
+  `CONTEXT 128k`
+- **THEN** the printed command carries `--model-id qwen` and
+  `--context-window 128000`
 
 #### Scenario: A provider that is not a local engine
 
@@ -216,9 +233,14 @@ request slots, translated per engine so that `CONTEXT`'s meaning holds:
   concurrency is bounded independently of a single request's context length.
 - For `omlx`, `PARALLEL n` SHALL be rendered as `--max-concurrent-requests n`.
   oMLX has no context flag to scale either way.
+- For `mtplx`, `PARALLEL n` SHALL be rendered as `--max-active-requests n`,
+  MTPLX's cap on admitted concurrent requests. `--context-window` (from
+  `CONTEXT`) SHALL NOT be scaled by `PARALLEL`. MTPLX's scheduling mode — how
+  admitted requests execute, serially or in parallel — SHALL remain a preset
+  concern: a Spinloop's `PARALLEL` SHALL NOT select it.
 
 A Spinloop stating no `PARALLEL` SHALL produce a command identical to one from
-before this capability existed, for all three engines. A `PARALLEL` value
+before this capability existed, for all four engines. A `PARALLEL` value
 SHALL be validated as a positive integer at the point it is used (`serve`, a
 daemon-pushed config, or `remote deploy`); a value that is not SHALL fail
 naming the invalid value rather than being passed to the engine.
@@ -227,9 +249,9 @@ When `CONTEXT` is supplied by a `PRESET` section's own `ctx-size` rather than
 by the Spinloop, `PARALLEL` SHALL NOT rescale it — only a Spinloop-stated
 `CONTEXT` participates in the `llamacpp` multiply. A `PARALLEL` value SHALL
 still override a preset's own `np`/`parallel` (llama.cpp), `max-num-seqs`
-(vLLM), or `max-concurrent-requests` (oMLX) value by the same
-override-by-canonical-name rule `CONTEXT` already uses against a preset's
-`ctx-size`.
+(vLLM), `max-concurrent-requests` (oMLX), or `max-active-requests` (MTPLX)
+value by the same override-by-canonical-name rule `CONTEXT` already uses
+against a preset's `ctx-size`.
 
 #### Scenario: llama.cpp context is scaled by parallel slots
 
@@ -270,16 +292,23 @@ override-by-canonical-name rule `CONTEXT` already uses against a preset's
 - **THEN** the printed command includes `--max-concurrent-requests 8` and no
   context flag, exactly as with no `PARALLEL` stated
 
+#### Scenario: MTPLX concurrency does not touch context
+
+- **WHEN** a Spinloop states `PROVIDER mtplx`, `CONTEXT 128k`, and
+  `PARALLEL 4`
+- **THEN** the printed command includes `--max-active-requests 4` and
+  `--context-window 128000`, with neither value derived from the other
+
 #### Scenario: No PARALLEL means no change
 
-- **WHEN** a Spinloop states no `PARALLEL`, for any of the three engines
+- **WHEN** a Spinloop states no `PARALLEL`, for any of the four engines
 - **THEN** the printed command is identical to what it would have been before
   this capability existed
 
 #### Scenario: Invalid parallel count
 
 - **WHEN** a Spinloop states `PARALLEL 0`, a negative number, or a non-numeric
-  value, for any of the three engines
+  value, for any of the four engines
 - **THEN** the command fails naming the invalid value rather than passing it
   to the engine
 

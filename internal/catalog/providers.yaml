@@ -143,6 +143,24 @@ providers:
       api: openai-completions
     lucinate: {}
 
+  mtplx:
+    description: MTPLX server on Apple Silicon (OpenAI-compatible API)
+    name: MTPLX
+    npm: "@ai-sdk/openai-compatible"
+    # Like oMLX, a local MTPLX server usually needs no key and none is injected
+    # when the var is unset; MTPLX can be started with an API key, so one is
+    # picked up when there is one (e.g. a Mac on the LAN named by
+    # MTPLX_BASE_URL).
+    apiKeyEnv: OPENAI_API_KEY
+    apiKeyOptional: true
+    options:
+      baseURL: http://localhost:8000/v1
+    optionsFromEnv:
+      baseURL: MTPLX_BASE_URL
+    pi:
+      api: openai-completions
+    lucinate: {}
+
   vllm:
     description: vLLM server (OpenAI-compatible API)
     name: vLLM

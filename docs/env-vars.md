@@ -45,7 +45,7 @@ naming one) rather than environment variables alone.
 | `XDG_CONFIG_HOME` | Base for spinloop's config dir (`$XDG_CONFIG_HOME/spinloop`) when `SPINLOOP_CONFIG_DIR` is unset. |
 | `AWS_REGION` | AWS region for the remote control calls when the remote config names none. |
 | `HF_TOKEN` | Hugging Face token, used only to seed gated model weights during `spinloop remote deploy`. |
-| `OPENAI_API_KEY` | The key spinloop resolves for OpenAI-compatible and oMLX providers (from the environment or the adjacent `.env`). |
+| `OPENAI_API_KEY` | The key spinloop resolves for OpenAI-compatible, oMLX and MTPLX providers (from the environment or the adjacent `.env`). |
 
 Each provider in the catalogue also names its own key variable (and sometimes a
 base-URL or region variable); `spinloop list` shows the provider details, and the

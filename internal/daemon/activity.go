@@ -130,7 +130,9 @@ func (d *Daemon) sampleOnce(ctx context.Context) {
 	d.mu.Lock()
 	scrape := d.scrape
 	d.mu.Unlock()
-	if scrape.BaseURL == "" {
+	// A target with an address but no dialect has no /metrics to parse — the
+	// address exists so the readiness check can probe /health, not to scrape.
+	if scrape.BaseURL == "" || scrape.Engine == "" {
 		return
 	}
 	tokens, err := metrics.ScrapeTokenStats(ctx, scrape)
@@ -143,20 +145,24 @@ func (d *Daemon) sampleOnce(ctx context.Context) {
 
 // checkReadyOnce takes one reading of whether the running engine can serve
 // requests, for a runner with a known health-check convention. It is a no-op
-// — recording nothing — when the engine is not running, when no scrape
-// target is known, or when the runner is not in readinessCheckedRunners, so
-// an unchecked runner's readiness field stays absent rather than reporting a
-// guess.
+// — recording nothing — when the engine is not running, when no address is
+// known, or when the runner is not in readinessCheckedRunners, so an
+// unchecked runner's readiness field stays absent rather than reporting a
+// guess. The convention is keyed on the runner, not the metrics dialect: an
+// engine with no /metrics to scrape can still answer /health at its own
+// address, and that is what this check probes.
 func (d *Daemon) checkReadyOnce(ctx context.Context) {
 	if state, _, _ := d.Sup.Status(); state != StateRunning {
 		return
 	}
-	// Copy the target under the lock and release before the HTTP call, as
-	// sampleOnce does — a health check must never hold the daemon's mutex.
+	// Copy the address and runner under the lock and release before the HTTP
+	// call, as sampleOnce does — a health check must never hold the daemon's
+	// mutex.
 	d.mu.Lock()
 	scrape := d.scrape
+	runner := d.runner
 	d.mu.Unlock()
-	if scrape.BaseURL == "" || !readinessCheckedRunners[scrape.Engine] {
+	if scrape.BaseURL == "" || !readinessCheckedRunners[runner] {
 		return
 	}
 	d.ready.record(metrics.CheckEngineReady(ctx, scrape))

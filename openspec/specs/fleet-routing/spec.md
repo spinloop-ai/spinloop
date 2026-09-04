@@ -203,6 +203,13 @@ only that a process exists, but until its engine endpoint answers. A node whose
 stored config already matches the wanted model SHALL be preferred, since it has
 the weights.
 
+The pushed config is the node-side counterpart of what `spinloop serve` would run
+for that Spinloop, translated per engine. A node may be woken for an engine that
+binds its model at launch — `llamacpp`, `vllm`, and `mtplx` — and a `MODEL` that
+names a file on the node's own disk is a valid wake for it: the node has the
+file, and only a destination that fetches its weights itself refuses a local
+path.
+
 A node that refuses the config — a runner or model it cannot serve — SHALL NOT
 fail the launch while other candidates remain: the next candidate SHALL be
 tried, and the refusals SHALL be reported when none succeeds.
@@ -227,6 +234,19 @@ command that would start one.
   node is idle and able to serve it
 - **THEN** that node is given the Spinloop's model as its deploy config, started,
   and the agent launches against it once its engine answers
+
+#### Scenario: A node is woken for a Mac-only engine
+
+- **WHEN** a fleet-routed launch finds no node serving the wanted model, and an
+  idle node's daemon can run MTPLX
+- **THEN** that node is woken with a config that runs the wanted model under
+  `mtplx serve`, and the agent launches against it once its engine answers
+
+#### Scenario: A local model path wakes the node that has it
+
+- **WHEN** the Spinloop's `MODEL` names a file on the woken node's disk
+- **THEN** the wake carries that path as the model to load, rather than
+  refusing it as a local file
 
 #### Scenario: A started engine that is not yet loaded is waited for
 

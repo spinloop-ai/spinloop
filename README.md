@@ -57,6 +57,7 @@ their models.
 | llama.cpp | `llamacpp` | Local (or remote) llama-server |
 | oMLX | `omlx` | Local oMLX server on Apple Silicon |
 | vLLM | `vllm` | Local or self-hosted vLLM server |
+| MTPLX | `mtplx` | Local MTPLX server on Apple Silicon |
 | OpenAI-compatible | `openai-compatible` | Any endpoint that speaks the OpenAI API — set the base URL and key |
 
 Adding one that isn't here is a data change, not code — see
@@ -80,7 +81,8 @@ model refs and quirks, and none of it is written down where you need it.
 it configures the agent for you:
 
 - **One command, any model.** Pick from a built-in catalogue — OpenRouter,
-  Bedrock, Ollama, llama.cpp, vLLM, oMLX, or any OpenAI-compatible endpoint. No
+  Bedrock, Ollama, llama.cpp, vLLM, oMLX, MTPLX, or any OpenAI-compatible
+  endpoint. No
   URLs to look up, and `spinloop list --models` fetches the model ids straight from
   the provider.
 - **Your config survives.** Settings are merged *into* what you already have.
@@ -353,8 +355,9 @@ the bash and zsh completions for you.
 
 Running a model locally? `spinloop serve` reads a `Spinloop` and launches the
 inference server its `PROVIDER` names — `llamacpp` runs `llama-server`, `omlx`
-runs [oMLX](https://omlx.ai) on Apple Silicon — so the same file that points
-opencode at a model can start it too. The simple case needs no preset:
+runs [oMLX](https://omlx.ai) and `mtplx` runs [MTPLX](https://mtplx.com), the
+two Apple-Silicon engines — so the same file that points opencode at a model can
+start it too. The simple case needs no preset:
 
 ```dockerfile
 # Spinloop
@@ -376,8 +379,8 @@ the chosen section into the command instead — with anything the `Spinloop` sta
 (like `CONTEXT`) overriding the preset. It's the missing piece presets don't
 cover: launching a *single* model. `CONTEXT` always means the context per
 request; add `PARALLEL` to run more than one slot and `spinloop` works out each
-engine's own accounting (llama.cpp's `--ctx-size` gets scaled, vLLM's and
-oMLX's don't) — see
+engine's own accounting (llama.cpp's `--ctx-size` gets scaled; vLLM's and
+MTPLX's don't, and oMLX has none) — see
 [Parallelism](docs/commands/serve.md#parallelism) for the full mapping.
 Details in [`docs/commands/serve.md`](docs/commands/serve.md).
 
@@ -582,8 +585,8 @@ machine; it is never sent to the deployed instance.
 Each provider declares which environment variable holds its key (`spinloop
 list` shows them). Values are looked up in your shell environment first, then a
 `.env` beside the `Spinloop`, so an exported variable always wins and the `.env`
-only fills a gap. Local providers like Ollama, llama.cpp and oMLX need no
-key;
+only fills a gap. Local providers like Ollama, llama.cpp, oMLX and MTPLX need
+no key;
 Bedrock authenticates through your AWS credentials.
 
 `spinloop harness` carries that same local environment to the agent it launches:
@@ -603,7 +606,7 @@ SPINLOOP_BASE_URL=https://gateway/v1 spinloop add -p openai-compatible -m my-mod
 
 The flag wins over the env var, and either wins over the catalogue's defaults
 and the per-provider variables (`OLLAMA_BASE_URL`, `LLAMACPP_BASE_URL`,
-`OMLX_BASE_URL`, `VLLM_BASE_URL`, `OPENAI_BASE_URL`).
+`OMLX_BASE_URL`, `VLLM_BASE_URL`, `MTPLX_BASE_URL`, `OPENAI_BASE_URL`).
 
 ## Guides
 
@@ -616,6 +619,7 @@ with a ready-to-apply `Spinloop`:
 - [Gemma-4-12B-IT on llama.cpp](examples/llamacpp/gemma4/README.md)
 - [Qwen3.6-35B-A3B on oMLX (Apple Silicon)](examples/omlx/qwen3.6/README.md)
 - [Gemma-4-E2B on oMLX (Apple Silicon)](examples/omlx/gemma-4-e2b/README.md)
+- [Qwen3.8-27B on MTPLX (Apple Silicon)](examples/mtplx/qwen3.8-27b/README.md)
 - [Fetching a Spinloop from a URL](examples/remote-spinloop/README.md)
 
 ## Adding providers and models

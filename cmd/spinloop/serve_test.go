@@ -56,6 +56,13 @@ func stubOMLX(t *testing.T, argsFile string) {
 	stubServer(t, &omlxBinary, "omlx-cli", argsFile)
 }
 
+// stubMTPLX does the same for the MTPLX CLI, so no MTPLX install is needed to
+// pin the argv serve builds for it.
+func stubMTPLX(t *testing.T, argsFile string) {
+	t.Helper()
+	stubServer(t, &mtlxBinary, "mtplx", argsFile)
+}
+
 // omlxPreset is a preset written in oMLX's own flag vocabulary. `m` is here
 // deliberately: llama.cpp's dialect would rewrite it to --model, and this preset
 // must not be read that way.
@@ -75,6 +82,32 @@ func writeOMLXSpinloop(t *testing.T, spinloopBody string) string {
 	t.Helper()
 	dir := t.TempDir()
 	mustWrite(t, filepath.Join(dir, "preset.ini"), omlxPreset)
+	spinloopPath := filepath.Join(dir, "Spinloop")
+	mustWrite(t, spinloopPath, spinloopBody)
+	return spinloopPath
+}
+
+// mtplxDialectPreset is a preset written in MTPLX's own flag vocabulary. `c`
+// is here deliberately: llama.cpp's dialect would rewrite it to --ctx-size,
+// and this preset must not be read that way.
+const mtplxDialectPreset = `[*]
+host = 127.0.0.1
+port = 8000
+
+[qwen]
+model               = Youssofal/Qwen3.8-27B-MTPLX-Optimized-Speed
+context-window      = 32768
+scheduler-mode      = parallel
+max-active-requests = 4
+c                   = should-stay-literal
+`
+
+// writeMTPLXSpinloop writes an MTPLX preset.ini and a Spinloop referencing it
+// into a fresh temp dir, and returns the Spinloop's path.
+func writeMTPLXSpinloop(t *testing.T, spinloopBody string) string {
+	t.Helper()
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "preset.ini"), mtplxDialectPreset)
 	spinloopPath := filepath.Join(dir, "Spinloop")
 	mustWrite(t, spinloopPath, spinloopBody)
 	return spinloopPath
@@ -399,9 +432,9 @@ func TestCmdServe_ParallelOverridesPresetValue(t *testing.T) {
 }
 
 // TestCmdServe_InvalidParallel checks a non-positive or non-numeric PARALLEL
-// fails rather than being passed to the engine, for all three engines.
+// fails rather than being passed to the engine, for all four engines.
 func TestCmdServe_InvalidParallel(t *testing.T) {
-	for _, provider := range []string{"llamacpp", "vllm", "omlx"} {
+	for _, provider := range []string{"llamacpp", "vllm", "omlx", "mtplx"} {
 		for _, bad := range []string{"0", "-1", "abc"} {
 			t.Run(provider+"/"+bad, func(t *testing.T) {
 				dir := t.TempDir()
@@ -671,6 +704,174 @@ func TestCmdServe_OMLXNotFound(t *testing.T) {
 	}
 }
 
+// TestCmdServe_MTPPLXDryRun pins the whole MTPLX shape: the `serve`
+// subcommand, the model as --model, the served name as --model-id, the
+// context window, the parallel cap, a bind address taken from BASEURL, and
+// --download so a missing model is fetched by the engine.
+func TestCmdServe_MTPPLXDryRun(t *testing.T) {
+	dir := t.TempDir()
+	spinloopPath := filepath.Join(dir, "Spinloop")
+	mustWrite(t, spinloopPath,
+		"PROVIDER mtplx\nMODEL Youssofal/Qwen3.8-27B-MTPLX-Optimized-Speed\nALIAS qwen\nCONTEXT 128k\nPARALLEL 2\nBASEURL http://127.0.0.1:9100/v1\n")
+
+	out := captureStdout(t, func() {
+		if err := cmdServe([]string{"--dry-run", spinloopPath}); err != nil {
+			t.Fatalf("cmdServe: %v", err)
+		}
+	})
+
+	for _, want := range []string{
+		"mtplx serve",
+		"--model Youssofal/Qwen3.8-27B-MTPLX-Optimized-Speed",
+		"--download",
+		"--model-id qwen",
+		"--context-window 128000",
+		"--max-active-requests 2",
+		"--host 127.0.0.1",
+		"--port 9100",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("command missing %q:\n%s", want, out)
+		}
+	}
+	// Another engine's vocabulary must not leak into the command.
+	for _, unwanted := range []string{"llama-server", "--hf-repo", "--ctx-size", "--max-num-seqs"} {
+		if strings.Contains(out, unwanted) {
+			t.Errorf("command should not contain %q:\n%s", unwanted, out)
+		}
+	}
+}
+
+// TestCmdServe_MTPPLXDefaultsWithoutBaseURL checks that with no BASEURL no bind
+// flag is emitted at all, so MTPLX's own defaults stand.
+func TestCmdServe_MTPPLXDefaultsWithoutBaseURL(t *testing.T) {
+	dir := t.TempDir()
+	spinloopPath := filepath.Join(dir, "Spinloop")
+	mustWrite(t, spinloopPath, "PROVIDER mtplx\nMODEL org/model\n")
+
+	out := captureStdout(t, func() {
+		if err := cmdServe([]string{"--dry-run", spinloopPath}); err != nil {
+			t.Fatalf("cmdServe: %v", err)
+		}
+	})
+
+	if strings.Contains(out, "--host") || strings.Contains(out, "--port") {
+		t.Errorf("no BASEURL should mean no bind flags:\n%s", out)
+	}
+	if !strings.Contains(out, "--download") {
+		t.Errorf("--download is always passed:\n%s", out)
+	}
+}
+
+// TestCmdServe_MTPPLXNeedsModel checks that MTPLX, like llama.cpp and vLLM,
+// will not start without being told what to load.
+func TestCmdServe_MTPPLXNeedsModel(t *testing.T) {
+	dir := t.TempDir()
+	spinloopPath := filepath.Join(dir, "Spinloop")
+	mustWrite(t, spinloopPath, "PROVIDER mtplx\n")
+	if err := cmdServe([]string{"--dry-run", spinloopPath}); err == nil {
+		t.Error("expected error when there is neither a PRESET nor a MODEL")
+	}
+}
+
+// TestCmdServe_MTPPLXNeverPassesAPIKey is a security guard: serve prints the
+// command it runs, so a resolved secret must never reach it; a gated engine is
+// gated with a key file the daemon writes, not a literal on the line.
+func TestCmdServe_MTPPLXNeverPassesAPIKey(t *testing.T) {
+	t.Setenv("OPENAI_API_KEY", "sk-must-not-appear")
+	dir := t.TempDir()
+	spinloopPath := filepath.Join(dir, "Spinloop")
+	mustWrite(t, spinloopPath, "PROVIDER mtplx\nMODEL org/model\nBASEURL http://127.0.0.1:9100/v1\n")
+
+	out := captureStdout(t, func() {
+		if err := cmdServe([]string{"--dry-run", spinloopPath}); err != nil {
+			t.Fatalf("cmdServe: %v", err)
+		}
+	})
+
+	if strings.Contains(out, "sk-must-not-appear") || strings.Contains(out, "--api-key") {
+		t.Errorf("serve must not pass or print an API key:\n%s", out)
+	}
+}
+
+// TestCmdServe_MTPPLXPresetKeysPassThrough is the guard on the dialect split:
+// an MTPLX preset is read in MTPLX's vocabulary, so a key llama.cpp would
+// rewrite is left exactly as written, and every long-form key renders as its
+// own flag.
+func TestCmdServe_MTPPLXPresetKeysPassThrough(t *testing.T) {
+	spinloopPath := writeMTPLXSpinloop(t, "PROVIDER mtplx\nALIAS qwen\nPRESET preset.ini\n")
+
+	out := captureStdout(t, func() {
+		if err := cmdServe([]string{"--dry-run", spinloopPath}); err != nil {
+			t.Fatalf("cmdServe: %v", err)
+		}
+	})
+
+	for _, want := range []string{
+		"--model Youssofal/Qwen3.8-27B-MTPLX-Optimized-Speed",
+		"--context-window 32768",
+		"--scheduler-mode parallel",
+		"--max-active-requests 4",
+		"-c should-stay-literal",
+		"--download",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("command missing %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "--ctx-size") {
+		t.Errorf("llama.cpp aliasing leaked into the MTPLX dialect:\n%s", out)
+	}
+}
+
+// TestCmdServe_MTPPLXSpinloopOverridesPreset checks the Spinloop still wins
+// over its preset for the settings it states, as it does for every engine.
+func TestCmdServe_MTPPLXSpinloopOverridesPreset(t *testing.T) {
+	spinloopPath := writeMTPLXSpinloop(t,
+		"PROVIDER mtplx\nALIAS qwen\nPRESET preset.ini\nCONTEXT 128k\nPARALLEL 8\nBASEURL http://0.0.0.0:9999/v1\n")
+
+	out := captureStdout(t, func() {
+		if err := cmdServe([]string{"--dry-run", spinloopPath}); err != nil {
+			t.Fatalf("cmdServe: %v", err)
+		}
+	})
+
+	for _, want := range []string{
+		"--context-window 128000",
+		"--max-active-requests 8",
+		"--host 0.0.0.0",
+		"--port 9999",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("command missing %q:\n%s", want, out)
+		}
+	}
+	// The preset's values are overridden in place, not duplicated.
+	if strings.Contains(out, "--context-window 32768") || strings.Contains(out, "--max-active-requests 4") {
+		t.Errorf("preset values should have been overridden:\n%s", out)
+	}
+}
+
+// TestCmdServe_MTPPLXNotFound checks the install hint names MTPLX rather than
+// llama.cpp.
+func TestCmdServe_MTPPLXNotFound(t *testing.T) {
+	orig := mtlxBinary
+	mtlxBinary = filepath.Join(t.TempDir(), "definitely-not-installed")
+	t.Cleanup(func() { mtlxBinary = orig })
+	dir := t.TempDir()
+	spinloopPath := filepath.Join(dir, "Spinloop")
+	mustWrite(t, spinloopPath, "PROVIDER mtplx\nMODEL org/model\n")
+
+	var err error
+	captureStdout(t, func() { err = cmdServe([]string{spinloopPath}) })
+	if err == nil || !strings.Contains(err.Error(), "not found") {
+		t.Fatalf("expected a not-found error, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "MTPLX") {
+		t.Errorf("hint should name MTPLX, got %v", err)
+	}
+}
+
 // TestCmdServe_UnsupportedProvider pins the behaviour change: serve used to run
 // llama-server whatever the PROVIDER said, which quietly served the wrong engine.
 func TestCmdServe_UnsupportedProvider(t *testing.T) {
@@ -683,7 +884,9 @@ func TestCmdServe_UnsupportedProvider(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected an error for a provider that is not a local engine")
 	}
-	for _, want := range []string{"ollama", "llamacpp", "omlx"} {
+	// The list of servable engines is derived from the engine set, so the
+	// error names every one of them — including the newest.
+	for _, want := range []string{"ollama", "llamacpp", "omlx", "mtplx", "vllm"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error should mention %q, got %v", want, err)
 		}

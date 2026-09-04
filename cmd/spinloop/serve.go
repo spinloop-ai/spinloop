@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -34,6 +35,10 @@ var omlxBinary = ""
 // vllmBinary is the vLLM executable that `serve` launches. A package var so
 // tests can point it at a stub instead of a real install.
 var vllmBinary = "vllm"
+
+// mtlxBinary is the MTPLX executable that `serve` launches. A package var so
+// tests can point it at a stub instead of a real install.
+var mtlxBinary = "mtplx"
 
 // omlxBundleBinary is where the macOS app installs its CLI. oMLX ships as a
 // signed app rather than a PATH install, so a user who has only ever launched
@@ -95,56 +100,92 @@ type serveEngine struct {
 	positional func(sel spinloop.Selection) []string
 }
 
+// engines is the set of local inference servers `serve` can launch, keyed by
+// the PROVIDER that selects one. It is the single source of truth for what
+// serve runs: the error for an unservable PROVIDER and the help text both name
+// the engines from here rather than from a list written out by hand.
+var engines = map[string]serveEngine{
+	"llamacpp": {
+		binary:              func() string { return llamaServerBinary },
+		dialect:             preset.LlamaCpp,
+		params:              llamacppServeParams,
+		needsModel:          true,
+		installHint:         "install llama.cpp (e.g. brew install llama.cpp) or check the path",
+		metricsArgs:         []string{"--metrics"},
+		metricsEngine:       "llamacpp",
+		apiKeyFileFlag:      "--api-key-file",
+		defaultBaseURL:      "http://127.0.0.1:8080",
+		defaultBindLoopback: true,
+	},
+	"omlx": {
+		binary:      resolveOMLXBinary,
+		subcommand:  []string{"serve"},
+		dialect:     preset.OMLX,
+		params:      omlxServeParams,
+		installHint: "install oMLX (https://omlx.ai) or check the path",
+	},
+	"mtplx": {
+		binary:      func() string { return mtlxBinary },
+		subcommand:  []string{"serve"},
+		dialect:     preset.MTPLX,
+		params:      mtplxServeParams,
+		needsModel:  true,
+		installHint: "install MTPLX (https://mtplx.com) or check the path",
+		// MTPLX has no Prometheus endpoint to scrape, so there is no
+		// metrics switch to append and no dialect for the scraper.
+		apiKeyFileFlag:      "--api-key-file",
+		defaultBaseURL:      "http://127.0.0.1:8000",
+		defaultBindLoopback: true,
+	},
+	"vllm": {
+		binary:      func() string { return vllmBinary },
+		subcommand:  []string{"serve"},
+		dialect:     preset.VLLM,
+		params:      vllmServeParams,
+		needsModel:  true,
+		installHint: "install vLLM (pip install vllm) or check the path",
+		// vLLM serves /metrics unconditionally, so no switch to append.
+		metricsEngine:  "vllm",
+		defaultBaseURL: "http://127.0.0.1:8000",
+		positional: func(sel spinloop.Selection) []string {
+			if sel.Model == "" {
+				return nil
+			}
+			return []string{sel.Model}
+		},
+	},
+}
+
 // engineFor maps a Spinloop's PROVIDER to the engine `serve` launches locally.
 // It is the local twin of runnerFor: PROVIDER already names the engine, so no
 // separate keyword is needed. Providers that are not self-hosted engines have
 // nothing to launch.
 func engineFor(provider string) (serveEngine, error) {
-	switch provider {
-	case "llamacpp":
-		return serveEngine{
-			binary:              func() string { return llamaServerBinary },
-			dialect:             preset.LlamaCpp,
-			params:              llamacppServeParams,
-			needsModel:          true,
-			installHint:         "install llama.cpp (e.g. brew install llama.cpp) or check the path",
-			metricsArgs:         []string{"--metrics"},
-			metricsEngine:       "llamacpp",
-			apiKeyFileFlag:      "--api-key-file",
-			defaultBaseURL:      "http://127.0.0.1:8080",
-			defaultBindLoopback: true,
-		}, nil
-	case "omlx":
-		return serveEngine{
-			binary:      resolveOMLXBinary,
-			subcommand:  []string{"serve"},
-			dialect:     preset.OMLX,
-			params:      omlxServeParams,
-			installHint: "install oMLX (https://omlx.ai) or check the path",
-		}, nil
-	case "vllm":
-		return serveEngine{
-			binary:      func() string { return vllmBinary },
-			subcommand:  []string{"serve"},
-			dialect:     preset.VLLM,
-			params:      vllmServeParams,
-			needsModel:  true,
-			installHint: "install vLLM (pip install vllm) or check the path",
-			// vLLM serves /metrics unconditionally, so no switch to append.
-			metricsEngine:  "vllm",
-			defaultBaseURL: "http://127.0.0.1:8000",
-			positional: func(sel spinloop.Selection) []string {
-				if sel.Model == "" {
-					return nil
-				}
-				return []string{sel.Model}
-			},
-		}, nil
-	default:
+	engine, ok := engines[provider]
+	if !ok {
 		return serveEngine{}, fmt.Errorf(
-			"PROVIDER %q cannot be served locally: serve runs a self-hosted engine, so use llamacpp, omlx or vllm",
-			provider)
+			"PROVIDER %q cannot be served locally: serve runs a self-hosted engine, so use %s",
+			provider, orList(servedProviders()))
 	}
+	return engine, nil
+}
+
+// servedProviders lists the PROVIDERs serve can launch, in stable order.
+func servedProviders() []string {
+	names := make([]string, 0, len(engines))
+	for name := range engines {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// orList joins names the way an English sentence does: "a, b or c".
+func orList(names []string) string {
+	if len(names) == 1 {
+		return names[0]
+	}
+	return strings.Join(names[:len(names)-1], ", ") + " or " + names[len(names)-1]
 }
 
 // cmdServe reads a Spinloop and runs the inference server its PROVIDER names.
@@ -163,11 +204,11 @@ func serveCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "serve",
 		Short: "run the Spinloop's inference server",
-		Long: `runs the inference server the Spinloop's PROVIDER names — llamacpp
-(llama-server) or omlx (Apple Silicon). With a PRESET it turns the matching
-section into the command, reading it in that engine's flag vocabulary;
-otherwise it derives one from the Spinloop's own instructions. Prints the
-command before running it; --dry-run/-n prints without launching the server.`,
+		Long: fmt.Sprintf(`runs the inference server the Spinloop's PROVIDER names — %s.
+With a PRESET it turns the matching section into the command, reading it in
+that engine's flag vocabulary; otherwise it derives one from the Spinloop's
+own instructions. Prints the command before running it; --dry-run/-n prints
+without launching the server.`, orList(servedProviders())),
 		Args:          cobra.ArbitraryArgs,
 		SilenceErrors: true,
 		SilenceUsage:  true,
@@ -394,6 +435,52 @@ func omlxServeParams(sel spinloop.Selection) ([]preset.Param, error) {
 			return nil, err
 		}
 		params = append(params, preset.Param{Key: "max-concurrent-requests", Value: strconv.Itoa(n)})
+	}
+	bind, err := bindAddressParams(sel)
+	if err != nil {
+		return nil, err
+	}
+	return append(params, bind...), nil
+}
+
+// mtplxServeParams turns the MTPLX settings a Spinloop states into preset
+// params: MODEL names the weights — an MTPLX-optimised HF repo or a local
+// path, both taken verbatim by --model — and ALIAS, CONTEXT, and BASEURL fill
+// in the served name, the context window, and the bind address.
+//
+// --download is always passed: MTPLX fetches an optimised pack it does not
+// have, the same job -hf does for llama-server, and it is a no-op when the
+// model is already present.
+//
+// PARALLEL maps to --max-active-requests, the cap on admitted concurrent
+// requests. How admitted requests execute — the scheduler mode, serial or
+// parallel — is a preset concern: PARALLEL never selects it. And like vLLM
+// and oMLX there is no context flag to scale: --context-window bounds a
+// single request, independently of how many are admitted.
+func mtplxServeParams(sel spinloop.Selection) ([]preset.Param, error) {
+	var params []preset.Param
+	if sel.Model != "" {
+		params = append(params, preset.Param{Key: "model", Value: sel.Model})
+	}
+	// MTPLX fetches an optimised model it does not have; a no-op when the
+	// model is already present.
+	params = append(params, preset.Param{Key: "download", Value: ""})
+	if sel.Alias != "" {
+		params = append(params, preset.Param{Key: "model-id", Value: sel.Alias})
+	}
+	if sel.Context != "" {
+		n, err := contextsize.Parse(sel.Context)
+		if err != nil {
+			return nil, err
+		}
+		params = append(params, preset.Param{Key: "context-window", Value: strconv.Itoa(n)})
+	}
+	if sel.Parallel != "" {
+		n, err := parseParallel(sel.Parallel)
+		if err != nil {
+			return nil, err
+		}
+		params = append(params, preset.Param{Key: "max-active-requests", Value: strconv.Itoa(n)})
 	}
 	bind, err := bindAddressParams(sel)
 	if err != nil {

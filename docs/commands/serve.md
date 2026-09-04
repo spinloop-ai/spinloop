@@ -30,6 +30,7 @@ GPU:
 | `llamacpp` | `llama-server` |
 | `omlx` | [oMLX](https://omlx.ai) on Apple Silicon |
 | `vllm` | `vllm serve` (the model as its positional argument) |
+| `mtplx` | [`mtplx serve`](https://mtplx.com) on Apple Silicon |
 
 Any other provider is an error: `serve` launches a self-hosted engine, and the
 rest of the catalogue names endpoints somebody else runs.
@@ -49,6 +50,7 @@ engine serves it. `PARALLEL` sets the number of concurrent request slots, and
 | `llamacpp` | `--parallel n` | Scaled: `--ctx-size` becomes `context * n` |
 | `vllm`     | `--max-num-seqs n` | Unscaled: `--max-model-len` is unaffected |
 | `omlx`     | `--max-concurrent-requests n` | No context flag either way |
+| `mtplx`    | `--max-active-requests n` | Unscaled: `--context-window` is unaffected |
 
 The `llamacpp` scaling exists because llama.cpp's own `--ctx-size` is a total
 KV-cache budget it divides across `--parallel` slots — so without help, asking
@@ -57,10 +59,12 @@ for `CONTEXT 128k` with two parallel slots would silently give each request
 `--ctx-size 256000 --parallel 2`, so each slot still gets the 128k the Spinloop
 asked for.
 
-`vllm` and `omlx` need no such compensation: both share one dynamically-sized
+`vllm` and `mtplx` need no such compensation: both share one dynamically-sized
 KV-cache pool across concurrent requests via continuous batching rather than
-dividing a fixed budget per slot, so their own context settings are already a
-per-request ceiling — `PARALLEL` only caps how many requests run at once.
+dividing a fixed budget per slot, so their own context settings
+(`--max-model-len`, `--context-window`) are already a per-request ceiling —
+`PARALLEL` only caps how many requests run at once. `omlx` has no context flag
+at all, so there is nothing to compensate there either.
 
 If `PARALLEL` is left out entirely, it changes nothing — no `--parallel`-family
 flag is added, and `CONTEXT` maps to the engine's context flag exactly as it
@@ -200,6 +204,48 @@ it, unlike llama.cpp's.
 `--tensor-parallel-size`/`--pipeline-parallel-size` (sharding a model across
 GPUs) are a different concept from `PARALLEL` and are not derived from it —
 set them by hand in a `PRESET`.
+
+## MTPLX
+
+[MTPLX](https://mtplx.com) serves optimised models on Apple Silicon. Like
+llama.cpp it is launched with one model, so a `MODEL` is required:
+
+```dockerfile
+PROVIDER mtplx
+MODEL    Youssofal/Qwen3.8-27B-MTPLX-Optimized-Speed   # an HF repo, or a local path
+ALIAS    qwen                                           # mtplx serve --model-id
+CONTEXT  128k                                           # mtplx serve --context-window
+PARALLEL 2                                              # mtplx serve --max-active-requests (see below)
+BASEURL  http://127.0.0.1:8000/v1                       # mtplx serve --host/--port
+```
+
+- `MODEL` becomes `--model`, taken verbatim — an Hugging Face repo id or a local
+  path alike. `--download` is always passed, so a repo that is not already
+  local is fetched by the engine rather than failing the launch.
+- `ALIAS` becomes `--model-id` — the name the model is served under.
+- `CONTEXT` becomes `--context-window` — a per-request ceiling, never scaled by
+  `PARALLEL`: see [Parallelism](#parallelism) above.
+- `PARALLEL` becomes `--max-active-requests` — an admission cap on how many
+  requests run at once. It never selects the engine's scheduling mode.
+- `BASEURL` sets the bind address. With none, no bind flag is emitted and
+  MTPLX's own defaults stand.
+
+The scheduling mode (`--scheduler-mode`: `serial`, `parallel`, `concurrent`) is
+per-deployment tuning, not a Spinloop field — set it in a `PRESET`, written in
+MTPLX's own long-form flags. `serve` passes every other preset key through
+unchanged, so a preset is portable only to MTPLX, as with every engine.
+
+`serve` never passes `--api-key`, for the same reason as [oMLX](#omlx): it
+prints the command it runs, and a key on the line would be in your screen and
+the process table. A supervised engine (`--api` or the daemon) is gated with a
+key file the daemon writes instead. Because the `mtplx` provider is
+`apiKeyOptional`, `spinloop add`/`apply` only writes the key reference when
+`OPENAI_API_KEY` is set at apply time.
+
+### Finding the binary
+
+`serve` looks for `mtplx` on your `PATH`. Install it from
+[mtplx.com](https://mtplx.com) if it is not there.
 
 ## The control API (`--api`) and `spinloop daemon`
 

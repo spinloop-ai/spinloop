@@ -10,6 +10,7 @@ import "sync"
 var readinessCheckedRunners = map[string]bool{
 	"llamacpp": true,
 	"vllm":     true,
+	"mtplx":    true,
 }
 
 // readiness is the daemon's record of whether the running engine last

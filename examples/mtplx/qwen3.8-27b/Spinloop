@@ -1,0 +1,10 @@
+# Qwen3.8-27B served locally by MTPLX on Apple Silicon.
+# ALIAS names the model in opencode and selects the preset section below.
+PROVIDER mtplx
+ALIAS    qwen3.8-27b
+CONTEXT  32768            # --context-window; raise it on a bigger box
+PARALLEL 4                # --max-active-requests; the scheduler mode is in the preset
+PRESET   ./preset.ini     # `spinloop serve` launches `mtplx serve` from this
+# BASEURL http://127.0.0.1:8000/v1   # uncomment for a non-default host/port
+# REMOTE  qwen3.8-27b     # not applicable: mtplx is Apple-Silicon-only and has
+#                         # no machine image, so `spinloop remote` cannot deploy it

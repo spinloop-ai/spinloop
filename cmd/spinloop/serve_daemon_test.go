@@ -777,6 +777,39 @@ func TestScrapeTargetForHonoursTheEngineBind(t *testing.T) {
 	}
 }
 
+// TestScrapeTargetForDialectlessEngineStillResolvesAnAddress covers mtplx: it
+// has no /metrics to scrape, so the target's dialect is empty, but the address
+// is still resolved from the bind, BASEURL, or default — the readiness check
+// needs that address to probe /health even where there is nothing to scrape.
+func TestScrapeTargetForDialectlessEngineStillResolvesAnAddress(t *testing.T) {
+	engine, err := engineFor("mtplx")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cases := []struct {
+		name    string
+		baseURL string
+		argv    []string
+		want    string
+	}{
+		{"stated bind wins", "", []string{"mtplx", "serve", "--host", "0.0.0.0", "--port", "9100"}, "http://127.0.0.1:9100"},
+		{"BASEURL when no bind", "http://127.0.0.1:9000/v1", []string{"mtplx", "serve"}, "http://127.0.0.1:9000/v1"},
+		{"engine default when nothing else", "", []string{"mtplx", "serve"}, "http://127.0.0.1:8000"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := scrapeTargetFor(engine, tc.baseURL, tc.argv)
+			if got.BaseURL != tc.want {
+				t.Errorf("BaseURL = %q, want %q", got.BaseURL, tc.want)
+			}
+			if got.Engine != "" {
+				t.Errorf("Engine = %q, want empty (mtplx has no metrics dialect)", got.Engine)
+			}
+		})
+	}
+}
+
 // The endpoint a node advertises to a router is derived from the same command
 // line the metrics scrape reads, so the two cannot disagree about one engine.
 func TestEngineEndpointFor(t *testing.T) {
@@ -954,6 +987,157 @@ ctx-size = 4096
 		if strings.Contains(cloudArgs, unwanted) {
 			t.Errorf("the cloud sets its own bind, so %q should be dropped, got: %s", unwanted, cloudArgs)
 		}
+	}
+}
+
+// mtplxNodePreset is an MTPLX-vocabulary preset: long-form keys, the model under
+// `model`, the window under `context-window`, the cap under
+// `max-active-requests`, a served name under `model-id`, and a scheduling mode
+// the engine — not spinloop — owns.
+const mtplxNodePreset = `
+[*]
+host = 0.0.0.0
+port = 8000
+
+[qwen]
+model               = Youssofal/Qwen3.8-27B-MTPLX-Optimized-Speed
+context-window      = 32768
+scheduler-mode      = parallel
+max-active-requests = 4
+model-id            = preset-alias
+`
+
+// A fleet node runs mtplx, so the node path accepts it and reads the model,
+// window, and slot count back out of an MTPLX preset — each in its own
+// vocabulary — while the Spinloop's ALIAS supplies the served name and the
+// operator's own settings (the bind, the scheduling mode) survive.
+func TestNodeDeployConfigMtplxFromPreset(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "preset.ini"), mtplxNodePreset)
+	spinloopPath := filepath.Join(dir, "Spinloop")
+	mustWrite(t, spinloopPath, "PROVIDER mtplx\nALIAS qwen\nPRESET ./preset.ini\n")
+	sel, _, err := readSpinloop("test", spinloopPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	node, err := deployConfigForNode(sel, spinloopPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if node.Runner != "mtplx" {
+		t.Errorf("runner = %q, want mtplx", node.Runner)
+	}
+	if node.ModelID != "Youssofal/Qwen3.8-27B-MTPLX-Optimized-Speed" || node.Quant != "" {
+		t.Errorf("model = %q quant = %q, want the preset's model with no quant", node.ModelID, node.Quant)
+	}
+	if node.ContextSize != 32768 {
+		t.Errorf("contextSize = %d, want the preset's context-window", node.ContextSize)
+	}
+	if node.Parallel != 4 {
+		t.Errorf("parallel = %d, want the preset's max-active-requests", node.Parallel)
+	}
+	// The served name comes from the Spinloop's ALIAS, not the preset's model-id.
+	if node.ServedModelName != "qwen" {
+		t.Errorf("servedModelName = %q, want the ALIAS, not the preset's model-id", node.ServedModelName)
+	}
+
+	args := strings.Join(node.ServeArgs, " ")
+	// The daemon supplies these from the config, so the preset's raw values go.
+	for _, unwanted := range []string{"--model ", "--model-id", "--context-window", "--max-active-requests"} {
+		if strings.Contains(args, unwanted) {
+			t.Errorf("a node's serve args should not repeat %q, got: %s", unwanted, args)
+		}
+	}
+	// The operator's own settings survive: the bind, and the scheduling mode,
+	// which spinloop does not compute.
+	for _, want := range []string{"--host 0.0.0.0", "--port 8000", "--scheduler-mode parallel"} {
+		if !strings.Contains(args, want) {
+			t.Errorf("a node's serve args should keep %q, got: %s", want, args)
+		}
+	}
+}
+
+// A node wake needs no preset: the Spinloop's own MODEL, CONTEXT, and PARALLEL
+// drive the config, exactly as they do a local `serve`.
+func TestNodeDeployConfigMtplxWithoutPreset(t *testing.T) {
+	spinloopPath := writeDeploySpinloop(t,
+		"PROVIDER mtplx\nMODEL Youssofal/Qwen3.8-27B-MTPLX-Optimized-Speed\nALIAS qwen\nCONTEXT 128k\nPARALLEL 2\n", "")
+	sel, _, err := readSpinloop("test", spinloopPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	node, err := deployConfigForNode(sel, spinloopPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if node.Runner != "mtplx" || node.ModelID != "Youssofal/Qwen3.8-27B-MTPLX-Optimized-Speed" {
+		t.Errorf("runner = %q model = %q, want mtplx and the stated model", node.Runner, node.ModelID)
+	}
+	if node.ContextSize != 128000 {
+		t.Errorf("contextSize = %d, want the stated 128k", node.ContextSize)
+	}
+	if node.Parallel != 2 {
+		t.Errorf("parallel = %d, want the stated 2", node.Parallel)
+	}
+}
+
+// A node has the file its Spinloop points at, so a local model path is carried
+// as the model to load rather than refused.
+func TestNodeDeployConfigMtplxLocalModelPath(t *testing.T) {
+	spinloopPath := writeDeploySpinloop(t,
+		"PROVIDER mtplx\nMODEL ./models/qwen-mtplx\nCONTEXT 32k\n", "")
+	sel, _, err := readSpinloop("test", spinloopPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	node, err := deployConfigForNode(sel, spinloopPath)
+	if err != nil {
+		t.Fatalf("a node wake with a local model path should succeed: %v", err)
+	}
+	if node.ModelID != "./models/qwen-mtplx" {
+		t.Errorf("modelId = %q, want the local path carried as the model", node.ModelID)
+	}
+}
+
+// Moving the local-path check to the weights-seeding target unblocks llamacpp
+// (and vllm) node wakes with local weights too, which the old unconditional
+// check blocked.
+func TestNodeDeployConfigLlamacppLocalModelPathNowSucceeds(t *testing.T) {
+	spinloopPath := writeDeploySpinloop(t,
+		"PROVIDER llamacpp\nMODEL ./models/qwen.gguf\nCONTEXT 32k\n", "")
+	sel, _, err := readSpinloop("test", spinloopPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	node, err := deployConfigForNode(sel, spinloopPath)
+	if err != nil {
+		t.Fatalf("a node wake with a local model path should succeed: %v", err)
+	}
+	if node.ModelID != "./models/qwen.gguf" {
+		t.Errorf("modelId = %q, want the local path", node.ModelID)
+	}
+
+	// The cloud still refuses the same file: it downloads from Hugging Face.
+	sel.Context = "32k"
+	if _, err := deployConfigFor(sel, spinloopPath); err == nil ||
+		!strings.Contains(err.Error(), "cannot deploy the local model file") {
+		t.Errorf("the cloud should still refuse a local model file, got %v", err)
+	}
+}
+
+// MTPLX is Apple-Silicon-only and has no machine image, so it never becomes a
+// cloud runner: the cloud path refuses it with its existing message.
+func TestDeployConfigFor_CloudStillRefusesMtplx(t *testing.T) {
+	spinloopPath := writeDeploySpinloop(t,
+		"PROVIDER mtplx\nMODEL Youssofal/Qwen3.8-27B\nCONTEXT 32k\n", "")
+	sel, _, err := readSpinloop("test", spinloopPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := deployConfigFor(sel, spinloopPath); err == nil ||
+		!strings.Contains(err.Error(), "cannot be deployed") {
+		t.Errorf("the cloud should refuse mtplx, got %v", err)
 	}
 }
 
