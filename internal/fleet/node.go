@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/spinloop-ai/spinloop/internal/daemon"
 	"github.com/spinloop-ai/spinloop/internal/metrics"
@@ -40,13 +41,17 @@ const (
 )
 
 // ProgressStarter is an optional node capability: a start whose call reports
-// its situation as it works, one status line at a time. A node whose start is
-// a single request and a single reply (a daemon that queues the work and
+// its situation as it works, one phase at a time. A node whose start is a
+// single request and a single reply (a daemon that queues the work and
 // returns) has no such situation and does not implement it. A caller that can
 // show progress (the dashboard) asserts for it and falls back to Start when
 // it is absent.
+//
+// report is called with each phase the start enters, and each call replaces
+// the one before it: a start has one situation at a time, so the value a
+// caller holds is the whole of what the start is doing.
 type ProgressStarter interface {
-	StartWithProgress(ctx context.Context, progress func(string)) (daemon.StatusResponse, error)
+	StartWithProgress(ctx context.Context, report func(StartPhase)) (daemon.StatusResponse, error)
 }
 
 // Node is one member of the fleet. Only daemonNode implements it today; the
@@ -144,6 +149,14 @@ type NodeResult struct {
 	Status  daemon.StatusResponse
 	Metrics metrics.Stats
 	Logs    daemon.LogsResponse
+
+	// At is when this reading was taken — set by the fan-out as the call
+	// returns. Reads are concurrent and of uneven duration, so a reading can
+	// land after one taken later than it; a caller that draws the newest
+	// reading orders them by this rather than by arrival. It is also the
+	// reading's age, which is what tells a display an answer no longer
+	// describes the node now. Zero on a result built outside the fan-out.
+	At time.Time
 }
 
 // OK reports whether the node answered.

@@ -1,3 +1,13 @@
+## How the CLI should look and sound
+
+`cli-ux` records the conventions every command follows: one accent colour used
+only for the tool's own chrome, a stdout a program consumes carrying nothing
+else, decoration only where there is a terminal to draw it on, errors that name
+the fix, help as a lowercase imperative phrase, British spelling, and what a
+long operation must keep saying while it works. Read it before adding a
+surface, rather than copying whichever neighbour is nearest.
+
+- `cmd/spinloop/palette.go` — the colours and the spinner every surface draws from, in two groups that must not be swapped: the brand colours for the tool's own chrome, the state colours for what an engine is doing. (`cli-ux`)
 # AGENTS.md
 
 This file provides guidance to coding agents, such as Claude Code, when working with code in this repository.
@@ -49,7 +59,7 @@ The binary lives under `cmd/`; domain logic is split into `internal/` packages s
 - `internal/pi` — Pi's `models.json` IO: deep-merge of one managed provider, preserving siblings and unknown fields. (`pi-integration`)
 - `internal/lucinate` — lucinate's `connections.json` IO: one managed connection, no secret ever written to disk. (`lucinate-integration`)
 - `cmd/spinloop/fleet.go`, `metrics_render.go`, `status_render.go`, `fleet_dashboard.go`, `dashboard_*.go` — the `fleet` command group and its Bubble Tea dashboard (the CLI's only TUI). (`fleet-client`, `fleet-config`)
-- `internal/fleet` — the fleet client: the `Node` interface (`daemonNode`/`remoteNode`), concurrent fan-out, and routing/waking a node for a launch. (`fleet-client`, `fleet-config`, `fleet-routing`, `remote-node`)
+- `internal/fleet` — the fleet client: the `Node` interface (`daemonNode`/`remoteNode`), concurrent fan-out (each reading stamped with the time its call returned), the `StartPhase` a start reports and the one function that renders it, and routing/waking a node for a launch. (`fleet-client`, `fleet-config`, `fleet-routing`, `remote-node`)
 - `examples/fleet-docker/` — a runnable multi-node fleet that doubles as the fleet integration test, run per PR by CI. (`fleet-docker-example`)
 - `cmd/spinloop/remote.go` + `internal/remote` — the `remote` command group and the scale-to-zero cloud GPU control plane (SigV4-signed Lambda Function URL calls — the repo's only AWS/network dependency). (`remote-environments`, `endpoint-lifecycle`, `endpoint-provisioning`, `remote-endpoint`, `remote-seed`, `weight-seeding`, `remote-keep`, `remote-start-probe`)
 - `internal/daemon` — the engine supervisor and the HTTP control API. `Routes()` in `api.go` is checked against `docs/openapi.yaml` by `openapi_test.go` — keep them in sync when adding an endpoint. (`daemon-api`, `daemon-api-contract`, `engine-activity`, `engine-metrics`, `api-logging`, `serve-daemon`)

@@ -1,3 +1,4 @@
+- The colours and the spinner live in `palette.go`, in two groups that must not be swapped for one another. The brand colours (`brandAccent`, `brandInk`, `brandInkDim`) carry the same values as the web repo's `--accent`, `--ink` and `--ink-2` tokens, written as hex and downsampled by lipgloss, and the accent is used only where nothing about a node is being reported — the title bar's product name and the selected panel's border. The state colours (`ansiGreen` and friends) are raw ANSI and report what an engine is doing: the resource bars and the health glyph draw from them. `spinnerFrames` is one cycle for the whole tool, shared by `fleet deploy`'s progress lines and the dashboard's in-flight tiles.
 # Implementation notes
 
 This is maintainer reference, not a user guide (see [`docs/README.md`](README.md)
@@ -30,9 +31,12 @@ These are mistakes already made here; each was silent rather than loud, which is
 
 A few Bubble Tea/lipgloss specifics that are easy to break by "simplifying":
 
-- The `tea.Program` holds the model by **pointer**: Bubble Tea never reads a value model's `Init` back, so the first round's mutations (its generation, its deadline spend — real cloud calls, for remote environments) would be silently discarded.
-- The tick reschedules itself whenever it fires; a one-shot `tea.Tick` without the reschedule leaves the board still after the second round.
-- Answers from a fan-out round are tagged with the round's generation, so a superseded reply (from a slower node, or a since-closed detail view) is discarded rather than overwriting newer state.
+- The `tea.Program` holds the model by **pointer**: Bubble Tea never reads a value model's `Init` back, so the first round's mutations (its deadline spend — real cloud calls, for remote environments) would be silently discarded.
+- The tick reschedules itself whenever it fires; a one-shot `tea.Tick` without the reschedule leaves the board still after the second round. A second, faster chain (`dashSpinTickMsg`) runs only while an action is in flight, so the spinner and the elapsed time beside a verb advance; it stops on the first tick that finds nothing in flight.
+- Every reading carries the time its own call returned (`fleet.NodeResult.At`, set in the fan-out), and the board draws a reading only when it was taken later than the one already on screen. Reads run concurrently and take differing times, so a reading can land after one taken later than it — including a round issued before an action finished and landing after it, which would otherwise repaint the node's pre-action state.
+- A start reports a `fleet.StartPhase` — what it is doing, when that began, when the next attempt is due — rather than a line of text, and `fleet.RenderPhase(phase, now)` is the only place it becomes text. A wait therefore counts down and a boot counts up on every repaint, and a situation the start has moved on from cannot be left on the tile: each phase replaces the one before it. `spinloop remote start` renders the same phases to stderr, so the tile and the CLI cannot word one situation differently.
+- One function, `dashNodeView`, produces both a panel's lines and its health tier, from the reading, the action, the current time, and how old a reading of that node may be. Nothing in it reads a clock, so every pairing of a start's phase against a reading can be enumerated in a test.
+- A tile's first line is a header bar drawn in raw ANSI — the body is one plain string under a single lipgloss style, so per-character colour cannot be lipgloss's. The board's own title bar (`dashTitleBar`) uses lipgloss instead, and the two share one surface index (`barSurface`) because they are set through different mechanisms and would otherwise drift.
 - A grid row joins the *corresponding lines* of the tiles it places, not the tile blocks — joining whole blocks glues the second tile's top border to the first tile's bottom border and shifts its body down a line.
 - A tile's content is exactly the lines `fleet metrics` bar format prints (`renderStatBars`/`renderTokenLines` are shared, not reimplemented), so the panel and `fleet metrics` can never disagree on a number.
 

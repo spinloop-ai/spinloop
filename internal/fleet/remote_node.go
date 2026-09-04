@@ -63,49 +63,27 @@ func (n *remoteNode) Metrics(ctx context.Context) (metrics.Stats, error) {
 }
 
 func (n *remoteNode) Start(ctx context.Context) (daemon.StatusResponse, error) {
-	return n.StartWithProgress(ctx, func(string) {})
+	return n.StartWithProgress(ctx, func(StartPhase) {})
 }
 
-// StartWithProgress is Start carrying the control plane's own status lines up
-// as the boot proceeds — the environment's state and the wait to the next
-// poll, one line per retry, plus a line of its own each time a fresh attempt
-// goes out. The caller shows or drops them.
-func (n *remoteNode) StartWithProgress(ctx context.Context, progress func(string)) (daemon.StatusResponse, error) {
-	if progress == nil {
-		// remote.Start writes its lines unconditionally; a caller that wants
-		// none says so by passing nil rather than by being lucky about which
-		// paths the start happens to take.
-		progress = func(string) {}
+// StartWithProgress is Start with each phase of the boot passed to report as
+// the start enters it: the attempt going out, a refusal for want of capacity
+// and when the next attempt is due, the instance coming up, a dropped
+// connection. Each phase replaces the one before it. Callers may render or
+// discard them.
+func (n *remoteNode) StartWithProgress(ctx context.Context, report func(StartPhase)) (daemon.StatusResponse, error) {
+	if report == nil {
+		// remote.Start invokes its callbacks on every retry path, so nil is
+		// substituted with a no-op here rather than left to whichever paths a
+		// given start takes.
+		report = func(StartPhase) {}
 	}
-	onState := func(state string) {
-		if line := startStateLine(state); line != "" {
-			progress(line)
-		}
-	}
+	progress, onState := StartPhases(report)
 	resp, err := remote.Start(ctx, n.cfg, progress, onState, nil)
 	if err != nil {
 		return daemon.StatusResponse{}, err
 	}
 	return statusFromRemote(*resp), nil
-}
-
-// startStateLine is the progress line a poll's state earns, or "" for the
-// states that already have one.
-//
-// Only StateInFlight earns one, and it exists to retire a stale wait notice.
-// remote.Start's own progress lines are written immediately before a wait
-// ("instance no-capacity; retrying in 120s") and are true only until the next
-// attempt goes out — but the attempt that finds capacity holds its single
-// request for the whole boot, minutes, and writes nothing more. A caller that
-// scrolls its lines is fine either way; a caller that shows the latest line as
-// the node's current situation — the dashboard tile — would otherwise go on
-// reporting a capacity wait long after the instance was up and serving. This
-// is the client-side report StateInFlight was added for.
-func startStateLine(state string) string {
-	if state == remote.StateInFlight {
-		return "waking the instance…"
-	}
-	return ""
 }
 
 // StartWith is how a router wakes a node to serve something. A remote environment

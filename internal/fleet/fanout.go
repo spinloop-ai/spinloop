@@ -3,6 +3,7 @@ package fleet
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/spinloop-ai/spinloop/internal/daemon"
 )
@@ -47,6 +48,11 @@ func LogsCall(offsets map[string]int64, limit int) Call {
 // result per position, in the order given, so the rendering is stable between
 // refreshes. It never returns an error: a producer that fails is a typed
 // NodeResult, so one bad position is a row rather than a blanked view.
+//
+// Each result is stamped with the time its own call returned, not the time the
+// round did: the calls run concurrently and take differing times, so a round's
+// results are readings of different moments, and a display that orders them
+// needs each one's own.
 func fanOutEach(producers []func() NodeResult) []NodeResult {
 	results := make([]NodeResult, len(producers))
 	var wg sync.WaitGroup
@@ -54,7 +60,9 @@ func fanOutEach(producers []func() NodeResult) []NodeResult {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			results[i] = produce()
+			r := produce()
+			r.At = time.Now()
+			results[i] = r
 		}(i)
 	}
 	wg.Wait()

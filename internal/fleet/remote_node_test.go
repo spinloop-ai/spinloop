@@ -375,13 +375,13 @@ func (n *failingNode) Logs(context.Context, int64, int) (daemon.LogsResponse, er
 	return daemon.LogsResponse{}, nil
 }
 
-// StartWithProgress carries the control plane's own lines up to the caller:
-// the retry during a boot, then the final verdict.
+// StartWithProgress carries the boot up to the caller as phases: the attempt
+// going out, then the instance coming up once a reply reports it.
 func TestRemoteNodeStartWithProgressReportsTheBoot(t *testing.T) {
 	stubAWSCreds(t)
 	var (
 		mu       sync.Mutex
-		lines    []string
+		phases   []StartPhase
 		attempts int
 	)
 	mux := http.NewServeMux()
@@ -409,9 +409,9 @@ func TestRemoteNodeStartWithProgressReportsTheBoot(t *testing.T) {
 	if !ok {
 		t.Fatal("the remote node does not carry progress")
 	}
-	resp, err := starter.StartWithProgress(context.Background(), func(line string) {
+	resp, err := starter.StartWithProgress(context.Background(), func(p StartPhase) {
 		mu.Lock()
-		lines = append(lines, line)
+		phases = append(phases, p)
 		mu.Unlock()
 	})
 	if err != nil {
@@ -425,27 +425,35 @@ func TestRemoteNodeStartWithProgressReportsTheBoot(t *testing.T) {
 	if attempts != 2 {
 		t.Errorf("start attempts = %d (want 2)", attempts)
 	}
-	// Each attempt announces itself, and the retry between them carries the
-	// control plane's own wording.
-	want := []string{"waking the instance…", "instance starting; retrying in 1s", "waking the instance…"}
-	if !slices.Equal(lines, want) {
-		t.Errorf("progress lines = %q (want %q)", lines, want)
+	// The attempt goes out, and the reply reporting the instance coming up
+	// replaces it. The second attempt is a poll of that same boot, so it does
+	// not take the phase back to an attempt.
+	want := []StartPhaseKind{PhaseAttempting, PhaseBooting}
+	got := make([]StartPhaseKind, len(phases))
+	for i, p := range phases {
+		got[i] = p.Kind
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("phases = %v (want %v)", got, want)
+	}
+	if last := phases[len(phases)-1]; last.Detail != "starting" {
+		t.Errorf("the boot carries detail %q, want the control plane's state", last.Detail)
 	}
 }
 
-// The bug this guards: a start refused for capacity, then granted. The refusal
-// writes "instance no-capacity; retrying in 120s" — true until the next
-// attempt goes out, and the attempt that finds capacity then holds its single
-// request for the whole boot without writing anything more. A caller that
-// shows the latest line as the node's current situation (the dashboard tile)
-// would go on reporting a capacity wait for the rest of the start, beside its
-// own refreshes reporting the instance running. The last line a start reports
-// must never be the retired capacity notice.
+// The defect this covers: a start refused for capacity, then granted. The
+// refusal describes the attempt it refused, and is accurate only until the next
+// attempt is issued; the attempt that obtains capacity then holds a single
+// request open for the duration of the boot and reports nothing further. A
+// caller that draws the start's latest situation in a fixed place (the
+// dashboard tile) would show a capacity wait for the remainder of the start,
+// alongside its own refreshes reporting the instance running. The last phase a
+// start reports must therefore not be the capacity wait.
 func TestRemoteNodeStartWithProgressRetiresACapacityWait(t *testing.T) {
 	stubAWSCreds(t)
 	var (
 		mu       sync.Mutex
-		lines    []string
+		phases   []StartPhase
 		attempts int
 	)
 	mux := http.NewServeMux()
@@ -470,31 +478,34 @@ func TestRemoteNodeStartWithProgressRetiresACapacityWait(t *testing.T) {
 		t.Fatal(err)
 	}
 	starter := node.(ProgressStarter)
-	if _, err := starter.StartWithProgress(context.Background(), func(line string) {
+	if _, err := starter.StartWithProgress(context.Background(), func(p StartPhase) {
 		mu.Lock()
-		lines = append(lines, line)
+		phases = append(phases, p)
 		mu.Unlock()
 	}); err != nil {
 		t.Fatalf("StartWithProgress: %v", err)
 	}
 	mu.Lock()
 	defer mu.Unlock()
-	if len(lines) == 0 {
+	if len(phases) == 0 {
 		t.Fatal("the start reported nothing at all")
 	}
-	// The wait was reported when it was true...
-	if !slices.ContainsFunc(lines, func(l string) bool { return strings.Contains(l, "no-capacity") }) {
-		t.Errorf("progress lines = %q (want the capacity refusal reported)", lines)
+	// The wait was reported when it was true, with the refusal's own delay...
+	waited := slices.IndexFunc(phases, func(p StartPhase) bool {
+		return p.Kind == PhaseWaitingCapacity && !p.RetryAt.IsZero()
+	})
+	if waited < 0 {
+		t.Errorf("phases = %+v (want the capacity refusal reported with its due time)", phases)
 	}
 	// ...and retired by the attempt that superseded it.
-	if last := lines[len(lines)-1]; strings.Contains(last, "no-capacity") {
-		t.Errorf("the start's last line is the retired capacity wait: %q (all: %q)", last, lines)
+	if last := phases[len(phases)-1]; last.Kind == PhaseWaitingCapacity {
+		t.Errorf("the start's last phase is the retired capacity wait: %+v (all: %+v)", last, phases)
 	}
 }
 
-// A start that wants no progress lines says so with a nil callback, and is not
-// relying on which paths the start happens to take: remote.Start writes its
-// lines unconditionally, so every one of them has to land somewhere safe.
+// A nil progress callback is valid. remote.Start invokes progress on every
+// retry path, so StartWithProgress must substitute a no-op rather than depend
+// on which paths a given start takes; this exercises a start that retries.
 func TestRemoteNodeStartWithProgressAcceptsNoReporter(t *testing.T) {
 	stubAWSCreds(t)
 	var attempts int

@@ -422,7 +422,7 @@ func fleetDeployCmd() *cobra.Command {
 every kind: remote node with --all, deriving what to serve from each node's
 own Spinloop source: its file field, or its name resolved as a registered
 alias or a same-named subdirectory beside the fleet file. Reuses the same
-derivation, consent, and registration behavior as "spinloop remote deploy".`,
+derivation, consent, and registration behaviour as "spinloop remote deploy".`,
 		Args:          cobra.ArbitraryArgs,
 		SilenceErrors: true,
 		SilenceUsage:  true,
@@ -548,18 +548,6 @@ func runFleetDeploy(path string, all bool, names []string, opts deployOpts) erro
 	return nil
 }
 
-// deploySpinnerFrames are the classic Braille dots, cycled while a node's
-// deploy is still in flight.
-var deploySpinnerFrames = [...]string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
-
-const (
-	ansiGreen  = "\033[92m"
-	ansiRed    = "\033[31m"
-	ansiYellow = "\033[33m"
-	ansiGrey   = "\033[90m"
-	ansiReset  = "\033[0m"
-)
-
 // renderDeploySpinner redraws one line per target in place — a spinner
 // beside whichever nodes are still deploying, a coloured mark beside
 // whichever have finished — until stop is closed, then erases its own
@@ -580,7 +568,7 @@ func renderDeploySpinner(targets []string, results []fleetDeployResult, done []b
 			if done[i] {
 				fmt.Printf("%s %s\n", nodeGlyph(results[i].outcome), name)
 			} else {
-				fmt.Printf("%s%s%s %s deploying...\n", ansiGrey, deploySpinnerFrames[frame%len(deploySpinnerFrames)], ansiReset, name)
+				fmt.Printf("%s%s%s %s deploying...\n", ansiGrey, string(spinnerFrames[frame%len(spinnerFrames)]), ansiReset, name)
 			}
 		}
 		mu.Unlock()

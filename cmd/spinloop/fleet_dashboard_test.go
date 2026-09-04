@@ -25,8 +25,8 @@ import (
 // fakeDashNode is one in-memory fleet node: Start and Stop flip its state and
 // its Metrics answer follows, so a program-level test can watch a tile turn
 // on and off. metricsErr makes the node answer no metrics at all. A non-nil
-// hold keeps StartWithProgress on its first status line until the test
-// closes it — an in-flight start the test can watch.
+// hold keeps StartWithProgress on its first phase until the test closes it —
+// an in-flight start the test can watch.
 type fakeDashNode struct {
 	mu         sync.Mutex
 	state      string
@@ -129,13 +129,13 @@ func (n plainDashNode) Logs(ctx context.Context, offset int64, limit int) (daemo
 	return n.f.Logs(ctx, offset, limit)
 }
 
-// The fake also reports one progress line on the way, so the dashboard's
-// progress path is exercised end to end, through the program's Send — and,
-// when told to hold, stays on that line until released. A wait that ends on
-// the context — the abort — comes back with the context's error, the way the
-// control plane's own loop does.
-func (f *fakeDashNode) StartWithProgress(ctx context.Context, progress func(string)) (daemon.StatusResponse, error) {
-	progress("instance starting; retrying in 1s")
+// The fake also reports one phase on the way, so the dashboard's progress
+// path is exercised end to end, through the program's Send — and, when told to
+// hold, stays on that phase until released. A wait that ends on the context —
+// the abort — comes back with the context's error, the way the control plane's
+// own loop does.
+func (f *fakeDashNode) StartWithProgress(ctx context.Context, report func(fleet.StartPhase)) (daemon.StatusResponse, error) {
+	report(fleet.StartPhase{Kind: fleet.PhaseBooting, Since: time.Now(), Detail: "starting"})
 	if f.hold != nil {
 		select {
 		case <-f.hold:
@@ -208,6 +208,22 @@ func startFastRound(t *testing.T, m *dashModel) (dashRefreshMsg, bool) {
 	return r, true
 }
 
+// runAction runs the command a key that sets off a start or stop returned, and
+// gives back the action's own message. That command is a batch when the action
+// also starts the board's repaint chain: the action is the first command in
+// it, and the chain's timer is left unrun, since a test has no use for it and
+// would only wait on it.
+func runAction(t *testing.T, cmd tea.Cmd) tea.Msg {
+	t.Helper()
+	if cmd == nil {
+		t.Fatal("no action command to run")
+	}
+	if batch, ok := cmd().(tea.BatchMsg); ok {
+		return batch[0]()
+	}
+	return cmd()
+}
+
 // landRounds runs each round the model started to completion and applies its
 // answer, one at a time.
 func landRounds(t *testing.T, m *dashModel, cmds []tea.Cmd) *dashModel {
@@ -256,6 +272,54 @@ func dashBar(label string, pct float64) string {
 		strings.Repeat("░", width-filled) + fmt.Sprintf(" %.0f%%", pct)
 }
 
+// dashTestClock is a time whose spinner frame is the cycle's first, so a test
+// that pins the clock to it can spell an in-flight heading out in full rather
+// than asking the renderer what it drew.
+var dashTestClock = time.Unix(1756900000, 0).UTC()
+
+const dashTestSpinner = "⠋"
+
+// dashFixNow pins the board's clock for one test. An in-flight tile draws its
+// spinner frame and its elapsed time from that clock, so pinning it is what
+// makes such a tile the same bytes every run.
+func dashFixNow(t *testing.T, at time.Time) {
+	t.Helper()
+	dashNow = func() time.Time { return at }
+	t.Cleanup(func() { dashNow = time.Now })
+}
+
+// dashTestTile draws one tile at the board's current clock, with the staleness
+// bound of a local node — the tile tests supply readings with no time on them,
+// which are never called stale, so the bound is not what any of them is about.
+func dashTestTile(name string, r fleet.NodeResult, selected bool, a dashAction) string {
+	return dashTile(name, r, selected, a, dashNow(), dashStaleAfter(fleet.KindDaemon))
+}
+
+// dashExpectedHeader is the tile's header bar as a test spells it out: the
+// dark background across the tile's full width, the health mark in its own
+// colour on top of it, and light text after. Written out here rather than
+// taken from the renderer, so the bar is pinned by the test rather than by
+// itself.
+func dashExpectedHeader(text string, tier dashHealthTier) string {
+	colour, mark := "\033[31m", "●"
+	switch tier {
+	case dashHealthy:
+		colour = "\033[92m"
+	case dashAttention:
+		colour = "\033[33m"
+	case dashNotServing:
+		colour = "\033[90m"
+	case dashUnknown:
+		colour, mark = "\033[90m", "?"
+	}
+	pad := dashTileW - 2 - lipgloss.Width(text)
+	if pad < 0 {
+		pad = 0
+	}
+	return "\033[48;5;235m" + colour + mark + "\033[97m " + text +
+		strings.Repeat(" ", pad) + "\033[0m"
+}
+
 func dashTileExpected(lines []string) string {
 	var b strings.Builder
 	b.WriteString("╭" + strings.Repeat("─", dashTileW) + "╮\n")
@@ -283,7 +347,7 @@ func TestDashTileRunningByteStable(t *testing.T) {
 		},
 	}
 	want := dashTileExpected([]string{
-		dashHealthGlyph(dashHealthy) + " up  running  (up 2h 0m 0s)",
+		dashExpectedHeader("up  running  (up 2h 0m 0s)", dashHealthy),
 		"llamacpp  org/qwen:q4",
 		"  last active 12s ago",
 		dashBar("CPU", 42),
@@ -296,7 +360,7 @@ func TestDashTileRunningByteStable(t *testing.T) {
 		"  generation tokens: 1024",
 		"  requests:         17",
 	})
-	if got := dashTile("up", r, false, dashAction{}); got != want {
+	if got := dashTestTile("up", r, false, dashAction{}); got != want {
 		t.Errorf("tile mismatch:\ngot:\n%q\nwant:\n%q", got, want)
 	}
 }
@@ -307,16 +371,16 @@ func TestDashTileOutcomeAndEmpty(t *testing.T) {
 		Name: "down", Outcome: fleet.OutcomeUnreachable,
 		Err: errors.New("connection refused (127.0.0.1:1)"),
 	}
-	if got := dashTile("down", dead, false, dashAction{}); got != dashTileExpected([]string{
-		dashHealthGlyph(dashUnhealthy) + " down  unreachable",
+	if got := dashTestTile("down", dead, false, dashAction{}); got != dashTileExpected([]string{
+		dashExpectedHeader("down  unreachable", dashUnhealthy),
 		"connection refused (127.0.0.1:1)",
 		"", "", "", "", "", "", "", "", "", "",
 	}) {
 		t.Errorf("outcome tile mismatch:\n%q", got)
 	}
 	// A node not answered yet is an empty panel naming the node.
-	if got := dashTile("down", fleet.NodeResult{Name: "down"}, false, dashAction{}); got != dashTileExpected([]string{
-		dashHealthGlyph(dashUnknown) + " down", "waiting for first refresh…",
+	if got := dashTestTile("down", fleet.NodeResult{Name: "down"}, false, dashAction{}); got != dashTileExpected([]string{
+		dashExpectedHeader("down", dashUnknown), "waiting for first refresh…",
 		"", "", "", "", "", "", "", "", "", "",
 	}) {
 		t.Errorf("empty tile mismatch:\n%q", got)
@@ -330,10 +394,10 @@ func TestDashTileStoppedByteStable(t *testing.T) {
 		Metrics: metrics.Stats{State: "idle"},
 	}
 	want := dashTileExpected([]string{
-		dashHealthGlyph(dashNotServing) + " idle  idle",
+		dashExpectedHeader("idle  idle", dashNotServing),
 		"", "", "", "", "", "", "", "", "", "", "",
 	})
-	if got := dashTile("idle", r, false, dashAction{}); got != want {
+	if got := dashTestTile("idle", r, false, dashAction{}); got != want {
 		t.Errorf("stopped tile mismatch:\n%q\nwant:\n%q", got, want)
 	}
 	// A remote environment with no instance at all reports undeployed and
@@ -344,74 +408,89 @@ func TestDashTileStoppedByteStable(t *testing.T) {
 		Metrics: metrics.Stats{State: "undeployed", Runner: "llamacpp", ModelID: "unsloth/Qwen3.8-27B-GGUF"},
 	}
 	wantUndeployed := dashTileExpected([]string{
-		dashHealthGlyph(dashNotServing) + " dev-1  undeployed",
+		dashExpectedHeader("dev-1  undeployed", dashNotServing),
 		"llamacpp  unsloth/Qwen3.8-27B-GGUF",
 		"", "", "", "", "", "", "", "", "", "",
 	})
-	if got := dashTile("dev-1", u, false, dashAction{}); got != wantUndeployed {
+	if got := dashTestTile("dev-1", u, false, dashAction{}); got != wantUndeployed {
 		t.Errorf("undeployed tile mismatch:\ngot:\n%q\nwant:\n%q", got, wantUndeployed)
 	}
 }
 
-// A node with an action in flight and no report yet shows the verb and the
-// call's own lines; a stop conjugates: the p of stop drops before -ing.
+// A node with an action in flight and no report yet shows the verb, a spinner
+// beside it, and the call's own phase; a stop conjugates: the p of stop drops
+// before -ing.
 func TestDashTileActionInFlight(t *testing.T) {
 	lipgloss.SetColorProfile(termenv.Ascii)
-	if got := dashTile("dev-2", fleet.NodeResult{Name: "dev-2"}, false,
-		dashAction{verb: "start", line: "instance starting; retrying in 42s"}); got != dashTileExpected([]string{
-		dashHealthGlyph(dashAttention) + " dev-2  starting",
-		"instance starting; retrying in 42s",
+	dashFixNow(t, dashTestClock)
+	wait := fleet.StartPhase{Kind: fleet.PhaseWaitingCapacity,
+		Since: dashTestClock, RetryAt: dashTestClock.Add(42 * time.Second)}
+	if got := dashTestTile("dev-2", fleet.NodeResult{Name: "dev-2"}, false,
+		dashAction{verb: "start", phase: &wait}); got != dashTileExpected([]string{
+		dashExpectedHeader("dev-2  "+dashTestSpinner+" starting", dashAttention),
+		"waiting for capacity — retrying in 42s",
 		"", "", "", "", "", "", "", "", "", "",
 	}) {
 		t.Errorf("in-flight tile mismatch:\n%q", got)
 	}
 	// A stop conjugates: the p of stop drops before -ing.
-	if got := dashTile("dev-2", fleet.NodeResult{Name: "dev-2"}, false,
+	if got := dashTestTile("dev-2", fleet.NodeResult{Name: "dev-2"}, false,
 		dashAction{verb: "stop"}); got != dashTileExpected([]string{
-		dashHealthGlyph(dashAttention) + " dev-2  stopping",
+		dashExpectedHeader("dev-2  "+dashTestSpinner+" stopping", dashAttention),
 		"", "", "", "", "", "", "", "", "", "", "",
 	}) {
 		t.Errorf("bare in-flight tile mismatch:\n%q", got)
 	}
 }
 
-// The elapsed time beside the verb is the tile's heartbeat. A start's own
-// status lines can legitimately stand unchanged for minutes — the attempt that
-// finds capacity holds one request for the whole boot and says nothing while
-// it does — so the moving number is what tells the operator the tile is
-// waiting rather than wedged. It is drawn from the board's clock on every
-// repaint, not baked into a line when that line arrives.
+// A start's phase can hold unchanged for minutes: the attempt that obtains
+// capacity holds one request open for the duration of the boot and reports
+// nothing while it does. Everything about time on the tile is therefore
+// computed from the board's clock on each repaint rather than stored when the
+// phase arrived — the elapsed time beside the verb counts up, and the wait
+// counts down towards the attempt it is waiting for.
 func TestDashTileActionInFlightShowsElapsed(t *testing.T) {
 	lipgloss.SetColorProfile(termenv.Ascii)
-	now := time.Now()
+	now := dashTestClock
 	dashNow = func() time.Time { return now }
 	t.Cleanup(func() { dashNow = time.Now })
 
-	a := dashAction{verb: "start", since: now.Add(-150 * time.Second),
-		line: "instance no-capacity; retrying in 120s"}
+	wait := fleet.StartPhase{Kind: fleet.PhaseWaitingCapacity,
+		Since: now, RetryAt: now.Add(120 * time.Second), Detail: "no-capacity"}
+	a := dashAction{verb: "start", since: now.Add(-150 * time.Second), phase: &wait}
 	want := dashTileExpected([]string{
-		dashHealthGlyph(dashAttention) + " dev-2  starting  2m 30s",
-		"instance no-capacity; retrying in 120s",
+		dashExpectedHeader("dev-2  "+dashTestSpinner+" starting  2m 30s", dashAttention),
+		"waiting for capacity — retrying in 2m 0s",
 		"", "", "", "", "", "", "", "", "", "",
 	})
-	if got := dashTile("dev-2", fleet.NodeResult{Name: "dev-2"}, false, a); got != want {
+	if got := dashTestTile("dev-2", fleet.NodeResult{Name: "dev-2"}, false, a); got != want {
 		t.Errorf("elapsed in-flight tile mismatch:\ngot:\n%q\nwant:\n%q", got, want)
 	}
-	// The same tile a minute later, with nothing else having changed: the
-	// number has moved, which is the whole point of it.
+	// The same tile a minute later, with nothing about the action having
+	// changed: the action has counted up and the wait has counted down, which
+	// is the whole point of computing both when the tile is drawn.
 	now = now.Add(time.Minute)
-	if got := dashTile("dev-2", fleet.NodeResult{Name: "dev-2"}, false, a); !strings.Contains(got, "starting  3m 30s") {
+	got := dashTestTile("dev-2", fleet.NodeResult{Name: "dev-2"}, false, a)
+	if !strings.Contains(got, "starting  3m 30s") {
 		t.Errorf("the elapsed time did not move with the clock:\n%q", got)
+	}
+	if !strings.Contains(got, "retrying in 1m 0s") {
+		t.Errorf("the wait did not count down with the clock:\n%q", got)
 	}
 }
 
 // A report that lands while an action is in flight shows on the tile beside
-// the call's own lines: the call says what the operator asked for, the report
+// the call's own account: the call says what the operator asked for, the report
 // says what the node is doing — a boot half done already carries a state and
 // whatever it measures, and that is the truth the tile should keep showing
 // while the start still works.
 func TestDashTileActionInFlightWithReport(t *testing.T) {
 	lipgloss.SetColorProfile(termenv.Ascii)
+	dashFixNow(t, dashTestClock)
+	capacity := fleet.StartPhase{Kind: fleet.PhaseWaitingCapacity,
+		Since: dashTestClock, RetryAt: dashTestClock.Add(120 * time.Second), Detail: "no-capacity"}
+	booting := fleet.StartPhase{Kind: fleet.PhaseBooting,
+		Since: dashTestClock.Add(-60 * time.Second), Detail: "starting"}
 	// The instance is up and measuring, the engine not serving yet: the
 	// start still works, and the report carries the state and the bars.
 	r := fleet.NodeResult{
@@ -425,8 +504,8 @@ func TestDashTileActionInFlightWithReport(t *testing.T) {
 		},
 	}
 	want := dashTileExpected([]string{
-		dashHealthGlyph(dashAttention) + " vllm-1  starting",
-		"instance no-capacity; retrying in 120s",
+		dashExpectedHeader("vllm-1  "+dashTestSpinner+" starting", dashAttention),
+		"waiting for capacity — retrying in 2m 0s",
 		"running  (up 4m 0s)",
 		"vllm  org/qwen3:32b",
 		dashBar("CPU", 12),
@@ -435,8 +514,8 @@ func TestDashTileActionInFlightWithReport(t *testing.T) {
 		dashBar("GPU mem", 45),
 		"", "", "", "",
 	})
-	if got := dashTile("vllm-1", r, false,
-		dashAction{verb: "start", line: "instance no-capacity; retrying in 120s"}); got != want {
+	if got := dashTestTile("vllm-1", r, false,
+		dashAction{verb: "start", phase: &capacity}); got != want {
 		t.Errorf("in-flight tile with report mismatch:\ngot:\n%q\nwant:\n%q", got, want)
 	}
 	// Early in a boot: the report has a state and the serving, nothing
@@ -446,14 +525,14 @@ func TestDashTileActionInFlightWithReport(t *testing.T) {
 		Metrics: metrics.Stats{State: "pending", Runner: "vllm", ModelID: "org/qwen3:32b"},
 	}
 	wantEarly := dashTileExpected([]string{
-		dashHealthGlyph(dashAttention) + " vllm-1  starting",
-		"instance starting; retrying in 60s",
+		dashExpectedHeader("vllm-1  "+dashTestSpinner+" starting", dashAttention),
+		"booting (1m 0s)",
 		"pending",
 		"vllm  org/qwen3:32b",
 		"", "", "", "", "", "", "", "",
 	})
-	if got := dashTile("vllm-1", early, false,
-		dashAction{verb: "start", line: "instance starting; retrying in 60s"}); got != wantEarly {
+	if got := dashTestTile("vllm-1", early, false,
+		dashAction{verb: "start", phase: &booting}); got != wantEarly {
 		t.Errorf("early-boot in-flight tile mismatch:\ngot:\n%q\nwant:\n%q", got, wantEarly)
 	}
 	// A round that failed this time says nothing on the tile: the call's own
@@ -463,13 +542,195 @@ func TestDashTileActionInFlightWithReport(t *testing.T) {
 		Err: errors.New("stats returned HTTP 503: instance is not running"),
 	}
 	wantFailed := dashTileExpected([]string{
-		dashHealthGlyph(dashAttention) + " vllm-1  starting",
-		"instance starting; retrying in 60s",
+		dashExpectedHeader("vllm-1  "+dashTestSpinner+" starting", dashAttention),
+		"booting (1m 0s)",
 		"", "", "", "", "", "", "", "", "", "",
 	})
-	if got := dashTile("vllm-1", failed, false,
-		dashAction{verb: "start", line: "instance starting; retrying in 60s"}); got != wantFailed {
+	if got := dashTestTile("vllm-1", failed, false,
+		dashAction{verb: "start", phase: &booting}); got != wantFailed {
 		t.Errorf("in-flight tile over a failed round mismatch:\ngot:\n%q\nwant:\n%q", got, wantFailed)
+	}
+}
+
+// The combination that produced the original defect, and every other pairing
+// of what a start is doing against what the node's last reading says. One
+// function produces both halves of a panel, so the pairings can be listed here
+// rather than only being reachable through a rendered tile.
+//
+// The case to look for: a start waiting for capacity beside a reading that
+// reports the node running. Both are true — the reading is of the instance the
+// previous attempt left behind — and the panel has to say both without either
+// reading as the other.
+func TestDashNodeViewEveryPhaseAgainstEveryReading(t *testing.T) {
+	now := dashTestClock
+	const staleAfter = 6 * time.Second
+
+	fresh := fleet.NodeResult{Name: "n", Outcome: fleet.OutcomeOK,
+		Metrics: metrics.Stats{State: "running", Ready: "ready", UptimeSeconds: 240},
+		At:      now.Add(-time.Second)}
+	stale := fresh
+	stale.At = now.Add(-3 * time.Minute)
+	failed := fleet.NodeResult{Name: "n", Outcome: fleet.OutcomeUnreachable,
+		Err: errors.New("connection refused"), At: now.Add(-time.Second)}
+	none := fleet.NodeResult{Name: "n"}
+
+	phases := []struct {
+		name  string
+		phase *fleet.StartPhase
+		line  string // the phase's own line, or "" where the action reports none
+	}{
+		{"no phase yet", nil, ""},
+		{"attempting", &fleet.StartPhase{Kind: fleet.PhaseAttempting, Since: now},
+			"waking the instance…"},
+		{"waiting for capacity", &fleet.StartPhase{Kind: fleet.PhaseWaitingCapacity,
+			Since: now, RetryAt: now.Add(90 * time.Second), Detail: "no-capacity"},
+			"waiting for capacity — retrying in 1m 30s"},
+		{"booting", &fleet.StartPhase{Kind: fleet.PhaseBooting, Since: now.Add(-time.Minute),
+			Detail: "starting"}, "booting (1m 0s)"},
+		{"reconnecting", &fleet.StartPhase{Kind: fleet.PhaseReconnecting, Since: now,
+			RetryAt: now.Add(5 * time.Second), Detail: "unexpected EOF"},
+			"connection dropped (unexpected EOF) — retrying in 5s"},
+	}
+	readings := []struct {
+		name    string
+		r       fleet.NodeResult
+		reports string         // what the reading puts on the panel, or "" for none
+		settled dashHealthTier // the tier with nothing in flight
+	}{
+		{"no reading yet", none, "", dashUnknown},
+		{"a fresh answer", fresh, "running  (up 4m 0s)", dashHealthy},
+		{"a stale answer", stale, "running  (up 4m 0s)  · 3m 0s ago", dashUnknown},
+		{"a failed round", failed, "", dashUnhealthy},
+	}
+
+	for _, ph := range phases {
+		for _, rd := range readings {
+			t.Run(ph.name+" over "+rd.name, func(t *testing.T) {
+				a := dashAction{verb: "start", since: now.Add(-30 * time.Second), phase: ph.phase}
+				lines, tier := dashNodeView("n", rd.r, a, now, staleAfter)
+				joined := strings.Join(lines, "\n")
+				// The action's own account leads, and the node's report
+				// follows it where the reading has one to give.
+				if want := "n  " + dashTestSpinner + " starting  30s"; lines[0] != want {
+					t.Errorf("heading = %q, want %q", lines[0], want)
+				}
+				if ph.line != "" && !strings.Contains(joined, ph.line) {
+					t.Errorf("the phase is not on the panel:\n%s", joined)
+				}
+				if rd.reports != "" && !strings.Contains(joined, rd.reports) {
+					t.Errorf("the reading is not on the panel:\n%s", joined)
+				}
+				// A failed round says nothing here: the action's account
+				// stands, and the next round will say more.
+				if rd.name == "a failed round" && strings.Contains(joined, "connection refused") {
+					t.Errorf("a failed round painted over the action's account:\n%s", joined)
+				}
+				// An action in flight is always attention, whatever the
+				// reading says — including a reading that reports the node
+				// running while the start is still waiting for capacity.
+				if tier != dashAttention {
+					t.Errorf("tier = %v, want attention while an action is in flight", tier)
+				}
+				// Nothing about the action is shown once it settles, and the
+				// reading alone then decides the tier.
+				settledLines, settledTier := dashNodeView("n", rd.r, dashAction{}, now, staleAfter)
+				if settledTier != rd.settled {
+					t.Errorf("settled tier = %v, want %v", settledTier, rd.settled)
+				}
+				if ph.line != "" && strings.Contains(strings.Join(settledLines, "\n"), ph.line) {
+					t.Errorf("a finished action left its phase on the panel:\n%s",
+						strings.Join(settledLines, "\n"))
+				}
+			})
+		}
+	}
+}
+
+// A reading that has aged past a few of its node's own intervals is drawn with
+// its age and reads unknown, rather than being drawn identically to a current
+// one — and goes back to plain once the node answers again.
+func TestDashTileStaleReadingShowsItsAgeAndRecovers(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.Ascii)
+	now := dashTestClock
+	dashFixNow(t, now)
+
+	r := fleet.NodeResult{Name: "dev-1", Outcome: fleet.OutcomeOK,
+		Metrics: metrics.Stats{State: "running", Ready: "ready"},
+		At:      now.Add(-4 * time.Minute)}
+	staleAfter := dashStaleAfter(fleet.KindRemote) // three minutes, on the minute cadence
+	got := dashTile("dev-1", r, false, dashAction{}, now, staleAfter)
+	want := dashTileExpected([]string{
+		dashExpectedHeader("dev-1  running  · 4m 0s ago", dashUnknown),
+		"", "", "", "", "", "", "", "", "", "", "",
+	})
+	if got != want {
+		t.Errorf("stale tile mismatch:\ngot:\n%q\nwant:\n%q", got, want)
+	}
+	// The node answers again: the age goes, and so does the grey.
+	r.At = now.Add(-time.Second)
+	wantFresh := dashTileExpected([]string{
+		dashExpectedHeader("dev-1  running", dashHealthy),
+		"", "", "", "", "", "", "", "", "", "", "",
+	})
+	if got := dashTile("dev-1", r, false, dashAction{}, now, staleAfter); got != wantFresh {
+		t.Errorf("recovered tile mismatch:\ngot:\n%q\nwant:\n%q", got, wantFresh)
+	}
+}
+
+// The board's own title bar: the brand in the accent, the screen beside it,
+// and what is on that screen pushed to the right, all on one surface running
+// the terminal's full width. A terminal too narrow for both halves keeps the
+// left one.
+func TestDashTitleBar(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.ANSI256)
+	const (
+		accent = "\x1b[1;38;5;43;48;5;235m" // the logo's mint, bold, on the bar
+		dim    = "\x1b[38;5;109;48;5;235m"  // the muted ink for the right half
+	)
+	for _, w := range []int{120, 80, 40, 24, 1} {
+		bar := dashTitleBar("fleet dashboard", "examples/fleet.yaml   (3 nodes)", w)
+		if got := lipgloss.Width(bar); got != w {
+			t.Errorf("at width %d the bar is %d columns: %q", w, got, bar)
+		}
+		if !strings.HasPrefix(bar, accent) {
+			t.Errorf("at width %d the bar does not open in the accent: %q", w, bar)
+		}
+	}
+	wide := dashTitleBar("fleet dashboard", "examples/fleet.yaml   (3 nodes)", 120)
+	if !strings.HasPrefix(wide, accent+" spinloop") {
+		t.Errorf("the brand is not in the accent: %q", wide)
+	}
+	if !strings.Contains(wide, dim+"examples/fleet.yaml   (3 nodes) ") {
+		t.Errorf("the right half is not in the muted ink: %q", wide)
+	}
+	// Too narrow for both: the right half goes rather than wrapping.
+	if narrow := dashTitleBar("fleet dashboard", "examples/fleet.yaml", 40); strings.Contains(narrow, "fleet.yaml") {
+		t.Errorf("a narrow bar kept its right half: %q", narrow)
+	}
+	// A width of nothing draws nothing, rather than a bar of negative padding.
+	if got := dashTitleBar("fleet dashboard", "x", 0); got != "" {
+		t.Errorf("dashTitleBar at width 0 = %q, want empty", got)
+	}
+}
+
+// The header bar runs the tile's full width and is the same colour on every
+// tile, whatever the node's health: the glyph is what health is read from, so
+// a bar that changed colour with the tier would compete with it.
+func TestDashTileHeaderIsOneColourWhateverTheHealth(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.Ascii)
+	healthy := dashTileHeader("up  running", dashHealthy)
+	unhealthy := dashTileHeader("down  unreachable", dashUnhealthy)
+	for _, bar := range []string{healthy, unhealthy} {
+		if !strings.HasPrefix(bar, "\033[48;5;235m") {
+			t.Errorf("header bar does not open with the background: %q", bar)
+		}
+		if w := lipgloss.Width(bar); w != dashTileW {
+			t.Errorf("header bar is %d columns, want the tile's %d: %q", w, dashTileW, bar)
+		}
+	}
+	// The two differ only in their glyph and their text, never in the bar.
+	if !strings.Contains(healthy, "\033[92m●") || !strings.Contains(unhealthy, "\033[31m●") {
+		t.Errorf("the glyphs lost their own colours:\n%q\n%q", healthy, unhealthy)
 	}
 }
 
@@ -513,28 +774,33 @@ func TestDashHealthTierFor(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			if got := dashHealthTierFor(c.r, c.a); got != c.want {
+			if got := dashHealthTierFor(c.r, c.a, false); got != c.want {
 				t.Errorf("dashHealthTierFor() = %v, want %v", got, c.want)
 			}
 		})
 	}
 }
 
-// The selection is carried by the lit border; a colour profile that keeps
-// colour is needed to see it, since the byte-stable profile strips it.
+// The selection is carried by a border in the brand accent; a colour profile
+// that keeps colour is needed to see it, since the byte-stable profile strips
+// it. The accent is the mint of the spinloop logo, which a 256-colour terminal
+// renders as index 43 — spelled out here so a change of accent has to be a
+// deliberate one.
 func TestDashTileSelectedBorderLit(t *testing.T) {
 	lipgloss.SetColorProfile(termenv.ANSI256)
 	r := fleet.NodeResult{Name: "n"}
-	sel, unsel := dashTile("n", r, true, dashAction{}), dashTile("n", r, false, dashAction{})
-	if !strings.Contains(sel, "\x1b[38;5;214m") {
-		t.Errorf("selected tile carries no lit border:\n%q", sel)
+	sel, unsel := dashTestTile("n", r, true, dashAction{}), dashTestTile("n", r, false, dashAction{})
+	const accent = "\x1b[38;5;43m"
+	if !strings.Contains(sel, accent) {
+		t.Errorf("selected tile carries no accented border:\n%q", sel)
 	}
-	if strings.Contains(unsel, "\x1b[38;5;214m") {
-		t.Errorf("unselected tile carries the lit border:\n%q", unsel)
+	if strings.Contains(unsel, accent) {
+		t.Errorf("unselected tile carries the accented border:\n%q", unsel)
 	}
 	// The health glyph is unaffected by selection: same tier, same colour,
-	// whether or not the border is lit.
-	glyph := dashHealthGlyph(dashUnknown)
+	// whether or not the border is lit. It is read off the header bar, where
+	// the mark sits between the bar's background and its text colour.
+	glyph := "\033[48;5;235m\033[90m?\033[97m"
 	if !strings.Contains(sel, glyph) {
 		t.Errorf("selected tile's glyph changed:\n%q", sel)
 	}
@@ -551,7 +817,7 @@ func TestDashTileClipsLongLines(t *testing.T) {
 		Name: "n", Outcome: fleet.OutcomeOK,
 		Metrics: metrics.Stats{State: "running", ModelID: strings.Repeat("m", 60)},
 	}
-	rows := strings.Split(dashTile("n", r, false, dashAction{}), "\n")
+	rows := strings.Split(dashTestTile("n", r, false, dashAction{}), "\n")
 	if len(rows) != dashTileH+2 {
 		t.Fatalf("tile is %d rows, want %d", len(rows), dashTileH+2)
 	}
@@ -574,8 +840,8 @@ func TestDashTileUptimeSurvivesLongServingLine(t *testing.T) {
 			UptimeSeconds: 125,
 		},
 	}
-	lines := strings.Split(dashTile("n", r, false, dashAction{}), "\n")
-	want := "│" + dashHealthGlyph(dashHealthy) + " n  running  (up 2m 5s)"
+	lines := strings.Split(dashTestTile("n", r, false, dashAction{}), "\n")
+	want := "│" + dashExpectedHeader("n  running  (up 2m 5s)", dashHealthy)
 	if got := lines[1]; !strings.HasPrefix(got, want) {
 		t.Errorf("state line = %q, want prefix %q", got, want)
 	}
@@ -627,7 +893,7 @@ func TestDashTileTruncatesTallContent(t *testing.T) {
 			Tokens:        &metrics.TokenStats{Running: 1, PromptTokens: 100, GenerationTokens: 50, Requests: 3},
 		},
 	}
-	lines := strings.Split(dashTile("many", r, false, dashAction{}), "\n")
+	lines := strings.Split(dashTestTile("many", r, false, dashAction{}), "\n")
 	if len(lines) != dashTileH+2 {
 		t.Errorf("a tall node broke the tile geometry: %d lines (want %d)", len(lines), dashTileH+2)
 	}
@@ -1058,10 +1324,10 @@ func TestDashModelResizeChangesGrid(t *testing.T) {
 	}
 }
 
-// A tick while a group's round is in flight is absorbed; a round's answer
-// lands by generation, and a superseded answer is dropped rather than
-// painted over the board.
-func TestDashModelRefreshGenerations(t *testing.T) {
+// A tick while a group's round is in flight is absorbed; an answer lands by
+// the time its own read was taken, and an older reading is dropped rather than
+// painted over a newer one.
+func TestDashModelRefreshOrdersReadingsByTheirTime(t *testing.T) {
 	node := newFakeDashNode("running")
 	m := &dashModel{
 		entries: []dashEntry{{name: "a", kind: fleet.KindDaemon, node: node}},
@@ -1072,26 +1338,27 @@ func TestDashModelRefreshGenerations(t *testing.T) {
 	// In flight: the tick reschedules itself but must not begin a second
 	// round in the group.
 	m.fastBusy = true
-	m.fastGen = 7
 	m2, _ := m.Update(dashTickMsg{})
-	if m2.(*dashModel).fastGen != 7 {
+	m = m2.(*dashModel)
+	if !m.fastBusy {
 		t.Fatal("tick while refreshing started another round")
 	}
-	m = m2.(*dashModel)
-	// A stale answer: discarded.
-	stale := []fleet.NodeResult{{Outcome: fleet.OutcomeOK}}
-	fresh := []fleet.NodeResult{{Outcome: fleet.OutcomeUnreachable}}
-	m2, _ = m.Update(dashRefreshMsg{gen: 6, idx: []int{0}, results: stale})
-	if m2.(*dashModel).results[0].Outcome != "" {
-		t.Fatalf("stale round painted the board: %v", m2.(*dashModel).results[0].Outcome)
-	}
-	m3, _ := m2.(*dashModel).Update(dashRefreshMsg{gen: 7, idx: []int{0}, results: fresh})
-	mm := m3.(*dashModel)
+	now := time.Now()
+	fresh := []fleet.NodeResult{{Outcome: fleet.OutcomeUnreachable, At: now}}
+	older := []fleet.NodeResult{{Outcome: fleet.OutcomeOK, At: now.Add(-time.Second)}}
+	m2, _ = m.Update(dashRefreshMsg{idx: []int{0}, results: fresh})
+	mm := m2.(*dashModel)
 	if mm.fastBusy {
 		t.Fatal("round completion did not clear the flag")
 	}
 	if mm.results[0].Outcome != fleet.OutcomeUnreachable {
 		t.Fatalf("current round not applied: %v", mm.results[0].Outcome)
+	}
+	// A reading taken before the one on screen: dropped.
+	m3, _ := mm.Update(dashRefreshMsg{idx: []int{0}, results: older})
+	mm = m3.(*dashModel)
+	if mm.results[0].Outcome != fleet.OutcomeUnreachable {
+		t.Fatalf("an older reading painted the board: %v", mm.results[0].Outcome)
 	}
 	// A live round: per-node answers, in entry order.
 	msg, ok := startFastRound(t, mm)
@@ -1139,8 +1406,10 @@ func TestDashModelRemoteCadence(t *testing.T) {
 	if m.fastBusy || m.slowBusy {
 		t.Fatal("rounds still marked in flight after their answers landed")
 	}
-	if !m.nextSlowAt.After(time.Now()) {
-		t.Fatal("starting the cloud round did not spend its deadline")
+	for i := 1; i < 3; i++ {
+		if !m.dueAt(i).After(time.Now()) {
+			t.Fatalf("reading %s did not spend its deadline", m.entries[i].name)
+		}
 	}
 	// Before the deadline, a tick is due for the local round only.
 	cmds = m.startRounds()
@@ -1149,20 +1418,77 @@ func TestDashModelRemoteCadence(t *testing.T) {
 	}
 	m = landRounds(t, m, cmds)
 	// At the deadline, both groups are due again.
-	m.nextSlowAt = time.Now().Add(-time.Millisecond)
+	m.scheduleRead(1, time.Now().Add(-time.Millisecond))
+	m.scheduleRead(2, time.Now().Add(-time.Millisecond))
 	if cmds = m.startRounds(); len(cmds) != 2 {
 		t.Fatalf("due tick started %d rounds, want both groups", len(cmds))
 	}
 	m = landRounds(t, m, cmds)
-	// A manual refresh is due for every node, whatever the deadline says.
-	m.nextSlowAt = time.Now().Add(time.Hour)
+	// A manual refresh is due for every node, whatever the deadlines say.
+	m.scheduleRead(1, time.Now().Add(time.Hour))
+	m.scheduleRead(2, time.Now().Add(time.Hour))
 	m2, _ := m.Update(dashKey("r"))
 	mm := m2.(*dashModel)
-	if mm.nextSlowAt.IsZero() {
-		t.Error("the manual refresh did not bring the cloud deadline forward")
-	}
 	if !mm.fastBusy || !mm.slowBusy {
 		t.Errorf("the manual refresh did not start both groups: fastBusy=%v slowBusy=%v", mm.fastBusy, mm.slowBusy)
+	}
+}
+
+// A node the operator is acting on is read on the short interval whatever its
+// kind, and returns to its own cadence once the action settles. Its
+// neighbours in the same group keep their own cadence throughout.
+func TestDashModelActedOnNodeIsReadMoreOften(t *testing.T) {
+	orig := dashboardRemoteRefreshInterval
+	dashboardRemoteRefreshInterval = time.Minute
+	defer func() { dashboardRemoteRefreshInterval = orig }()
+
+	r1, r2 := newFakeDashNode("stopped"), newFakeDashNode("running")
+	hold := make(chan struct{})
+	r1.hold = hold
+	m := &dashModel{
+		entries: []dashEntry{
+			{name: "r1", kind: fleet.KindRemote, node: r1},
+			{name: "r2", kind: fleet.KindRemote, node: r2},
+		},
+		results: make([]fleet.NodeResult, 2),
+		actions: make([]dashAction, 2),
+		width:   120, height: 40,
+	}
+	// A cold round reads both, and puts both on the cloud cadence.
+	m = landRounds(t, m, m.startRounds())
+	for i := range m.entries {
+		if !m.dueAt(i).After(time.Now().Add(30 * time.Second)) {
+			t.Fatalf("%s is not on the cloud cadence", m.entries[i].name)
+		}
+	}
+	// A start on r1 brings it forward at once and holds it on the short
+	// interval; r2 is untouched.
+	m.cursor = 0
+	cmd := m.beginAction("start")
+	if m.dueAt(0).After(time.Now()) {
+		t.Error("the started node was not brought forward for reading")
+	}
+	if !m.dueAt(1).After(time.Now().Add(30 * time.Second)) {
+		t.Error("the neighbour lost its own cadence")
+	}
+	m = landRounds(t, m, m.startRounds())
+	if got := m.dueAt(0).Sub(time.Now()); got > 2*dashboardRefreshInterval {
+		t.Errorf("the started node is next read in %s, want the short interval", got)
+	}
+	if !m.dueAt(1).After(time.Now().Add(30 * time.Second)) {
+		t.Errorf("the neighbour was dragged onto the short interval: due in %s", time.Until(m.dueAt(1)))
+	}
+	// The start finishes: the node is read once more now, then returns to
+	// its kind's own cadence.
+	close(hold)
+	next, _ := m.Update(runAction(t, cmd))
+	m = next.(*dashModel)
+	if m.dueAt(0).After(time.Now()) {
+		t.Error("the finished action did not bring its node forward for one more read")
+	}
+	m = landRounds(t, m, m.startRounds())
+	if !m.dueAt(0).After(time.Now().Add(30 * time.Second)) {
+		t.Errorf("the node did not return to its own cadence: due in %s", time.Until(m.dueAt(0)))
 	}
 }
 
@@ -1216,7 +1542,7 @@ func TestDashModelStartAndStop(t *testing.T) {
 	if _, cmd2 := mm.Update(dashKey("s")); cmd2 != nil {
 		t.Fatal("a node with an action in flight started again")
 	}
-	smsg, _ := cmd().(dashActionMsg)
+	smsg, _ := runAction(t, cmd).(dashActionMsg)
 	if node.starts != 1 {
 		t.Fatal("start not called")
 	}
@@ -1246,7 +1572,7 @@ func TestDashModelStartAndStop(t *testing.T) {
 	if cmd2 == nil {
 		t.Fatal("y did not stop")
 	}
-	pmsg, _ := cmd2().(dashActionMsg)
+	pmsg, _ := runAction(t, cmd2).(dashActionMsg)
 	if node.stops != 1 {
 		t.Fatal("stop not called")
 	}
@@ -1296,6 +1622,7 @@ func TestDashModelConcurrentStarts(t *testing.T) {
 		actions: make([]dashAction, 2),
 		width:   120, height: 40,
 	}
+	dashFixNow(t, dashTestClock)
 	var caught []tea.Msg
 	m.send = func(msg tea.Msg) { caught = append(caught, msg) }
 
@@ -1323,22 +1650,22 @@ func TestDashModelConcurrentStarts(t *testing.T) {
 	if m.actions[0].verb != "start" || m.actions[1].verb != "start" {
 		t.Fatalf("both actions should be in flight: %+v", m.actions)
 	}
-	if v := m.View(); !strings.Contains(v, "a  starting") || !strings.Contains(v, "b  starting") {
+	if v := m.View(); !strings.Contains(v, "a  "+dashTestSpinner+" starting") ||
+		!strings.Contains(v, "b  "+dashTestSpinner+" starting") {
 		t.Errorf("the in-flight tiles do not carry the verb:\n%s", v)
 	}
 	// Run both calls: each reports its own line through the send door.
-	msgA := cmd()
-	msgB := cmdB()
+	msgA := runAction(t, cmd)
+	msgB := runAction(t, cmdB)
 	for _, msg := range caught {
 		next, _ = m.Update(msg)
 		m = next.(*dashModel)
 	}
-	if m.actions[0].line != "instance starting; retrying in 1s" ||
-		m.actions[1].line != "instance starting; retrying in 1s" {
-		t.Errorf("progress lines not on the nodes: %+v", m.actions)
+	if m.actions[0].phase == nil || m.actions[1].phase == nil {
+		t.Errorf("the calls' phases are not on the nodes: %+v", m.actions)
 	}
-	if v := m.View(); !strings.Contains(v, "retrying in 1s") {
-		t.Errorf("the tile does not show the call's line:\n%s", v)
+	if v := m.View(); !strings.Contains(v, "booting") {
+		t.Errorf("the tile does not show the call's phase:\n%s", v)
 	}
 	// Each final clears its own node and leaves its line in the footer.
 	next, _ = m.Update(msgA)
@@ -1360,9 +1687,10 @@ func TestDashModelConcurrentStarts(t *testing.T) {
 }
 
 // A round that lands while a start is in flight paints on the tile beside
-// the call's own lines: the node's report and the call's account both show,
+// the call's own account: the node's report and the call's phase both show,
 // until the call returns and the report stands alone.
 func TestDashModelLandedRoundShowsBesideInFlightAction(t *testing.T) {
+	dashFixNow(t, dashTestClock)
 	f := newFakeDashNode("stopped")
 	m := &dashModel{
 		entries: []dashEntry{{name: "a", kind: fleet.KindRemote, node: f}},
@@ -1375,8 +1703,10 @@ func TestDashModelLandedRoundShowsBesideInFlightAction(t *testing.T) {
 	if m.actions[0].verb != "start" {
 		t.Fatalf("no action recorded: %+v", m.actions[0])
 	}
-	// The call's own line, as its goroutine would send it.
-	next, _ = m.Update(dashActionProgressMsg{node: "a", line: "instance starting; retrying in 1s"})
+	// The call's own phase, as its goroutine would send it.
+	next, _ = m.Update(dashActionProgressMsg{node: "a",
+		phase: fleet.StartPhase{Kind: fleet.PhaseWaitingCapacity,
+			Since: dashTestClock, RetryAt: dashTestClock.Add(time.Second)}})
 	m = next.(*dashModel)
 	// The cloud round lands while the start is in flight.
 	cmd := m.refreshRemoteGroup(true)
@@ -1388,7 +1718,8 @@ func TestDashModelLandedRoundShowsBesideInFlightAction(t *testing.T) {
 	m = next.(*dashModel)
 	v := m.View()
 	for _, want := range []string{
-		"a  starting", "instance starting; retrying in 1s", "stopped", "llamacpp  org/qwen",
+		"a  " + dashTestSpinner + " starting", "waiting for capacity — retrying in 1s",
+		"stopped", "llamacpp  org/qwen",
 	} {
 		if !strings.Contains(v, want) {
 			t.Errorf("the in-flight tile does not carry %q:\n%s", want, v)
@@ -1481,7 +1812,11 @@ func TestDashModelQuitDuringConfirmation(t *testing.T) {
 
 // A slow-group answer from a superseded round is discarded, not painted —
 // the generation guard works for the cloud group, not only the local one.
-func TestDashModelSlowStaleRoundDiscarded(t *testing.T) {
+// The case a per-group counter cannot order: a round issued while a start was
+// in flight, landing after the start finished and the board took the node's
+// post-action report. The round carries the node's state as of before the
+// action, and must not repaint the newer report with it.
+func TestDashModelLateRoundDoesNotOverwriteAPostActionReport(t *testing.T) {
 	node := newFakeDashNode("stopped")
 	m := &dashModel{
 		entries: []dashEntry{{name: "a", kind: fleet.KindRemote, node: node}},
@@ -1489,22 +1824,20 @@ func TestDashModelSlowStaleRoundDiscarded(t *testing.T) {
 		actions: make([]dashAction, 1),
 		width:   120, height: 40,
 	}
-	m.slowBusy = true
-	m.slowGen = 3
-	before := m.results[0]
-	stale := dashRefreshMsg{
-		remote:  true,
-		gen:     2, // superseded: the model is on generation 3
-		idx:     []int{0},
-		results: []fleet.NodeResult{{Name: "a", Outcome: fleet.OutcomeOK, Status: daemon.StatusResponse{State: "running"}}},
-	}
-	next, _ := m.Update(stale)
+	issued := time.Now()
+	// The start finishes, and the report that follows it lands.
+	after := fleet.NodeResult{Name: "a", Outcome: fleet.OutcomeOK,
+		Metrics: metrics.Stats{State: "running"}, At: issued.Add(3 * time.Second)}
+	next, _ := m.Update(dashRefreshMsg{remote: true, idx: []int{0}, results: []fleet.NodeResult{after}})
 	m = next.(*dashModel)
-	if m.results[0].Name != before.Name || m.results[0].Outcome != before.Outcome || m.results[0].Err != before.Err {
-		t.Errorf("a superseded slow round was painted: %+v", m.results[0])
-	}
-	if !m.slowBusy {
-		t.Error("a stale slow round cleared the in-flight flag")
+	// The round issued before the action finished now answers, carrying the
+	// node as it was then.
+	before := fleet.NodeResult{Name: "a", Outcome: fleet.OutcomeOK,
+		Metrics: metrics.Stats{State: "stopped"}, At: issued}
+	next, _ = m.Update(dashRefreshMsg{remote: true, idx: []int{0}, results: []fleet.NodeResult{before}})
+	m = next.(*dashModel)
+	if got := m.results[0].Metrics.State; got != "running" {
+		t.Errorf("the late round repainted the node's older report: state = %q, want running", got)
 	}
 }
 
@@ -1519,7 +1852,7 @@ func TestDashModelSlowRoundInFlightGuard(t *testing.T) {
 		width:   120, height: 40,
 	}
 	m.slowBusy = true
-	m.nextSlowAt = time.Time{} // the deadline is due
+	m.scheduleRead(0, time.Time{}) // the node is due
 	if cmd := m.refreshRemoteGroup(true); cmd != nil {
 		t.Fatal("started a second slow round over one in flight")
 	}
@@ -1542,7 +1875,7 @@ func TestDashModelStartOutcomeWordings(t *testing.T) {
 		width:   120, height: 40,
 	}
 	_, cmd := m.Update(dashKey("s"))
-	msgA, _ := cmd().(dashActionMsg)
+	msgA, _ := runAction(t, cmd).(dashActionMsg)
 	next, _ := m.Update(msgA)
 	m = next.(*dashModel)
 	if m.statusLine != "a: start failed — boot exploded" {
@@ -1558,7 +1891,7 @@ func TestDashModelStartOutcomeWordings(t *testing.T) {
 	next, _ = m.Update(dashKey("right"))
 	m = next.(*dashModel)
 	_, cmd = m.Update(dashKey("s"))
-	msgB, _ := cmd().(dashActionMsg)
+	msgB, _ := runAction(t, cmd).(dashActionMsg)
 	next, _ = m.Update(msgB)
 	m = next.(*dashModel)
 	if m.statusLine != "b: start — done" {
@@ -1586,10 +1919,10 @@ func TestDashModelStartOnPlainNode(t *testing.T) {
 	if m.actions[0].verb != "start" {
 		t.Fatalf("no action recorded: %+v", m.actions[0])
 	}
-	if v := m.View(); !strings.Contains(v, "a  starting") {
+	if v := m.View(); !strings.Contains(v, "a  "+spinnerFrame(dashNow())+" starting") {
 		t.Errorf("the in-flight tile does not carry the verb:\n%s", v)
 	}
-	msg, _ := cmd().(dashActionMsg)
+	msg, _ := runAction(t, cmd).(dashActionMsg)
 	next, _ = m.Update(msg)
 	m = next.(*dashModel)
 	if f.starts != 1 {
@@ -1655,7 +1988,7 @@ func TestDashModelAbortsAnInFlightStart(t *testing.T) {
 	}
 	// The call's loop returns on the done context, and its final message lands
 	// as for any finished action.
-	msg, _ := cmd().(dashActionMsg)
+	msg, _ := runAction(t, cmd).(dashActionMsg)
 	if msg.err == nil {
 		t.Fatalf("the aborted start came back as a success: %+v", msg)
 	}
@@ -1677,7 +2010,7 @@ func TestDashModelAbortsAnInFlightStart(t *testing.T) {
 		t.Fatalf("the freed node did not take a second start: %+v", m.actions[0])
 	}
 	close(hold)
-	msg2, _ := cmd2().(dashActionMsg)
+	msg2, _ := runAction(t, cmd2).(dashActionMsg)
 	next, _ = m.Update(msg2)
 	m = next.(*dashModel)
 	if m.statusLine != "a: start — running" {
@@ -1758,7 +2091,7 @@ func TestDashActionLineAbortedWording(t *testing.T) {
 	}
 }
 
-// A line for a node the board does not know is dropped, and a final for one
+// A phase for a node the board does not know is dropped, and a final for one
 // still leaves its line on the footer without touching a real node.
 func TestDashModelUnknownNodeMessagesIgnored(t *testing.T) {
 	node := newFakeDashNode("running")
@@ -1768,10 +2101,11 @@ func TestDashModelUnknownNodeMessagesIgnored(t *testing.T) {
 		actions: make([]dashAction, 1),
 		width:   120, height: 40,
 	}
-	next, _ := m.Update(dashActionProgressMsg{node: "ghost", line: "a line"})
+	next, _ := m.Update(dashActionProgressMsg{node: "ghost",
+		phase: fleet.StartPhase{Kind: fleet.PhaseBooting, Since: time.Now()}})
 	m = next.(*dashModel)
-	if m.actions[0].line != "" {
-		t.Errorf("a stranger's line landed on the wrong tile: %+v", m.actions[0])
+	if m.actions[0].phase != nil {
+		t.Errorf("a stranger's phase landed on the wrong tile: %+v", m.actions[0])
 	}
 	next, _ = m.Update(dashActionMsg{node: "ghost", verb: "start", status: daemon.StatusResponse{State: "running"}})
 	m = next.(*dashModel)
@@ -1846,7 +2180,7 @@ func TestDashProgramStartsAndStopsANode(t *testing.T) {
 	tm.Type("s")
 	// The call reports itself mid-flight — through the program's Send, onto
 	// the tile — and stays there until it finishes.
-	seen("instance starting; retrying in 1s", 5*time.Second)
+	seen("booting", 5*time.Second)
 	close(release)
 	seen("alpha  running", 5*time.Second)
 	tm.Type("x")
@@ -1978,7 +2312,7 @@ func TestDashModelDetailKeysDriveTheNodeInView(t *testing.T) {
 	if cmd == nil || mm.actions[0].verb != "start" {
 		t.Fatalf("s from the detail view did not start the node: %+v", mm.actions[0])
 	}
-	smsg, _ := cmd().(dashActionMsg)
+	smsg, _ := runAction(t, cmd).(dashActionMsg)
 	m4, _ := mm.Update(smsg)
 	mm = m4.(*dashModel)
 	if !strings.Contains(mm.statusLine, "a: start — running") {
@@ -1998,7 +2332,7 @@ func TestDashModelDetailKeysDriveTheNodeInView(t *testing.T) {
 	if cmd2 == nil {
 		t.Fatal("y did not stop from the detail view")
 	}
-	pmsg, _ := cmd2().(dashActionMsg)
+	pmsg, _ := runAction(t, cmd2).(dashActionMsg)
 	m7, _ := mm.Update(pmsg)
 	mm = m7.(*dashModel)
 	if !strings.Contains(mm.statusLine, "a: stop — stopped") {
@@ -2122,6 +2456,44 @@ func TestDashFooterHints(t *testing.T) {
 	want := "j/k move   s start   x stop   r refresh   q quit"
 	if got := dashFooterHints(hints, false); got != want {
 		t.Errorf("dashFooterHints(false) = %q, want %q", got, want)
+	}
+}
+
+// Each entry in the key help is a key and what it does: the key keeps the
+// terminal's own text colour, and what it does is drawn a step back in the
+// muted ink, so the keys are what a glance picks out. The prompt's question
+// and the status line beside them are prose and are left alone.
+func TestDashKeyHintsDimWhatEachKeyDoes(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.ANSI256)
+	const dim = "\x1b[38;5;109m" // the muted ink, in a 256-colour terminal
+	got := dashKeyHints("↑↓←→ move   s start   q quit")
+	want := "↑↓←→ " + dim + "move\x1b[0m   s " + dim + "start\x1b[0m   q " + dim + "quit\x1b[0m"
+	if got != want {
+		t.Errorf("dashKeyHints:\ngot:  %q\nwant: %q", got, want)
+	}
+	// An entry with no meaning after its key is left as it is, rather than
+	// having its only word dimmed as though it were one.
+	if got := dashKeyHints("refreshing"); got != "refreshing" {
+		t.Errorf("a one-word entry was styled: %q", got)
+	}
+	if got := dashKeyHints(""); got != "" {
+		t.Errorf("dashKeyHints(\"\") = %q, want empty", got)
+	}
+
+	// In the footer, only the key help is drawn this way.
+	m := dashModel{
+		entries: []dashEntry{{name: "dev-1", kind: fleet.KindDaemon}},
+		results: make([]fleet.NodeResult, 1),
+		actions: make([]dashAction, 1),
+		confirm: true, statusLine: "dev-1: start — running",
+		width: 120, height: 24,
+	}
+	footer := m.footerLine(120, "q quit")
+	if !strings.HasPrefix(footer, "stop dev-1?   y "+dim+"yes") {
+		t.Errorf("the confirmation's keys are not drawn as pairs: %q", footer)
+	}
+	if !strings.HasSuffix(footer, "   dev-1: start — running") {
+		t.Errorf("the status line was styled as a key pair: %q", footer)
 	}
 }
 
@@ -2646,18 +3018,20 @@ func TestDashDetailViewNoLogYet(t *testing.T) {
 }
 
 // An action in flight on the node in view replaces the metrics section with
-// its verb and latest status line, the same wording the tile uses.
+// its verb and its call's latest phase, the same wording the tile uses.
 func TestDashDetailViewActionInFlight(t *testing.T) {
 	lipgloss.SetColorProfile(termenv.Ascii)
 	m := dashModel{
 		entries: []dashEntry{{name: "n", kind: fleet.KindDaemon}},
 		results: []fleet.NodeResult{{Name: "n"}},
-		actions: []dashAction{{verb: "start", line: "instance starting; retrying in 5s"}},
-		detail:  true,
-		width:   80, height: 24,
+		actions: []dashAction{{verb: "start",
+			phase: &fleet.StartPhase{Kind: fleet.PhaseBooting, Since: time.Now(), Detail: "starting"}}},
+		detail: true,
+		width:  80, height: 24,
 	}
 	view := m.detailView()
-	if !strings.Contains(view, "n  starting") || !strings.Contains(view, "instance starting; retrying in 5s") {
+	if !strings.Contains(view, "n  "+spinnerFrame(dashNow())+" starting") ||
+		!strings.Contains(view, "booting (") {
 		t.Errorf("in-flight metrics section missing:\n%s", view)
 	}
 }

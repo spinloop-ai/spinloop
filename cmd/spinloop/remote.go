@@ -21,6 +21,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spinloop-ai/spinloop/internal/contextsize"
+	"github.com/spinloop-ai/spinloop/internal/fleet"
 	"github.com/spinloop-ai/spinloop/internal/opencode"
 	"github.com/spinloop-ai/spinloop/internal/preset"
 	"github.com/spinloop-ai/spinloop/internal/remote"
@@ -271,13 +272,16 @@ func spinloopArg(args []string) string {
 // so without this the command looks hung. A variable so tests can shorten it.
 var heartbeatEvery = 30 * time.Second
 
-// startProgress reports what a slow start is doing. Everything it writes goes
-// to stderr, so `spinloop remote start | grep '^export '` still yields just the
-// exports while the user watching the terminal still sees progress.
+// startProgress reports what a slow start is doing, as a renderer over the
+// phases fleet.StartPhases builds from remote.Start's callbacks — the same
+// phases the dashboard tile draws, so the two surfaces cannot word one
+// situation differently. Everything it writes goes to stderr, so `spinloop
+// remote start | grep '^export '` still yields just the exports while the user
+// watching the terminal still sees progress.
 type startProgress struct {
 	mu    sync.Mutex
 	since time.Time
-	state string // most recent state the endpoint reported; "" until the first poll
+	phase fleet.StartPhase // what the start is doing now; each report replaces it
 	done  chan struct{}
 	stop  sync.Once
 }
@@ -299,26 +303,31 @@ func newStartProgress(every time.Duration) *startProgress {
 	return p
 }
 
-// setState records the state of the latest poll so the heartbeat can describe
-// what is actually happening. Called from remote.Start on every poll.
-func (p *startProgress) setState(state string) {
+// report prints one phase as the start enters it, and keeps it for the
+// heartbeat to redraw. Called from remote.Start's own goroutine.
+func (p *startProgress) report(phase fleet.StartPhase) {
 	p.mu.Lock()
-	p.state = state
+	p.phase = phase
 	p.mu.Unlock()
+	p.line(fleet.RenderPhase(phase, time.Now()))
 }
 
-// heartbeat is the periodic line. It reflects the latest state so it does not
-// claim the instance is booting when it is really blocked on capacity. Any
-// state other than no-capacity (including the unset state before the first
-// poll) reads as a normal cold start.
+// callbacks are the pair to hand remote.Start: the phases they build are what
+// report renders.
+func (p *startProgress) callbacks() (progress func(string), onState func(string)) {
+	return fleet.StartPhases(p.report)
+}
+
+// heartbeat is the periodic line. A phase can hold for minutes — the attempt
+// that obtains capacity keeps one request open for the whole boot and reports
+// nothing while it does — so the line is the current phase redrawn at the
+// current time, which counts a wait down and a boot up, plus how long the
+// whole start has been running.
 func (p *startProgress) heartbeat() string {
 	p.mu.Lock()
-	state := p.state
+	phase := p.phase
 	p.mu.Unlock()
-	if state == "no-capacity" {
-		return fmt.Sprintf("still waiting for capacity (%s elapsed)", p.elapsed())
-	}
-	return fmt.Sprintf("still starting (%s elapsed)", p.elapsed())
+	return fmt.Sprintf("%s (%s elapsed)", fleet.RenderPhase(phase, time.Now()), p.elapsed())
 }
 
 func (p *startProgress) elapsed() time.Duration {
@@ -438,7 +447,8 @@ func runRemoteStart(args []string, timeout time.Duration, printEnv bool, keepD s
 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	resp, err := remote.Start(ctx, cfg, progress.line, progress.setState, retainUntil)
+	onProgress, onState := progress.callbacks()
+	resp, err := remote.Start(ctx, cfg, onProgress, onState, retainUntil)
 	if err != nil {
 		return err
 	}
@@ -660,7 +670,8 @@ func runRemoteRestart(args []string, force bool, timeout time.Duration) error {
 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	resp, err := remote.Restart(ctx, cfg, force, progress.line, progress.setState)
+	onProgress, onState := progress.callbacks()
+	resp, err := remote.Restart(ctx, cfg, force, onProgress, onState)
 	if err != nil {
 		return err
 	}

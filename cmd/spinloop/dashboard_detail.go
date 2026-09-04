@@ -1,7 +1,7 @@
 // The full-screen node detail view: enter opens it on the node under the
 // cursor, replacing the grid with that node's unclipped metrics, its tailed
 // engine log, and a footer naming the keys the view answers to; escape
-// closes it. The metrics section is dashNodeContentLines — the exact lines
+// closes it. The metrics section is dashNodeView's lines — the exact lines
 // the tile draws, unclipped — so the two surfaces cannot disagree; the log
 // section follows fleet.LogsCall the same way `fleet logs -f` follows one
 // node. Everything else about the board — the grid's own refresh, and any
@@ -166,12 +166,11 @@ func (m *dashModel) detailLogCapacity() int {
 }
 
 // detailSectionHeights splits the frame's rows between the metrics section
-// (dashNodeContentLines' natural length for the node in view) and the log
-// section (whatever remains after the header, footer, and the three dividers
-// around the three sections), floored at one row each.
+// (dashNodeView's natural length for the node in view) and the log section
+// (whatever remains after the header, footer, and the three dividers around
+// the three sections), floored at one row each.
 func (m *dashModel) detailSectionHeights() (metrics, log int) {
-	e := m.entries[m.cursor]
-	metrics = len(dashNodeContentLines(e.name, m.results[m.cursor], m.actions[m.cursor]))
+	metrics = len(m.detailNodeLines())
 	if metrics < 1 {
 		metrics = 1
 	}
@@ -181,6 +180,15 @@ func (m *dashModel) detailSectionHeights() (metrics, log int) {
 		log = 1
 	}
 	return metrics, log
+}
+
+// detailNodeLines is the metrics section: the same lines the node's tile draws,
+// for the node the view is open on.
+func (m *dashModel) detailNodeLines() []string {
+	e := m.entries[m.cursor]
+	lines, _ := dashNodeView(e.name, m.results[m.cursor], m.actions[m.cursor],
+		dashNow(), dashStaleAfter(e.kind))
+	return lines
 }
 
 // detailLogLines is the log section's content: the tailed lines, most recent
@@ -203,7 +211,7 @@ func (m dashModel) detailView() string {
 	e := m.entries[m.cursor]
 	metricsLines, avail := m.detailSectionHeights()
 
-	title := fmt.Sprintf("fleet dashboard  %s  node: %s", m.fleetPath, e.name)
+	detail := m.fleetPath
 	if e.node != nil {
 		// A standing node never polls at all, follow flag or not, so its
 		// header says nothing about a log state that can never change.
@@ -211,12 +219,12 @@ func (m dashModel) detailView() string {
 		if !m.detailLogFollow {
 			logState = "paused"
 		}
-		title += "  log: " + logState
+		detail += "   log: " + logState
 	}
-	header := dashClip(title, w)
+	header := dashTitleBar("fleet dashboard  ·  node: "+e.name, detail, w)
 	divider := strings.Repeat("─", w)
 
-	content := dashNodeContentLines(e.name, m.results[m.cursor], m.actions[m.cursor])
+	content := m.detailNodeLines()
 	for len(content) < metricsLines {
 		content = append(content, "")
 	}
