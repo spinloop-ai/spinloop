@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [1.32.0] - 2026-09-04
+### Added
+- feat(fleet): rebuild the dashboard's start and status logic
+- feat: add -f as the short form of the --fleet flag
+- feat: add fleet deploy, and let start/stop take --all
+- feat: add the mtplx engine for serving and fleet wake
+
+### Changed
+- build(deps): bump the go-dependencies group across 1 directory with 10 updates
+- build(fleet-docker): bump the build image to golang 1.25
+- docs: clarify scope in the introduction
+- docs: list more harnesses
+
+### Fixed
+- fix(fleet): retire a start's capacity wait once the next attempt goes out
+
 ## [1.31.1] - 2026-09-03
 ### Fixed
 - fix(remote): grant the deploy role secretsmanager:PutSecretValue
