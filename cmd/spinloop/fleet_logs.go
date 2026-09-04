@@ -48,6 +48,9 @@ func fleetLogsCmd() *cobra.Command {
 		},
 	}
 	fs := c.Flags()
+	// --fleet takes no short form here: -f is already --follow, and a flag
+	// cannot carry two meanings on one command line. Every other fleet
+	// subcommand offers -f for the fleet file.
 	fs.StringVar(&path, "fleet", "", fleetFileUsage)
 	fs.BoolVarP(&follow, "follow", "f", false, followUsage)
 	fs.IntVar(&limit, "limit", 200, "lines of backlog to print per node")

@@ -265,7 +265,7 @@ exits. Honours -H/--harness and SPINLOOP_HARNESS.`,
 	// path readSpinloop resolves as SPINLOOP_ALIAS > ./Spinloop.
 	fs.Lookup("spinloop").NoOptDefVal = "true"
 	fs.StringVar(&providers, "providers", "", "path to a providers.yaml override")
-	fs.StringVar(&route.fleetPath, "fleet", "", "route through this fleet file (overrides the Spinloop's FLEET)")
+	fs.StringVarP(&route.fleetPath, "fleet", "f", "", "route through this fleet file (overrides the Spinloop's FLEET)")
 	fs.StringVar(&route.node, "node", "", "pin the launch to this fleet node")
 	fs.StringVar(&route.prefer, "prefer", "", "rank fleet nodes by `idle` or `active` (overrides the fleet file)")
 	fs.BoolVar(&route.noWake, "no-wake", false, "fail rather than starting an engine on an idle fleet node")

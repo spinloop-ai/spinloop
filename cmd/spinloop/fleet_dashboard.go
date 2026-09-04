@@ -45,7 +45,7 @@ metrics --watch instead.`,
 		},
 	}
 	fs := c.Flags()
-	fs.StringVar(&path, "fleet", "", fleetFileUsage)
+	fs.StringVarP(&path, "fleet", "f", "", fleetFileUsage)
 	c.ValidArgsFunction = noPositionals
 	compRegister(c, "fleet", compFiles)
 	return c

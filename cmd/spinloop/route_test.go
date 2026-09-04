@@ -160,6 +160,34 @@ func TestFleetFlagOverridesTheInstruction(t *testing.T) {
 	})
 }
 
+// The short form is the flag: -f names the fleet a launch routes through,
+// overriding the Spinloop's own FLEET.
+func TestHarnessFleetFlagShortForm(t *testing.T) {
+	isolateConfig(t)
+	node := newRoutableNode(t, "qwen3-27b", true, 10)
+	dir := t.TempDir()
+	flagFleet := fleetFileIn(t, dir, "nodes:\n"+node.entry("from-flag"))
+	// The Spinloop names a fleet that does not exist, so a launch that
+	// succeeds has parsed -f as the fleet file.
+	spinloopDir := routedSpinloop(t, "qwen3-27b", filepath.Join(dir, "nonexistent.yaml"))
+
+	argsFile := filepath.Join(t.TempDir(), "args")
+	stubHarnessBinary(t, "opencode", argsFile)
+	stderr := captureStderr(t, func() {
+		captureStdout(t, func() {
+			if err := cmdHarness([]string{"--spinloop=" + spinloopDir, "-f", flagFleet, "--", "run"}); err != nil {
+				t.Fatalf("cmdHarness -f: %v", err)
+			}
+		})
+	})
+	if _, err := os.ReadFile(argsFile); err != nil {
+		t.Fatalf("harness was not launched: %v", err)
+	}
+	if !strings.Contains(stderr, "from-flag") {
+		t.Errorf("the route announcement should name the flag's node, got:\n%s", stderr)
+	}
+}
+
 // A pinned BASEURL is the explicit answer, so nothing is selected.
 func TestPinnedBaseURLSkipsRouting(t *testing.T) {
 	node := newRoutableNode(t, "qwen3-27b", true, 10)

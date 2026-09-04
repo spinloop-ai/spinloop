@@ -7,8 +7,11 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -76,6 +79,79 @@ func TestCmdFleetLogsLabelsSeveralNodes(t *testing.T) {
 	})
 	if !strings.Contains(out, "alpha  from a") || !strings.Contains(out, "beta  from b") {
 		t.Errorf("output =\n%s\nwant each line attributed to its node", out)
+	}
+}
+
+// -f is the follow flag on logs, so it sits on one line with --fleet, which
+// alone names the fleet file.
+func TestCmdFleetLogsFollowTakesTheFleetFile(t *testing.T) {
+	prev := fleetLogsInterval
+	fleetLogsInterval = 50 * time.Millisecond
+	t.Cleanup(func() { fleetLogsInterval = prev })
+
+	var mu sync.Mutex
+	polls := 0
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /v1/logs", func(w http.ResponseWriter, _ *http.Request) {
+		mu.Lock()
+		polls++
+		mu.Unlock()
+		json.NewEncoder(w).Encode(daemon.LogsResponse{Content: "hello\n", NextOffset: 6, Size: 6})
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	host, port := hostPort(t, srv)
+	dir := t.TempDir()
+	path := filepath.Join(dir, "cluster.yaml")
+	mustWrite(t, path, fmt.Sprintf("nodes:\n  - name: box\n    host: %s\n    port: %d\n", host, port))
+	// Somewhere else entirely, so only --fleet can find it.
+	t.Chdir(t.TempDir())
+
+	done := make(chan error, 1)
+	go func() { done <- cmdFleet([]string{"logs", "-f", "--fleet", path}) }()
+
+	// The first poll is the proof of the parse: if -f had been the fleet-file
+	// flag it would have taken --fleet as its value and failed before
+	// contacting anything.
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		mu.Lock()
+		n := polls
+		mu.Unlock()
+		if n > 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("no poll arrived; the command did not enter follow mode")
+		}
+		select {
+		case err := <-done:
+			t.Fatalf("the command exited before any poll: %v", err)
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+	if err := syscall.Kill(os.Getpid(), syscall.SIGINT); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Errorf("an interrupted follow is a clean exit, got %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the follow did not stop on interrupt")
+	}
+}
+
+// -f is follow on logs, so the word after it is a node name, not a fleet file.
+func TestCmdFleetLogsShortFlagIsNotTheFleetFile(t *testing.T) {
+	oneLogFleet(t, "hello\n")
+	err := cmdFleet([]string{"logs", "-f", "nope"})
+	if err == nil || !strings.Contains(err.Error(), `no node "nope"`) {
+		t.Fatalf("want the unknown-node error for the word after -f, got %v", err)
+	}
+	if strings.Contains(err.Error(), "no fleet file") {
+		t.Errorf("-f took its value as a fleet file: %v", err)
 	}
 }
 

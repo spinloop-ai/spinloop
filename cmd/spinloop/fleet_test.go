@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/spf13/cobra"
 	"github.com/spinloop-ai/spinloop/internal/daemon"
 	"github.com/spinloop-ai/spinloop/internal/fleet"
 	"github.com/spinloop-ai/spinloop/internal/metrics"
@@ -557,6 +558,74 @@ func TestCmdFleetExplicitPath(t *testing.T) {
 	if !strings.Contains(out, "solo") {
 		t.Errorf("explicit --fleet not used:\n%s", out)
 	}
+}
+
+// The short form is the flag: -f names the fleet file the same way --fleet
+// does.
+func TestCmdFleetExplicitPathShortForm(t *testing.T) {
+	up := stubNode(t, "running")
+	host, port := hostPort(t, up)
+	dir := t.TempDir()
+	path := filepath.Join(dir, "cluster.yaml")
+	body := fmt.Sprintf("nodes:\n  - name: solo\n    host: %s\n    port: %d\n", host, port)
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// Somewhere else entirely, so only -f can find it.
+	t.Chdir(t.TempDir())
+	out := captureStdout(t, func() {
+		if err := cmdFleet([]string{"status", "-f", path}); err != nil {
+			t.Error(err)
+		}
+	})
+	if !strings.Contains(out, "solo") {
+		t.Errorf("explicit -f not used:\n%s", out)
+	}
+}
+
+// TestFleetFlagShortForm pins the -f shorthand on every --fleet-carrying
+// command, and its absence on logs, where -f is --follow.
+func TestFleetFlagShortForm(t *testing.T) {
+	isolateConfig(t)
+	root := newRootCmd()
+	fleet := commandUnder(t, root, "fleet")
+	for _, name := range []string{"status", "metrics", "start", "stop", "deploy", "route", "dashboard"} {
+		sub := commandUnder(t, fleet, name)
+		f := sub.Flags().Lookup("fleet")
+		if f == nil {
+			t.Errorf("fleet %s: no --fleet flag", name)
+			continue
+		}
+		if f.Shorthand != "f" {
+			t.Errorf("fleet %s: shorthand = %q, want \"f\"", name, f.Shorthand)
+		}
+	}
+	if f := commandUnder(t, root, "harness").Flags().Lookup("fleet"); f == nil || f.Shorthand != "f" {
+		t.Errorf("harness: --fleet lacks the -f shorthand")
+	}
+	logs := commandUnder(t, fleet, "logs")
+	if f := logs.Flags().Lookup("fleet"); f == nil {
+		t.Error("fleet logs: no --fleet flag")
+	} else if f.Shorthand != "" {
+		t.Errorf("fleet logs: --fleet carries shorthand %q, want none", f.Shorthand)
+	}
+	if f := logs.Flags().Lookup("follow"); f == nil {
+		t.Error("fleet logs: no --follow flag")
+	} else if f.Shorthand != "f" {
+		t.Errorf("fleet logs: --follow shorthand = %q, want \"f\"", f.Shorthand)
+	}
+}
+
+// commandUnder finds a named subcommand in a parent's tree.
+func commandUnder(t *testing.T, parent *cobra.Command, name string) *cobra.Command {
+	t.Helper()
+	for _, c := range parent.Commands() {
+		if c.Name() == name {
+			return c
+		}
+	}
+	t.Fatalf("command %s not found under %s", name, parent.Name())
+	return nil
 }
 
 func TestCmdFleetUnknownSubcommand(t *testing.T) {

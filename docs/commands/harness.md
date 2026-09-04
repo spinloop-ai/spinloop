@@ -61,7 +61,7 @@ variable chooses which Spinloop, never whether you are configured. See
 | `--set` | Store the default harness and exit |
 | `--get` | Print the active harness instead of launching |
 | `--providers` | Path to a custom catalogue, for the applied Spinloop |
-| `--fleet` | Route through this fleet file (overrides the Spinloop's `FLEET`) |
+| `-f`, `--fleet` | Route through this fleet file (overrides the Spinloop's `FLEET`) |
 | `--node` | Pin the launch to one fleet node |
 | `--prefer` | Rank fleet nodes by `idle` or `active` (overrides the fleet file) |
 | `--no-wake` | Fail rather than starting an engine on an idle fleet node |

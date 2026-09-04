@@ -9,7 +9,8 @@ with — so a machine that can reach the fleet needs no addresses of its own.
 ### Requirement: A fleet-routed launch
 
 `spinloop harness` SHALL route through a fleet when the Spinloop it wears names one
-with a `FLEET` instruction, or when `--fleet <path>` is given; `--fleet` SHALL
+with a `FLEET` instruction, or when `--fleet <path>` — or its `-f <path>`
+short form — is given; the flag SHALL
 override the instruction, and a launch with neither SHALL behave exactly as it
 does today. Routing SHALL choose one node and give the launched agent that
 node's engine as its OpenAI-compatible endpoint: the chosen base URL SHALL be
@@ -39,6 +40,12 @@ time rather than at the first request.
 #### Scenario: The flag overrides the instruction
 
 - **WHEN** the user runs `spinloop harness --fleet=./cluster.yaml` with a Spinloop
+  whose `FLEET` names a different file
+- **THEN** the nodes in `./cluster.yaml` are the candidates
+
+#### Scenario: The short form overrides the instruction
+
+- **WHEN** the user runs `spinloop harness -f ./cluster.yaml` with a Spinloop
   whose `FLEET` names a different file
 - **THEN** the nodes in `./cluster.yaml` are the candidates
 
