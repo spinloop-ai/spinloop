@@ -230,10 +230,12 @@ BASEURL  http://127.0.0.1:8000/v1                       # mtplx serve --host/--p
 - `BASEURL` sets the bind address. With none, no bind flag is emitted and
   MTPLX's own defaults stand.
 
-The scheduling mode (`--scheduler-mode`: `serial`, `parallel`, `concurrent`) is
-per-deployment tuning, not a Spinloop field — set it in a `PRESET`, written in
-MTPLX's own long-form flags. `serve` passes every other preset key through
-unchanged, so a preset is portable only to MTPLX, as with every engine.
+The scheduling mode (`--scheduler-mode`) is per-deployment tuning, not a
+Spinloop field — set it in a `PRESET`, written in MTPLX's own long-form flags.
+`serve` passes the value through without checking it, so it must be valid for
+the installed `mtplx` (`mtplx serve --help` lists the current modes). Every
+preset key is passed through unchanged, so a preset is portable only to MTPLX,
+as with every engine.
 
 `serve` never passes `--api-key`, for the same reason as [oMLX](#omlx): it
 prints the command it runs, and a key on the line would be in your screen and

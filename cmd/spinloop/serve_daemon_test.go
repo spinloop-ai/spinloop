@@ -1002,7 +1002,7 @@ port = 8000
 [qwen]
 model               = Youssofal/Qwen3.8-27B-MTPLX-Optimized-Speed
 context-window      = 32768
-scheduler-mode      = parallel
+scheduler-mode      = ar_batch
 max-active-requests = 4
 model-id            = preset-alias
 `
@@ -1051,7 +1051,7 @@ func TestNodeDeployConfigMtplxFromPreset(t *testing.T) {
 	}
 	// The operator's own settings survive: the bind, and the scheduling mode,
 	// which spinloop does not compute.
-	for _, want := range []string{"--host 0.0.0.0", "--port 8000", "--scheduler-mode parallel"} {
+	for _, want := range []string{"--host 0.0.0.0", "--port 8000", "--scheduler-mode ar_batch"} {
 		if !strings.Contains(args, want) {
 			t.Errorf("a node's serve args should keep %q, got: %s", want, args)
 		}
