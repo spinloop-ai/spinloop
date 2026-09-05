@@ -97,7 +97,7 @@ port = 8000
 [qwen]
 model               = Youssofal/Qwen3.8-27B-MTPLX-Optimized-Speed
 context-window      = 32768
-scheduler-mode      = parallel
+scheduler-mode      = ar_batch
 max-active-requests = 4
 c                   = should-stay-literal
 `
@@ -810,7 +810,7 @@ func TestCmdServe_MTPPLXPresetKeysPassThrough(t *testing.T) {
 	for _, want := range []string{
 		"--model Youssofal/Qwen3.8-27B-MTPLX-Optimized-Speed",
 		"--context-window 32768",
-		"--scheduler-mode parallel",
+		"--scheduler-mode ar_batch",
 		"--max-active-requests 4",
 		"-c should-stay-literal",
 		"--download",

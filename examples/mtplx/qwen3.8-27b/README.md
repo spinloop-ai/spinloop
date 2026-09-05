@@ -30,7 +30,7 @@ mtplx serve \
   --model-id qwen3.8-27b \
   --context-window 32768 \
   --max-active-requests 4 \
-  --scheduler-mode parallel \
+  --scheduler-mode ar_batch \
   --download \
   --host 127.0.0.1 --port 8000
 ```
@@ -44,8 +44,10 @@ What the flags do:
 - `--context-window` — the context a single request gets. Never scaled by
   `PARALLEL`.
 - `--max-active-requests` — an admission cap on how many requests run at once.
-- `--scheduler-mode` — `serial`, `parallel`, or `concurrent`. This is
-  per-deployment tuning, not a Spinloop field, so it lives in the
+- `--scheduler-mode` — how admitted requests execute. `spinloop` passes the
+  value through without checking it, so it must be valid for your `mtplx`
+  build (`mtplx serve --help` lists the current modes). This is per-deployment
+  tuning, not a Spinloop field, so it lives in the
   [`preset.ini`](preset.ini).
 - `--host`/`--port` — the OpenAI-compatible API is served at
   `http://127.0.0.1:8000/v1`.
