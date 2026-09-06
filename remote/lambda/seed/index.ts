@@ -9,13 +9,7 @@
  */
 
 import type { LambdaFunctionURLEvent, LambdaFunctionURLResult } from 'aws-lambda';
-import {
-  errorName,
-  findManagedInstances,
-  requireEnv,
-  terminateInstance,
-  type InstanceInfo,
-} from '../shared/aws';
+import { errorName, requireEnv, terminateInstance } from '../shared/aws';
 import {
   isRunner,
   LATEST_SPINLOOP,
@@ -25,24 +19,12 @@ import {
 import { jsonResponse } from '../shared/http';
 import { weightsPresent } from '../shared/seed';
 import { buildSeedJob, launchSeedInstance, seedInfraFromEnv } from '../shared/seed/launch';
-import {
-  SEED_ID_TAG_KEY,
-  SEED_TAG_VALUE,
-  seedIdFor,
-} from '../shared/seed/identity';
+import { SEED_ID_TAG_KEY, SEED_MODEL_TAG_KEY, seedIdFor } from '../shared/seed/identity';
+import { findSeedInstances } from '../shared/seed/discovery';
 import { readSeedStatus, writeTerminalRecord } from '../shared/seed/status';
 
 const TAG_KEY = requireEnv('TAG_KEY');
 const MAX_CONCURRENT_SEEDS = Number(requireEnv('MAX_CONCURRENT_SEEDS'));
-
-/** Live seed instances, optionally narrowed to one seed id. */
-async function findSeeds(seedId?: string): Promise<InstanceInfo[]> {
-  return findManagedInstances(
-    TAG_KEY,
-    SEED_TAG_VALUE,
-    seedId ? [{ Name: `tag:${SEED_ID_TAG_KEY}`, Values: [seedId] }] : [],
-  );
-}
 
 export async function handler(event: LambdaFunctionURLEvent): Promise<LambdaFunctionURLResult> {
   const method = event.requestContext?.http?.method ?? 'POST';
@@ -102,7 +84,7 @@ async function start(event: LambdaFunctionURLEvent): Promise<LambdaFunctionURLRe
 
   // Already in flight: join it. Reported as started:false so a repeated start
   // is unambiguous rather than looking like a fresh one.
-  const running = await findSeeds(seedId);
+  const running = await findSeedInstances(TAG_KEY, seedId);
   if (running.length > 0) {
     return jsonResponse(200, {
       seedId,
@@ -142,7 +124,7 @@ async function start(event: LambdaFunctionURLEvent): Promise<LambdaFunctionURLRe
 
   // The cap bounds what a caller in a loop can launch. Counted after the
   // join above, so a repeat of an existing seed is never refused by it.
-  const inFlight = await findSeeds();
+  const inFlight = await findSeedInstances(TAG_KEY);
   if (inFlight.length >= MAX_CONCURRENT_SEEDS) {
     return jsonResponse(429, {
       error: `${inFlight.length} seeds are already running (cap ${MAX_CONCURRENT_SEEDS}) — wait for one to finish`,
@@ -170,7 +152,7 @@ async function start(event: LambdaFunctionURLEvent): Promise<LambdaFunctionURLRe
 
 /** GET ?id= — one seed's state, whether or not its instance still exists. */
 async function status(seedId: string): Promise<LambdaFunctionURLResult> {
-  const instances = await findSeeds(seedId);
+  const instances = await findSeedInstances(TAG_KEY, seedId);
   const result = await readSeedStatus(seedId, instances[0] ?? null);
   // A seed nobody has ever run has neither an instance nor records; say so
   // rather than reporting it as a failure.
@@ -182,7 +164,7 @@ async function status(seedId: string): Promise<LambdaFunctionURLResult> {
 
 /** GET — every seed in flight. */
 async function list(): Promise<LambdaFunctionURLResult> {
-  const instances = await findSeeds();
+  const instances = await findSeedInstances(TAG_KEY);
   const seeds = await Promise.all(
     instances.map(async (instance) => {
       const id = instance.tags?.[SEED_ID_TAG_KEY] ?? '';
@@ -190,7 +172,7 @@ async function list(): Promise<LambdaFunctionURLResult> {
       return {
         seedId: id,
         instanceId: instance.instanceId,
-        modelId: instance.tags?.['cloud-vm-llm:seed-model'],
+        modelId: instance.tags?.[SEED_MODEL_TAG_KEY],
         state: detail?.state ?? 'starting',
         progressPercent: detail?.progressPercent,
         startedAt: instance.launchTime?.toISOString(),
@@ -210,7 +192,7 @@ async function list(): Promise<LambdaFunctionURLResult> {
  * safe, and the caller's intent is satisfied either way.
  */
 async function stop(seedId: string): Promise<LambdaFunctionURLResult> {
-  const instances = await findSeeds(seedId);
+  const instances = await findSeedInstances(TAG_KEY, seedId);
   if (instances.length === 0) {
     return jsonResponse(200, { seedId, stopped: false, message: `no seed ${JSON.stringify(seedId)} is running` });
   }

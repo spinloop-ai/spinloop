@@ -36,6 +36,10 @@ import {
 } from '../shared/environments';
 import { DAEMON_STATUS_CMD, parseDaemonStatus } from '../shared/daemon';
 import { jsonResponse } from '../shared/http';
+import { weightsPresent } from '../shared/seed';
+import { findSeedInstances } from '../shared/seed/discovery';
+import { seedIdFor } from '../shared/seed/identity';
+import { buildSeedJob, launchSeedInstance, seedInfraFromEnv } from '../shared/seed/launch';
 import { DAEMON_CONFIG_DIR, runnerSpec } from '../runners';
 
 const TAG_KEY = requireEnv('TAG_KEY');
@@ -48,6 +52,7 @@ const INSTANCE_TYPE = requireEnv('INSTANCE_TYPE');
 const SUBNET_IDS = requireEnv('SUBNET_IDS').split(',');
 const INSTANCE_PROFILE_ARN = requireEnv('INSTANCE_PROFILE_ARN');
 const WEIGHTS_BUCKET = requireEnv('WEIGHTS_BUCKET');
+const MAX_CONCURRENT_SEEDS = Number(requireEnv('MAX_CONCURRENT_SEEDS'));
 const REGION = requireEnv('AWS_REGION');
 const BOOT_LOG_GROUP = requireEnv('BOOT_LOG_GROUP');
 const ENGINE_LOG_GROUP = Object.fromEntries(
@@ -206,6 +211,98 @@ async function readDaemonActivity(
   }
 }
 
+// How often a caller should re-ask while the weights are still seeding. A
+// seed runs for minutes, so nothing is learned by polling faster — and the
+// reply stays in the same shape as the other 503s the wake gives out.
+const SEED_RETRY_SECONDS = 60;
+
+/** Instance states that mean a seed's compute is alive. */
+function seedAlive(state: string): boolean {
+  return state === 'pending' || state === 'running';
+}
+
+function seedingReply(seedId: string, message: string): LambdaFunctionURLResult {
+  return jsonResponse(503, {
+    state: 'seeding',
+    seedId,
+    retry_after_seconds: SEED_RETRY_SECONDS,
+    message,
+  });
+}
+
+/**
+ * The weights gate: a wake must not launch an instance that will sync a
+ * partial prefix.
+ *
+ * Weights are judged by the manifest the seeder writes last — not by the
+ * silence of an error, and not by the seed's reports alone, which stop
+ * arriving the moment the seed's process dies. When the weights are absent
+ * the seed for them is either running, in which case the wake joins it, or
+ * not, in which case the wake starts it and the caller waits. Either way the
+ * reply is the same retryable state naming the seed, so the caller's loop can
+ * keep polling without learning anything about how seeds work.
+ *
+ * Returns null when the weights are present and the wake may proceed.
+ */
+async function seedingGate(
+  env: string,
+  config: DeployConfig,
+): Promise<LambdaFunctionURLResult | null> {
+  let present: boolean;
+  try {
+    present = await weightsPresent(WEIGHTS_BUCKET, config);
+  } catch (err) {
+    // A failed manifest read is not "absent": read as absent, a transient
+    // glitch would pay for a full re-seed; read as present, the wake would
+    // boot on weights nobody verified. Say the check failed and let the
+    // caller re-ask, the way deploy answers a seed it cannot start.
+    console.log(JSON.stringify({ phase: 'seed-check', environment: env, error: errorName(err) }));
+    return jsonResponse(502, {
+      error: `could not check whether the weights are present: ${(err as Error).message}`,
+    });
+  }
+  if (present) {
+    return null;
+  }
+  const seedId = seedIdFor(config.runner, config.modelId, config.quant);
+  const follow = `follow it with \`spinloop remote seed status ${seedId}\``;
+
+  const inFlight = (await findSeedInstances(TAG_KEY, seedId)).filter((i) => seedAlive(i.state));
+  if (inFlight.length > 0) {
+    console.log(
+      JSON.stringify({ phase: 'seeding', environment: env, seedId, joined: inFlight[0].instanceId }),
+    );
+    return seedingReply(seedId, `seeding the weights — ${follow}`);
+  }
+
+  // Counted over alive seeds only: a stopped seed instance holds no compute,
+  // and it would be a cap that a dead body keeps filled.
+  const alive = (await findSeedInstances(TAG_KEY)).filter((i) => seedAlive(i.state));
+  if (alive.length >= MAX_CONCURRENT_SEEDS) {
+    console.log(JSON.stringify({ phase: 'seeding-cap', environment: env, seedId, running: alive.length }));
+    return seedingReply(
+      seedId,
+      `${alive.length} seeds are running (cap ${MAX_CONCURRENT_SEEDS}) — waiting for a slot; ${follow}`,
+    );
+  }
+
+  const infra = seedInfraFromEnv();
+  try {
+    const launched = await launchSeedInstance(buildSeedJob(config, infra, ''), infra);
+    console.log(JSON.stringify({ phase: 'seed-launched', environment: env, seedId, instanceId: launched.instanceId }));
+  } catch (err) {
+    // A refused launch is not a reason to fail the start that wanted the model
+    // served: the next poll retries it, and the idempotency token means a retry
+    // can never double the compute.
+    console.log(JSON.stringify({ phase: 'seed-launch', environment: env, seedId, error: errorName(err) }));
+    return seedingReply(
+      seedId,
+      `the seed could not be started (${(err as Error).message}) — retrying; ${follow}`,
+    );
+  }
+  return seedingReply(seedId, `seeding the weights — ${follow}`);
+}
+
 /** POST — launch the environment's instance if needed and block until serving. */
 async function wake(
   env: string,
@@ -246,6 +343,13 @@ async function wake(
     });
   }
   const baseUrl = baseUrlFor(eip.publicIp, ENGINE_PORT);
+
+  // Weights first: a launch against an incomplete prefix would boot the engine
+  // on it, and a re-wake would keep an old one alive on nothing.
+  const gate = await seedingGate(env, deployConfig);
+  if (gate) {
+    return gate;
+  }
 
   const existing = await findManagedInstance(TAG_KEY, TAG_VALUE, envFilter(env));
   let instanceId: string;

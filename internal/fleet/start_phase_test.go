@@ -54,6 +54,50 @@ func TestRenderPhaseIsComputedAtDrawTime(t *testing.T) {
 	}
 }
 
+// A seeding reply is not a boot: no instance exists yet, and the line counts
+// up from the first seeding reply. The attempts that follow it poll the same
+// fetch, so they must not restart the clock.
+func TestStartPhasesSeeding(t *testing.T) {
+	base := time.Date(2026, 9, 3, 12, 0, 0, 0, time.UTC)
+
+	var got []StartPhase
+	progress, onState := StartPhases(func(p StartPhase) { got = append(got, p) })
+
+	onState(remote.StateInFlight)
+	onState(stateSeeding)
+	progress("seeding the weights (seed llamacpp--org-model--Q4_K_M); retrying in 60s")
+	// The next attempt supersedes nothing: it polls the fetch the seeding
+	// reply reported, and the reply that follows reports the same fetch.
+	onState(remote.StateInFlight)
+	onState(stateSeeding)
+
+	want := []StartPhaseKind{PhaseAttempting, PhaseSeeding}
+	kinds := make([]StartPhaseKind, len(got))
+	for i, p := range got {
+		kinds[i] = p.Kind
+	}
+	if len(kinds) != len(want) {
+		t.Fatalf("phases = %v, want %v", kinds, want)
+	}
+	for i := range want {
+		if kinds[i] != want[i] {
+			t.Fatalf("phases = %v, want %v", kinds, want)
+		}
+	}
+	if got[1].Detail != stateSeeding {
+		t.Errorf("seeding phase detail = %q, want %q", got[1].Detail, stateSeeding)
+	}
+
+	// The rendered line counts up from the first seeding reply at two times.
+	seed := StartPhase{Kind: PhaseSeeding, Since: base, Detail: stateSeeding}
+	if line := RenderPhase(seed, base.Add(30*time.Second)); line != "seeding the weights (30s)" {
+		t.Errorf("RenderPhase(seed, +30s) = %q", line)
+	}
+	if line := RenderPhase(seed, base.Add(13*time.Minute)); line != "seeding the weights (13m 0s)" {
+		t.Errorf("RenderPhase(seed, +13m) = %q", line)
+	}
+}
+
 // The mapping from remote.Start's two callbacks onto phases: an attempt goes
 // out, is refused for capacity with a due time for the next one, and the
 // attempt that follows retires the refusal rather than leaving it standing

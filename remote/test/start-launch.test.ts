@@ -18,6 +18,7 @@ const LAMBDA_ENV = {
   SUBNET_IDS: 'subnet-test',
   INSTANCE_PROFILE_ARN: 'arn:aws:iam::0:instance-profile/test',
   WEIGHTS_BUCKET: 'test-bucket',
+  MAX_CONCURRENT_SEEDS: '2',
   AWS_REGION: 'us-east-1',
   BOOT_LOG_GROUP: '/test/boot',
   LLAMACPP_LOG_GROUP: '/test/llamacpp',
@@ -57,6 +58,12 @@ vi.mock('../lambda/shared/environments', async (importOriginal) => ({
   findEnvEip: (...args: unknown[]) => findEnvEip(...args),
   findEnvSecurityGroup: (...args: unknown[]) => findEnvSecurityGroup(...args),
   readEnvApiKey: (...args: unknown[]) => readEnvApiKey(...args),
+}));
+
+vi.mock('../lambda/shared/seed', () => ({
+  // The weights gate asks this on every wake; these tests are about the wake
+  // itself, so the weights are always present.
+  weightsPresent: async () => true,
 }));
 
 let handler: (event: LambdaFunctionURLEvent, context: Context) => Promise<LambdaFunctionURLResult>;

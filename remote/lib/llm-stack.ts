@@ -353,13 +353,17 @@ export class LlmStack extends cdk.Stack {
       logGroup: lambdaLogGroup('StartFnLogGroup', 'start'),
       environment: {
         ...commonEnv,
+        // Seeding: the weights gate launches the seed itself when the
+        // weights are not in S3 yet, the same path deploy takes, and reports
+        // the seed id back so the caller can follow it.
+        ...seedEnv,
+        MAX_CONCURRENT_SEEDS: String(cfg.maxConcurrentSeeds),
         AMI_ROLE_TAG_KEY,
         AMI_ROLE_TAG_VALUE,
         AMI_RUNNER_TAG_KEY,
         INSTANCE_TYPE: cfg.instanceType,
         SUBNET_IDS: vpc.publicSubnets.map((s) => s.subnetId).join(','),
         INSTANCE_PROFILE_ARN: instanceProfile.instanceProfileArn,
-        WEIGHTS_BUCKET: weightsBucket.bucketName,
         // Log groups the instance's CloudWatch agent ships to, one env var
         // per runner by convention (logGroupEnvVar). The group is fixed; the
         // stream (<env>/<instance-id>) is filled in at boot.
@@ -414,6 +418,12 @@ export class LlmStack extends cdk.Stack {
       }),
     );
     startFn.addToRolePolicy(describeStatement);
+    // The weights gate: launching the seed instance needs exactly the grants
+    // the deploy and seed Lambdas have — run it, tag it, pass the seed role,
+    // read the stock image id.
+    seedLaunchStatements().forEach((s) => startFn.addToRolePolicy(s));
+    // Read-only on the weights: only to check whether the manifest is there.
+    weightsBucket.grantRead(startFn, 'models/*');
     sendCommandStatements().forEach((s) => startFn.addToRolePolicy(s));
     // Find the latest baked AMI, the environment's EIP and its security group.
     // These Describe calls have no resource-level scoping.

@@ -326,6 +326,23 @@ var startRetryWait = 5 * time.Second
 // underway, not a capacity wait.
 const StateInFlight = "in-flight"
 
+// stateSeeding is the control plane's word for "the weights are still being
+// fetched" — no instance has been launched yet, so there is no boot to wait
+// on, and the reply's seedId is what an operator follows to see how far the
+// fetch has got.
+const stateSeeding = "seeding"
+
+// giveUpWaiting is Start's error when the caller's deadline expires mid-wait.
+// When the last reply was the seeding state, the useful next steps are
+// following the seed and resuming the wait, so the error carries both.
+func giveUpWaiting(ctx context.Context, state, seedID string) error {
+	if state == stateSeeding && seedID != "" {
+		return fmt.Errorf("gave up waiting for the endpoint: the weights are still seeding (seed %s) — follow it with `spinloop remote seed status %s`, and re-run start with a longer --timeout: %w",
+			seedID, seedID, ctx.Err())
+	}
+	return fmt.Errorf("gave up waiting for the endpoint: %w", ctx.Err())
+}
+
 // Start boots the instance and blocks until the model is serving, retrying
 // while the endpoint reports it is still starting. progress is called with a
 // status line before each wait. onState, when non-nil, is called with the raw
@@ -354,6 +371,11 @@ func Start(ctx context.Context, cfg Config, progress func(string), onState func(
 			startURL = u.String()
 		}
 	}
+	// The last reply's state and seed id, for the give-up error: a deadline
+	// that expires mid-seed is not the same situation as one that expires
+	// mid-boot, and the operator should be told which.
+	lastState := ""
+	lastSeedID := ""
 	for {
 		// Supersedes whatever the previous attempt reported — including a
 		// no-capacity reply: this attempt has not refused anything yet, and a
@@ -369,7 +391,7 @@ func Start(ctx context.Context, cfg Config, progress func(string), onState func(
 				progress(fmt.Sprintf("connection dropped (%v); retrying in %s", urlErr.Unwrap(), startRetryWait))
 				select {
 				case <-ctx.Done():
-					return nil, fmt.Errorf("gave up waiting for the endpoint: %w", ctx.Err())
+					return nil, giveUpWaiting(ctx, lastState, lastSeedID)
 				case <-time.After(startRetryWait):
 				}
 				continue
@@ -383,14 +405,21 @@ func Start(ctx context.Context, cfg Config, progress func(string), onState func(
 		case resp.StatusCode == http.StatusOK && resp.State == "ready":
 			return resp, nil
 		case resp.StatusCode == http.StatusServiceUnavailable:
+			lastState, lastSeedID = resp.State, resp.SeedID
 			wait := resp.RetryAfterSeconds
 			if wait <= 0 {
 				wait = 1
 			}
-			progress(fmt.Sprintf("instance %s; retrying in %ds", resp.State, wait))
+			// "instance <state>" would be a lie while the weights seed: there
+			// is no instance yet, and the seed is what the operator follows.
+			if resp.State == stateSeeding && resp.SeedID != "" {
+				progress(fmt.Sprintf("seeding the weights (seed %s); retrying in %ds", resp.SeedID, wait))
+			} else {
+				progress(fmt.Sprintf("instance %s; retrying in %ds", resp.State, wait))
+			}
 			select {
 			case <-ctx.Done():
-				return nil, fmt.Errorf("gave up waiting for the endpoint: %w", ctx.Err())
+				return nil, giveUpWaiting(ctx, lastState, lastSeedID)
 			case <-time.After(time.Duration(wait) * time.Second):
 			}
 		default:

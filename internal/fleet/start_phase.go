@@ -34,6 +34,10 @@ const (
 	// PhaseReconnecting: the attempt's connection dropped, and the next one is
 	// due at RetryAt.
 	PhaseReconnecting
+	// PhaseSeeding: the weights are still being fetched, so no instance has
+	// been launched yet and there is no boot to time — the count-up answers
+	// "how long has the fetch been going".
+	PhaseSeeding
 )
 
 // StartPhase is a start's current situation. It carries no rendered text and no
@@ -57,6 +61,7 @@ type StartPhase struct {
 const (
 	stateNoCapacity = "no-capacity"
 	stateReady      = "ready"
+	stateSeeding    = "seeding"
 )
 
 // RenderPhase is the phase's line at time now. A wait counts down towards
@@ -72,6 +77,11 @@ func RenderPhase(p StartPhase, now time.Time) string {
 			return "booting"
 		}
 		return "booting (" + formatPhaseDuration(now.Sub(p.Since)) + ")"
+	case PhaseSeeding:
+		if p.Since.IsZero() {
+			return "seeding the weights"
+		}
+		return "seeding the weights (" + formatPhaseDuration(now.Sub(p.Since)) + ")"
 	case PhaseReconnecting:
 		line := "connection dropped"
 		if p.Detail != "" {
@@ -163,8 +173,10 @@ func (t *startPhases) state(s string) {
 		// connection: each described the attempt before it. It does not
 		// supersede a boot — once a reply has reported the instance coming
 		// up, the attempts that follow are polls of that same boot, and its
-		// elapsed time counts from the first reply that reported it.
-		if t.phase.Kind != PhaseBooting || !t.begun {
+		// elapsed time counts from the first reply that reported it. A
+		// seeding wait is the same shape: the attempts that follow a seeding
+		// reply poll the same fetch, and its clock keeps running.
+		if t.phase.Kind != PhaseBooting && t.phase.Kind != PhaseSeeding || !t.begun {
 			t.enter(PhaseAttempting, "")
 		}
 	case s == stateReady:
@@ -176,6 +188,11 @@ func (t *startPhases) state(s string) {
 		// line remote.Start writes next, so the wait carries no due time
 		// until that line arrives.
 		t.enter(PhaseWaitingCapacity, s)
+	case s == stateSeeding:
+		// No instance exists yet, so this is not a boot: the fetch is what
+		// the count-up measures. enter() keeps Since on the first seeding
+		// reply, so repeated polls do not restart the clock.
+		t.enter(PhaseSeeding, s)
 	default:
 		t.enter(PhaseBooting, s)
 	}

@@ -192,6 +192,91 @@ func TestStart_RetriesUntilReady(t *testing.T) {
 	}
 }
 
+// A 503 seeding reply names the seed on every progress line — there is no
+// instance to speak of yet — and the loop keeps polling until the weights
+// are in and the model is serving.
+func TestStart_NamesTheSeedWhileSeeding(t *testing.T) {
+	stubAWSEnv(t)
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls++
+		w.Header().Set("Content-Type", "application/json")
+		if calls < 3 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			w.Write([]byte(`{"state":"seeding","seedId":"llamacpp--org-model--Q4_K_M","retry_after_seconds":0}`))
+			return
+		}
+		w.Write([]byte(`{"state":"ready","base_url":"http://198.51.100.1:8000/v1","api_key":"sk-test"}`))
+	}))
+	defer server.Close()
+
+	cfg := Config{StartURL: server.URL, StopURL: server.URL, Region: "eu-west-1"}
+	var progress []string
+	resp, err := Start(context.Background(), cfg, func(msg string) { progress = append(progress, msg) }, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.State != "ready" {
+		t.Errorf("unexpected response: %+v", resp)
+	}
+	if calls != 3 {
+		t.Errorf("expected 3 calls, got %d", calls)
+	}
+	for _, line := range progress {
+		if !strings.Contains(line, "seeding the weights") || !strings.Contains(line, "llamacpp--org-model--Q4_K_M") {
+			t.Errorf("progress line does not name the seed: %q", line)
+		}
+	}
+}
+
+// A deadline that expires mid-seed is not the generic give-up: the weights
+// are still being fetched, and the error carries the seed's follow command
+// and the longer-timeout hint.
+func TestStart_GiveUpDuringSeedingNamesTheSeed(t *testing.T) {
+	stubAWSEnv(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		w.Write([]byte(`{"state":"seeding","seedId":"llamacpp--org-model--Q4_K_M","retry_after_seconds":30}`))
+	}))
+	defer server.Close()
+
+	cfg := Config{StartURL: server.URL, StopURL: server.URL, Region: "eu-west-1"}
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	_, err := Start(ctx, cfg, func(string) {}, nil, nil)
+	if err == nil {
+		t.Fatal("expected an error when the deadline expires")
+	}
+	for _, want := range []string{"seeding", "llamacpp--org-model--Q4_K_M", "spinloop remote seed status", "--timeout"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("give-up error does not name %q: %v", want, err)
+		}
+	}
+}
+
+// A deadline that expires outside seeding keeps today's give-up message.
+func TestStart_GiveUpOutsideSeedingIsGeneric(t *testing.T) {
+	stubAWSEnv(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		w.Write([]byte(`{"state":"starting","retry_after_seconds":30}`))
+	}))
+	defer server.Close()
+
+	cfg := Config{StartURL: server.URL, StopURL: server.URL, Region: "eu-west-1"}
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	_, err := Start(ctx, cfg, func(string) {}, nil, nil)
+	if err == nil {
+		t.Fatal("expected an error when the deadline expires")
+	}
+	if want := "gave up waiting for the endpoint: context deadline exceeded"; err.Error() != want {
+		t.Errorf("give-up error = %q, want %q", err.Error(), want)
+	}
+}
+
 // onState must see both the raw state of every poll and each attempt as it is
 // issued, so a caller can tell a capacity wait apart from a boot rather than
 // assume the instance is starting.
