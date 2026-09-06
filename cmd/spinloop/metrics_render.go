@@ -137,6 +137,11 @@ const barLineW = 40
 // full row fits the tile exactly and the clip never takes the percentage.
 const dashBarLineW = 25
 
+// gaugeW is the gauge's draw width in the one-shot formats — the width
+// renderGauge has always drawn at. The serve view draws its gauges at
+// barLineW instead, so the gauge and the bar beneath it share one width.
+const gaugeW = 25
+
 // barGlyphs is the seven sub-full block elements the sparkline draws with,
 // lightest to heaviest: a series' value maps to the one whose fill height is
 // nearest. The set stops one grade short of the full block, so the tallest row
@@ -217,8 +222,7 @@ func renderSparkline(w io.Writer, label string, samples []float64, width int) {
 // filled portion in the state colour, the unfilled portion in light shade,
 // the percentage in the terminal's default colour. It draws the current
 // reading only — it carries no history.
-func renderGauge(w io.Writer, label string, pct float64) {
-	const width = 25
+func renderGauge(w io.Writer, label string, pct float64, width int) {
 	colour := ansiGreen
 	if pct > 90 {
 		colour = ansiRed
@@ -366,7 +370,25 @@ func renderStatBars(w io.Writer, cpu *metrics.CpuStat, mem *metrics.MemoryStat, 
 		if len(s.history) > 0 {
 			renderSparkline(w, s.label, s.history, lineW)
 		} else {
-			renderGauge(w, s.label, *s.current)
+			renderGauge(w, s.label, *s.current, gaugeW)
+		}
+	}
+}
+
+// renderStatCombined draws the resource series in the serve view's format:
+// each series as a gauge of its current reading with its retained history as
+// a sparkline beneath, so "now" and "trend" sit together per resource instead
+// of being a toggle. The gauge line carries the label and the sparkline line
+// passes a blank one, so the pair stacks in the label column; a series with
+// no retained history carries its gauge alone, and a series with no current
+// reading its sparkline alone, so the two halves never draw the same line.
+func renderStatCombined(w io.Writer, cpu *metrics.CpuStat, mem *metrics.MemoryStat, gpus []metrics.GpuStat, history []metrics.HistorySample, lineW int) {
+	for _, s := range barSeriesList(cpu, mem, gpus, history) {
+		if s.current != nil {
+			renderGauge(w, s.label, *s.current, lineW)
+		}
+		if len(s.history) > 0 {
+			renderSparkline(w, "", s.history, lineW)
 		}
 	}
 }
@@ -376,7 +398,7 @@ func renderStatBars(w io.Writer, cpu *metrics.CpuStat, mem *metrics.MemoryStat, 
 func renderStatGauges(w io.Writer, cpu *metrics.CpuStat, mem *metrics.MemoryStat, gpus []metrics.GpuStat) {
 	for _, s := range barSeriesList(cpu, mem, gpus, nil) {
 		if s.current != nil {
-			renderGauge(w, s.label, *s.current)
+			renderGauge(w, s.label, *s.current, gaugeW)
 		}
 	}
 }

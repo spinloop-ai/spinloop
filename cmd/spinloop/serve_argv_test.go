@@ -1,6 +1,7 @@
 package main
 
 import (
+	"io"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -185,7 +186,7 @@ func TestBuildServeArgvPresetlessPerEngine(t *testing.T) {
 			}
 			spinloopPath := filepath.Join(t.TempDir(), spinloop.DefaultFile)
 			captureStdout(t, func() {
-				argv, err := buildServeArgv(eng, tc.sel, spinloopPath)
+				argv, err := buildServeArgv(io.Discard, eng, tc.sel, spinloopPath)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -217,7 +218,7 @@ func TestBuildServeArgvPresetBranch(t *testing.T) {
 		var argv []string
 		captureStdout(t, func() {
 			var err error
-			argv, err = buildServeArgv(eng, sel, filepath.Join(dir, spinloop.DefaultFile))
+			argv, err = buildServeArgv(io.Discard, eng, sel, filepath.Join(dir, spinloop.DefaultFile))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -239,7 +240,7 @@ func TestBuildServeArgvPresetBranch(t *testing.T) {
 			t.Fatal(err)
 		}
 		sel := spinloop.Selection{Provider: "llamacpp", Model: "/a.gguf", Alias: "wrong", Preset: "preset.ini"}
-		_, err = buildServeArgv(eng, sel, filepath.Join(dir, spinloop.DefaultFile))
+		_, err = buildServeArgv(io.Discard, eng, sel, filepath.Join(dir, spinloop.DefaultFile))
 		if err == nil {
 			t.Fatal("want an error for an alias that matches none of several preset sections, got nil")
 		}

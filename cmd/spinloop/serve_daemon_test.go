@@ -5,6 +5,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -15,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spinloop-ai/spinloop/internal/daemon"
 	"github.com/spinloop-ai/spinloop/internal/remote"
 )
@@ -474,6 +476,380 @@ func TestCmdDaemon_StartCarriesDeployConfig(t *testing.T) {
 		}
 	case <-time.After(10 * time.Second):
 		t.Fatal("daemon did not exit on SIGINT")
+	}
+}
+
+// stubEngineView points llamaServerBinary at a script that records its argv,
+// writes the named line to its own stdout as it starts, then either runs the
+// remainder of body or sleeps until signalled, and restores the binary after.
+func stubEngineView(t *testing.T, argsFile, startupLine, body string) {
+	t.Helper()
+	script := filepath.Join(t.TempDir(), "llama-server")
+	src := "#!/bin/sh\nprintf '%s\\n' \"$@\" > " + argsFile + "\necho " + startupLine + "\n"
+	if body != "" {
+		src += body + "\n"
+	} else {
+		src += "trap 'exit 0' TERM\nwhile true; do sleep 0.05; done\n"
+	}
+	if err := os.WriteFile(script, []byte(src), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	orig := llamaServerBinary
+	llamaServerBinary = script
+	t.Cleanup(func() { llamaServerBinary = orig })
+}
+
+// fakeTerminal flips the gate serve checks for a terminal, so the view path
+// runs in the suite without one.
+func fakeTerminal(t *testing.T) {
+	t.Helper()
+	orig := stdoutIsTerminal
+	stdoutIsTerminal = func() bool { return true }
+	t.Cleanup(func() { stdoutIsTerminal = orig })
+}
+
+// fakeViewProgram runs the view on a program with injected input and output,
+// so the suite executes it without a terminal: input disabled, the key rules
+// being the model tests' — and output discarded, the frame being the render
+// tests'.
+func fakeViewProgram(t *testing.T) {
+	t.Helper()
+	orig := newServeProgram
+	newServeProgram = func(m tea.Model, opts ...tea.ProgramOption) *tea.Program {
+		return tea.NewProgram(m, tea.WithInput(nil), tea.WithOutput(io.Discard))
+	}
+	t.Cleanup(func() { newServeProgram = orig })
+}
+
+// TestCmdServe_ViewRunCapturesEngineOutput covers the view run end to end:
+// the engine's output lands in the state-dir engine log rather than on serve's
+// stdio, the engine starts with its metrics endpoint on, and the command
+// serve prints goes to stderr — stdout is the view's screen.
+func TestCmdServe_ViewRunCapturesEngineOutput(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv(daemon.TokenEnvVar, "tok")
+	argsFile := filepath.Join(t.TempDir(), "args")
+	stubEngineView(t, argsFile, "'engine up'", "sleep 0.3\necho 'engine down'\nexit 0")
+	fakeTerminal(t)
+	fakeViewProgram(t)
+	dir := t.TempDir()
+	spinloopPath := filepath.Join(dir, "Spinloop")
+	mustWrite(t, spinloopPath, "PROVIDER llamacpp\nMODEL org/model:Q4_K_M\n")
+
+	done := make(chan error, 1)
+	var stderr, stdout string
+	captureStdout(t, func() {
+		stderr = captureStderr(t, func() {
+			go func() { done <- cmdServe([]string{spinloopPath}) }()
+			select {
+			case err := <-done:
+				if err != nil {
+					t.Fatalf("serve exited with %v after a clean engine exit", err)
+				}
+			case <-time.After(20 * time.Second):
+				t.Fatal("serve did not exit after the engine did")
+			}
+		})
+	})
+	// The printed command goes to stderr, and stays off the view's screen.
+	if !strings.Contains(stderr, "llama-server") {
+		t.Errorf("the printed command must go to stderr under the view:\n%s", stderr)
+	}
+	if strings.Contains(stdout, "llama-server") {
+		t.Errorf("the printed command must stay off the view's screen:\n%s", stdout)
+	}
+	stateDir, err := daemon.StateDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	log := waitForFile(t, filepath.Join(stateDir, "engine.log"))
+	for _, want := range []string{"engine up", "engine down"} {
+		if !strings.Contains(log, want) {
+			t.Errorf("the engine log is missing %q:\n%s", want, log)
+		}
+	}
+	args := waitForFile(t, argsFile)
+	if !strings.Contains(args, "--metrics") {
+		t.Errorf("the view run must switch the metrics endpoint on:\n%s", args)
+	}
+}
+
+// TestCmdServe_ViewRunExitsWithEngineStatus covers the exit-status rule: an
+// engine that fails on its own takes serve down with it, whatever closed the
+// view.
+func TestCmdServe_ViewRunExitsWithEngineStatus(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv(daemon.TokenEnvVar, "tok")
+	argsFile := filepath.Join(t.TempDir(), "args")
+	stubEngineView(t, argsFile, "'engine up'", "exit 3")
+	fakeTerminal(t)
+	fakeViewProgram(t)
+	dir := t.TempDir()
+	spinloopPath := filepath.Join(dir, "Spinloop")
+	mustWrite(t, spinloopPath, "PROVIDER llamacpp\nMODEL org/model:Q4_K_M\n")
+
+	done := make(chan error, 1)
+	captureStdout(t, func() {
+		captureStderr(t, func() {
+			go func() { done <- cmdServe([]string{spinloopPath}) }()
+			select {
+			case err := <-done:
+				if err == nil {
+					t.Fatal("serve must report the engine's failure status")
+				}
+			case <-time.After(20 * time.Second):
+				t.Fatal("serve did not exit after the engine did")
+			}
+		})
+	})
+}
+
+// TestCmdServe_ViewQuitStopsTheEngine covers the quit key end to end: q goes
+// through the view's own stop — the engine goes down through the supervisor,
+// and serve exits cleanly after it is actually stopped. The Spinloop names no
+// MODEL, so the supervised run serves under its alias.
+func TestCmdServe_ViewQuitStopsTheEngine(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv(daemon.TokenEnvVar, "tok")
+	argsFile := filepath.Join(t.TempDir(), "args")
+	stubEngineView(t, argsFile, "'engine up'",
+		"trap 'echo \"engine stopped on TERM\"; exit 0' TERM\nwhile true; do sleep 0.05; done\n")
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "preset.ini"), samplePreset)
+	spinloopPath := filepath.Join(dir, "Spinloop")
+	mustWrite(t, spinloopPath, "PROVIDER llamacpp\nALIAS qwen\nPRESET preset.ini\n")
+
+	pr, pw := io.Pipe()
+	origProgram := newServeProgram
+	newServeProgram = func(m tea.Model, _ ...tea.ProgramOption) *tea.Program {
+		return tea.NewProgram(m, tea.WithInput(pr), tea.WithOutput(io.Discard))
+	}
+	t.Cleanup(func() {
+		newServeProgram = origProgram
+		pw.Close()
+	})
+	fakeTerminal(t)
+
+	go func() {
+		time.Sleep(2 * time.Second)
+		fmt.Fprint(pw, "q")
+	}()
+
+	done := make(chan error, 1)
+	captureStdout(t, func() {
+		captureStderr(t, func() {
+			go func() { done <- cmdServe([]string{spinloopPath}) }()
+			select {
+			case err := <-done:
+				if err != nil {
+					t.Fatalf("serve must exit cleanly after q, got %v", err)
+				}
+			case <-time.After(20 * time.Second):
+				t.Fatal("serve did not exit after q")
+			}
+		})
+	})
+	stateDir, err := daemon.StateDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	log := waitForFile(t, filepath.Join(stateDir, "engine.log"))
+	if !strings.Contains(log, "engine stopped on TERM") {
+		t.Errorf("the engine must be stopped through the supervisor on q:\n%s", log)
+	}
+}
+
+// TestCmdServe_DryRunOnTerminalNeverOpensTheView pins the gate's dry-run
+// half: on a terminal, --dry-run must still print the command and start
+// nothing — no view, no engine, no engine log.
+func TestCmdServe_DryRunOnTerminalNeverOpensTheView(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	argsFile := filepath.Join(t.TempDir(), "args")
+	stubEngineView(t, argsFile, "'engine up'", "exit 0")
+	fakeTerminal(t)
+	viewOpened := false
+	origProgram := newServeProgram
+	newServeProgram = func(m tea.Model, _ ...tea.ProgramOption) *tea.Program {
+		viewOpened = true
+		return tea.NewProgram(m, tea.WithInput(nil), tea.WithOutput(io.Discard))
+	}
+	t.Cleanup(func() { newServeProgram = origProgram })
+
+	dir := t.TempDir()
+	spinloopPath := filepath.Join(dir, "Spinloop")
+	mustWrite(t, spinloopPath, "PROVIDER llamacpp\nMODEL org/model:Q4_K_M\n")
+
+	out := captureStdout(t, func() {
+		captureStderr(t, func() {
+			if err := cmdServe([]string{"--dry-run", spinloopPath}); err != nil {
+				t.Fatalf("dry run: %v", err)
+			}
+		})
+	})
+	if viewOpened {
+		t.Error("--dry-run must not open the view, even on a terminal")
+	}
+	if !strings.Contains(out, "llama-server") {
+		t.Errorf("the dry run must still print the command on stdout:\n%s", out)
+	}
+	if _, err := os.Stat(argsFile); !os.IsNotExist(err) {
+		t.Error("the dry run must not start the engine")
+	}
+	stateDir, err := daemon.StateDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(stateDir, "engine.log")); !os.IsNotExist(err) {
+		t.Error("the dry run must not open an engine log")
+	}
+}
+
+// TestCmdServe_ViewRunMissingBinaryFailsAroundNoView covers the view's
+// startup order: the engine starts before the view opens, so a missing
+// binary fails with its install hint — and no view, no engine log.
+func TestCmdServe_ViewRunMissingBinaryFailsAroundNoView(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv(daemon.TokenEnvVar, "tok")
+	viewOpened := false
+	origProgram := newServeProgram
+	newServeProgram = func(m tea.Model, _ ...tea.ProgramOption) *tea.Program {
+		viewOpened = true
+		return tea.NewProgram(m, tea.WithInput(nil), tea.WithOutput(io.Discard))
+	}
+	t.Cleanup(func() { newServeProgram = origProgram })
+	origBin := llamaServerBinary
+	llamaServerBinary = filepath.Join(t.TempDir(), "no-such-llama-server")
+	t.Cleanup(func() { llamaServerBinary = origBin })
+	fakeTerminal(t)
+
+	dir := t.TempDir()
+	spinloopPath := filepath.Join(dir, "Spinloop")
+	mustWrite(t, spinloopPath, "PROVIDER llamacpp\nMODEL org/model:Q4_K_M\n")
+
+	err := cmdServe([]string{spinloopPath})
+	if err == nil {
+		t.Fatal("a missing engine binary must fail the serve")
+	}
+	if !strings.Contains(err.Error(), "not found") || !strings.Contains(err.Error(), "install llama.cpp") {
+		t.Errorf("the failure must carry the install hint: %v", err)
+	}
+	if viewOpened {
+		t.Error("a missing binary must fail around no view")
+	}
+	stateDir, serr := daemon.StateDir()
+	if serr != nil {
+		t.Fatal(serr)
+	}
+	log, _ := os.ReadFile(filepath.Join(stateDir, "engine.log"))
+	if len(log) != 0 {
+		t.Errorf("a missing binary must not write an engine log: %q", log)
+	}
+}
+
+// TestCmdServe_SupervisedRunRefusesAnInsecureListen covers the control API's
+// listen guard on the supervised path: a non-loopback address without a token
+// is refused before the engine starts — nothing listens, nothing runs.
+func TestCmdServe_SupervisedRunRefusesAnInsecureListen(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv(daemon.TokenEnvVar, "")
+	argsFile := filepath.Join(t.TempDir(), "args")
+	stubEngineView(t, argsFile, "'engine up'", "exit 0")
+
+	dir := t.TempDir()
+	spinloopPath := filepath.Join(dir, "Spinloop")
+	mustWrite(t, spinloopPath, "PROVIDER llamacpp\nMODEL org/model:Q4_K_M\n")
+
+	err := cmdServe([]string{"-a", "--api-addr", "0.0.0.0:0", spinloopPath})
+	if err == nil {
+		t.Fatal("a non-loopback listen without a token must be refused")
+	}
+	if !strings.Contains(err.Error(), "refusing to serve the control API on non-loopback") {
+		t.Errorf("the refusal must name what it refuses and the fix: %v", err)
+	}
+	if _, statErr := os.Stat(argsFile); !os.IsNotExist(statErr) {
+		t.Error("the engine must not start when the listen is refused")
+	}
+}
+
+// TestCmdServe_ViewRunAPILogServesTheCapture covers serve --api under the
+// view: the control API listens beside the run, and its log endpoint serves
+// the captured engine log rather than reporting the log missing.
+func TestCmdServe_ViewRunAPILogServesTheCapture(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv(daemon.TokenEnvVar, "tok")
+	argsFile := filepath.Join(t.TempDir(), "args")
+	stubEngineView(t, argsFile, "'boot line'", "")
+	fakeTerminal(t)
+	fakeViewProgram(t)
+	dir := t.TempDir()
+	spinloopPath := filepath.Join(dir, "Spinloop")
+	mustWrite(t, spinloopPath, "PROVIDER llamacpp\nMODEL org/model:Q4_K_M\n")
+
+	waitAddr := apiAddrFromStderr(t)
+	done := make(chan error, 1)
+	go func() {
+		var serveErr error
+		captureStdout(t, func() {
+			serveErr = cmdServe([]string{"-a", "--api-addr", "127.0.0.1:0", spinloopPath})
+		})
+		done <- serveErr
+	}()
+	base := "http://" + waitAddr()
+
+	// The engine's output reaches the log the API serves, not its stdio.
+	deadline := time.Now().Add(10 * time.Second)
+	var code int
+	var body map[string]any
+	for {
+		code, body = apiDo(t, "GET", base+"/v1/logs", "tok", "")
+		content, _ := body["content"].(string)
+		if code == 200 && strings.Contains(content, "boot line") {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the log endpoint never carried the engine's output: %d %v", code, body)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	// Stop over the API; the stop on request exits serve as success.
+	if code, body := apiDo(t, "POST", base+"/v1/stop", "tok", ""); code != 200 || body["state"] != "stopped" {
+		t.Fatalf("stop = %d %v", code, body)
+	}
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("serve exited with %v after an API stop", err)
+		}
+	case <-time.After(20 * time.Second):
+		t.Fatal("serve did not exit after the foreground engine stopped")
+	}
+}
+
+// TestCmdServe_ForegroundAPIStopExitsServe covers the non-terminal --api run
+// against the same shared construction: the engine runs in the foreground
+// with stdio forwarded, the API listens beside it, and a stop over the API
+// exits serve as success.
+// TestCmdServe_OffTerminalCapturesNothing covers the other side of the gate:
+// off the terminal the run forwards the engine's output to serve's stdio and
+// writes no engine log file — the capture is the view's own.
+func TestCmdServe_OffTerminalCapturesNothing(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	stateDir, err := daemon.StateDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stubLlamaServer(t, filepath.Join(t.TempDir(), "args"))
+	spinloopPath := writePresetSpinloop(t, "PROVIDER llamacpp\nPRESET ./preset.ini\nALIAS qwen\n")
+	captureStdout(t, func() {
+		captureStderr(t, func() {
+			if err := cmdServe([]string{spinloopPath}); err != nil {
+				t.Error(err)
+			}
+		})
+	})
+	if _, err := os.Stat(filepath.Join(stateDir, "engine.log")); !os.IsNotExist(err) {
+		t.Errorf("a run off the terminal must write no engine log (stat = %v)", err)
 	}
 }
 
