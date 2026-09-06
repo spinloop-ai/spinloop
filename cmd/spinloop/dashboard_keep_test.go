@@ -359,39 +359,58 @@ func TestDashAbortDrivesNothingOnAKeep(t *testing.T) {
 	}
 }
 
-// The keep hint shows only where the key would drive something: an idle remote
-// node shows it, a local node hides it, and a busy remote node hides it.
+// The keep hint shows only where the key would drive something: a remote node
+// shows it, a local node hides it, and a busy remote node hides it. The start
+// and stop entries sit beside it by the node's own state: a stopped remote
+// environment shows keep and start, a running one shows keep and stop, and a
+// busy one shows neither.
 func TestDashKeepHintOnlyWhereItDrivesSomething(t *testing.T) {
-	t.Run("idle remote shows it", func(t *testing.T) {
+	read := func(state string) fleet.NodeResult {
+		return fleet.NodeResult{Name: "env", Outcome: fleet.OutcomeOK, Metrics: metrics.Stats{State: state}}
+	}
+	t.Run("stopped remote shows keep and start", func(t *testing.T) {
 		node := &keeperDashNode{f: newFakeDashNode("stopped")}
 		m := keeperModel(node)
-		if !strings.Contains(m.gridKeys(), "k keep") {
-			t.Errorf("grid hint missing the keep key: %q", m.gridKeys())
+		m.results[0] = read("stopped")
+		if got, want := m.gridKeys(), "↑↓←→ move   s start   k keep   g format   r refresh   q quit"; got != want {
+			t.Errorf("grid hint:\ngot:  %q\nwant: %q", got, want)
 		}
-		if !strings.Contains(m.detailKeys(), "k keep") {
-			t.Errorf("detail hint missing the keep key: %q", m.detailKeys())
+		if got, want := m.detailKeys(), "esc back   s start   k keep   f follow"; got != want {
+			t.Errorf("detail hint:\ngot:  %q\nwant: %q", got, want)
+		}
+	})
+	t.Run("running remote shows keep and stop", func(t *testing.T) {
+		node := &keeperDashNode{f: newFakeDashNode("running")}
+		m := keeperModel(node)
+		m.results[0] = read("running")
+		if got, want := m.gridKeys(), "↑↓←→ move   k keep   x stop   g format   r refresh   q quit"; got != want {
+			t.Errorf("grid hint:\ngot:  %q\nwant: %q", got, want)
+		}
+		if got, want := m.detailKeys(), "esc back   k keep   x stop   f follow"; got != want {
+			t.Errorf("detail hint:\ngot:  %q\nwant: %q", got, want)
 		}
 	})
 	t.Run("local node hides it", func(t *testing.T) {
 		f := newFakeDashNode("stopped")
 		m := &dashModel{
 			entries: []dashEntry{{name: "box", kind: fleet.KindDaemon, node: f}},
-			results: []fleet.NodeResult{{Name: "box"}},
+			results: []fleet.NodeResult{{Name: "box", Outcome: fleet.OutcomeOK, Metrics: metrics.Stats{State: "stopped"}}},
 			actions: make([]dashAction, 1),
 			width:   120, height: 40,
 		}
-		if strings.Contains(m.gridKeys(), "k keep") {
-			t.Errorf("grid hint offers a keep a local node cannot take: %q", m.gridKeys())
+		if got, want := m.gridKeys(), "↑↓←→ move   s start   g format   r refresh   q quit"; got != want {
+			t.Errorf("grid hint:\ngot:  %q\nwant: %q", got, want)
 		}
 	})
 	t.Run("busy remote hides it", func(t *testing.T) {
 		node := &keeperDashNode{f: newFakeDashNode("stopped")}
 		m := keeperModel(node)
+		m.results[0] = read("stopped")
 		m = openKeepPrompt(t, m)
 		next, _ := m.Update(dashKey("enter"))
 		m = next.(*dashModel)
-		if strings.Contains(m.gridKeys(), "k keep") {
-			t.Errorf("grid hint offers a second keep while one is in flight: %q", m.gridKeys())
+		if got, want := m.gridKeys(), "↑↓←→ move   g format   r refresh   q quit"; got != want {
+			t.Errorf("grid hint:\ngot:  %q\nwant: %q", got, want)
 		}
 	})
 }
