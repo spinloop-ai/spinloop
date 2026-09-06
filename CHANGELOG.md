@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [1.33.0] - 2026-09-06
+### Added
+- feat: add spinloop up to start a directory's engine
+- feat: add the sparkline bar format, rename bar to gauge
+
+### Changed
+- chore: bumps openspec commands and skills to 1.8.0
+- docs: progressively disclose serve options
+- docs: show a real fleet dashboard in the README
+
+### Fixed
+- fix: use a valid mtplx scheduler mode in the example preset
+
 ## [1.32.0] - 2026-09-04
 ### Added
 - feat(fleet): rebuild the dashboard's start and status logic
