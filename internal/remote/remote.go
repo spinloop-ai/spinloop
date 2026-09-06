@@ -745,6 +745,11 @@ type StatsResponse struct {
 	// the daemon's /v1/status by the stats Lambda. Empty when the daemon was
 	// unreachable or the control plane predates this.
 	Version string `json:"version"`
+	// RetainUntil is the instance's retention deadline, RFC 3339, read from the
+	// Retain-Until tag by the stats Lambda. Empty when the instance has no tag
+	// or its deadline has already passed — the reply carries it only while it
+	// still keeps the instance alive — and for control planes that predate keep.
+	RetainUntil string `json:"retainUntil"`
 }
 
 // The stat sub-types are aliases into internal/metrics, their canonical home

@@ -52,6 +52,13 @@ type Stats struct {
 	// no engine is running, its runner has no known health-check convention,
 	// or this daemon predates the check.
 	Ready string `json:"ready,omitempty"`
+	// RetainUntil is the environment's retention deadline, RFC 3339: the idle
+	// sweep will not terminate the instance before it. It is a property of the
+	// cloud instance, not the engine, so it is empty for local daemon nodes and
+	// for remote environments without an update URL. Empty once the deadline
+	// has passed, because the stats reply drops it there — a past tag keeps
+	// nothing. Formatters omit the line when it is empty.
+	RetainUntil string `json:"retainUntil,omitempty"`
 }
 
 // TokenStats holds per-engine token/request counters from /metrics.

@@ -286,7 +286,7 @@ func reasonFor(c candidate, w Want, woken bool) string {
 	case c.result.Status.LastActiveAt == "":
 		return fmt.Sprintf("serving %s, no work yet (prefer %s)", serving, w.prefer())
 	default:
-		return fmt.Sprintf("serving %s, last active %ds ago (prefer %s)",
+		return fmt.Sprintf("serving %s, active %ds ago (prefer %s)",
 			serving, c.result.Status.IdleSeconds, w.prefer())
 	}
 }

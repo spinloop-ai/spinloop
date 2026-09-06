@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spinloop-ai/spinloop/internal/daemon"
@@ -68,7 +69,13 @@ type dashModel struct {
 	cursor    int // the selected node
 	scrollRow int // the first grid row on screen
 
-	confirm    bool // a stop is waiting on its confirmation
+	confirm bool // a stop is waiting on its confirmation
+	// A keep is waiting on its duration: the prompt is open, the duration typed
+	// so far (pre-filled so the common case is one Enter), and the parse reason
+	// shown at the foot when a confirmed entry is not a positive duration.
+	keepPrompt bool
+	keepBuf    string
+	keepErr    string
 	statusLine string
 
 	// gauge is the board's resource-series format: false draws the bar
@@ -159,12 +166,16 @@ type dashActionProgressMsg struct {
 	phase fleet.StartPhase
 }
 
-// dashActionMsg is one completed start or stop.
+// dashActionMsg is one completed start, stop, or keep.
 type dashActionMsg struct {
 	node   string
-	verb   string // "start" or "stop"
+	verb   string // "start", "stop", or "keep"
 	status daemon.StatusResponse
 	err    error
+	// retainUntil is the deadline a keep set, RFC 3339, carried so the footer's
+	// outcome can name it. Empty for a start or stop, and for a keep that failed
+	// before the control plane set anything.
+	retainUntil string
 }
 
 // dashTickCmd schedules the next fast tick. The tick is one-shot, so every
@@ -281,6 +292,14 @@ func (m *dashModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.applyDetailLog(msg.result)
 	case tea.KeyMsg:
+		// The keep prompt stands in front of everything: while it is open,
+		// every key goes to it — navigation, selection, refresh, even the stop
+		// confirmation — so the board holds still until the duration is entered
+		// or cancelled. It is checked before confirm and detail so it works
+		// whether it was opened from the grid or the detail view.
+		if m.keepPrompt {
+			return m, m.updateKeepPromptKey(msg)
+		}
 		if m.confirm {
 			switch msg.String() {
 			case "y":
@@ -346,6 +365,15 @@ func (m *dashModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "s":
 			if len(m.entries) > 0 && m.actions[m.cursor].verb == "" {
 				cmd = m.beginAction("start")
+			}
+		case "k":
+			// Open the duration prompt, pre-filled so the common case is one
+			// Enter. keepOffered gates it to a node that can be kept and has
+			// nothing in flight; elsewhere the key drives nothing.
+			if m.keepOffered() {
+				m.keepPrompt = true
+				m.keepBuf = "4h"
+				m.keepErr = ""
 			}
 		case "a":
 			// End the wait on the node's in-flight action — the one-shot
@@ -515,6 +543,11 @@ func dashActionLine(msg dashActionMsg, aborted bool) string {
 		}
 		return msg.node + ": " + msg.verb + " failed — " + r.Detail()
 	}
+	if msg.verb == "keep" {
+		// A keep has no engine state to report — its result is the deadline the
+		// control plane set, which is what the operator came to set.
+		return msg.node + ": keep — retain until " + msg.retainUntil
+	}
 	state := msg.status.State
 	if state == "" {
 		state = "done"
@@ -583,6 +616,94 @@ func (m *dashModel) beginAction(verb string) tea.Cmd {
 	return run
 }
 
+// beginKeep sets off a keep of the selected node for the confirmed duration.
+// It reuses beginAction's scaffolding — one action per node, the tile's
+// spinner, the short read interval for the duration of the call — but the call
+// itself is a keep, not a start or stop: the node must be a Keeper (a remote
+// environment), and the call returns the deadline it set rather than an engine
+// state. A node that is not a Keeper, or that already has an action in flight,
+// is driven by nothing, and its reason lands on the status line.
+func (m *dashModel) beginKeep(d time.Duration) tea.Cmd {
+	e := m.entries[m.cursor]
+	m.keepPrompt = false
+	m.keepBuf = ""
+	m.keepErr = ""
+	if e.node == nil {
+		m.statusLine = e.name + ": " + e.standing.Detail()
+		return nil
+	}
+	if m.actions[m.cursor].verb != "" {
+		m.statusLine = e.name + ": still " + dashVerbProgress(m.actions[m.cursor].verb)
+		return nil
+	}
+	keeper, ok := e.node.(fleet.Keeper)
+	if !ok {
+		m.statusLine = e.name + ": keep needs a remote environment"
+		return nil
+	}
+	spin := !m.actionInFlight()
+	ctx, cancel := context.WithCancel(context.Background())
+	m.actions[m.cursor] = dashAction{verb: "keep", since: dashNow(), cancel: cancel}
+	// The node is read on the short interval for the duration of the action,
+	// starting now rather than at its kind's next due time: what a keep changed
+	// is its own read's retainUntil.
+	m.scheduleRead(m.cursor, time.Time{})
+	m.statusLine = dashVerbProgress("keep") + " " + e.name + "…"
+	run := func() tea.Msg {
+		deadline, err := keeper.Keep(ctx, d)
+		cancel()
+		return dashActionMsg{node: e.name, verb: "keep", retainUntil: deadline, err: err}
+	}
+	if spin {
+		return tea.Batch(run, dashSpinTickCmd())
+	}
+	return run
+}
+
+// updateKeepPromptKey answers the keys the keep prompt reads: printable runes
+// append to the duration, backspace removes the last, Enter confirms, esc
+// cancels, and q/Ctrl+C cancels and quits (mirroring the stop confirmation's
+// own quit). A confirmed entry that is not a positive duration leaves the
+// prompt open and names why at the foot, so a mistyped entry is corrected in
+// place rather than lost.
+func (m *dashModel) updateKeepPromptKey(msg tea.KeyMsg) tea.Cmd {
+	switch s := msg.String(); {
+	case s == "enter":
+		d, err := time.ParseDuration(strings.TrimSpace(m.keepBuf))
+		if err != nil || d <= 0 {
+			m.keepErr = "enter a duration like 4h"
+			return nil
+		}
+		return m.beginKeep(d)
+	case s == "backspace":
+		m.keepBuf = chopLastRune(m.keepBuf)
+		m.keepErr = ""
+	case s == "esc":
+		m.keepPrompt = false
+		m.keepBuf = ""
+		m.keepErr = ""
+	case s == "ctrl+c", s == "q":
+		m.keepPrompt = false
+		m.keepBuf = ""
+		m.keepErr = ""
+		return tea.Quit
+	case msg.Type == tea.KeyRunes:
+		m.keepBuf += s
+		m.keepErr = ""
+	}
+	return nil
+}
+
+// chopLastRune drops the final rune from a string, counting a wide rune as the
+// bytes that make it up rather than cutting a UTF-8 sequence mid-way.
+func chopLastRune(s string) string {
+	if s == "" {
+		return s
+	}
+	_, size := utf8.DecodeLastRuneInString(s)
+	return s[:len(s)-size]
+}
+
 // abortAction ends the wait on the selected node's in-flight start. Only a
 // start is abortable: it is the one action with no deadline of its own — a
 // cold cloud wake takes minutes, so a wait the operator no longer wants to
@@ -615,6 +736,41 @@ func (m *dashModel) abortAction() {
 // nothing for the node it describes.
 func (m dashModel) canAbort() bool {
 	return len(m.entries) > 0 && m.actions[m.cursor].verb == "start"
+}
+
+// keepOffered reports whether the keep key would do anything for the node under
+// the cursor: the node must support a keep (a remote environment) and have
+// nothing in flight. A local daemon node has no retention tag to set, and a
+// node already acting takes no second action. The footer uses this to include
+// the keep hint only where it would drive something, the same way canAbort
+// gates the abort hint.
+func (m dashModel) keepOffered() bool {
+	if len(m.entries) == 0 {
+		return false
+	}
+	if m.actions[m.cursor].verb != "" {
+		return false
+	}
+	_, ok := m.entries[m.cursor].node.(fleet.Keeper)
+	return ok
+}
+
+// gridKeys and detailKeys are the two footers' key help with the keep entry
+// included only where keepOffered says the node under the cursor can be kept —
+// the same gate the k key itself answers to, so a hint is never shown for a key
+// that would drive nothing on that node.
+func (m dashModel) gridKeys() string {
+	if m.keepOffered() {
+		return "↑↓←→ move   s start   k keep   a abort   x stop   r refresh   q quit"
+	}
+	return dashGridKeys
+}
+
+func (m dashModel) detailKeys() string {
+	if m.keepOffered() {
+		return "esc back   s start   k keep   x stop   a abort   f follow"
+	}
+	return dashDetailKeys
 }
 
 // indexOf finds an entry by name. Fleet-file names are unique — the fleet
@@ -684,7 +840,7 @@ func (m dashModel) View() string {
 	if hi > lo {
 		parts = append(parts, strings.Join(rows[lo:hi], "\n"))
 	}
-	parts = append(parts, m.footerLine(w, dashFooterHints(dashGridKeys, m.canAbort())))
+	parts = append(parts, m.footerLine(w, dashFooterHints(m.gridKeys(), m.canAbort())))
 	return strings.Join(parts, "\n")
 }
 
@@ -711,7 +867,16 @@ const dashGridKeys = "↑↓←→ move   s start   a abort   x stop   g format 
 // splitting them on a space would draw their first word as though it were one.
 func (m dashModel) footerLine(w int, keys string) string {
 	line := dashKeyHints(keys)
-	if m.confirm && len(m.entries) > 0 {
+	if m.keepPrompt && len(m.entries) > 0 {
+		// The prompt replaces the key help for its life: what is being typed,
+		// and the two keys that resolve it. The parse reason, when a confirmed
+		// entry was not a duration, rides at the foot beside the status line.
+		line = "keep " + m.entries[m.cursor].name + " for: " + m.keepBuf + "_ " + dashHintGap +
+			dashKeyHints("enter keep"+dashHintGap+"esc cancel")
+		if m.keepErr != "" {
+			line += "   " + m.keepErr
+		}
+	} else if m.confirm && len(m.entries) > 0 {
 		line = "stop " + m.entries[m.cursor].name + "?" + dashHintGap +
 			dashKeyHints("y yes"+dashHintGap+"n no")
 	}

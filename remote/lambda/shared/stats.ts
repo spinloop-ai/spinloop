@@ -109,4 +109,13 @@ export interface StatsResult {
    * the field — the formatters simply omit the line.
    */
   version?: string;
+  /**
+   * The instance's retention deadline, RFC 3339: the idle sweep will not
+   * terminate it before this. Carried only while the instance's Retain-Until
+   * tag is still a time in the future — a passed deadline keeps nothing, so it
+   * is dropped here, and an untagged instance has none. It is a property of the
+   * cloud instance, not the engine, so it is present whatever the engine's
+   * state — a stopped, retained instance still reports it.
+   */
+  retainUntil?: string;
 }

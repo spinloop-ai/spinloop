@@ -26,11 +26,15 @@ func fleetDashboardCmd() *cobra.Command {
 what the bar format of fleet metrics prints — state, what it serves, the
 resource bars, the token counters — repainted on an interval.
 
-The view is read-only apart from three keys: s starts the selected node, a
-abandons a start or stop still in flight on it (the wait ends, the node is
-free again — a wake the cloud is carrying goes on), x stops it after a
-confirmation. The arrow keys move the selection, r forces a refresh, q or
-Ctrl+C leaves.
+The view is read-only apart from four keys: s starts the selected node, k
+keeps a remote environment for a duration you type — it asks how long,
+pre-filled with 4h, and reports the deadline the control plane set when the
+keep is done — a abandons a start still in flight on it (the wait ends, the
+node is free again — a wake the cloud is carrying goes on), x stops it after
+a confirmation. The arrow keys move the selection, r forces a refresh, q or
+Ctrl+C leaves. The keep key shows only for a node that can be kept — a remote
+environment — and a kept environment's tile and detail view carry its
+deadline beside the last-active line, whatever the engine's state.
 
 A node that cannot be reached is still a tile, showing why, and a node whose
 token reference is unresolvable holds its reason for the life of the view.

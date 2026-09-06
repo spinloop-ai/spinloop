@@ -13,7 +13,7 @@ func TestStatusFactServingText(t *testing.T) {
 		UptimeSeconds: 30, LastActiveAt: "2026-01-02T00:00:00Z", IdleSeconds: 30,
 	}
 	got := f.servingText()
-	for _, want := range []string{"llamacpp  qwen", "(up 30s)", "(last active 30s ago)", "(1.2.0)"} {
+	for _, want := range []string{"llamacpp  qwen", "(up 30s)", "(active 30s ago)", "(1.2.0)"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("servingText %q missing %q", got, want)
 		}

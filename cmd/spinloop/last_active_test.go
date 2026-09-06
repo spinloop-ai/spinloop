@@ -52,13 +52,13 @@ func TestRemoteMetricsBarShowsLastActive(t *testing.T) {
 			t.Fatalf("cmdRemoteMetrics: %v", err)
 		}
 	})
-	if !strings.Contains(out, "last active 2m 5s ago") {
-		t.Errorf("bar format missing the last-active line:\n%s", out)
+	if !strings.Contains(out, "active    2m 5s ago") {
+		t.Errorf("bar format missing the active line:\n%s", out)
 	}
 	// It belongs between the header and the bars: a fact about the endpoint,
 	// read before the utilisation readings rather than among them.
 	header := strings.Index(out, "g6e.xlarge")
-	active := strings.Index(out, "last active")
+	active := strings.Index(out, "active")
 	bars := strings.Index(out, "CPU")
 	if !(header < active && active < bars) {
 		t.Errorf("last-active line is not between the header and the bars:\n%s", out)
@@ -74,11 +74,11 @@ func TestRemoteMetricsTableShowsLastActive(t *testing.T) {
 		}
 	})
 	// Padded to the same key column as its neighbours, and beside uptime.
-	if !strings.Contains(out, "last active:  2m 5s ago") {
-		t.Errorf("table format missing the last-active row:\n%s", out)
+	if !strings.Contains(out, "active:       2m 5s ago") {
+		t.Errorf("table format missing the active row:\n%s", out)
 	}
-	if strings.Index(out, "uptime:") > strings.Index(out, "last active:") {
-		t.Errorf("last active should follow uptime:\n%s", out)
+	if strings.Index(out, "uptime:") > strings.Index(out, "active:") {
+		t.Errorf("active should follow uptime:\n%s", out)
 	}
 }
 
@@ -119,8 +119,8 @@ func TestRemoteMetricsStoppedStillShowsLastActive(t *testing.T) {
 	// The bar format indents the line to the bar-label column; the table
 	// format makes it a key-value row. Same fact, each format's own idiom.
 	for format, want := range map[string]string{
-		"bar":   "last active 1h 0m 0s ago",
-		"table": "last active:  1h 0m 0s ago",
+		"bar":   "active    1h 0m 0s ago",
+		"table": "active:       1h 0m 0s ago",
 	} {
 		t.Run(format, func(t *testing.T) {
 			out := captureStdout(t, func() {
@@ -149,8 +149,8 @@ func TestLastActiveZeroIdleStillRenders(t *testing.T) {
 	}`)
 
 	for format, want := range map[string]string{
-		"bar":   "last active 0s ago",
-		"table": "last active:  0s ago",
+		"bar":   "active    0s ago",
+		"table": "active:       0s ago",
 	} {
 		t.Run(format, func(t *testing.T) {
 			out := captureStdout(t, func() {
@@ -181,7 +181,7 @@ func TestLastActiveOmittedWithoutATimestamp(t *testing.T) {
 				}
 			})
 			// No line at all, rather than one implying it has sat unused.
-			if strings.Contains(out, "last active") {
+			if strings.Contains(out, "active") {
 				t.Errorf("%s format invented activity from nothing:\n%s", format, out)
 			}
 			if !strings.Contains(out, "CPU") {
@@ -219,8 +219,8 @@ func TestRemoteStatusShowsLastActive(t *testing.T) {
 			t.Fatalf("cmdRemoteStatus: %v", err)
 		}
 	})
-	if !strings.Contains(out, "last active: 2m 5s ago") {
-		t.Errorf("status missing the last-active line:\n%s", out)
+	if !strings.Contains(out, "active: 2m 5s ago") {
+		t.Errorf("status missing the active line:\n%s", out)
 	}
 	// The lines it already printed are untouched.
 	for _, want := range []string{"state: running", "healthy: true", "base_url: http://198.51.100.7:8000"} {
@@ -238,7 +238,7 @@ func TestRemoteStatusZeroIdleStillRenders(t *testing.T) {
 			t.Fatalf("cmdRemoteStatus: %v", err)
 		}
 	})
-	if !strings.Contains(out, "last active: 0s ago") {
+	if !strings.Contains(out, "active: 0s ago") {
 		t.Errorf("status hid an endpoint that is working right now:\n%s", out)
 	}
 }
@@ -253,7 +253,7 @@ func TestRemoteStatusOmitsLastActiveWhenAbsent(t *testing.T) {
 			t.Fatalf("cmdRemoteStatus: %v", err)
 		}
 	})
-	if strings.Contains(out, "last active") {
+	if strings.Contains(out, "active") {
 		t.Errorf("status invented activity for a stopped instance:\n%s", out)
 	}
 	if !strings.Contains(out, "state: stopped") {
@@ -290,8 +290,8 @@ func TestFleetMetricsShowsLastActive(t *testing.T) {
 					t.Fatalf("cmdFleet metrics: %v", err)
 				}
 			})
-			if !strings.Contains(out, "last active 2m 5s ago") {
-				t.Errorf("fleet %s metrics missing the last-active line:\n%s", format, out)
+			if !strings.Contains(out, "active    2m 5s ago") {
+				t.Errorf("fleet %s metrics missing the active line:\n%s", format, out)
 			}
 		})
 	}
@@ -341,7 +341,7 @@ func TestFleetMetricsOmitsLastActiveWithoutActivity(t *testing.T) {
 			t.Fatalf("cmdFleet metrics: %v", err)
 		}
 	})
-	if strings.Contains(out, "last active") {
+	if strings.Contains(out, "active") {
 		t.Errorf("fleet metrics claimed activity a node never reported:\n%s", out)
 	}
 }
@@ -360,7 +360,7 @@ func TestFleetMetricsStoppedNodeStillShowsLastActive(t *testing.T) {
 			t.Fatalf("cmdFleet metrics: %v", err)
 		}
 	})
-	if !strings.Contains(out, "last active 10m 0s ago") {
-		t.Errorf("a stopped node dropped its last-active figure:\n%s", out)
+	if !strings.Contains(out, "active    10m 0s ago") {
+		t.Errorf("a stopped node dropped its active figure:\n%s", out)
 	}
 }

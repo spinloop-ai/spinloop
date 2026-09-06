@@ -92,6 +92,15 @@ func (m *dashModel) updateDetailKey(msg tea.KeyMsg) tea.Cmd {
 		if len(m.entries) > 0 && m.actions[m.cursor].verb == "" {
 			return m.beginAction("start")
 		}
+	case "k":
+		// Open the duration prompt on the node in view, the same way the grid
+		// does — kept in the model, so it is checked before this view's own
+		// keys once it is open.
+		if m.keepOffered() {
+			m.keepPrompt = true
+			m.keepBuf = "4h"
+			m.keepErr = ""
+		}
 	case "a":
 		if len(m.entries) > 0 {
 			m.abortAction()
@@ -244,6 +253,6 @@ func (m dashModel) detailView() string {
 		parts = append(parts, dashClip(line, w))
 	}
 	parts = append(parts, divider)
-	parts = append(parts, m.footerLine(w, dashFooterHints(dashDetailKeys, m.canAbort())))
+	parts = append(parts, m.footerLine(w, dashFooterHints(m.detailKeys(), m.canAbort())))
 	return strings.Join(parts, "\n")
 }

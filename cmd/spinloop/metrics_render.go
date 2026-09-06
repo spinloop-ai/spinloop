@@ -9,6 +9,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/spinloop-ai/spinloop/internal/metrics"
 )
@@ -31,22 +32,89 @@ func lastActiveText(lastActiveAt string, idleSeconds int) string {
 	return formatDuration(idleSeconds) + " ago"
 }
 
-// renderLastActiveIndented draws the last-active line in the indented block
-// the bar format and both fleet formats use, aligned to the bar-label column.
-//
-// Not a bar itself: an elapsed time has no ceiling to fill against, and a bar
-// would imply one.
-func renderLastActiveIndented(w io.Writer, lastActiveAt string, idleSeconds int) {
-	if text := lastActiveText(lastActiveAt, idleSeconds); text != "" {
-		fmt.Fprintf(w, "  %-9s %s\n", "last active", text)
+// metricsNow returns the current time for the one-shot metrics renderers. A
+// variable so a test can fix the keep duration a read renders. The dashboard
+// keeps its own clock (dashNow) and passes its now down instead.
+var metricsNow = time.Now
+
+// keepText is the relative retention figure — "keep for 2h" — drawn after the
+// active figure on the same line. It is "" when the read carries no deadline or
+// the deadline is not in the future: the control plane is the home of the "is
+// it still active?" judgement (it drops the field there), so this only formats
+// the value it is given, never re-checks the clock against a tag.
+func keepText(retainUntil string, now time.Time) string {
+	if retainUntil == "" {
+		return ""
+	}
+	deadline, err := time.Parse(time.RFC3339, retainUntil)
+	if err != nil {
+		return ""
+	}
+	d := deadline.Sub(now)
+	if d <= 0 {
+		return ""
+	}
+	return "keep for " + formatKeepDuration(d)
+}
+
+// formatKeepDuration renders a keep's remaining time dropping zero units —
+// "2h", "24m", "1h 30m" — so the figure stays short enough to share the active
+// line in a 42-column tile.
+func formatKeepDuration(d time.Duration) string {
+	d = d.Round(time.Second)
+	h := int(d.Hours())
+	m := int(d.Minutes()) % 60
+	s := int(d.Seconds()) % 60
+	switch {
+	case h > 0:
+		if m > 0 {
+			if s > 0 {
+				return fmt.Sprintf("%dh %dm %ds", h, m, s)
+			}
+			return fmt.Sprintf("%dh %dm", h, m)
+		}
+		return fmt.Sprintf("%dh", h)
+	case m > 0:
+		if s > 0 {
+			return fmt.Sprintf("%dm %ds", m, s)
+		}
+		return fmt.Sprintf("%dm", m)
+	default:
+		return fmt.Sprintf("%ds", s)
 	}
 }
 
-// renderLastActiveKeyValue draws the same fact as a row of the table format,
-// padded to the key column its neighbours use.
-func renderLastActiveKeyValue(w io.Writer, lastActiveAt string, idleSeconds int) {
-	if text := lastActiveText(lastActiveAt, idleSeconds); text != "" {
-		fmt.Fprintf(w, "last active:  %s\n", text)
+// renderActiveIndented draws the combined active-and-keep line in the indented
+// block the bar format and the tile use: the "ago" figure, and, when the read
+// carries a retention deadline, the relative keep after it — "active  2m 5s
+// ago  keep for 2h". The line is present whenever either fact is, and absent
+// when neither is. It is not a bar: an elapsed time has no ceiling to fill
+// against, and a bar would imply one.
+func renderActiveIndented(w io.Writer, lastActiveAt string, idleSeconds int, retainUntil string, now time.Time) {
+	active := lastActiveText(lastActiveAt, idleSeconds)
+	keep := keepText(retainUntil, now)
+	switch {
+	case active != "" && keep != "":
+		fmt.Fprintf(w, "  %-9s %s  %s\n", "active", active, keep)
+	case active != "":
+		fmt.Fprintf(w, "  %-9s %s\n", "active", active)
+	case keep != "":
+		fmt.Fprintf(w, "  %s\n", keep)
+	}
+}
+
+// renderActiveKeyValue draws the same line as a row of the table format, the
+// key padded to the column its neighbours use.
+func renderActiveKeyValue(w io.Writer, lastActiveAt string, idleSeconds int, retainUntil string, now time.Time) {
+	active := lastActiveText(lastActiveAt, idleSeconds)
+	keep := keepText(retainUntil, now)
+	switch {
+	case active != "" && keep != "":
+		fmt.Fprintf(w, "%-13s %s  %s\n", "active:", active, keep)
+	case active != "":
+		fmt.Fprintf(w, "%-13s %s\n", "active:", active)
+	case keep != "":
+		fmt.Fprintf(w, "%-13s %s\n", "active:", keep)
 	}
 }
 

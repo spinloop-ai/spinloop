@@ -762,11 +762,18 @@ func runRemoteStatus(args []string) error {
 	if resp.BaseURL != "" {
 		fmt.Printf("base_url: %s\n", resp.BaseURL)
 	}
-	if text := lastActiveText(fact.LastActiveAt, fact.IdleSeconds); text != "" {
-		fmt.Printf("last active: %s\n", text)
-	}
-	if resp.RetainUntil != "" {
-		fmt.Printf("retain until: %s\n", resp.RetainUntil)
+	// The active figure and, for a retained instance, the relative keep after
+	// it — one line, like the metrics view, rather than an absolute deadline on
+	// its own.
+	active := lastActiveText(fact.LastActiveAt, fact.IdleSeconds)
+	keep := keepText(resp.RetainUntil, metricsNow())
+	switch {
+	case active != "" && keep != "":
+		fmt.Printf("active: %s  %s\n", active, keep)
+	case active != "":
+		fmt.Printf("active: %s\n", active)
+	case keep != "":
+		fmt.Printf("active: %s\n", keep)
 	}
 	return nil
 }
@@ -872,6 +879,7 @@ func runMetricsWatch(cfg remote.Config, format string, withCost bool) error {
 }
 
 func formatMetricsTable(ctx context.Context, resp *remote.StatsResponse, withCost bool, cfg remote.Config, w io.Writer) error {
+	now := metricsNow()
 	fmt.Fprintf(w, "environment:  %s\n", resp.Environment)
 	fmt.Fprintf(w, "state:        %s\n", resp.State)
 
@@ -882,7 +890,9 @@ func formatMetricsTable(ctx context.Context, resp *remote.StatsResponse, withCos
 		if resp.ModelID != "" {
 			fmt.Fprintf(w, "model:        %s\n", resp.ModelID)
 		}
-		renderLastActiveKeyValue(w, resp.LastActiveAt, resp.IdleSeconds)
+		// A stopped environment can still be retained: its deadline is the
+		// control plane's, so it rides this branch too.
+		renderActiveKeyValue(w, resp.LastActiveAt, resp.IdleSeconds, resp.RetainUntil, now)
 		return nil
 	}
 
@@ -904,7 +914,7 @@ func formatMetricsTable(ctx context.Context, resp *remote.StatsResponse, withCos
 	if resp.UptimeSeconds > 0 {
 		fmt.Fprintf(w, "uptime:       %s\n", formatDuration(resp.UptimeSeconds))
 	}
-	renderLastActiveKeyValue(w, resp.LastActiveAt, resp.IdleSeconds)
+	renderActiveKeyValue(w, resp.LastActiveAt, resp.IdleSeconds, resp.RetainUntil, now)
 
 	renderTokenLines(w, resp.Tokens)
 	renderGPUTable(w, resp.GPUs)
@@ -976,15 +986,16 @@ func formatMetricsHeader(resp *remote.StatsResponse, w io.Writer) {
 }
 
 func formatMetricsBar(resp *remote.StatsResponse, cfg remote.Config, w io.Writer) error {
+	now := metricsNow()
 	formatMetricsHeader(resp, w)
 
-	// Before the series: when the endpoint last did work is worth showing for
-	// whatever state it is in, and the retained history is too — a stopped
-	// endpoint's readings up to the stop answer what it was doing until it
-	// stopped. A stopped endpoint's current reading carries no resource
-	// figures, so the series it draws come from the history alone, or not at
-	// all where the daemon predates it.
-	renderLastActiveIndented(w, resp.LastActiveAt, resp.IdleSeconds)
+	// Before the series: when the endpoint last did work — and, for a retained
+	// endpoint, how long it is kept — is worth showing in whatever state it is in,
+	// and the retained history is too: a stopped endpoint's readings up to the
+	// stop answer what it was doing until it stopped. A stopped endpoint's
+	// current reading carries no resource figures, so the series it draws come
+	// from the history alone, or not at all where the daemon predates it.
+	renderActiveIndented(w, resp.LastActiveAt, resp.IdleSeconds, resp.RetainUntil, now)
 
 	renderStatBars(w, resp.CPU, resp.Memory, resp.GPUs, resp.History, barLineW)
 	renderTokenLines(w, resp.Tokens)
@@ -994,12 +1005,13 @@ func formatMetricsBar(resp *remote.StatsResponse, cfg remote.Config, w io.Writer
 }
 
 func formatMetricsGauge(resp *remote.StatsResponse, cfg remote.Config, w io.Writer) error {
+	now := metricsNow()
 	formatMetricsHeader(resp, w)
 
-	// Before the early return: a stopped endpoint draws no gauges, but when
-	// it last did work is exactly what a stopped endpoint is worth asking
-	// about.
-	renderLastActiveIndented(w, resp.LastActiveAt, resp.IdleSeconds)
+	// Before the early return: a stopped endpoint draws no gauges, but when it
+	// last did work — and how long it is kept — is exactly what a stopped
+	// endpoint is worth asking about.
+	renderActiveIndented(w, resp.LastActiveAt, resp.IdleSeconds, resp.RetainUntil, now)
 
 	if resp.State != "running" {
 		return nil

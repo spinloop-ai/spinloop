@@ -248,6 +248,10 @@ func dashKey(s string) tea.KeyMsg {
 		return tea.KeyMsg{Type: tea.KeyEsc}
 	case "ctrl+c":
 		return tea.KeyMsg{Type: tea.KeyCtrlC}
+	case "enter":
+		return tea.KeyMsg{Type: tea.KeyEnter}
+	case "backspace":
+		return tea.KeyMsg{Type: tea.KeyBackspace}
 	default:
 		return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)}
 	}
@@ -351,7 +355,7 @@ func TestDashTileRunningByteStable(t *testing.T) {
 	want := dashTileExpected([]string{
 		dashExpectedHeader("up  running  (up 2h 0m 0s)", dashHealthy),
 		"llamacpp  org/qwen:q4",
-		"  last active 12s ago",
+		"  active    12s ago",
 		dashBar("CPU", 42),
 		dashBar("RAM", 30),
 		dashBar("GPU util", 61),
