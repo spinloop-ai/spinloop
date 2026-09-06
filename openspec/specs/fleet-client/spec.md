@@ -74,17 +74,23 @@ render, and the command SHALL succeed.
 ### Requirement: Fleet metrics
 
 `spinloop fleet metrics` SHALL query every node's metrics endpoint and render
-each node's engine and system metrics using the same bar, table, and json
-formats `spinloop remote metrics` provides, selected by `--format`. Unreachable
-nodes SHALL be reported as in status rather than omitted. The command SHALL
-support a `--watch`/`-w` mode that refreshes on an interval, clearing and
-redrawing the screen in place with no scrollback accumulation, and exiting
-cleanly on interrupt.
+each node's engine and system metrics using the same bar, gauge, table, and
+json formats `spinloop remote metrics` provides, selected by `--format`.
+Unreachable nodes SHALL be reported as in status rather than omitted. The
+command SHALL support a `--watch`/`-w` mode that refreshes on an interval,
+clearing and redrawing the screen in place with no scrollback accumulation,
+and exiting cleanly on interrupt.
 
 #### Scenario: Bar format per node
 
 - **WHEN** `spinloop fleet metrics` runs without `--format`
 - **THEN** each reachable node's metrics render in bar format under its name
+
+#### Scenario: Gauge format per node
+
+- **WHEN** `spinloop fleet metrics --format=gauge` runs
+- **THEN** each reachable node's resource series render in gauge format under
+  its name
 
 #### Scenario: JSON aggregates the fleet
 
@@ -597,9 +603,12 @@ Each panel SHALL show, for a node that answered the last completed refresh, the
 same facts the bar format of `fleet metrics` renders for that node: its state,
 what it serves (runner and model when known), how long since it last did work
 (with the same labelling rules as the rest of the fleet surfaces), its resource
-usage, and its token and request counters. A panel SHALL show the answer of the
-last completed refresh for that node — not a mix of refreshes and not a stale
-bar with a fresh outcome.
+usage, and its token and request counters. A panel SHALL draw the node's
+resource series in the board's current format — bar by default — from the
+history the node's daemon reports, falling back per the bar format's no-history
+rule where it reports none. A panel SHALL show the answer of the last completed
+refresh for that node — not a mix of refreshes and not a stale bar with a fresh
+outcome.
 
 A panel SHALL degrade gracefully when a node answers with fewer facts (no system
 stats, no GPUs, an engine that is not running) rather than failing to render.
@@ -1284,4 +1293,27 @@ be left as it is.
 - **WHEN** the operator moves the selection onto a panel
 - **THEN** the selected panel's border colour changes as it does today, and
   every panel's status glyph colour is unaffected by which panel is selected
+
+### Requirement: Dashboard format toggle
+
+The dashboard SHALL provide a key, `g`, that toggles the resource series of
+every panel between bar and gauge. The board SHALL open in bar. The toggle
+SHALL be board-wide — one format for every panel — rather than per node, and
+the key help line SHALL name it.
+
+#### Scenario: Pressing the key switches every panel
+
+- **WHEN** the operator presses `g` on the grid
+- **THEN** every panel's resource series redraws in the other format, and
+  pressing `g` again returns them
+
+#### Scenario: The board opens in bar
+
+- **WHEN** the dashboard opens
+- **THEN** the panels draw the resource series in bar format
+
+#### Scenario: The key help names the toggle
+
+- **WHEN** the dashboard draws its key help line
+- **THEN** it names `g` as the format toggle
 
