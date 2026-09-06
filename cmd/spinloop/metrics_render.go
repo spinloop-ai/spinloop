@@ -57,30 +57,28 @@ func keepText(retainUntil string, now time.Time) string {
 	return "keep for " + formatKeepDuration(d)
 }
 
-// formatKeepDuration renders a keep's remaining time dropping zero units —
-// "2h", "24m", "1h 30m" — so the figure stays short enough to share the active
-// line in a 42-column tile.
+// formatKeepDuration renders a keep's remaining time in hours and minutes,
+// dropping zero units — "2h", "24m", "1h 30m" — so the figure stays short
+// enough to share the active line in a 42-column tile. It carries no seconds
+// component: a keep is set in minutes or hours, and in a panel that re-renders
+// a seconds figure moves on every refresh. A sub-minute remainder renders as
+// "1m", so the figure is present for any future deadline and a passed one
+// stays the only reason it is absent.
 func formatKeepDuration(d time.Duration) string {
 	d = d.Round(time.Second)
-	h := int(d.Hours())
-	m := int(d.Minutes()) % 60
-	s := int(d.Seconds()) % 60
+	total := int(d.Minutes())
+	if total < 1 {
+		return "1m"
+	}
+	h := total / 60
+	m := total % 60
 	switch {
+	case h > 0 && m > 0:
+		return fmt.Sprintf("%dh %dm", h, m)
 	case h > 0:
-		if m > 0 {
-			if s > 0 {
-				return fmt.Sprintf("%dh %dm %ds", h, m, s)
-			}
-			return fmt.Sprintf("%dh %dm", h, m)
-		}
 		return fmt.Sprintf("%dh", h)
-	case m > 0:
-		if s > 0 {
-			return fmt.Sprintf("%dm %ds", m, s)
-		}
-		return fmt.Sprintf("%dm", m)
 	default:
-		return fmt.Sprintf("%ds", s)
+		return fmt.Sprintf("%dm", m)
 	}
 }
 

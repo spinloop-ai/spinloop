@@ -107,6 +107,11 @@ func TestKeepDurationRendersRelatively(t *testing.T) {
 		2 * time.Hour:    "keep for 2h",
 		24 * time.Minute: "keep for 24m",
 		90 * time.Minute: "keep for 1h 30m",
+		// A seconds remainder never surfaces: it floors into the minutes.
+		2*time.Hour + 5*time.Minute + 30*time.Second: "keep for 2h 5m",
+		24*time.Minute + 30*time.Second:              "keep for 24m",
+		// Sub-minute still renders, as a minute.
+		45 * time.Second: "keep for 1m",
 	} {
 		t.Run(want, func(t *testing.T) {
 			deadline := keepNow(t, d)
