@@ -19,56 +19,99 @@
 brew install spinloop-ai/tap/spinloop
 ```
 
-One CLI for the whole supply line: point your agent at a hosted or local model,
-serve the engine behind it, drive every machine that runs one, and wake a
-cloud GPU only for as long as you actually use it.
+`spinloop` runs a model where it suits you — on this machine, on any machine on
+your network, or on a cloud GPU that exists only while you are using it — and
+then points your coding agent at whichever one is serving it. A `Spinloop`
+file describes the model once, and every step below works from that one
+description.
 
-```sh
-# SERVE — the same file launches the inference server behind it
-spinloop serve
+## Serve a model, then point your agent at it
 
-# FLEET — a daemon per machine, one board to watch and drive them all
-spinloop fleet dashboard
+### 1. On this machine
 
-# CLOUD — a GPU instance that exists only while you are using it
-spinloop remote start
+A `Spinloop` says what to run. It travels with the project, like a Dockerfile:
 
-# POINT - keep the selection in a file, like a Dockerfile for your coding agent
-spinloop apply              # reads ./Spinloop and applies it
-
-# ...or  configure the agent and aim it at a model (here, a local Qwen3.6 on Ollama)
-spinloop add -p ollama -m qwen3.6
-spinloop harness            # launch the agent, now running the model you picked
+```dockerfile
+# Spinloop
+PROVIDER llamacpp
+MODEL    unsloth/Qwen3.6-35B-A3B-GGUF:UD-Q4_K_XL   # HF repo, or a .gguf path
+CONTEXT  32768
 ```
 
-## A fleet, mid-session
+```sh
+spinloop serve              # runs llama-server with that model
+```
 
-`spinloop fleet dashboard` is the board you leave open while you work: one tile
-per machine, repainted in place.
+llama.cpp, vLLM, MTPLX and oMLX all run from those same few lines — change
+`PROVIDER` and the same file serves the model on a different engine.
+→ [Serving a local model](#serving-a-local-model)
+
+### 2. On every machine you own
+
+Whilst `serve` holds a terminal open for as long as the model runs, `spinloop daemon`
+doesn't: leave it on a machine and that machine will serve a model whenever you
+want one — starting when you ask, and still up for your next session.
+
+```sh
+# on each machine that will serve
+spinloop daemon   # ready on :4242; no model runs until you ask
+
+# on the machine you work at — fleet.yaml names the nodes
+spinloop fleet status                  # one row per node: state, and what it serves
+spinloop fleet dashboard               # the same fleet, as a board you leave open
+```
+
+Start the whole fleet with `spinloop up` or just one with `spinloop fleet start gpu-box` — this gets you the model from step 1 running on a machine across the room, or over Tailscale.
 
 <p align="center">
   <img src="docs/img/fleet_dashboard.png" alt="The spinloop fleet dashboard: four nodes serving Qwen3.8-27B under llama.cpp, and a fifth cloud node not yet deployed" width="900">
 </p>
 
-Five nodes are configured here and four are up, each serving the same
-`unsloth/Qwen3.8-27B-GGUF` through llama.cpp. Three of them — `dev-2`, `dev-3`,
+In this screenshot, five nodes are configured and four are up, each serving the same
+`Qwen3.8-27B` model through llama.cpp. Three of them — `dev-2`, `dev-3`,
 `dev-4` — are mid-request: one slot running apiece, GPU util between 91% and
 98%. `dev-1` finished about a minute ago, so its GPU util has dropped to 0%
 while GPU memory stays at 89% — the weights are still loaded, and the next
-request it takes starts generating without a reload. `prefer: idle` sends the
-next launch to that machine.
+request it takes starts generating without a reload.
 
-The fifth node, `vllm-1`, is a cloud environment with no instance running:
-`undeployed`, costing nothing, with the vLLM build of the same model
-(`Qwen/Qwen3.8-27B-FP8`) configured on it. Arrow across to its tile and press
-`s` — the tile then reports the wake as it happens, until the node is serving
-like the rest.
+The keys along the bottom drive the fleet from here: `s` start, `x` stop, `r`
+refresh, and `<enter>` for one node full-screen with its engine log tailed live.
+→ [The fleet](#the-fleet)
 
-Each tile counts what that node has done since its engine started — prompt and
-generation tokens, slots in use, uptime, and how long since it last did any
-work. The keys along the bottom are the whole interface: `s` start, `x` stop,
-`r` refresh, and `<enter>` for one node full-screen with its engine log tailed
-live.
+### 3. On a cloud GPU, for as long as you need one
+
+Nothing on your desk with a big enough card? `spinloop remote` drives a
+scale-to-zero instance in your own AWS account: it boots when you ask, loads the
+model, and stops itself once you stop using it.
+
+```sh
+spinloop remote start     # boot, wait for the model to load, print the endpoint
+spinloop remote keep 4h   # hold it against the idle sweep while you work
+spinloop remote stop      # terminate now, rather than waiting for the idle timer
+```
+
+A remote is also just another node: give it `kind: remote` in `fleet.yaml` and it
+sits on the same board as the machines you own. That is `vllm-1` in the picture
+above — configured, no instance running, costing nothing until someone presses
+`s`. → [Remote inference instance](#remote-inference-instance)
+
+### Then point your agent at it
+
+Wherever the model ended up, this part is the same, and it reads the same file:
+
+```sh
+spinloop apply       # point your agent at that model
+spinloop harness     # launch the agent, now running it
+```
+
+opencode, Pi and lucinate are all supported, chosen when you launch rather than
+written into the file. A `Spinloop` naming a `FLEET` routes the launch to a node
+that already has the model — or can load it — so the machine you are sitting at
+needs no addresses of its own.
+
+Not serving it yourself? The same commands point an agent at a hosted model:
+`spinloop add -p openrouter -m deepseek/deepseek-v4-flash`, then
+`spinloop harness`.
 
 ## Supported providers
 
@@ -89,7 +132,7 @@ their models.
 | MTPLX | `mtplx` | Local MTPLX server on Apple Silicon |
 | OpenAI-compatible | `openai-compatible` | Any endpoint that speaks the OpenAI API — set the base URL and key |
 
-Adding one that isn't here is a data change, not code — see
+Need one that isn't listed? You can add it yourself — see
 [Adding providers and models](#adding-providers-and-models).
 
 ---
@@ -227,8 +270,8 @@ spinloop alias  [path] [-n <name>] [-l]    # name a Spinloop; -l lists them
 spinloop unalias <name>                    # drop a registered name
 spinloop serve  [path] [--dry-run] [-a]    # run the PROVIDER's inference server, from the PRESET
                                          #   (-a/--api serves the control API beside it)
-spinloop daemon [--api-addr <addr>] [--loopback] # supervise an engine via the control API — reads
-                                         #   no Spinloop, starts nothing until asked over the API
+spinloop daemon [--api-addr <addr>] [--loopback] # let this machine serve a model on request —
+                                         #   runs nothing until something asks it to
 spinloop fleet <status|metrics|logs|dashboard|route|start|stop>
                                            # observe and drive the engines in
                                            #   fleet.yaml (dashboard is the
@@ -400,8 +443,7 @@ CONTEXT  32768                                      # llama-server --ctx-size
 ```
 
 ```sh
-spinloop serve              # builds a llama-server command and runs it
-spinloop serve --dry-run    # just print the command — no server
+spinloop serve              # runs llama-server with that model
 ```
 
 One word does the same: `spinloop up` runs `serve` for the directory's
@@ -409,51 +451,44 @@ One word does the same: `spinloop up` runs `serve` for the directory's
 directory instead. See [docs/commands/up.md](docs/commands/up.md).
 
 For flags a `Spinloop` doesn't model (`-ngl`, `--jinja`, KV-cache types, draft
-models), point at a llama.cpp preset `.ini` with `PRESET` and `serve` flattens
-the chosen section into the command instead — with anything the `Spinloop` states
-(like `CONTEXT`) overriding the preset. It's the missing piece presets don't
-cover: launching a *single* model. `CONTEXT` always means the context per
-request; add `PARALLEL` to run more than one slot and `spinloop` works out each
-engine's own accounting (llama.cpp's `--ctx-size` gets scaled; vLLM's and
-MTPLX's don't, and oMLX has none) — see
-[Parallelism](docs/commands/serve.md#parallelism) for the full mapping.
+models), point at a llama.cpp preset `.ini` with `PRESET` and `serve` takes
+the flags from the section you name instead — with anything the `Spinloop`
+states (like `CONTEXT`) overriding the preset. It's the missing piece presets don't
+cover: launching a *single* model. `CONTEXT` is always the context each request
+gets, whichever engine you run; add `PARALLEL` for more than one request at a
+time and each engine's own limits are handled for you — see
+[Parallelism](docs/commands/serve.md#parallelism) if you want the numbers.
 Details in [`docs/commands/serve.md`](docs/commands/serve.md).
 
 ### The daemon
 
-`spinloop daemon` runs a long-lived agent that supervises one engine and serves
-a small control API: status, start, stop, metrics — token counters scraped
-from the engine plus GPU/CPU/RAM readings from the host — and a deploy-config
-push. It's a worker: it reads no Spinloop, no preset, and no `fleet.yaml`, and
-takes no Spinloop path of its own — what it runs is decided entirely by
-whoever asks it, over the API. It starts *nothing* on boot: the engine runs
-only when a start request asks, and the request can carry the deploy config
-(runner, model, flags) to run — or fall back to a previously pushed one. With
-neither, a start says so. Stopping the engine leaves the daemon answering.
+Leave `spinloop daemon` running on a machine and you can start, stop and watch
+a model there over HTTP — from `spinloop fleet` on your own box, or from
+anything else that speaks to it. Starting the daemon starts no model: nothing
+runs on that machine until you ask for it, and stopping a model leaves the
+daemon there for the next one. Ask it to start without naming a model and it
+runs whatever you gave it last, or tells you it has nothing to run.
 
-It also keeps an eye on whether the engine is actually doing anything: it
-reads the engine's counters every 15 seconds and reports `lastActiveAt` and
-`idleSeconds` on both `/v1/status` and `/v1/metrics`, from one record, so the
-two cannot disagree. Ask the daemon how busy it is rather than working it out
-from raw counters yourself.
+Ask for `status` or `metrics` and you get what that machine is doing right now
+— tokens in and out, GPU, CPU and RAM, and how long since the model last did
+any work — so you can see which box is busy and which is free.
 
 ```sh
-SPINLOOP_API_TOKEN=…  spinloop daemon           # control API on :4242
+SPINLOOP_API_TOKEN=…  spinloop daemon           # ready on :4242
 spinloop daemon --loopback                    # loopback-only (127.0.0.1:4242), needs no token
 spinloop daemon --api-token-file /run/secrets/spinloop-token   # from a service manager
 spinloop daemon --log-level warn              # quiet on a node a fleet polls
 ```
 
-The API is bearer-token authenticated — `SPINLOOP_API_TOKEN`, `--api-token`, or
-`--api-token-file` (giving two at once is an error, since the daemon reads no
-Spinloop and so has no adjacent `.env` to fall back to); a non-loopback listen
-without a token refuses to start — which is exactly what `--loopback` is for.
-`spinloop serve -a/--api` exposes the same API beside an ordinary foreground
-serve, and — because that command *does* read a Spinloop — takes its token
-from the environment as usual, `.env` included.
+Anything reaching the daemon over the network needs a bearer token
+(`SPINLOOP_API_TOKEN`, `--api-token` or `--api-token-file`), and without one it
+refuses to listen on anything but loopback — which is what `--loopback` is for.
+Give it the token in the environment or a file: `daemon` takes no `Spinloop`, so
+there is no `.env` beside one for it to read. `spinloop serve -a/--api` gives
+you the same API alongside an ordinary serve, and that one does read a `.env`.
 
 Every request is summarised on stderr — method, path, status, duration, size,
-caller — alongside the engine's starts, stops and crashes. Never the token and
+caller — alongside the model's starts, stops and crashes. Never the token and
 never a body. `--log-level warn` keeps a polled node quiet without hiding the
 rejections; see [what gets logged](docs/commands/serve.md#what-gets-logged).
 
@@ -479,11 +514,11 @@ nodes:
     kind: remote          # a `spinloop remote` environment, driven as a fleet node
 ```
 
-A node's `host`/`port` name its **daemon**, which is a different port from the
-engine it supervises; the daemon reports the engine's address, so most nodes
-need no `engine` block. A node whose engine needs its own key names it with
-`engineTokenEnv` — driving the node and using its engine are different
-credentials.
+A node's `host`/`port` are the **daemon's**, not the model server's — those are
+different ports, and most nodes need no `engine` block at all. Add one only for
+a node where the model server's address can't be picked up on its own. If using
+that node's model needs a key of its own, name it with `engineTokenEnv`: driving
+a machine and talking to the model on it are separate credentials.
 
 ```sh
 spinloop fleet status          # one row per node: state and what it serves
@@ -492,11 +527,11 @@ spinloop fleet start gpu-box   # start one node's engine
 ```
 
 `dashboard` is the fleet you actually look at, and the board
-[at the top of this page](#a-fleet-mid-session) is a real one: one tile per
-node, repainted in place, each drawing what `fleet metrics` prints — start a
-node with `s`, stop one with `x`, and a waking cloud machine reports its own
-progress on its tile; `a` ends the wait on one in flight (the wake goes on in
-the cloud).
+[at the top of this page](#2-on-every-machine-you-own) is a real one: one tile per
+node, repainted in place, showing the same numbers `fleet metrics` prints —
+start a node with `s`, stop one with `x`, and a waking cloud machine shows its
+progress on its own tile; `a` lets you stop watching one that is still waking —
+it carries on in the cloud.
 Press `<enter>` on a tile for a full-screen view of that node — metrics, its
 engine log tailed live, and the keys that work there — `<esc>` to go back.
 `fleet metrics --watch` is the same board as a stream, for pipes.
@@ -524,8 +559,8 @@ spinloop harness --fleet f.yaml     # overrides the Spinloop's FLEET
 spinloop fleet route my-spinloop    # which node would I get? (launches nothing)
 ```
 
-The chosen node's engine becomes the applied provider's base URL and reaches
-the launched agent as `OPENAI_BASE_URL`. `prefer` decides who wins when several
+The agent comes up talking to the node it picked — its address arrives as
+`OPENAI_BASE_URL`, so there is nothing for you to paste anywhere. `prefer` decides who wins when several
 nodes could serve you — `idle` (the default) gives you the machine quiet
 longest, spreading work across the fleet; `active` consolidates onto the most
 recently used one and leaves the rest free to be woken for another model, or
@@ -589,30 +624,27 @@ resolved relative to the Spinloop, like `PRESET`, so the pair travel together)
 or the name of a registered environment (`REMOTE dev-2`, whose file sits at
 `remotes/dev-2/remote.json` under spinloop's config directory,
 `${SPINLOOP_CONFIG_DIR:-${XDG_CONFIG_HOME:-~/.config}/spinloop}`). With no
-`REMOTE`, the `default` environment is used. Either way the file takes the
-`SpinloopRemoteConfig` output of the `remote/` deployment — or `spinloop remote
-deploy` writes it when it registers the environment:
+`REMOTE`, the `default` environment is used. Either way, `spinloop remote deploy` writes the file for you when it registers
+the environment; deploying [`remote/`](remote/) yourself prints the same values:
 
 ```json
 {"start_url": "https://...lambda-url...on.aws/", "stop_url": "https://...", "region": "eu-west-1", "base_url": "http://198.51.100.7:8000/v1"}
 ```
 
-`base_url` is the endpoint's own address. `remote` doesn't need it — `start`
-and `status` report the address themselves — but `spinloop apply` reads it, so an
-Spinloop with a `REMOTE` line can leave `BASEURL` out and still point your agent
-at the endpoint. A `BASEURL` in the Spinloop takes precedence.
+`base_url` is the endpoint's own address. You never have to quote it back —
+`start` and `status` print it, and a `Spinloop` with a `REMOTE` line can leave
+`BASEURL` out and still point your agent at the endpoint. A `BASEURL` in the
+Spinloop wins if you do set one.
 
 Every URL and the region can be overridden with the matching
-[`SPINLOOP_REMOTE_*`](docs/env-vars.md) environment variable. Requests are
-SigV4-signed
-with your AWS credentials (env, profile or SSO — the standard chain), which
-must be allowed `lambda:InvokeFunctionUrl`. A cold `start` takes a few
-minutes while the instance boots and loads the model; `--timeout` (default
-15m) caps the wait.
+[`SPINLOOP_REMOTE_*`](docs/env-vars.md) environment variable. The commands use
+your AWS credentials (environment, profile or SSO — the standard chain), which
+need `lambda:InvokeFunctionUrl` allowed. A cold `start` takes a few minutes
+while the instance boots and loads the model; `--timeout` (default 15m) caps
+the wait.
 
-The remote commands read the `.env` beside the Spinloop before they sign, so the
-AWS credentials, region and `SPINLOOP_REMOTE_*` overrides can travel with the
-Spinloop. A value already set in your shell wins over the `.env`. To pin a value
+The AWS credentials, region and `SPINLOOP_REMOTE_*` overrides can all travel
+with the Spinloop, in the `.env` beside it. A value already set in your shell wins over the `.env`. To pin a value
 in the Spinloop itself, add an `ENV` line (`ENV AWS_PROFILE=prod`) — it may repeat
 and overrides both the `.env` and your shell. `ENV` applies only on your
 machine; it is never sent to the deployed instance.
@@ -661,49 +693,37 @@ with a ready-to-apply `Spinloop`:
 
 ## Adding providers and models
 
-Everything `spinloop` knows lives in `internal/catalog/providers.yaml`. Add a
-provider there and rebuild — no Go required. The
-file is commented with the schema.
-
-Don't want to rebuild? Write the catalogue out with
-[`spinloop init-providers`](docs/commands/init-providers.md), edit it, and point
-`spinloop` at it at runtime — the flag wins, then the env var, then the built-in
-default:
+Want one the catalogue doesn't carry? Write the catalogue out, add yours, and
+point `spinloop` at your copy — no rebuild, and it applies straight away:
 
 ```sh
-spinloop init-providers                 # writes ./providers.yaml
+spinloop init-providers                 # writes ./providers.yaml, commented with the schema
 spinloop list --providers providers.yaml
 SPINLOOP_PROVIDERS=providers.yaml spinloop list
 ```
 
+The flag wins, then the environment variable, then the catalogue built into the
+binary. See [`spinloop init-providers`](docs/commands/init-providers.md) for the
+file's shape — or, to contribute the provider back so everyone gets it,
+[Development](docs/development.md#adding-a-provider-or-model).
+
 ## Development
 
-`spinloop` is a Go CLI with no runtime dependencies. The domain logic is split
-into `internal/` packages so each concern is isolated and independently testable;
-[`AGENTS.md`](AGENTS.md) is the map of how it all fits together.
+`spinloop` is a single Go binary with no runtime dependencies.
 
 ```sh
-go build -o spinloop ./cmd/spinloop   # build the binary
-go test ./...                     # run the suite
-go test ./... -cover              # with coverage (kept >= 80%)
-go vet ./...                      # vet
-gofmt -w ./...                    # format
+go build -o spinloop ./cmd/spinloop
+go test ./...
 ```
+
+[`docs/development.md`](docs/development.md) has the rest: how the packages are
+laid out, and the full set of checks.
 
 ## Contributing
 
-Issues and pull requests are welcome. A few things that make a change easy to
-merge:
-
-- Adding a provider or model? It's a data change in
-  `internal/catalog/providers.yaml`, not Go — see
-  [Adding providers and models](#adding-providers-and-models).
-- Adding another harness? Start at the `Harness` interface in
-  `internal/harness`; [`AGENTS.md`](AGENTS.md) walks through the contract.
-- Keep the suite green and formatted (`go test ./...`, `gofmt -w ./...`) before
-  opening a PR.
-
-The `.env` file and the built binary are git-ignored.
+Issues and pull requests are welcome. Adding a provider, adding another harness,
+and what a change needs before it can be merged are all covered in
+[`docs/development.md`](docs/development.md).
 
 ## License
 
