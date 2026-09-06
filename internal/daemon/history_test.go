@@ -312,11 +312,21 @@ while true; do sleep 0.05; done`)
 	// No scrape target is set: the system readings must not depend on one.
 	old := catchUpInterval
 	catchUpInterval = 5 * time.Millisecond
-	defer func() { catchUpInterval = old }()
 
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go d.SampleActivity(ctx)
+	done := make(chan struct{})
+	go func() {
+		d.SampleActivity(ctx)
+		close(done)
+	}()
+	// The loop reads the catch-up cadence on every tick while it has no
+	// reading to report — with no scrape target, always — so the sampler
+	// must have exited before the cadence is restored.
+	defer func() {
+		cancel()
+		<-done
+		catchUpInterval = old
+	}()
 
 	if err := d.Push(remote.DeployConfig{Runner: "llamacpp", ModelID: "m"}); err != nil {
 		t.Fatal(err)
