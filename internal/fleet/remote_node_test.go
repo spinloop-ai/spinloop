@@ -77,9 +77,12 @@ func TestStatusFromRemote(t *testing.T) {
 
 func TestStatsFromRemote(t *testing.T) {
 	tokens := &metrics.TokenStats{Running: 2, PromptTokens: 5, GenerationTokens: 7, Requests: 3}
+	cpuPct := 30.0
+	history := []metrics.HistorySample{{Time: 1, CPU: &cpuPct, GPUs: []metrics.HistoryGPU{{Index: 0, Util: 61, Mem: &cpuPct}}}}
 	got := statsFromRemote(remote.StatsResponse{
 		State: "running", Runner: "llamacpp", ModelID: "org/m", UptimeSeconds: 10,
 		Tokens: tokens, LastActiveAt: "2026-01-02T00:00:00Z", IdleSeconds: 5, Version: "1.2.3",
+		History: history,
 	})
 	if got.State != "running" || got.Runner != "llamacpp" || got.ModelID != "org/m" || got.UptimeSeconds != 10 {
 		t.Errorf("statsFromRemote = %+v", got)
@@ -89,6 +92,16 @@ func TestStatsFromRemote(t *testing.T) {
 	}
 	if got.IdleSeconds != 5 || got.LastActiveAt == "" {
 		t.Errorf("activity not carried over: %+v", got)
+	}
+	// The daemon's retained readings relay through unaltered: the fleet does
+	// not own them, so it copies them rather than rebuilding them.
+	if len(got.History) != 1 || got.History[0].Time != 1 || got.History[0].CPU == nil ||
+		*got.History[0].CPU != 30 || len(got.History[0].GPUs) != 1 || got.History[0].GPUs[0].Util != 61 {
+		t.Errorf("history not carried over: %+v", got.History)
+	}
+	// And a reply without them stays without them.
+	if got := statsFromRemote(remote.StatsResponse{State: "running"}); got.History != nil {
+		t.Errorf("an absent history became present: %+v", got.History)
 	}
 }
 

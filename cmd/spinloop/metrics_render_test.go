@@ -38,6 +38,23 @@ func TestPoolMaxKeepsPeaks(t *testing.T) {
 	if got := poolMax(in, 5); len(got) != 3 || got[0] != 1 || got[1] != 2 || got[2] != 3 {
 		t.Errorf("an unwidened series changed: %v", got)
 	}
+	// An uneven split pools the same values, one column each.
+	got = poolMax([]float64{1, 5, 2, 9, 3, 4, 8}, 3)
+	if len(got) != 3 || got[0] != 5 || got[1] != 9 || got[2] != 8 {
+		t.Errorf("uneven pool = %v, want [5 9 8]", got)
+	}
+	// The newest sample lands in the final column: at the tile's width a
+	// 29-sample window splits unevenly, and the split's rounding leaves the
+	// last reading out of that column — and the trailing figure is the last
+	// reading's value, so it must be in the pool. The values rise, so the
+	// last column's maximum is its newest sample only if the sample is there.
+	vals := make([]float64, 29)
+	for i := range vals {
+		vals[i] = float64(i + 1)
+	}
+	if got := poolMax(vals, 25); got[24] != 29 {
+		t.Errorf("the newest sample dropped out of the last pool: %v, want 29", got[24])
+	}
 }
 
 func TestRenderSparkline(t *testing.T) {
@@ -83,6 +100,13 @@ func TestRenderGauge(t *testing.T) {
 	want := "  CPU       " + ansiGreen + strings.Repeat("█", 10) + ansiReset + strings.Repeat("░", 15) + " 42%\n"
 	if got := b.String(); got != want {
 		t.Errorf("gauge = %q, want %q", got, want)
+	}
+	// A value beyond 100 fills the gauge rather than spilling past it.
+	b.Reset()
+	renderGauge(&b, "CPU", 150)
+	want = "  CPU       " + ansiRed + strings.Repeat("█", 25) + ansiReset + " 150%\n"
+	if got := b.String(); got != want {
+		t.Errorf("out-of-range gauge = %q, want %q", got, want)
 	}
 }
 
@@ -195,6 +219,39 @@ func TestRenderStatBarsStoppedEngineDrawsHistoryAlone(t *testing.T) {
 	if !strings.Contains(out, "GPU 0 util") || !strings.Contains(out, "GPU 1 util") ||
 		!strings.Contains(out, "GPU 0 mem") || !strings.Contains(out, "GPU 1 mem") {
 		t.Errorf("two GPUs: %q", out)
+	}
+}
+
+// A memory reading with no total reports 0, not a division by it.
+func TestBarSeriesListMemoryWithoutTotal(t *testing.T) {
+	var b bytes.Buffer
+	renderStatBars(&b, nil, &metrics.MemoryStat{Total: 0, Used: 100}, nil, nil, barLineW)
+	if !strings.Contains(b.String(), " 0%") || strings.Contains(b.String(), "NaN") {
+		t.Errorf("a memory reading with no total: %q", b.String())
+	}
+}
+
+// A GPU that appears in only some samples: each of its series draws the
+// samples that carry it, and the pick yields nothing for the rest.
+func TestRenderStatBarsGPUInOnlySomeSamples(t *testing.T) {
+	history := []metrics.HistorySample{
+		{Time: 1, GPUs: []metrics.HistoryGPU{{Index: 0, Util: 10, Mem: ptrPct(20)}}},
+		{Time: 2, GPUs: []metrics.HistoryGPU{{Index: 1, Util: 90, Mem: ptrPct(80)}}},
+	}
+	var b bytes.Buffer
+	renderStatBars(&b, nil, nil, nil, history, barLineW)
+	out := b.String()
+	// Both GPUs are named in the union, so all four series draw.
+	for _, want := range []string{"GPU 0 util", "GPU 1 util", "GPU 0 mem", "GPU 1 mem"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("series %q not drawn: %q", want, out)
+		}
+	}
+	// Each series drew exactly the one sample that carried it.
+	for _, want := range []string{" 10%", " 90%", " 20%", " 80%"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("series missing its sample's value %s: %q", want, out)
+		}
 	}
 }
 

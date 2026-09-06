@@ -209,6 +209,85 @@ func TestCmdFleetMetricsRejectsBadFormat(t *testing.T) {
 	}
 }
 
+// The fleet's entry point draws what the daemons report: a running node's
+// retained readings as bars with the per-series gauge fallback, a stopped
+// node's history on its own, and the gauge format the current reading only.
+func TestCmdFleetMetricsDrawsHistory(t *testing.T) {
+	t.Setenv("SPINLOOP_CONFIG_DIR", t.TempDir())
+	running := metricsOnlyDaemon(t, map[string]any{
+		"state":   "running",
+		"modelId": "org/qwen",
+		"cpu":     map[string]any{"utilization": 50.0},
+		"memory":  map[string]any{"total": 1000, "used": 400},
+		// The daemon's compact one-letter sample fields, as /v1/metrics sends
+		// them. CPU has retained readings; RAM does not.
+		"history": []map[string]any{
+			{"t": 1786276800, "c": 30.0},
+			{"t": 1786276815, "c": 50.0},
+		},
+	})
+	t.Cleanup(running.Close)
+	stopped := metricsOnlyDaemon(t, map[string]any{
+		"state": "stopped", "modelId": "org/qwen",
+		"lastActiveAt": "2026-08-21T10:00:00Z", "idleSeconds": 12,
+		"history": []map[string]any{
+			{"t": 1786276800, "c": 30.0, "g": []map[string]any{{"i": 0, "u": 50, "m": 50.0}}},
+			{"t": 1786276815, "c": 50.0, "g": []map[string]any{{"i": 0, "u": 60, "m": 50.0}}},
+		},
+	})
+	t.Cleanup(stopped.Close)
+	upHost, upPort := hostPort(t, running)
+	downHost, downPort := hostPort(t, stopped)
+	writeFleetFile(t, fmt.Sprintf(
+		"nodes:\n  - name: up\n    host: %s\n    port: %d\n  - name: halted\n    host: %s\n    port: %d\n",
+		upHost, upPort, downHost, downPort))
+
+	out := captureStdout(t, func() {
+		if err := cmdFleet([]string{"metrics"}); err != nil {
+			t.Error(err)
+		}
+	})
+	// up: the CPU series drew its history, RAM fell back to the gauge on the
+	// same screen.
+	if !strings.Contains(out, " 50%") || !strings.Contains(out, "▃") {
+		t.Errorf("up's CPU did not draw its history:\n%s", out)
+	}
+	if !strings.Contains(out, "░") {
+		t.Errorf("up's RAM did not fall back to the gauge:\n%s", out)
+	}
+	// halted: a stopped node's bar draws the retained readings alone,
+	// including the GPU series the current reading no longer names.
+	if !strings.Contains(out, "halted  stopped  org/qwen") || !strings.Contains(out, "GPU util") {
+		t.Errorf("halted's history not drawn:\n%s", out)
+	}
+
+	// The gauge format draws the current reading only: up's CPU gauge shows
+	// 50 with no sparkline, and halted draws nothing after its header.
+	out = captureStdout(t, func() {
+		if err := cmdFleet([]string{"metrics", "--format=gauge"}); err != nil {
+			t.Error(err)
+		}
+	})
+	if !strings.Contains(out, " 50%") || strings.Contains(out, "▃") {
+		t.Errorf("gauge drew history or missed the current reading:\n%s", out)
+	}
+	halted := out[strings.Index(out, "halted"):]
+	if strings.Contains(halted, "GPU util") || strings.Contains(halted, " 60%") {
+		t.Errorf("a stopped node drew series in the gauge format:\n%s", halted)
+	}
+}
+
+// metricsOnlyDaemon serves a daemon control API that answers /v1/metrics with
+// the given body and nothing else.
+func metricsOnlyDaemon(t *testing.T, body map[string]any) *httptest.Server {
+	t.Helper()
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /v1/metrics", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(body)
+	})
+	return httptest.NewServer(mux)
+}
+
 func TestCmdFleetStartStopDriveOneNode(t *testing.T) {
 	twoNodeFleet(t, "idle")
 
