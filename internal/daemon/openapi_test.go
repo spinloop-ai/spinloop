@@ -47,6 +47,8 @@ func schemaFor() map[string]any {
 		"GpuStat":        metrics.GpuStat{},
 		"CpuStat":        metrics.CpuStat{},
 		"MemoryStat":     metrics.MemoryStat{},
+		"HistorySample":  metrics.HistorySample{},
+		"HistoryGPU":     metrics.HistoryGPU{},
 		"DeployConfig":   remote.DeployConfig{},
 	}
 }

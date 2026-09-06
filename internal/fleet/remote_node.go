@@ -161,6 +161,7 @@ func statsFromRemote(resp remote.StatsResponse) metrics.Stats {
 		GPUs:          resp.GPUs,
 		CPU:           resp.CPU,
 		Memory:        resp.Memory,
+		History:       resp.History,
 		Errors:        resp.Errors,
 		LastActiveAt:  resp.LastActiveAt,
 		IdleSeconds:   resp.IdleSeconds,

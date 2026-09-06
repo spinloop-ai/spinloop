@@ -729,7 +729,12 @@ type StatsResponse struct {
 	GPUs          []GpuStat   `json:"gpus"`
 	CPU           *CpuStat    `json:"cpu"`
 	Memory        *MemoryStat `json:"memory"`
-	Errors        []string    `json:"errors"`
+	// History relays the daemon's retained system readings verbatim — the data
+	// the bar format draws. Nil for a daemon that has never run an engine, or
+	// a daemon that predates the field; the drawing falls back to the gauge
+	// for a series with no readings, per series.
+	History []metrics.HistorySample `json:"history,omitempty"`
+	Errors  []string                `json:"errors"`
 	// LastActiveAt and IdleSeconds relay the on-instance daemon's answer to
 	// "has this engine been working?", verbatim. Empty when the daemon was
 	// unreachable, when no engine has run, or when the control plane predates

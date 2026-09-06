@@ -6,7 +6,7 @@
  * (spinloop's internal/metrics); the Lambdas only relay its JSON.
  */
 
-import type { CpuStat, GpuStat, MemoryStat, TokenStats } from './stats';
+import type { CpuStat, GpuStat, HistorySample, MemoryStat, TokenStats } from './stats';
 
 /** Where the daemon listens on the instance. Loopback: only SSM reaches it. */
 export const DAEMON_API = 'http://127.0.0.1:4242';
@@ -50,6 +50,13 @@ export interface DaemonMetrics {
   gpus?: GpuStat[];
   cpu?: CpuStat;
   memory?: MemoryStat;
+  /**
+   * The daemon's retained system readings, relayed verbatim — the data the
+   * bar format draws. Absent for a daemon that predates the field or has
+   * never run an engine; they survive a stop, so the field can be present
+   * while the running-engine figures above are not.
+   */
+  history?: HistorySample[];
   errors?: string[];
   /**
    * The same activity pair `/v1/status` reports, from the same record on the

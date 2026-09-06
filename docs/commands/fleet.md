@@ -248,9 +248,13 @@ has been started at all.
 ## Metrics
 
 `spinloop fleet metrics` renders each node's engine and system metrics in the
-same `bar` (default), `table`, and `json` formats as
+same `bar` (default), `gauge`, `table`, and `json` formats as
 [`spinloop remote metrics`](remote.md) — they share the renderers, so a node in
-your fleet and a cloud endpoint look the same.
+your fleet and a cloud endpoint look the same. `bar` draws each series as a
+sparkline of the node's daemon's retained history; a node whose daemon reports
+no history falls back to the gauge drawing of its current reading, so a fleet
+mixed with older daemons renders each node the best way it can. A stopped node
+keeps its readings, so its sparkline runs to the stop.
 
 Each node's block carries the same `last active` figure the status table
 shows, for the reasons given above, and on the same terms: absent until the
@@ -279,10 +283,11 @@ silently missing whatever was down:
 `spinloop fleet dashboard` is that same board as a live view: one tile per
 node, repainted in place, each drawing exactly what `fleet metrics`' bar
 format prints for the node — state and uptime, what it serves, the CPU/GPU/RAM
-bars, the token counters — so the view and the one-shot command never word a
-number differently. A node that is down is a tile that says why, and a node
-whose token reference resolves to nothing holds that reason for the life of
-the view:
+sparklines, the token counters — so the view and the one-shot command never
+word a number differently. `g` toggles every tile between the sparklines and
+the gauge drawing of the current reading; the board opens in bar. A node that
+is down is a tile that says why, and a node whose token reference resolves to
+nothing holds that reason for the life of the view:
 
 ```sh
 spinloop fleet dashboard                # ./fleet.yaml
@@ -295,6 +300,7 @@ spinloop fleet dashboard --fleet f.yaml # another fleet file
 | `PgUp`/`PgDn` | Page the grid when there are more nodes than fit |
 | `Enter` | Open a full-screen view of the selected node |
 | `r` | Force a refresh of every node, now |
+| `g` | Toggle every tile's resource series between bar (sparklines of the retained history) and gauge (the current reading) |
 | `s` | Start the selected node — without confirmation |
 | `a` | Abandon a start in flight on the selected node — the wait ends, the node is free again (a stop in flight is not abortable) |
 | `x` | Stop the selected node — it asks first (`y` sends, `n` or `esc` cancel) |
@@ -515,7 +521,7 @@ deploy`](remote.md), applied per node.
 | `--all` | `start`/`stop`/`deploy`: act on every node (or every `kind: remote` node, for `deploy`) instead of named ones |
 | `--node <name>` | `route` only: report this node rather than choosing one |
 | `--prefer` | `route` only: rank by `idle` or `active`, overriding the file |
-| `--format` | `metrics`: `bar` (default), `table`, or `json`; `logs`: `text` (default) or `json` |
+| `--format` | `metrics`: `bar` (default), `gauge`, `table`, or `json`; `logs`: `text` (default) or `json` |
 | `-w`, `--watch` | `metrics` only: redraw on an interval until interrupted |
 | `-f`, `--follow` | `logs` only: keep printing new output until interrupted |
 | `--limit` | `logs` only: lines of backlog per node (default 200) |

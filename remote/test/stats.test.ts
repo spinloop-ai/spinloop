@@ -56,8 +56,43 @@ describe('parseDaemonMetrics', () => {
     expect(parsed).not.toBeNull();
     expect(parsed!.tokens).toBeUndefined();
     expect(parsed!.gpus).toBeUndefined();
+    expect(parsed!.history).toBeUndefined();
     expect(parsed!.lastActiveAt).toBeUndefined();
     expect(parsed!.idleSeconds).toBeUndefined();
+  });
+
+  it('parses the retained history the daemon reports', () => {
+    const parsed = parseDaemonMetrics(
+      JSON.stringify({
+        state: 'running',
+        cpu: { utilization: 62 },
+        history: [
+          { t: 1785000000, c: 12.5, m: 37.5, g: [{ i: 0, u: 88, m: 51.3 }] },
+          { t: 1785000015, c: 62, m: 37.5, g: [{ i: 0, u: 95 }] },
+        ],
+      }),
+    );
+    expect(parsed).not.toBeNull();
+    expect(parsed!.history).toEqual([
+      { t: 1785000000, c: 12.5, m: 37.5, g: [{ i: 0, u: 88, m: 51.3 }] },
+      { t: 1785000015, c: 62, m: 37.5, g: [{ i: 0, u: 95 }] },
+    ]);
+  });
+
+  it('parses a stopped engine whose history survives the stop', () => {
+    // The readings up to the stop are the point of the retention: they arrive
+    // without any of the running-engine figures beside them.
+    const parsed = parseDaemonMetrics(
+      JSON.stringify({
+        state: 'stopped',
+        history: [{ t: 1785000015, c: 62, m: 37.5, g: [{ i: 0, u: 95 }] }],
+        lastActiveAt: '2026-08-09T12:00:00Z',
+        idleSeconds: 600,
+      }),
+    );
+    expect(parsed).not.toBeNull();
+    expect(parsed!.cpu).toBeUndefined();
+    expect(parsed!.history).toHaveLength(1);
   });
 
   it('parses a stopped engine that still reports when it last worked', () => {

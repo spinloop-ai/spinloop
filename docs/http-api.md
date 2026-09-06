@@ -58,7 +58,16 @@ Stops the engine.
 Returns the current metrics:
 - Token usage counters (from the engine's Prometheus `/metrics` endpoint)
 - Host system metrics (GPU, CPU, RAM)
+- `history`, the daemon's retained system readings — one per sampler tick while an engine ran, each a 0–100% figure per series (`t` time, `c` CPU, `m` memory, `g` per-GPU utilisation and memory), covering at most the last 10 minutes
 - `lastActiveAt` and `idleSeconds`, the same pair `/v1/status` reports
+
+The history survives a stop — the readings up to the stop say what the engine
+was doing until it stopped — and clears when the next engine starts, so one
+engine's readings are never reported against another. It is omitted where no
+reading has been taken. The field names are one letter each on purpose: the
+readings also ride the cloud relay over SSM, whose command output truncates at
+4KB, and the window's samples must fit that budget alongside the current
+reading.
 
 The activity pair comes from the same record `/v1/status` reads, so the two
 endpoints cannot disagree. Unlike the counters and system figures, it is

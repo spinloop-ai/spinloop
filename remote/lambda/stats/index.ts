@@ -99,6 +99,10 @@ export async function handler(event: LambdaFunctionURLEvent): Promise<LambdaFunc
       result.gpus = daemon.gpus;
       result.cpu = daemon.cpu;
       result.memory = daemon.memory;
+      // Relayed verbatim, like the activity pair below: the daemon decides
+      // what counts — the window, the cadence, the retention — and the relay
+      // does not reshape the readings.
+      result.history = daemon.history;
       // Relayed verbatim: the daemon decides what counts as activity, and an
       // absent pair means "nothing to report" rather than "idle since boot".
       result.lastActiveAt = daemon.lastActiveAt;

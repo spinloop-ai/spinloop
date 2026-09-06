@@ -1,9 +1,5 @@
-# Bar Metrics Format Specification
+## MODIFIED Requirements
 
-## Purpose
-
-Define the bar graph output format for `spinloop remote metrics` with colour-coded resource utilization indicators.
-## Requirements
 ### Requirement: Bar format output
 
 The system SHALL support a `--format=bar` option that renders each resource series as a sparkline drawn from the history the on-instance daemon retains: a left-aligned label, one glyph per sample, and the latest value as a right-aligned percentage. The glyphs SHALL be Unicode block elements of one grade per utilisation level, so a series reads as a line of bars across the window. The series drawn SHALL be the same set the gauge format draws: CPU, RAM, and each GPU's utilisation and memory, with the same per-GPU labelling.
@@ -47,15 +43,6 @@ The sparkline's latest point SHALL be colour-coded based on utilization: green f
 - **WHEN** the latest sample of a series is 95%
 - **THEN** the sparkline's final glyph appears in red
 
-### Requirement: Bar format is default
-
-The system SHALL use bar format as the default output when no `--format` flag is specified.
-
-#### Scenario: Default format is bar
-
-- **WHEN** the user runs `spinloop remote metrics` without `--format`
-- **THEN** the output is in bar format
-
 ### Requirement: Bar format with stopped instance
 
 When the instance is not running, bar format SHALL show the header line with environment, state, instance type, and model, and — where the daemon's retained history survives the stop — the series drawn from it, ending at the stop. The retained history answers "what was this engine doing until it stopped", the same question the last-active figure answers, and the header already carries the state. When no history is available, the format SHALL fall back to the gauge drawing of the current reading per the no-history rule — which for a stopped engine, whose current reading carries no resource figures, means no resource series at all. When a last-active time is known it SHALL still be shown, in the same place it occupies for a running instance.
@@ -75,28 +62,7 @@ When the instance is not running, bar format SHALL show the header line with env
 - **WHEN** the user runs `spinloop remote metrics --format=bar` and the instance's engine has been stopped after running, with a retained history
 - **THEN** the output shows the series as sparklines drawn from the readings taken before the stop, ending at the stop
 
-### Requirement: Last-active line in bar format
-
-Bar format SHALL show the last-active figure on its own line, immediately
-below the header line and above the resource bars, so it reads as a fact about
-the endpoint rather than as another utilisation reading. It SHALL NOT be drawn
-as a bar: it is an elapsed time with no ceiling to fill against, and a bar
-would imply one.
-
-The line SHALL be omitted entirely when no last-active time is known, rather
-than shown empty or zeroed.
-
-#### Scenario: The figure sits under the header
-
-- **WHEN** the user runs `spinloop remote metrics --format=bar` against a
-  running endpoint whose engine has served work
-- **THEN** the line after the header shows how long ago that was, and the
-  resource bars follow it
-
-#### Scenario: No activity, no line
-
-- **WHEN** bar format renders an endpoint with no known last-active time
-- **THEN** the output goes straight from the header to the resource bars
+## ADDED Requirements
 
 ### Requirement: Gauge format
 
@@ -139,4 +105,3 @@ Where the daemon reports no history — a daemon that predates the feature, or a
 
 - **WHEN** the user runs `spinloop remote metrics --format=bar` against a daemon that reports no history
 - **THEN** each series is drawn from the current reading in the gauge's filled style
-

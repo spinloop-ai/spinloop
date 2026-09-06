@@ -65,6 +65,7 @@ type Daemon struct {
 	act    activity
 	sample engineSample
 	ready  readiness
+	hist   systemHistory
 
 	mu       sync.Mutex
 	runner   string
@@ -264,10 +265,11 @@ func (d *Daemon) StartEngine() error {
 	// existed — the race the control plane used to close with a last-wake
 	// timestamp of its own.
 	d.act.markActive(d.now())
-	// The previous engine's counters must not be reported against this one,
-	// for the same reason its counter baseline is dropped.
+	// The previous engine's counters and system readings must not be reported
+	// against this one, for the same reason its counter baseline is dropped.
 	d.sample.forget()
 	d.ready.forget()
+	d.hist.clear()
 	return nil
 }
 
@@ -434,5 +436,9 @@ func (d *Daemon) Metrics(ctx context.Context) metrics.Stats {
 	// the scrape, so a poll reports the activity its own reading just
 	// established rather than the record as it stood one call ago.
 	stats.LastActiveAt, stats.IdleSeconds = d.activity()
+	// The same survival rule: the readings up to the stop say what the engine
+	// was doing until it stopped, so they are reported while the running-
+	// engine figures above are absent.
+	stats.History = d.hist.snapshot()
 	return stats
 }

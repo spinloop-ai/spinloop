@@ -183,11 +183,12 @@ func (m *dashModel) detailSectionHeights() (metrics, log int) {
 }
 
 // detailNodeLines is the metrics section: the same lines the node's tile draws,
-// for the node the view is open on.
+// for the node the view is open on, in the board's current format at the full
+// view's width.
 func (m *dashModel) detailNodeLines() []string {
 	e := m.entries[m.cursor]
 	lines, _ := dashNodeView(e.name, m.results[m.cursor], m.actions[m.cursor],
-		dashNow(), dashStaleAfter(e.kind))
+		dashNow(), dashStaleAfter(e.kind), m.gauge, barLineW)
 	return lines
 }
 

@@ -284,7 +284,7 @@ func dashStaleAfter(kind string) time.Duration {
 // its age wherever it is drawn, and takes the panel to the unknown tier: a
 // stale reading is not a wrong reading, but drawing it identically to a
 // current one is.
-func dashNodeView(name string, r fleet.NodeResult, a dashAction, now time.Time, staleAfter time.Duration) ([]string, dashHealthTier) {
+func dashNodeView(name string, r fleet.NodeResult, a dashAction, now time.Time, staleAfter time.Duration, gauge bool, lineW int) ([]string, dashHealthTier) {
 	age := dashReadingAge(r, now, staleAfter)
 	var b strings.Builder
 	switch {
@@ -297,7 +297,7 @@ func dashNodeView(name string, r fleet.NodeResult, a dashAction, now time.Time, 
 			if s := r.Metrics.State; s != "" {
 				fmt.Fprintln(&b, dashStateLine(s, r.Metrics)+age)
 			}
-			dashTileReportBody(&b, r.Metrics, true)
+			dashTileReportBody(&b, r.Metrics, true, gauge, lineW)
 		}
 	case r.Outcome == "":
 		fmt.Fprintf(&b, "%s\nwaiting for first refresh…\n", name)
@@ -308,7 +308,14 @@ func dashNodeView(name string, r fleet.NodeResult, a dashAction, now time.Time, 
 		}
 	default:
 		fmt.Fprintf(&b, "%s  %s%s\n", name, dashStateLine(r.Metrics.State, r.Metrics), age)
-		dashTileReportBody(&b, r.Metrics, r.Metrics.State == "running")
+		// In bar the series also come from the retained history, which
+		// survives a stop: a stopped node with a window still has series to
+		// draw, and its current reading simply carries no fallback for them.
+		resources := r.Metrics.State == "running"
+		if !gauge && len(r.Metrics.History) > 0 {
+			resources = true
+		}
+		dashTileReportBody(&b, r.Metrics, resources, gauge, lineW)
 	}
 	lines := strings.Split(b.String(), "\n")
 	lines = lines[:len(lines)-1] // the trailing newline splits an extra empty piece
@@ -373,8 +380,8 @@ func dashHealthTierFor(r fleet.NodeResult, a dashAction, stale bool) dashHealthT
 // tile's fixed height and clipped to its fixed width, with the first line
 // drawn as the header bar — tile-only, not part of dashNodeView, so the detail
 // view (which draws the same lines full-screen) keeps a plain first line.
-func dashTileContent(name string, r fleet.NodeResult, a dashAction, now time.Time, staleAfter time.Duration) string {
-	lines, tier := dashNodeView(name, r, a, now, staleAfter)
+func dashTileContent(name string, r fleet.NodeResult, a dashAction, now time.Time, staleAfter time.Duration, gauge bool) string {
+	lines, tier := dashNodeView(name, r, a, now, staleAfter, gauge, dashBarLineW)
 	if len(lines) == 0 {
 		lines = []string{""}
 	}
@@ -426,19 +433,23 @@ func dashStateLine(state string, m metrics.Stats) string {
 // answer has it. A settled tile gates the resources block on the node being
 // running; the in-flight tile draws whatever there is, because a boot half
 // done has some of the facts and not the rest.
-func dashTileReportBody(w io.Writer, m metrics.Stats, resources bool) {
+func dashTileReportBody(w io.Writer, m metrics.Stats, resources bool, gauge bool, lineW int) {
 	if line := dashTileServingLine(m); line != "" {
 		fmt.Fprintln(w, line)
 	}
 	renderLastActiveIndented(w, m.LastActiveAt, m.IdleSeconds)
 	if resources {
-		renderStatBars(w, m.CPU, m.Memory, m.GPUs)
+		if gauge {
+			renderStatGauges(w, m.CPU, m.Memory, m.GPUs)
+		} else {
+			renderStatBars(w, m.CPU, m.Memory, m.GPUs, m.History, lineW)
+		}
 		renderTokenLines(w, m.Tokens)
 	}
 }
 
 // dashTile frames one panel; the selected one carries a lit border.
-func dashTile(name string, r fleet.NodeResult, selected bool, a dashAction, now time.Time, staleAfter time.Duration) string {
+func dashTile(name string, r fleet.NodeResult, selected bool, a dashAction, now time.Time, staleAfter time.Duration, gauge bool) string {
 	style := lipgloss.NewStyle().
 		Width(dashTileW).Height(dashTileH).
 		Border(lipgloss.RoundedBorder())
@@ -447,7 +458,7 @@ func dashTile(name string, r fleet.NodeResult, selected bool, a dashAction, now 
 	} else {
 		style = style.BorderForeground(lipgloss.Color("240"))
 	}
-	return style.Render(dashTileContent(name, r, a, now, staleAfter))
+	return style.Render(dashTileContent(name, r, a, now, staleAfter, gauge))
 }
 
 // dashGridRows lays tiles out left to right, top to bottom, in fleet-file
