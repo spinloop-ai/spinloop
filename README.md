@@ -41,6 +41,35 @@ spinloop add -p ollama -m qwen3.6
 spinloop harness            # launch the agent, now running the model you picked
 ```
 
+## A fleet, mid-session
+
+`spinloop fleet dashboard` is the board you leave open while you work: one tile
+per machine, repainted in place.
+
+<p align="center">
+  <img src="docs/img/fleet_dashboard.png" alt="The spinloop fleet dashboard: four nodes serving Qwen3.8-27B under llama.cpp, and a fifth cloud node not yet deployed" width="900">
+</p>
+
+Five nodes are configured here and four are up, each serving the same
+`unsloth/Qwen3.8-27B-GGUF` through llama.cpp. Three of them — `dev-2`, `dev-3`,
+`dev-4` — are mid-request: one slot running apiece, GPU util between 91% and
+98%. `dev-1` finished about a minute ago, so its GPU util has dropped to 0%
+while GPU memory stays at 89% — the weights are still loaded, and the next
+request it takes starts generating without a reload. `prefer: idle` sends the
+next launch to that machine.
+
+The fifth node, `vllm-1`, is a cloud environment with no instance running:
+`undeployed`, costing nothing, with the vLLM build of the same model
+(`Qwen/Qwen3.8-27B-FP8`) configured on it. Arrow across to its tile and press
+`s` — the tile then reports the wake as it happens, until the node is serving
+like the rest.
+
+Each tile counts what that node has done since its engine started — prompt and
+generation tokens, slots in use, uptime, and how long since it last did any
+work. The keys along the bottom are the whole interface: `s` start, `x` stop,
+`r` refresh, and `<enter>` for one node full-screen with its engine log tailed
+live.
+
 ## Supported providers
 
 Every provider below is built in — name it with `-p` and `spinloop` fills in the
@@ -462,10 +491,12 @@ spinloop fleet dashboard       # the interactive tiled view — watch it, drive 
 spinloop fleet start gpu-box   # start one node's engine
 ```
 
-`dashboard` is the fleet you actually look at: one tile per node, repainted
-in place, each drawing what `fleet metrics` prints — start a node with `s`,
-stop one with `x`, and a waking cloud machine reports its own progress on its
-tile; `a` ends the wait on one in flight (the wake goes on in the cloud).
+`dashboard` is the fleet you actually look at, and the board
+[at the top of this page](#a-fleet-mid-session) is a real one: one tile per
+node, repainted in place, each drawing what `fleet metrics` prints — start a
+node with `s`, stop one with `x`, and a waking cloud machine reports its own
+progress on its tile; `a` ends the wait on one in flight (the wake goes on in
+the cloud).
 Press `<enter>` on a tile for a full-screen view of that node — metrics, its
 engine log tailed live, and the keys that work there — `<esc>` to go back.
 `fleet metrics --watch` is the same board as a stream, for pipes.
