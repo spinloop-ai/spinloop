@@ -308,10 +308,10 @@ spinloop fleet dashboard --fleet f.yaml # another fleet file
 | `Enter` | Open a full-screen view of the selected node |
 | `r` | Force a refresh of every node, now |
 | `g` | Toggle every tile's resource series between bar (sparklines of the retained history) and gauge (the current reading) |
-| `s` | Start the selected node — without confirmation |
+| `s` | Start the selected node — without confirmation — shown only for a node that is not running, and only while it has no action in flight |
 | `k` | Keep a remote environment for a duration you type — shown only for a node that can be kept, and only while it has no action in flight |
 | `a` | Abandon a start in flight on the selected node — the wait ends, the node is free again (a stop in flight is not abortable) |
-| `x` | Stop the selected node — it asks first (`y` sends, `n` or `esc` cancel) |
+| `x` | Stop the selected node — it asks first (`y` sends, `n` or `esc` cancel) — shown only for a node that is running, and only while it has no action in flight |
 | `q` or `Ctrl+C` | Leave |
 
 The board keeps its own cadence: local machines are read every two seconds,

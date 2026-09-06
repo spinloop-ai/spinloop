@@ -25,11 +25,6 @@ import (
 // variable so a test need not wait on it.
 var detailLogInterval = 3 * time.Second
 
-// dashDetailKeys is the detail view's footer key help, sharing footerLine
-// with the grid's own (dashGridKeys) so a status outcome or the stop
-// confirmation cannot be worded differently between the two.
-const dashDetailKeys = "esc back   s start   x stop   a abort   f follow"
-
 // detailLogTickMsg fires on detailLogInterval while the detail view is open.
 type detailLogTickMsg time.Time
 
@@ -253,6 +248,6 @@ func (m dashModel) detailView() string {
 		parts = append(parts, dashClip(line, w))
 	}
 	parts = append(parts, divider)
-	parts = append(parts, m.footerLine(w, dashFooterHints(m.detailKeys(), m.canAbort())))
+	parts = append(parts, m.footerLine(w, m.detailKeys()))
 	return strings.Join(parts, "\n")
 }

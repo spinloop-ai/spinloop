@@ -91,26 +91,9 @@ func dashClip(line string, width int) string {
 	return ansi.CutWc(line, 0, width)
 }
 
-// dashHintGap separates one key-help entry from the next, and is what both
-// dashFooterHints and dashKeyHints split a hint line on.
+// dashHintGap separates one key-help entry from the next, and is what
+// dashKeyHints splits a hint line on.
 const dashHintGap = "   "
-
-// dashFooterHints drops the "a abort" entry from a key-help line when
-// nothing is currently abortable, so the footer never advertises a key that
-// would do nothing for the node it describes.
-func dashFooterHints(hints string, abortable bool) string {
-	if abortable {
-		return hints
-	}
-	parts := strings.Split(hints, dashHintGap)
-	kept := make([]string, 0, len(parts))
-	for _, p := range parts {
-		if p != "a abort" {
-			kept = append(kept, p)
-		}
-	}
-	return strings.Join(kept, dashHintGap)
-}
 
 // dashKeyHints draws a key-help line: each entry is a key and what that key
 // does, and entries are three spaces apart (dashHintGap). The key keeps the

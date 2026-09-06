@@ -738,6 +738,46 @@ func (m dashModel) canAbort() bool {
 	return len(m.entries) > 0 && m.actions[m.cursor].verb == "start"
 }
 
+// startOffered and stopOffered report whether the start and stop keys would do
+// anything for the node under the cursor, from the same result the node's tile
+// draws from: the tile and the footer read one account of the node, so the
+// footer cannot name a key for a state the panel does not show. A read answers
+// running when it is OK and carries a running state; a read that failed — or
+// the absence of one, before the first answer — carries no state, which is not
+// running, so start is the key that might still do something, and the one the
+// line keeps offering. Both keys need the node to exist and have nothing in
+// flight, the same guards the key handlers answer to: an entry that could not
+// become a node takes nothing, and a node already acting takes no second
+// action. The footer uses the offers to name a key only where it would drive
+// something, the same way keepOffered gates the keep hint.
+func (m dashModel) startOffered() bool {
+	return m.actionOffered() && !m.nodeRunning()
+}
+
+func (m dashModel) stopOffered() bool {
+	return m.actionOffered() && m.nodeRunning()
+}
+
+// actionOffered reports whether the node under the cursor could take an action
+// at all: its entry has a node, and the node has nothing in flight.
+func (m dashModel) actionOffered() bool {
+	if len(m.entries) == 0 {
+		return false
+	}
+	return m.entries[m.cursor].node != nil && m.actions[m.cursor].verb == ""
+}
+
+// nodeRunning reports whether the board's current read of the node under the
+// cursor answers running: the read answered and carries a running state. A
+// model that has no read of the node cannot say it is running.
+func (m dashModel) nodeRunning() bool {
+	if m.cursor >= len(m.results) {
+		return false
+	}
+	r := m.results[m.cursor]
+	return r.OK() && r.Metrics.State == "running"
+}
+
 // keepOffered reports whether the keep key would do anything for the node under
 // the cursor: the node must support a keep (a remote environment) and have
 // nothing in flight. A local daemon node has no retention tag to set, and a
@@ -755,22 +795,43 @@ func (m dashModel) keepOffered() bool {
 	return ok
 }
 
-// gridKeys and detailKeys are the two footers' key help with the keep entry
-// included only where keepOffered says the node under the cursor can be kept —
-// the same gate the k key itself answers to, so a hint is never shown for a key
-// that would drive nothing on that node.
+// gridKeys and detailKeys are the two footers' key help: the entries that
+// always apply, plus each action entry named only where its offer is true —
+// start and stop from the node's own state, keep from its support for
+// retention, and abort from the start in flight on it — so a hint is never
+// shown for a key that would drive nothing on the node the line describes.
 func (m dashModel) gridKeys() string {
-	if m.keepOffered() {
-		return "↑↓←→ move   s start   k keep   a abort   x stop   r refresh   q quit"
+	parts := []string{"↑↓←→ move"}
+	if m.startOffered() {
+		parts = append(parts, "s start")
 	}
-	return dashGridKeys
+	if m.keepOffered() {
+		parts = append(parts, "k keep")
+	}
+	if m.canAbort() {
+		parts = append(parts, "a abort")
+	}
+	if m.stopOffered() {
+		parts = append(parts, "x stop")
+	}
+	return strings.Join(append(parts, "g format", "r refresh", "q quit"), dashHintGap)
 }
 
 func (m dashModel) detailKeys() string {
-	if m.keepOffered() {
-		return "esc back   s start   k keep   x stop   a abort   f follow"
+	parts := []string{"esc back"}
+	if m.startOffered() {
+		parts = append(parts, "s start")
 	}
-	return dashDetailKeys
+	if m.keepOffered() {
+		parts = append(parts, "k keep")
+	}
+	if m.stopOffered() {
+		parts = append(parts, "x stop")
+	}
+	if m.canAbort() {
+		parts = append(parts, "a abort")
+	}
+	return strings.Join(append(parts, "f follow"), dashHintGap)
 }
 
 // indexOf finds an entry by name. Fleet-file names are unique — the fleet
@@ -840,7 +901,7 @@ func (m dashModel) View() string {
 	if hi > lo {
 		parts = append(parts, strings.Join(rows[lo:hi], "\n"))
 	}
-	parts = append(parts, m.footerLine(w, dashFooterHints(m.gridKeys(), m.canAbort())))
+	parts = append(parts, m.footerLine(w, m.gridKeys()))
 	return strings.Join(parts, "\n")
 }
 
@@ -852,10 +913,6 @@ func (m dashModel) headerLine(w int) string {
 	return dashTitleBar("fleet dashboard",
 		fmt.Sprintf("%s   (%d %s)", m.fleetPath, len(m.entries), word), w)
 }
-
-// dashGridKeys is the grid's own key help; the detail view's footer shares
-// footerLine but names its own keys instead (see dashDetailKeys).
-const dashGridKeys = "↑↓←→ move   s start   a abort   x stop   g format   r refresh   q quit"
 
 // footerLine is the frame's bottom line: the given key help, replaced by the
 // stop confirmation prompt while one is pending, with the status line and a

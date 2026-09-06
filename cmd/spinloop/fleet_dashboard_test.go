@@ -2454,14 +2454,68 @@ func TestDashCanAbort(t *testing.T) {
 	}
 }
 
-func TestDashFooterHints(t *testing.T) {
-	const hints = "j/k move   s start   a abort   x stop   r refresh   q quit"
-	if got := dashFooterHints(hints, true); got != hints {
-		t.Errorf("abortable dropped or changed hints: %q", got)
+// start is offered where the key would do something — the node exists, has
+// nothing in flight, and the board's current read does not report it running —
+// and stop is offered exactly where the read reports it running. A read that
+// failed, or none at all, reports no state, which is not running, so start is
+// the key the line keeps offering.
+func TestDashStartAndStopOffered(t *testing.T) {
+	read := func(state string) fleet.NodeResult {
+		return fleet.NodeResult{Name: "a", Outcome: fleet.OutcomeOK, Metrics: metrics.Stats{State: state}}
 	}
-	want := "j/k move   s start   x stop   r refresh   q quit"
-	if got := dashFooterHints(hints, false); got != want {
-		t.Errorf("dashFooterHints(false) = %q, want %q", got, want)
+	cases := []struct {
+		name      string
+		node      fleet.Node
+		result    fleet.NodeResult
+		verb      string
+		wantStart bool
+		wantStop  bool
+	}{
+		{"idle", newFakeDashNode("idle"), read("idle"), "", true, false},
+		{"running", newFakeDashNode("running"), read("running"), "", false, true},
+		{"stopped", newFakeDashNode("stopped"), read("stopped"), "", true, false},
+		{"crashed", newFakeDashNode("crashed"), read("crashed"), "", true, false},
+		{"undeployed", newFakeDashNode("undeployed"), read("undeployed"), "", true, false},
+		{"a read that failed", newFakeDashNode("running"),
+			fleet.NodeResult{Name: "a", Outcome: fleet.OutcomeUnreachable, Err: errors.New("connection refused")},
+			"", true, false},
+		{"no read yet", newFakeDashNode("running"), fleet.NodeResult{Name: "a"}, "", true, false},
+		{"a node that never became one", nil,
+			fleet.NodeResult{Name: "a", Outcome: fleet.OutcomeConfigError, Err: errors.New("set nowhere")},
+			"", false, false},
+		{"a start in flight", newFakeDashNode("idle"), read("idle"), "start", false, false},
+		{"a stop in flight", newFakeDashNode("running"), read("running"), "stop", false, false},
+		{"a keep in flight", newFakeDashNode("stopped"), read("stopped"), "keep", false, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := dashModel{
+				entries: []dashEntry{{name: "a", kind: fleet.KindDaemon, node: tc.node}},
+				results: []fleet.NodeResult{tc.result},
+				actions: []dashAction{{verb: tc.verb}},
+			}
+			if got := m.startOffered(); got != tc.wantStart {
+				t.Errorf("startOffered() = %v, want %v", got, tc.wantStart)
+			}
+			if got := m.stopOffered(); got != tc.wantStop {
+				t.Errorf("stopOffered() = %v, want %v", got, tc.wantStop)
+			}
+		})
+	}
+	if m := (dashModel{}); m.startOffered() || m.stopOffered() {
+		t.Error("an empty fleet offers start or stop")
+	}
+	// A model built without any read cannot say the node is running: start
+	// stays offered, stop does not.
+	m := dashModel{
+		entries: []dashEntry{{name: "a", kind: fleet.KindDaemon, node: newFakeDashNode("running")}},
+		actions: make([]dashAction, 1),
+	}
+	if got := m.startOffered(); got != true {
+		t.Errorf("startOffered() with no reads = %v, want true", got)
+	}
+	if got := m.stopOffered(); got != false {
+		t.Errorf("stopOffered() with no reads = %v, want false", got)
 	}
 }
 
@@ -2548,6 +2602,221 @@ func TestDashDetailFooterOmitsAbortWhenNothingIsAbortable(t *testing.T) {
 	m.actions[0] = dashAction{verb: "start"}
 	if v := m.detailView(); !strings.Contains(v, "a abort") {
 		t.Errorf("detail footer hides abort while a start is in flight:\n%s", v)
+	}
+}
+
+// The footer names each action key only where its offer is true, each screen
+// in its own entry order — the grid reads move, start, keep, abort, stop,
+// format, refresh, quit, and the detail view reads back, start, keep, stop,
+// abort, follow.
+func TestDashFooterNamesOnlyTheKeysTheNodeTakes(t *testing.T) {
+	read := func(state string) fleet.NodeResult {
+		return fleet.NodeResult{Name: "a", Outcome: fleet.OutcomeOK, Metrics: metrics.Stats{State: state}}
+	}
+	kept := &keeperDashNode{f: newFakeDashNode("stopped")}
+	cases := []struct {
+		name   string
+		m      dashModel
+		grid   string
+		detail string
+	}{
+		{
+			"running local node",
+			dashModel{
+				entries: []dashEntry{{name: "a", kind: fleet.KindDaemon, node: newFakeDashNode("running")}},
+				results: []fleet.NodeResult{read("running")},
+				actions: make([]dashAction, 1),
+			},
+			"↑↓←→ move   x stop   g format   r refresh   q quit",
+			"esc back   x stop   f follow",
+		},
+		{
+			"stopped local node",
+			dashModel{
+				entries: []dashEntry{{name: "a", kind: fleet.KindDaemon, node: newFakeDashNode("stopped")}},
+				results: []fleet.NodeResult{read("stopped")},
+				actions: make([]dashAction, 1),
+			},
+			"↑↓←→ move   s start   g format   r refresh   q quit",
+			"esc back   s start   f follow",
+		},
+		{
+			"unknown state",
+			dashModel{
+				entries: []dashEntry{{name: "a", kind: fleet.KindDaemon, node: newFakeDashNode("stopped")}},
+				results: []fleet.NodeResult{{Name: "a"}},
+				actions: make([]dashAction, 1),
+			},
+			"↑↓←→ move   s start   g format   r refresh   q quit",
+			"esc back   s start   f follow",
+		},
+		{
+			"a node that never became one",
+			dashModel{
+				entries: []dashEntry{{name: "broken", kind: fleet.KindDaemon,
+					standing: fleet.NodeResult{Name: "broken", Outcome: fleet.OutcomeConfigError, Err: errors.New("set nowhere")}}},
+				results: []fleet.NodeResult{{Name: "broken", Outcome: fleet.OutcomeConfigError}},
+				actions: make([]dashAction, 1),
+			},
+			"↑↓←→ move   g format   r refresh   q quit",
+			"esc back   f follow",
+		},
+		{
+			"a start in flight",
+			dashModel{
+				entries: []dashEntry{{name: "a", kind: fleet.KindDaemon, node: newFakeDashNode("stopped")}},
+				results: []fleet.NodeResult{read("stopped")},
+				actions: []dashAction{{verb: "start"}},
+			},
+			"↑↓←→ move   a abort   g format   r refresh   q quit",
+			"esc back   a abort   f follow",
+		},
+		{
+			"a stop in flight",
+			dashModel{
+				entries: []dashEntry{{name: "a", kind: fleet.KindDaemon, node: newFakeDashNode("running")}},
+				results: []fleet.NodeResult{read("running")},
+				actions: []dashAction{{verb: "stop"}},
+			},
+			"↑↓←→ move   g format   r refresh   q quit",
+			"esc back   f follow",
+		},
+		{
+			"a stopped remote environment",
+			dashModel{
+				entries: []dashEntry{{name: "env", kind: fleet.KindRemote, node: kept}},
+				results: []fleet.NodeResult{read("stopped")},
+				actions: make([]dashAction, 1),
+			},
+			"↑↓←→ move   s start   k keep   g format   r refresh   q quit",
+			"esc back   s start   k keep   f follow",
+		},
+		{
+			"a running remote environment",
+			dashModel{
+				entries: []dashEntry{{name: "env", kind: fleet.KindRemote, node: kept}},
+				results: []fleet.NodeResult{read("running")},
+				actions: make([]dashAction, 1),
+			},
+			"↑↓←→ move   k keep   x stop   g format   r refresh   q quit",
+			"esc back   k keep   x stop   f follow",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.m.gridKeys(); got != tc.grid {
+				t.Errorf("gridKeys():\ngot:  %q\nwant: %q", got, tc.grid)
+			}
+			if got := tc.m.detailKeys(); got != tc.detail {
+				t.Errorf("detailKeys():\ngot:  %q\nwant: %q", got, tc.detail)
+			}
+		})
+	}
+}
+
+// The key help names start only where the key would do something — the
+// node's current read does not report it running — and stop only where it
+// does, on both screens: a read that failed, or no read at all, offers start
+// rather than stop, since the board cannot say the node is running.
+func TestDashKeyHelpHidesStartAndStopWhereTheyWouldDoNothing(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.Ascii)
+	read := func(state string) fleet.NodeResult {
+		return fleet.NodeResult{Name: "a", Outcome: fleet.OutcomeOK, Metrics: metrics.Stats{State: state}}
+	}
+	cases := []struct {
+		name      string
+		result    fleet.NodeResult
+		wantStart bool
+		wantStop  bool
+	}{
+		{"running", read("running"), false, true},
+		{"idle", read("idle"), true, false},
+		{"stopped", read("stopped"), true, false},
+		{"crashed", read("crashed"), true, false},
+		{"undeployed", read("undeployed"), true, false},
+		{"a failed read", fleet.NodeResult{Name: "a", Outcome: fleet.OutcomeUnreachable, Err: errors.New("connection refused")}, true, false},
+		{"no read yet", fleet.NodeResult{Name: "a"}, true, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := dashModel{
+				entries: []dashEntry{{name: "a", kind: fleet.KindDaemon, node: newFakeDashNode("running")}},
+				results: []fleet.NodeResult{tc.result},
+				actions: make([]dashAction, 1),
+				width:   80, height: 24,
+			}
+			if v := m.View(); (strings.Contains(v, "s start")) != tc.wantStart || (strings.Contains(v, "x stop")) != tc.wantStop {
+				t.Errorf("grid key help for %s:\n%s", tc.name, v)
+			}
+			m.detail = true
+			if v := m.detailView(); (strings.Contains(v, "s start")) != tc.wantStart || (strings.Contains(v, "x stop")) != tc.wantStop {
+				t.Errorf("detail key help for %s:\n%s", tc.name, v)
+			}
+		})
+	}
+}
+
+// The key help is about the node under the cursor: on a multi-node board the
+// entries follow the selection — start for a node the read reports not
+// running, stop for one it reports running.
+func TestDashKeyHelpFollowsTheSelection(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.Ascii)
+	read := func(name, state string) fleet.NodeResult {
+		return fleet.NodeResult{Name: name, Outcome: fleet.OutcomeOK, Metrics: metrics.Stats{State: state}}
+	}
+	m := &dashModel{
+		entries: []dashEntry{
+			{name: "a", kind: fleet.KindDaemon, node: newFakeDashNode("stopped")},
+			{name: "b", kind: fleet.KindDaemon, node: newFakeDashNode("running")},
+		},
+		results: []fleet.NodeResult{read("a", "stopped"), read("b", "running")},
+		actions: make([]dashAction, 2),
+		width:   120, height: 40,
+	}
+	if v := m.View(); !strings.Contains(v, "s start") || strings.Contains(v, "x stop") {
+		t.Errorf("on the stopped node:\n%s", v)
+	}
+	m2, _ := m.Update(dashKey("right"))
+	mm := m2.(*dashModel)
+	if mm.cursor != 1 {
+		t.Fatalf("right did not move to the second node: %d", mm.cursor)
+	}
+	if v := mm.View(); strings.Contains(v, "s start") || !strings.Contains(v, "x stop") {
+		t.Errorf("on the running node:\n%s", v)
+	}
+}
+
+// The hint hides a key, but the key is not gated: pressing start on a node
+// the read reports running still makes the call, and the node's own refusal
+// lands on the status line with the dashboard still open — the one-shot
+// answer, not silence.
+func TestDashStartKeyIsNotGatedByItsHint(t *testing.T) {
+	node := newFakeDashNode("running")
+	node.startErr = errors.New("already running")
+	m := &dashModel{
+		entries: []dashEntry{{name: "a", kind: fleet.KindDaemon, node: node}},
+		results: []fleet.NodeResult{{Name: "a", Outcome: fleet.OutcomeOK, Metrics: metrics.Stats{State: "running"}}},
+		actions: make([]dashAction, 1),
+		width:   120, height: 40,
+	}
+	if v := m.View(); strings.Contains(v, "s start") {
+		t.Fatalf("the hint offers a start the node is already serving:\n%s", v)
+	}
+	_, cmd := m.Update(dashKey("s"))
+	if cmd == nil {
+		t.Fatal("s drove nothing on a running node")
+	}
+	msg, _ := runAction(t, cmd).(dashActionMsg)
+	m2, _ := m.Update(msg)
+	mm := m2.(*dashModel)
+	if mm.statusLine != "a: start failed — already running" {
+		t.Errorf("status line: %q", mm.statusLine)
+	}
+	if mm.actions[0].verb != "" {
+		t.Errorf("the failed action was not cleared: %+v", mm.actions[0])
+	}
+	if v := mm.View(); !strings.Contains(v, "a: start failed — already running") {
+		t.Errorf("the outcome is not on the status line:\n%s", v)
 	}
 }
 
@@ -2963,7 +3232,7 @@ func TestDashDetailViewRendersMetricsLogAndFooter(t *testing.T) {
 	lipgloss.SetColorProfile(termenv.Ascii)
 	m := dashModel{
 		fleetPath: "fleet.yaml",
-		entries:   []dashEntry{{name: "up", kind: fleet.KindDaemon}},
+		entries:   []dashEntry{{name: "up", kind: fleet.KindDaemon, node: newFakeDashNode("idle")}},
 		results: []fleet.NodeResult{{
 			Name: "up", Outcome: fleet.OutcomeOK,
 			Metrics: metrics.Stats{State: "idle", Runner: "llamacpp", ModelID: "org/qwen"},
@@ -2983,7 +3252,9 @@ func TestDashDetailViewRendersMetricsLogAndFooter(t *testing.T) {
 	if !strings.Contains(view, "line one") || !strings.Contains(view, "line two") {
 		t.Errorf("log section missing the tailed lines:\n%s", view)
 	}
-	if !strings.Contains(view, dashFooterHints(dashDetailKeys, false)) {
+	// The node is idle with nothing in flight, so the footer names back,
+	// start (the node is not running) and follow — not stop, not abort.
+	if !strings.Contains(view, "esc back   s start   f follow") {
 		t.Errorf("footer does not name the detail view's keys:\n%s", view)
 	}
 }
