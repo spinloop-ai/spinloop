@@ -16,13 +16,27 @@ func TestBarGlyph(t *testing.T) {
 		pct  float64
 		want rune
 	}{
-		{0, '▁'}, {12.4, '▁'}, {12.5, '▂'}, {30, '▃'}, {50, '▅'},
-		{75, '▇'}, {87.4, '▇'}, {87.5, '█'}, {100, '█'},
+		{0, '▁'}, {12.4, '▁'}, {12.5, '▁'}, {30, '▃'}, {50, '▄'},
+		{75, '▆'}, {87.4, '▇'}, {87.5, '▇'}, {100, '▇'},
 	}
 	for _, c := range cases {
 		if got := barGlyph(c.pct); got != c.want {
 			t.Errorf("barGlyph(%v) = %c, want %c", c.pct, got, c.want)
 		}
+	}
+}
+
+// The sparkline never draws a full block: the highest value caps at the
+// seven-eighths glyph, so a maxed row leaves a sliver of space above it and
+// adjacent rows read as separate bars.
+func TestBarGlyphNeverFullBlock(t *testing.T) {
+	for pct := 0.0; pct <= 100.0; pct += 0.5 {
+		if g := barGlyph(pct); g == '█' {
+			t.Fatalf("barGlyph(%v) = full block, want seven-eighths or less", pct)
+		}
+	}
+	if g := barGlyph(100); g != '▇' {
+		t.Errorf("barGlyph(100) = %c, want ▇", g)
 	}
 }
 
@@ -76,9 +90,9 @@ func TestRenderSparklineColoursOnlyTheLastPoint(t *testing.T) {
 		last float64
 		want string
 	}{
-		{79.9, ansiGreen + "▇" + ansiReset + " 80%\n"},
-		{85, ansiYellow + "▇" + ansiReset + " 85%\n"},
-		{95, ansiRed + "█" + ansiReset + " 95%\n"},
+		{79.9, ansiGreen + "▆" + ansiReset + " 80%\n"},
+		{85, ansiYellow + "▆" + ansiReset + " 85%\n"},
+		{95, ansiRed + "▇" + ansiReset + " 95%\n"},
 	}
 	for _, c := range cases {
 		var b bytes.Buffer
@@ -152,11 +166,33 @@ func TestRenderStatBarsDrawsHistory(t *testing.T) {
 	if len(lines) != 2 {
 		t.Fatalf("drew %d lines, want CPU and RAM: %q", len(lines), b.String())
 	}
-	if !strings.Contains(lines[0], ansiRed+"█"+ansiReset+" 95%") {
+	if !strings.Contains(lines[0], ansiRed+"▇"+ansiReset+" 95%") {
 		t.Errorf("CPU line lost its spike or its red last point: %q", lines[0])
 	}
-	if !strings.Contains(lines[1], ansiGreen+"▄"+ansiReset+" 40%") {
+	if !strings.Contains(lines[1], ansiGreen+"▃"+ansiReset+" 40%") {
 		t.Errorf("RAM line: %q", lines[1])
+	}
+}
+
+// Two adjacent series both pinned at 100% draw at seven-eighths, so neither
+// row reaches the top of its cell: the rows read as separate bars rather than
+// one solid block. The full block must not appear anywhere in the render.
+func TestRenderStatBarsMaxedRowsStopShortOfFull(t *testing.T) {
+	history := []metrics.HistorySample{
+		{Time: 1, CPU: ptrPct(100), Mem: ptrPct(100)},
+		{Time: 2, CPU: ptrPct(100), Mem: ptrPct(100)},
+	}
+	var b bytes.Buffer
+	renderStatBars(&b, nil, nil, nil, history, barLineW)
+	out := b.String()
+	if strings.Contains(out, "█") {
+		t.Errorf("a maxed series drew a full block:\n%s", out)
+	}
+	if !strings.Contains(out, "▇") {
+		t.Errorf("a maxed series did not draw the seven-eighths block:\n%s", out)
+	}
+	if !strings.Contains(out, " 100%") {
+		t.Errorf("a maxed series lost its trailing figure:\n%s", out)
 	}
 }
 
