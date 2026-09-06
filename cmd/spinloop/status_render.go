@@ -45,10 +45,10 @@ func (f statusFact) servingText() string {
 	}
 	// How long since it last did work — deliberately not labelled "idle": that
 	// word is already an engine state meaning nothing has been started. Shown
-	// only when there is a recorded last-active time; without one there is
-	// nothing to measure from.
+	// only when there is a recorded active time; without one there is nothing
+	// to measure from.
 	if f.LastActiveAt != "" {
-		serving += fmt.Sprintf("  (last active %s ago)", formatDuration(f.IdleSeconds))
+		serving += fmt.Sprintf("  (active %s ago)", formatDuration(f.IdleSeconds))
 	}
 	if f.Version != "" {
 		serving += fmt.Sprintf("  (%s)", f.Version)

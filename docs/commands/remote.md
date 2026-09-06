@@ -169,7 +169,7 @@ of the current reading, so the default output degrades rather than goes blank.
 A stopped engine keeps its readings: the sparkline runs to the stop, ending
 at it.
 
-Both report **`last active`** — how long since the endpoint's engine last did
+Both report **`active`** — how long since the endpoint's engine last did
 any work. It comes from the activity the on-instance daemon tracks, so it is
 one answer decided on the box rather than something each command re-derives
 from raw counters. `status` asks the daemon alongside the health check it

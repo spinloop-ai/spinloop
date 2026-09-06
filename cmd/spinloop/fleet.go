@@ -187,6 +187,7 @@ func renderFleetMetrics(w io.Writer, results []fleet.NodeResult, format string) 
 	if format == "json" {
 		return renderFleetMetricsJSON(w, results)
 	}
+	now := metricsNow()
 	for i, r := range results {
 		if i > 0 {
 			fmt.Fprintln(w)
@@ -203,10 +204,9 @@ func renderFleetMetrics(w io.Writer, results []fleet.NodeResult, format string) 
 		fmt.Fprintln(w)
 		// Before the continue, for the same reason the remote formats show it
 		// before theirs: a node whose engine has stopped still has a useful
-		// answer to "when did this last do anything?" — and, for a retained
-		// remote environment, "until is it kept?".
-		renderLastActiveIndented(w, stats.LastActiveAt, stats.IdleSeconds)
-		renderRetainIndented(w, stats.RetainUntil)
+		// answer to "when did it last do anything?" — and, for a retained
+		// remote environment, "how long is it kept?".
+		renderActiveIndented(w, stats.LastActiveAt, stats.IdleSeconds, stats.RetainUntil, now)
 		switch format {
 		case "bar":
 			// No state gate, for the same reason the remote bar format has

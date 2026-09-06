@@ -396,9 +396,12 @@ func TestDashKeepHintOnlyWhereItDrivesSomething(t *testing.T) {
 	})
 }
 
-// The deadline rides the node's read onto the tile and the detail screen,
-// beside the last-active line, and a read without one draws no line.
-func TestDashTileAndDetailShowRetainUntil(t *testing.T) {
+// The deadline rides the node's read onto the tile and the detail screen, as a
+// relative keep after the active figure on the same line, and a read without one
+// draws no keep.
+func TestDashTileAndDetailShowKeep(t *testing.T) {
+	at := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	dashFixNow(t, at)
 	node := &keeperDashNode{f: newFakeDashNode("stopped")}
 	m := keeperModel(node)
 	r := fleet.NodeResult{
@@ -406,30 +409,31 @@ func TestDashTileAndDetailShowRetainUntil(t *testing.T) {
 		Outcome: fleet.OutcomeOK,
 		Metrics: metrics.Stats{
 			State: "stopped", Runner: "llamacpp", ModelID: "org/m",
-			RetainUntil: "2030-01-02T04:00:00Z",
+			LastActiveAt: "2025-12-31T23:58:15Z", IdleSeconds: 125,
+			RetainUntil: at.Add(2 * time.Hour).UTC().Format(time.RFC3339),
 		},
 	}
 	m.results[0] = r
 
 	tile := dashTestTile("env", r, true, dashAction{})
-	if !strings.Contains(tile, "retain until 2030-01-02T04:00:00Z") {
-		t.Errorf("tile missing the retain-until line:\n%s", tile)
+	if line := aLineContaining(tile, "2m 5s ago", "keep for 2h"); line == "" {
+		t.Errorf("tile did not put the keep on the active line:\n%s", tile)
 	}
 	lines := m.detailNodeLines()
 	found := false
 	for _, l := range lines {
-		if strings.Contains(l, "retain until 2030-01-02T04:00:00Z") {
+		if strings.Contains(l, "keep for 2h") {
 			found = true
 		}
 	}
 	if !found {
-		t.Errorf("detail view missing the retain-until line:\n%s", strings.Join(lines, "\n"))
+		t.Errorf("detail view missing the keep:\n%s", strings.Join(lines, "\n"))
 	}
 }
 
 // A read without a deadline — a local node, or an unkept or lapsed environment —
-// draws no line on the tile.
-func TestDashTileOmitsRetainUntilWhenAbsent(t *testing.T) {
+// draws no keep on the tile.
+func TestDashTileOmitsKeepWhenAbsent(t *testing.T) {
 	r := fleet.NodeResult{
 		Name:    "box",
 		Outcome: fleet.OutcomeOK,
@@ -437,7 +441,7 @@ func TestDashTileOmitsRetainUntilWhenAbsent(t *testing.T) {
 			CPU: &metrics.CpuStat{Utilization: 30}},
 	}
 	tile := dashTestTile("box", r, true, dashAction{})
-	if strings.Contains(tile, "retain until") {
-		t.Errorf("tile invented a deadline:\n%s", tile)
+	if strings.Contains(tile, "keep for") {
+		t.Errorf("tile invented a keep the read does not carry:\n%s", tile)
 	}
 }

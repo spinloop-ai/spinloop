@@ -771,8 +771,8 @@ func TestCmdFleetStatusShowsIdleTime(t *testing.T) {
 		}
 	})
 	// 125s formats the same way the uptime column does, so the two read alike.
-	if !strings.Contains(out, "last active 2m 5s ago") {
-		t.Errorf("last-active time missing or misformatted:\n%s", out)
+	if !strings.Contains(out, "active 2m 5s ago") {
+		t.Errorf("active time missing or misformatted:\n%s", out)
 	}
 }
 
@@ -794,7 +794,7 @@ func TestCmdFleetStatusOmitsIdleWithoutActivity(t *testing.T) {
 			t.Error(err)
 		}
 	})
-	if strings.Contains(out, "last active") {
+	if strings.Contains(out, "active") {
 		t.Errorf("activity claimed when the daemon recorded none:\n%s", out)
 	}
 	// The rest of the row is unaffected.

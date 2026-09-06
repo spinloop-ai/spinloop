@@ -104,15 +104,19 @@ puts a clock comparison in each of them.
 The field is additive: an environment whose stats Lambda has not been
 redeployed simply omits it, and the dashboard shows no line there.
 
-### 5. One shared line beside the last-active figure
+### 5. One shared line: the active figure, and the keep after it
 
-The deadline renders as a line in the shared bar-format body, next to the
-last-active line that body already prints: the dashboard tile, the one-shot
-fleet metrics, and the one-shot remote metrics all call that body, so they
-cannot word the same read differently. The table format prints the line when
-the read carries it, and the json format carries the field on its own. The
-line is omitted wherever the read has no deadline, the same rule the
-last-active figure follows for a figure it lacks.
+The active figure — how long since the engine last did work — and, for a kept
+environment, the retention keep render as a single line in the shared body the
+tile and both one-shot metrics reports call, so they cannot word the same read
+differently: `active  2m 5s ago  keep for 2h`. The keep is the deadline's
+remaining time, rendered relatively by the client rather than the absolute
+timestamp the control plane holds — short enough to share the line in a
+42-column tile, and it reads at a glance without the operator subtracting. The
+table format prints the same line as its key-value row; the json format carries
+the absolute field on its own, for a consumer that wants to do its own math.
+The line is omitted where the read has neither an active time nor a deadline,
+and shows whichever it has when it has one.
 
 ### 6. No second confirmation; not abortable
 

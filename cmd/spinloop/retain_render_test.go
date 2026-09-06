@@ -3,24 +3,58 @@ package main
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
-// The retention deadline rides the stats read and is drawn beside the
-// last-active line in every surface that draws that line. The control plane is
-// the single home of the "is it still in the future?" judgement, so these
-// renderers only ever ask "does the read carry a deadline?" and draw it when
-// present, and nothing when it is empty.
+// The keep rides the stats read as an absolute deadline, and every surface that
+// draws the active figure draws the keep as a relative figure after it — "active
+// 2m 5s ago  keep for 2h" — on the same line. The control plane is the single
+// home of the "is it still in the future?" judgement (it drops the field there),
+// so these renderers only ever ask "does the read carry a deadline that is still
+// ahead?" and draw it when it is, and nothing when it is not.
 
-const retainedDeadline = "2030-01-02T04:00:00Z"
+// keepNow pins the one-shot metrics clock and returns an RFC3339 deadline d
+// after it, so a test can assert the exact relative figure that deadline
+// renders.
+func keepNow(t *testing.T, d time.Duration) string {
+	t.Helper()
+	at := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	metricsNow = func() time.Time { return at }
+	t.Cleanup(func() { metricsNow = time.Now })
+	return at.Add(d).UTC().Format(time.RFC3339)
+}
 
-func TestRemoteMetricsBarShowsRetainUntil(t *testing.T) {
+// aLineContaining returns the first output line carrying every phrase, or "".
+func aLineContaining(out string, phrases ...string) string {
+	for _, line := range strings.Split(out, "\n") {
+		ok := true
+		for _, p := range phrases {
+			if !strings.Contains(line, p) {
+				ok = false
+				break
+			}
+		}
+		if ok {
+			return line
+		}
+	}
+	return ""
+}
+
+// A kept, active endpoint draws the keep after the active figure, on the same
+// line — the point of sharing the line is that "when did it last do anything"
+// and "how long is it kept" are read at a glance, not on two rows.
+func TestRemoteMetricsBarKeepsOnTheActiveLine(t *testing.T) {
+	deadline := keepNow(t, 2*time.Hour)
 	statsServer(t, `{
 		"environment": "dev",
 		"state": "running",
 		"instanceType": "g6e.xlarge",
 		"modelId": "unsloth/Qwen3.6-27B",
 		"cpu": {"utilization": 24},
-		"retainUntil": "`+retainedDeadline+`"
+		"lastActiveAt": "2025-12-31T23:58:15Z",
+		"idleSeconds": 125,
+		"retainUntil": "`+deadline+`"
 	}`)
 
 	out := captureStdout(t, func() {
@@ -28,30 +62,30 @@ func TestRemoteMetricsBarShowsRetainUntil(t *testing.T) {
 			t.Fatalf("cmdRemoteMetrics: %v", err)
 		}
 	})
-	if !strings.Contains(out, "retain until "+retainedDeadline) {
-		t.Errorf("bar format missing the retain-until line:\n%s", out)
+	if line := aLineContaining(out, "2m 5s ago", "keep for 2h"); line == "" {
+		t.Errorf("bar format did not put the keep on the active line:\n%s", out)
 	}
-	// Beside last-active, before the bars: a fact about the endpoint, not a
-	// utilisation reading.
-	active := strings.Index(out, "last active")
-	retain := strings.Index(out, "retain until")
-	bars := strings.Index(out, "CPU")
-	if !(retain >= 0 && bars >= 0 && retain < bars) {
-		t.Errorf("retain-until line is not before the bars:\n%s", out)
-	}
-	if active >= 0 && !(retain > active) {
-		t.Errorf("retain-until line is not beside (after) last-active:\n%s", out)
+	// Beside the active figure, before the bars: a fact about the endpoint, not
+	// a utilisation reading.
+	if line := aLineContaining(out, "keep for 2h"); line != "" {
+		if strings.Index(out, "CPU") < strings.Index(line, "keep for 2h") {
+			t.Errorf("keep is not before the bars:\n%s", out)
+		}
 	}
 }
 
-func TestRemoteMetricsTableShowsRetainUntil(t *testing.T) {
+// The table format draws the same combined line as a key-value row.
+func TestRemoteMetricsTableKeepsOnTheActiveRow(t *testing.T) {
+	deadline := keepNow(t, 2*time.Hour)
 	statsServer(t, `{
 		"environment": "dev",
 		"state": "running",
 		"instanceType": "g6e.xlarge",
 		"modelId": "unsloth/Qwen3.6-27B",
 		"cpu": {"utilization": 24},
-		"retainUntil": "`+retainedDeadline+`"
+		"lastActiveAt": "2025-12-31T23:58:15Z",
+		"idleSeconds": 125,
+		"retainUntil": "`+deadline+`"
 	}`)
 
 	out := captureStdout(t, func() {
@@ -59,79 +93,108 @@ func TestRemoteMetricsTableShowsRetainUntil(t *testing.T) {
 			t.Fatalf("cmdRemoteMetrics: %v", err)
 		}
 	})
-	// A key-value row, padded to the key column its neighbours use.
-	if !strings.Contains(out, "retain until: "+retainedDeadline) {
-		t.Errorf("table format missing the retain-until row:\n%s", out)
+	if line := aLineContaining(out, "active:", "2m 5s ago", "keep for 2h"); line == "" {
+		t.Errorf("table format did not put the keep on the active row:\n%s", out)
 	}
 }
 
-// A stopped environment can still be retained: the deadline is the control
-// plane's, not the engine's, so the line survives the non-running short-circuit
-// in both formats.
-func TestRemoteMetricsStoppedRetainedStillShowsRetainUntil(t *testing.T) {
-	statsServer(t, `{
-		"environment": "dev",
-		"state": "stopped",
-		"runner": "llamacpp",
-		"modelId": "unsloth/Qwen3.6-27B",
-		"retainUntil": "`+retainedDeadline+`"
-	}`)
-
-	for format, want := range map[string]string{
-		"bar":   "retain until " + retainedDeadline,
-		"table": "retain until: " + retainedDeadline,
+// The relative figure drops zero units: hours, minutes, and a mix each render
+// their own short form.
+func TestKeepDurationRendersRelatively(t *testing.T) {
+	// A stopped, unactive endpoint shows the keep alone, so each duration is
+	// read straight off the bar.
+	for d, want := range map[time.Duration]string{
+		2 * time.Hour:    "keep for 2h",
+		24 * time.Minute: "keep for 24m",
+		90 * time.Minute: "keep for 1h 30m",
 	} {
-		t.Run(format, func(t *testing.T) {
+		t.Run(want, func(t *testing.T) {
+			deadline := keepNow(t, d)
+			statsServer(t, `{
+				"environment": "dev",
+				"state": "stopped",
+				"runner": "llamacpp",
+				"modelId": "unsloth/Qwen3.6-27B",
+				"retainUntil": "`+deadline+`"
+			}`)
 			out := captureStdout(t, func() {
-				if err := cmdRemoteMetrics([]string{"--format=" + format}); err != nil {
+				if err := cmdRemoteMetrics([]string{"--format=bar"}); err != nil {
 					t.Fatalf("cmdRemoteMetrics: %v", err)
 				}
 			})
 			if !strings.Contains(out, want) {
-				t.Errorf("%s format dropped the deadline for a stopped, retained endpoint:\n%s", format, out)
+				t.Errorf("%s: %s format missing %q:\n%s", d, "bar", want, out)
 			}
 		})
 	}
 }
 
-// No deadline on the read, no line: the renderer does not invent one, and it
-// does not disturb the rest of the report.
-func TestRemoteMetricsOmitsRetainUntilWhenAbsent(t *testing.T) {
-	statsServer(t, `{
-		"environment": "dev",
-		"state": "running",
-		"cpu": {"utilization": 24},
-		"lastActiveAt": "2026-08-10T10:00:00Z",
-		"idleSeconds": 125
-	}`)
-
-	for _, format := range []string{"bar", "table"} {
+// A stopped environment can still be kept: the deadline is the control plane's,
+// not the engine's, so the keep survives the non-running short-circuit in both
+// formats.
+func TestRemoteMetricsStoppedKeptStillShowsKeep(t *testing.T) {
+	deadline := keepNow(t, 4*time.Hour)
+	for format := range map[string]bool{"bar": true, "table": true} {
 		t.Run(format, func(t *testing.T) {
+			statsServer(t, `{
+				"environment": "dev",
+				"state": "stopped",
+				"runner": "llamacpp",
+				"modelId": "unsloth/Qwen3.6-27B",
+				"retainUntil": "`+deadline+`"
+			}`)
 			out := captureStdout(t, func() {
 				if err := cmdRemoteMetrics([]string{"--format=" + format}); err != nil {
 					t.Fatalf("cmdRemoteMetrics: %v", err)
 				}
 			})
-			if strings.Contains(out, "retain until") {
-				t.Errorf("%s format claimed a deadline the read does not carry:\n%s", format, out)
-			}
-			if !strings.Contains(out, "last active") {
-				t.Errorf("%s format lost the rest of the report:\n%s", format, out)
+			if !strings.Contains(out, "keep for 4h") {
+				t.Errorf("%s format dropped the keep for a stopped, kept endpoint:\n%s", format, out)
 			}
 		})
 	}
 }
 
-// The deadline rides the node's stats, so `fleet metrics` draws it beside
-// last-active whatever the node's state. A faked daemon carrying the field
-// stands in for a retained remote environment on the same render path.
-func TestFleetMetricsShowsRetainUntil(t *testing.T) {
+// No deadline on the read, no keep: the renderer does not invent one, and it
+// leaves the active figure (now just "active") in place.
+func TestRemoteMetricsOmitsKeepWhenAbsent(t *testing.T) {
+	for _, format := range []string{"bar", "table"} {
+		t.Run(format, func(t *testing.T) {
+			statsServer(t, `{
+				"environment": "dev",
+				"state": "running",
+				"cpu": {"utilization": 24},
+				"lastActiveAt": "2025-12-31T23:58:15Z",
+				"idleSeconds": 125
+			}`)
+			out := captureStdout(t, func() {
+				if err := cmdRemoteMetrics([]string{"--format=" + format}); err != nil {
+					t.Fatalf("cmdRemoteMetrics: %v", err)
+				}
+			})
+			if strings.Contains(out, "keep for") {
+				t.Errorf("%s format claimed a keep the read does not carry:\n%s", format, out)
+			}
+			if !strings.Contains(out, "2m 5s ago") {
+				t.Errorf("%s format lost the active figure:\n%s", format, out)
+			}
+		})
+	}
+}
+
+// The deadline rides the node's stats, so `fleet metrics` draws the keep after
+// the active figure whatever the node's state. A faked daemon carrying the field
+// stands in for a kept remote environment on the same render path.
+func TestFleetMetricsShowsKeep(t *testing.T) {
+	deadline := keepNow(t, 2*time.Hour)
 	fleetNodeWithMetrics(t, map[string]any{
-		"state":       "running",
-		"runner":      "llamacpp",
-		"modelId":     "org/qwen",
-		"cpu":         map[string]any{"utilization": 30.0},
-		"retainUntil": retainedDeadline,
+		"state":        "running",
+		"runner":       "llamacpp",
+		"modelId":      "org/qwen",
+		"cpu":          map[string]any{"utilization": 30.0},
+		"lastActiveAt": "2025-12-31T23:58:15Z",
+		"idleSeconds":  125,
+		"retainUntil":  deadline,
 	})
 
 	out := captureStdout(t, func() {
@@ -139,20 +202,20 @@ func TestFleetMetricsShowsRetainUntil(t *testing.T) {
 			t.Fatalf("cmdFleet metrics: %v", err)
 		}
 	})
-	if !strings.Contains(out, "retain until "+retainedDeadline) {
-		t.Errorf("fleet metrics missing the retain-until line:\n%s", out)
+	if line := aLineContaining(out, "2m 5s ago", "keep for 2h"); line == "" {
+		t.Errorf("fleet metrics did not put the keep on the active line:\n%s", out)
 	}
 }
 
-// A node whose read carries no deadline draws no line, so a local daemon node —
-// which never has one — is simply quieter on that line.
-func TestFleetMetricsOmitsRetainUntilWhenAbsent(t *testing.T) {
+// A node whose read carries no deadline draws no keep, so a local daemon node —
+// which never has one — is simply quieter on that figure.
+func TestFleetMetricsOmitsKeepWhenAbsent(t *testing.T) {
 	fleetNodeWithMetrics(t, map[string]any{
 		"state":        "running",
 		"runner":       "llamacpp",
 		"modelId":      "org/qwen",
 		"cpu":          map[string]any{"utilization": 30.0},
-		"lastActiveAt": "2026-08-10T10:00:00Z",
+		"lastActiveAt": "2025-12-31T23:58:15Z",
 		"idleSeconds":  125,
 	})
 
@@ -161,7 +224,7 @@ func TestFleetMetricsOmitsRetainUntilWhenAbsent(t *testing.T) {
 			t.Fatalf("cmdFleet metrics: %v", err)
 		}
 	})
-	if strings.Contains(out, "retain until") {
-		t.Errorf("fleet metrics claimed a deadline a local node never carries:\n%s", out)
+	if strings.Contains(out, "keep for") {
+		t.Errorf("fleet metrics claimed a keep a local node never carries:\n%s", out)
 	}
 }

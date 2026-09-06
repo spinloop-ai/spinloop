@@ -225,12 +225,12 @@ failure — the rest of the fleet still renders and the command still exits 0:
 
 ```
 NODE     STATE         SERVING
-studio   running       llamacpp  org/qwen  (up 1h 2m 5s)  (last active 12s ago)
+studio   running       llamacpp  org/qwen  (up 1h 2m 5s)  (active 12s ago)
 gpu-box  idle          llamacpp  org/qwen
 offline  unreachable   dial tcp 10.0.0.9:4242: connect: connection refused
 ```
 
-"last active" comes from the activity each daemon tracks, so a glance answers
+"active" comes from the activity each daemon tracks, so a glance answers
 "which of my nodes is doing nothing?". It is absent until a node's engine has
 actually done some work — a daemon that has served nothing reports no activity
 rather than claiming it has been quiet since it started. The wording avoids
@@ -256,17 +256,18 @@ no history falls back to the gauge drawing of its current reading, so a fleet
 mixed with older daemons renders each node the best way it can. A stopped node
 keeps its readings, so its sparkline runs to the stop.
 
-Each node's block carries the same `last active` figure the status table
+Each node's block carries the same `active` figure the status table
 shows, for the reasons given above, and on the same terms: absent until the
 node's engine has done some work. A node whose engine has *stopped* still
 shows it — the daemon keeps the record across a stop, and "how long since this
 did anything?" is worth more about a stopped engine than about a busy one.
 
-A `kind: remote` environment carries a `retain until` figure beside the
-last-active one, on the same omitted-when-absent terms: it shows the
-deadline the idle sweep will not pass while it is in the future, and is gone
-once it has passed or was never set. It is the same line the dashboard draws
-on a kept environment's tile and detail screen, from the same read.
+A `kind: remote` environment carries a relative keep after that figure, on the
+same line — `active  2m 5s ago  keep for 2h` — on the same omitted-when-absent
+terms: it shows how long the idle sweep will hold the box while the deadline is
+in the future, and is gone once it has passed or was never set. It is the same
+line the dashboard draws on a kept environment's tile and detail screen, from
+the same read.
 
 `--watch`/`-w` redraws the whole fleet on an interval, clearing the screen in
 place with no scrollback. Each refresh is rendered into a buffer first, so a
@@ -351,8 +352,8 @@ hint slot, so the entry is kept and corrected in place. While the keep runs
 its tile carries it, and it is not abortable — one fast signed call, so `a`
 drives nothing on it. When it finishes, the status line reports the deadline
 the control plane set and the node is re-read at once, which is what brings
-the `retain until` figure onto the tile and detail screen at the node's next
-round rather than waiting out its full cadence.
+the relative `keep for …` figure onto the tile and detail screen at the node's
+next round rather than waiting out its full cadence.
 
 Everything else in the view is `fleet status`/`metrics`/`logs` in place — it
 is read-only apart from those four action keys. It needs a real terminal: a
@@ -453,7 +454,7 @@ Fleet:  ./fleet.yaml
 Prefer: idle
 
 Would use gpu-box at http://gpu-box:8080/v1
-  serving qwen3-27b, last active 312s ago (prefer idle)
+  serving qwen3-27b, active 312s ago (prefer idle)
 ```
 
 When nothing is serving that model it shows the whole fleet's state and names

@@ -285,20 +285,20 @@ func TestFormatMetricsBarStoppedWithHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := "prod  stopped  org/qwen:q4\n" +
-		"  last active 12s ago\n" +
+		"  active    12s ago\n" +
 		"  CPU       " + strings.Repeat(" ", 38) + "▁" + ansiGreen + "▂" + ansiReset + " 20%\n"
 	if got := b.String(); got != want {
 		t.Errorf("stopped bar = %q, want %q", got, want)
 	}
 
 	// The gauge format draws no series for a stopped endpoint: the header and
-	// the last-active line, and nothing after.
+	// the active line, and nothing after.
 	b.Reset()
 	if err := formatMetricsGauge(resp, remote.Config{}, &b); err != nil {
 		t.Fatal(err)
 	}
 	want = "prod  stopped  org/qwen:q4\n" +
-		"  last active 12s ago\n"
+		"  active    12s ago\n"
 	if got := b.String(); got != want {
 		t.Errorf("stopped gauge = %q, want %q", got, want)
 	}
@@ -326,8 +326,8 @@ func TestFormatMetricsBarRunning(t *testing.T) {
 	if !strings.HasPrefix(got, "prod  running  g5.xlarge  org/qwen:q4  0.4.3\n") {
 		t.Errorf("header: %q", got)
 	}
-	if !strings.Contains(got, "  last active 3s ago\n") {
-		t.Errorf("last active line missing: %q", got)
+	if !strings.Contains(got, "  active    3s ago\n") {
+		t.Errorf("active line missing: %q", got)
 	}
 	// Every series drew a sparkline from the history: no gauge in the output.
 	if strings.Contains(got, "░") {

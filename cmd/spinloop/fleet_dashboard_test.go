@@ -355,7 +355,7 @@ func TestDashTileRunningByteStable(t *testing.T) {
 	want := dashTileExpected([]string{
 		dashExpectedHeader("up  running  (up 2h 0m 0s)", dashHealthy),
 		"llamacpp  org/qwen:q4",
-		"  last active 12s ago",
+		"  active    12s ago",
 		dashBar("CPU", 42),
 		dashBar("RAM", 30),
 		dashBar("GPU util", 61),

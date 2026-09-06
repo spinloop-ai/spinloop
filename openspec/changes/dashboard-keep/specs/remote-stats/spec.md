@@ -19,10 +19,11 @@ The client SHALL map the deadline onto the shared stats shape every fleet and
 remote stats surface reads from, so a dashboard panel, a one-shot fleet report,
 and a one-shot remote report cannot word the same read differently.
 
-The deadline SHALL be reported beside the report's other time facts — the
-last-active figure — in every format the command supports, and omitted in
-every format when the read carries none, following the same omission rule the
-last-active figure uses for a figure it does not have.
+The deadline SHALL be reported on the report's active-figure line — rendered by
+the client as a relative remaining time, e.g. `keep for 2h`, not the absolute
+timestamp — in every format the command supports, and omitted in every format
+when the read carries none, following the same omission rule the active figure
+uses for a figure it does not have.
 
 #### Scenario: A retained instance's stats carry the deadline
 
@@ -54,5 +55,5 @@ last-active figure uses for a figure it does not have.
 
 - **WHEN** the user reads the stats of a retained environment with `bar`,
   `table`, or `json` output
-- **THEN** each output carries the deadline in its own idiom, beside the
-  last-active figure, and each omits it when the read carries none
+- **THEN** each output carries the deadline in its own idiom on the active
+  figure's line, and each omits it when the read carries none

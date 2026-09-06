@@ -297,7 +297,7 @@ func dashNodeView(name string, r fleet.NodeResult, a dashAction, now time.Time, 
 			if s := r.Metrics.State; s != "" {
 				fmt.Fprintln(&b, dashStateLine(s, r.Metrics)+age)
 			}
-			dashTileReportBody(&b, r.Metrics, true, gauge, lineW)
+			dashTileReportBody(&b, r.Metrics, true, gauge, lineW, now)
 		}
 	case r.Outcome == "":
 		fmt.Fprintf(&b, "%s\nwaiting for first refresh…\n", name)
@@ -315,7 +315,7 @@ func dashNodeView(name string, r fleet.NodeResult, a dashAction, now time.Time, 
 		if !gauge && len(r.Metrics.History) > 0 {
 			resources = true
 		}
-		dashTileReportBody(&b, r.Metrics, resources, gauge, lineW)
+		dashTileReportBody(&b, r.Metrics, resources, gauge, lineW, now)
 	}
 	lines := strings.Split(b.String(), "\n")
 	lines = lines[:len(lines)-1] // the trailing newline splits an extra empty piece
@@ -433,16 +433,15 @@ func dashStateLine(state string, m metrics.Stats) string {
 // answer has it. A settled tile gates the resources block on the node being
 // running; the in-flight tile draws whatever there is, because a boot half
 // done has some of the facts and not the rest.
-func dashTileReportBody(w io.Writer, m metrics.Stats, resources bool, gauge bool, lineW int) {
+func dashTileReportBody(w io.Writer, m metrics.Stats, resources bool, gauge bool, lineW int, now time.Time) {
 	if line := dashTileServingLine(m); line != "" {
 		fmt.Fprintln(w, line)
 	}
-	renderLastActiveIndented(w, m.LastActiveAt, m.IdleSeconds)
-	// The retention deadline, beside last-active and from the same read: a
-	// remote environment the operator has kept draws it whatever the engine's
-	// state, and a read without one — a local node, an unkept or lapsed
-	// environment — draws nothing.
-	renderRetainIndented(w, m.RetainUntil)
+	// The active figure and, for a kept remote environment, the relative keep
+	// after it — one line, from the same read, whatever the engine's state. A
+	// read without either — a local node, an unkept or lapsed environment —
+	// draws nothing.
+	renderActiveIndented(w, m.LastActiveAt, m.IdleSeconds, m.RetainUntil, now)
 	if resources {
 		if gauge {
 			renderStatGauges(w, m.CPU, m.Memory, m.GPUs)

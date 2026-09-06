@@ -36,10 +36,10 @@
 
 ## 4. The shared deadline line
 
-- [x] 4.1 Add the retain-until line to the shared bar-format body, beside the
-      last-active line, omitted when the read carries none — verify with
-      render tests: the line's wording when present, its omission when the
-      field is empty.
+- [x] 4.1 Merge the relative keep onto the shared active-figure line in the
+      bar-format body — `active  … ago  keep for …` — omitted when the read
+      carries neither — verify with render tests: the line's wording when a
+      keep is present, and its omission when the field is empty.
 - [x] 4.2 Wire the line into the one-shot `fleet metrics` bar format, the
       `remote metrics` bar format, and the `remote metrics` table format when
       present — verify with the existing render tests for those surfaces
