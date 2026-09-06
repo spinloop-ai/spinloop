@@ -438,6 +438,11 @@ func dashTileReportBody(w io.Writer, m metrics.Stats, resources bool, gauge bool
 		fmt.Fprintln(w, line)
 	}
 	renderLastActiveIndented(w, m.LastActiveAt, m.IdleSeconds)
+	// The retention deadline, beside last-active and from the same read: a
+	// remote environment the operator has kept draws it whatever the engine's
+	// state, and a read without one — a local node, an unkept or lapsed
+	// environment — draws nothing.
+	renderRetainIndented(w, m.RetainUntil)
 	if resources {
 		if gauge {
 			renderStatGauges(w, m.CPU, m.Memory, m.GPUs)

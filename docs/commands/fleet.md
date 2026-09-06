@@ -262,6 +262,12 @@ node's engine has done some work. A node whose engine has *stopped* still
 shows it — the daemon keeps the record across a stop, and "how long since this
 did anything?" is worth more about a stopped engine than about a busy one.
 
+A `kind: remote` environment carries a `retain until` figure beside the
+last-active one, on the same omitted-when-absent terms: it shows the
+deadline the idle sweep will not pass while it is in the future, and is gone
+once it has passed or was never set. It is the same line the dashboard draws
+on a kept environment's tile and detail screen, from the same read.
+
 `--watch`/`-w` redraws the whole fleet on an interval, clearing the screen in
 place with no scrollback. Each refresh is rendered into a buffer first, so a
 slow node delays the refresh but never tears the display. Ctrl+C exits
@@ -302,6 +308,7 @@ spinloop fleet dashboard --fleet f.yaml # another fleet file
 | `r` | Force a refresh of every node, now |
 | `g` | Toggle every tile's resource series between bar (sparklines of the retained history) and gauge (the current reading) |
 | `s` | Start the selected node — without confirmation |
+| `k` | Keep a remote environment for a duration you type — shown only for a node that can be kept, and only while it has no action in flight |
 | `a` | Abandon a start in flight on the selected node — the wait ends, the node is free again (a stop in flight is not abortable) |
 | `x` | Stop the selected node — it asks first (`y` sends, `n` or `esc` cancel) |
 | `q` or `Ctrl+C` | Leave |
@@ -330,8 +337,25 @@ refresh. A stop in flight is not abortable: it targets an engine already
 running rather than a cold wake with no deadline of its own, and `a` drives
 nothing while one is in progress.
 
+`keep` is a remote-environment action: a local daemon has no idle sweep, so
+there is no deadline to set, and the key does not show for one. Pressing it
+opens a prompt at the foot of the view, pre-filled with `4h`, asking how long
+the environment should be retained. The prompt is the confirmation — there is
+no second one — so the operator sees the duration it will set before choosing
+to send it: a keep overwrites the deadline and ends nothing, where a stop
+ends something and so asks. Type the duration and press `enter` to send it;
+`esc` cancels; `q` or `Ctrl+C` cancel the prompt and leave the dashboard, as
+the stop confirmation does. An entry that does not parse as a positive
+duration leaves the prompt open and shows the parse reason in the footer's
+hint slot, so the entry is kept and corrected in place. While the keep runs
+its tile carries it, and it is not abortable — one fast signed call, so `a`
+drives nothing on it. When it finishes, the status line reports the deadline
+the control plane set and the node is re-read at once, which is what brings
+the `retain until` figure onto the tile and detail screen at the node's next
+round rather than waiting out its full cadence.
+
 Everything else in the view is `fleet status`/`metrics`/`logs` in place — it
-is read-only apart from those three action keys. It needs a real terminal: a
+is read-only apart from those four action keys. It needs a real terminal: a
 piped run is refused, and it says so by way of `fleet metrics --watch`, which
 is the streamable surface.
 
@@ -348,11 +372,13 @@ spinloop fleet dashboard
 # select a node, press Enter for its full metrics and log, Esc to go back
 ```
 
-`s`, `x` and `a` drive the node shown exactly as they drive the selected node
-on the grid — the same no-confirmation start, the same stop confirmation, the
-same abandon. `q`/`Ctrl+C` are grid keys only and do nothing here — `Esc` back
-to the grid first, then quit from there — so a stray quit keystroke while
-looking at a node can't end the session out from under you. The rest of the
+`s`, `k`, `x` and `a` drive the node shown exactly as they drive the selected
+node on the grid — the same no-confirmation start, the same keep prompt, the
+same stop confirmation, the same abandon. `q`/`Ctrl+C` are grid keys only and
+do nothing here — `Esc` back to the grid first, then quit from there — so a
+stray quit keystroke while looking at a node can't end the session out from
+under you. The one exception is the keep prompt: while it is open it answers
+to `q`/`Ctrl+C` the way the stop confirmation does, cancelling and leaving. The rest of the
 fleet keeps refreshing behind the view, and any action already in flight on
 another node keeps running. A node whose engine has never run shows the same
 explanation `fleet logs` gives for it, not an empty pane.

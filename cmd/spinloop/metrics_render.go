@@ -50,6 +50,27 @@ func renderLastActiveKeyValue(w io.Writer, lastActiveAt string, idleSeconds int)
 	}
 }
 
+// renderRetainIndented draws the retention-deadline line in the indented block
+// the bar format and both fleet formats use, aligned to the bar-label column
+// and beside the last-active line. The deadline is an absolute instant the
+// control plane set, relayed verbatim — it is not re-checked here, so a line is
+// drawn exactly when the read carries one (the stats reply drops it once it has
+// passed). Local daemon nodes carry no deadline, so their line is absent.
+func renderRetainIndented(w io.Writer, retainUntil string) {
+	if retainUntil != "" {
+		fmt.Fprintf(w, "  %-9s %s\n", "retain until", retainUntil)
+	}
+}
+
+// renderRetainKeyValue draws the retention deadline as a row of the table
+// format, padded to the key column its neighbours use, beside the last-active
+// row.
+func renderRetainKeyValue(w io.Writer, retainUntil string) {
+	if retainUntil != "" {
+		fmt.Fprintf(w, "retain until: %s\n", retainUntil)
+	}
+}
+
 // validateMetricsFormat rejects a --format value the metrics commands do not
 // understand, naming the ones they do. Both `remote metrics` and
 // `fleet metrics` run it before doing any work.

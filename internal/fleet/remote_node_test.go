@@ -82,7 +82,8 @@ func TestStatsFromRemote(t *testing.T) {
 	got := statsFromRemote(remote.StatsResponse{
 		State: "running", Runner: "llamacpp", ModelID: "org/m", UptimeSeconds: 10,
 		Tokens: tokens, LastActiveAt: "2026-01-02T00:00:00Z", IdleSeconds: 5, Version: "1.2.3",
-		History: history,
+		History:     history,
+		RetainUntil: "2026-01-02T04:00:00Z",
 	})
 	if got.State != "running" || got.Runner != "llamacpp" || got.ModelID != "org/m" || got.UptimeSeconds != 10 {
 		t.Errorf("statsFromRemote = %+v", got)
@@ -102,6 +103,14 @@ func TestStatsFromRemote(t *testing.T) {
 	// And a reply without them stays without them.
 	if got := statsFromRemote(remote.StatsResponse{State: "running"}); got.History != nil {
 		t.Errorf("an absent history became present: %+v", got.History)
+	}
+	if got.RetainUntil != "2026-01-02T04:00:00Z" {
+		t.Errorf("retainUntil not carried over: %q", got.RetainUntil)
+	}
+	// An environment with no live retention carries nothing: the field is
+	// absent, not a zero time a formatter would have to special-case.
+	if got := statsFromRemote(remote.StatsResponse{State: "running"}); got.RetainUntil != "" {
+		t.Errorf("no retention should map to an empty retainUntil, got %q", got.RetainUntil)
 	}
 }
 
@@ -231,6 +240,77 @@ func TestRemoteNodeStatusOverTheControlPlane(t *testing.T) {
 	}
 	if r.Name != "env" {
 		t.Errorf("name = %q", r.Name)
+	}
+}
+
+// A remote node's keep pins the instance over its control plane: the deadline
+// is computed from the duration and sent as an absolute time, and the value
+// returned to a caller is the control plane's own deadline, not the caller's
+// clock plus the duration.
+func TestRemoteNodeKeepOverTheControlPlane(t *testing.T) {
+	stubAWSCreds(t)
+	srv := remoteControlServer(t,
+		`{"retainUntil":"2026-01-02T04:00:00Z"}`, http.StatusOK)
+	cfg := remote.Config{StartURL: srv.URL, StopURL: srv.URL, UpdateURL: srv.URL, Region: "us-east-1"}
+	node, err := NewRemoteNode("env", cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := node.(Keeper).Keep(context.Background(), 4*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "2026-01-02T04:00:00Z" {
+		t.Errorf("keep returned %q, want the control plane's deadline", got)
+	}
+}
+
+// When the control plane's reply omits the deadline — one that predates keep
+// echoing the value back — the keep still succeeds and returns the requested
+// deadline, so a caller always has something to show.
+func TestRemoteNodeKeepFallsBackToTheRequestedDeadline(t *testing.T) {
+	stubAWSCreds(t)
+	srv := remoteControlServer(t, `{}`, http.StatusOK)
+	cfg := remote.Config{StartURL: srv.URL, StopURL: srv.URL, UpdateURL: srv.URL, Region: "us-east-1"}
+	node, _ := NewRemoteNode("env", cfg)
+	before := time.Now()
+	got, err := node.(Keeper).Keep(context.Background(), 4*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	deadline, perr := time.Parse(time.RFC3339, got)
+	if perr != nil {
+		t.Fatalf("fallback deadline is not RFC 3339: %q", got)
+	}
+	want := before.Add(4 * time.Hour)
+	if d := deadline.Sub(want); d < -5*time.Second || d > 5*time.Second {
+		t.Errorf("fallback deadline = %s, want the requested now+4h (%s)", deadline, want)
+	}
+}
+
+// A keep on an environment whose config has no update URL is a configuration
+// error before any call, naming the fix — it is not a call that fails part-way.
+func TestRemoteNodeKeepWithoutAnUpdateURL(t *testing.T) {
+	stubAWSCreds(t)
+	cfg := remote.Config{StartURL: "http://x", StopURL: "http://x", Region: "us-east-1"}
+	node, _ := NewRemoteNode("env", cfg)
+	if _, err := node.(Keeper).Keep(context.Background(), time.Hour); err == nil ||
+		!strings.Contains(err.Error(), "no update_url") {
+		t.Errorf("expected a no-update-url error, got %v", err)
+	}
+}
+
+// The keep capability is exactly one of the remote node's: a local daemon node
+// has no retention tag to set, so it does not implement Keeper. A caller (the
+// dashboard) relies on this boundary to decide whether to offer a keep at all.
+func TestKeeperIsRemoteOnly(t *testing.T) {
+	rn, _ := NewRemoteNode("env", remote.Config{StartURL: "http://x", StopURL: "http://x", Region: "r"})
+	if _, ok := rn.(Keeper); !ok {
+		t.Error("a remote node should implement Keeper")
+	}
+	dn := &daemonNode{name: "dev", client: &Client{BaseURL: "http://127.0.0.1:1", Token: "t"}}
+	if _, ok := any(dn).(Keeper); ok {
+		t.Error("a local daemon node should not implement Keeper")
 	}
 }
 

@@ -54,6 +54,20 @@ type ProgressStarter interface {
 	StartWithProgress(ctx context.Context, report func(StartPhase)) (daemon.StatusResponse, error)
 }
 
+// Keeper is an optional node capability: a node whose instance can be pinned so
+// the idle sweep does not terminate it before a stated deadline. Only remote
+// environments have it — the retention tag lives on a cloud instance — so a
+// local daemon node does not implement it. A caller that can offer a keep
+// (the dashboard) asserts for it and hides the key when it is absent.
+//
+// d is how long, from now, to keep the instance. The return is the control
+// plane's own deadline, RFC 3339: the absolute instant the instance is kept
+// until, as the control plane recorded it — not the caller's clock plus d — so
+// what a caller shows matches what the control plane holds.
+type Keeper interface {
+	Keep(ctx context.Context, d time.Duration) (string, error)
+}
+
 // Node is one member of the fleet. Only daemonNode implements it today; the
 // interface exists so a remote-environment kind (an `spinloop remote`
 // environment read through its stats Lambda, which already yields

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/spinloop-ai/spinloop/internal/daemon"
 	"github.com/spinloop-ai/spinloop/internal/metrics"
@@ -105,6 +106,26 @@ func (n *remoteNode) Stop(ctx context.Context) (daemon.StatusResponse, error) {
 	return statusFromRemote(*resp), nil
 }
 
+// Keep pins this environment's instance so the idle sweep does not terminate it
+// before now plus d. The deadline is computed here and passed as an absolute
+// time, the way the CLI computes it; a keep is what keeps the instance, not
+// what the engine is doing, so the call needs no engine or deploy context. If
+// the control plane's reply names the deadline it recorded, that is returned
+// verbatim; when the reply omits it — a control plane that predates keep
+// echoing the value back — the requested deadline is returned instead, so a
+// caller always holds something to show.
+func (n *remoteNode) Keep(ctx context.Context, d time.Duration) (string, error) {
+	deadline := time.Now().Add(d)
+	resp, err := remote.Keep(ctx, n.cfg, deadline)
+	if err != nil {
+		return "", err
+	}
+	if resp.RetainUntil != "" {
+		return resp.RetainUntil, nil
+	}
+	return deadline.UTC().Format(time.RFC3339), nil
+}
+
 // remoteEngineTail caps how many engine log events a node read pulls. Remote logs
 // are a bounded tail pulled from the log store, not a byte cursor, so a follow of
 // a chatty engine must not page through an unbounded window.
@@ -165,6 +186,7 @@ func statsFromRemote(resp remote.StatsResponse) metrics.Stats {
 		Errors:        resp.Errors,
 		LastActiveAt:  resp.LastActiveAt,
 		IdleSeconds:   resp.IdleSeconds,
+		RetainUntil:   resp.RetainUntil,
 	}
 }
 

@@ -2,6 +2,7 @@ import type { LambdaFunctionURLEvent, LambdaFunctionURLResult } from 'aws-lambda
 import {
   errorName,
   findManagedInstance,
+  type InstanceInfo,
   readDeployConfig,
   requireEnv,
   runShellCommand,
@@ -27,6 +28,23 @@ const TAG_VALUE = requireEnv('TAG_VALUE');
 /** Narrow instance discovery to one environment's instance. */
 function envFilter(env: string) {
   return [{ Name: `tag:${ENV_TAG_KEY}`, Values: [env] }];
+}
+
+/**
+ * The retention deadline to carry in a reply, or nothing: present only while
+ * the instance's Retain-Until tag is still a time in the future. A passed
+ * deadline keeps nothing, so the reply drops it there; an untagged instance and
+ * a not-yet-deployed environment have none. The judgement lives here, not in the
+ * formatters, so a reader of the reply need not re-check the clock — and it
+ * applies to every reply branch, since a stopped, retained instance still
+ * reports its deadline.
+ */
+function retainUntilIfActive(instance: InstanceInfo | null): string | undefined {
+  const until = instance?.retainUntil;
+  if (until && until.getTime() > Date.now()) {
+    return until.toISOString();
+  }
+  return undefined;
 }
 
 /**
@@ -65,6 +83,9 @@ export async function handler(event: LambdaFunctionURLEvent): Promise<LambdaFunc
       runner: deployConfig.runner,
       modelId: deployConfig.modelId,
     };
+    // A stopped environment can still be retained: its deadline is the control
+    // plane's, not the engine's, so it rides this branch too.
+    result.retainUntil = retainUntilIfActive(instance);
     return jsonResponse(200, result);
   }
 
@@ -78,6 +99,9 @@ export async function handler(event: LambdaFunctionURLEvent): Promise<LambdaFunc
   if (instance.instanceType) {
     result.instanceType = instance.instanceType;
   }
+  // The retention deadline is the instance's, so it is set here, with the
+  // other instance facts, rather than alongside the daemon's figures.
+  result.retainUntil = retainUntilIfActive(instance);
   // Uptime from launch time — the instance's, not the engine's, since cost
   // estimation multiplies it by the on-demand price.
   if (instance.launchTime) {

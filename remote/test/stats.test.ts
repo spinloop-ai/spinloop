@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { LambdaFunctionURLEvent } from 'aws-lambda';
 import {
   DAEMON_METRICS_CMD,
   DAEMON_STATUS_CMD,
@@ -185,5 +186,120 @@ describe('DAEMON_STATUS_CMD', () => {
   it('curls the loopback daemon and marks failure', () => {
     expect(DAEMON_STATUS_CMD).toContain('http://127.0.0.1:4242/v1/status');
     expect(DAEMON_STATUS_CMD).toContain(DAEMON_UNREACHABLE);
+  });
+});
+
+// The stats Lambda: reports an environment's instance and engine metrics, and —
+// while its Retain-Until tag is still a time in the future — the retention
+// deadline itself, in every reply branch.
+
+const LAMBDA_ENV = {
+  TAG_KEY: 'cloud-vm-llm:managed',
+  TAG_VALUE: 'true',
+};
+
+const findManagedInstance = vi.fn();
+const readDeployConfig = vi.fn();
+const runShellCommand = vi.fn();
+
+vi.mock('../lambda/shared/aws', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lambda/shared/aws')>()),
+  findManagedInstance: (...args: unknown[]) => findManagedInstance(...args),
+  readDeployConfig: (...args: unknown[]) => readDeployConfig(...args),
+  runShellCommand: (...args: unknown[]) => runShellCommand(...args),
+}));
+
+let handler: (event: LambdaFunctionURLEvent) => Promise<unknown>;
+
+beforeAll(async () => {
+  Object.assign(process.env, LAMBDA_ENV);
+  ({ handler } = await import('../lambda/stats/index'));
+});
+
+function bodyOf(result: unknown): Record<string, unknown> {
+  return JSON.parse((result as { statusCode: number; body: string }).body);
+}
+
+function statusOf(result: unknown): number {
+  return (result as { statusCode: number }).statusCode;
+}
+
+function statsEvent(query: Record<string, string>) {
+  return {
+    queryStringParameters: query,
+  } as unknown as LambdaFunctionURLEvent;
+}
+
+// The engine scrape is not what these cases assert on: the daemon answers
+// nothing, so the reply carries no engine figures — only the control plane's
+// own, which is where retainUntil lives.
+beforeEach(() => {
+  vi.clearAllMocks();
+  readDeployConfig.mockResolvedValue({ runner: 'llamacpp', modelId: 'org/m' });
+  runShellCommand.mockResolvedValue({ status: 'Failed', stdout: '' });
+});
+
+const futureTag = '2030-01-02T04:00:00.000Z';
+const pastTag = '2020-01-02T04:00:00.000Z';
+
+describe('retainUntil', () => {
+  it('is present on a running instance whose tag is in the future', async () => {
+    findManagedInstance.mockResolvedValue({
+      instanceId: 'i-run',
+      state: 'running',
+      retainUntil: new Date(futureTag),
+    });
+
+    const result = await handler(statsEvent({ env: 'dev' }));
+    const body = bodyOf(result);
+    expect(statusOf(result)).toBe(200);
+    expect(body.state).toBe('running');
+    expect(body.retainUntil).toBe(futureTag);
+  });
+
+  it('is present on a stopped instance whose tag is in the future', async () => {
+    findManagedInstance.mockResolvedValue({
+      instanceId: 'i-stopped',
+      state: 'stopped',
+      retainUntil: new Date(futureTag),
+    });
+
+    const result = await handler(statsEvent({ env: 'dev' }));
+    const body = bodyOf(result);
+    expect(statusOf(result)).toBe(200);
+    expect(body.state).toBe('stopped');
+    expect(body.retainUntil).toBe(futureTag);
+  });
+
+  it('is absent when the tag has already passed', async () => {
+    findManagedInstance.mockResolvedValue({
+      instanceId: 'i-run',
+      state: 'running',
+      retainUntil: new Date(pastTag),
+    });
+
+    const result = await handler(statsEvent({ env: 'dev' }));
+    const body = bodyOf(result);
+    expect(statusOf(result)).toBe(200);
+    expect(body).not.toHaveProperty('retainUntil');
+  });
+
+  it('is absent for an untagged instance', async () => {
+    findManagedInstance.mockResolvedValue({ instanceId: 'i-run', state: 'running' });
+
+    const result = await handler(statsEvent({ env: 'dev' }));
+    const body = bodyOf(result);
+    expect(statusOf(result)).toBe(200);
+    expect(body).not.toHaveProperty('retainUntil');
+  });
+
+  it('is absent for an undeployed environment (no instance at all)', async () => {
+    findManagedInstance.mockResolvedValue(null);
+
+    const result = await handler(statsEvent({ env: 'dev' }));
+    const body = bodyOf(result);
+    expect(statusOf(result)).toBe(200);
+    expect(body.state).toBe('undeployed');
+    expect(body).not.toHaveProperty('retainUntil');
   });
 });

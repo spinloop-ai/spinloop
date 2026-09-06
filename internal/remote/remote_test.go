@@ -966,7 +966,8 @@ func TestStats_Success(t *testing.T) {
 				"temperature": 72
 			}],
 			"cpu": {"utilization": 23.5},
-			"memory": {"total": 17179869184, "used": 4294967296}
+			"memory": {"total": 17179869184, "used": 4294967296},
+			"retainUntil": "2026-01-02T04:00:00Z"
 		}`))
 	}))
 	defer server.Close()
@@ -978,6 +979,9 @@ func TestStats_Success(t *testing.T) {
 	}
 	if resp.Environment != "dev" || resp.State != "running" {
 		t.Errorf("unexpected response: %+v", resp)
+	}
+	if resp.RetainUntil != "2026-01-02T04:00:00Z" {
+		t.Errorf("retainUntil not decoded: %q", resp.RetainUntil)
 	}
 	if resp.Tokens == nil || resp.Tokens.Requests != 342 {
 		t.Errorf("unexpected tokens: %+v", resp.Tokens)
@@ -1013,6 +1017,10 @@ func TestStats_Stopped(t *testing.T) {
 	}
 	if resp.State != "stopped" || resp.Tokens != nil || len(resp.GPUs) != 0 {
 		t.Errorf("stopped instance should have no metrics: %+v", resp)
+	}
+	// A reply without the field leaves it empty, not a zero time.
+	if resp.RetainUntil != "" {
+		t.Errorf("no retainUntil in the reply should decode empty, got %q", resp.RetainUntil)
 	}
 }
 
