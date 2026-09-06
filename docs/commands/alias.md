@@ -1,7 +1,7 @@
 # spinloop alias
 
 Register an [`Spinloop` file](../spinloop-file.md) under a short name. The name
-then works wherever a Spinloop path does — `apply`, `unapply`, `serve`,
+then works wherever a Spinloop path does — `apply`, `unapply`, `serve`, `up`,
 `harness` — from any directory.
 
 ```sh

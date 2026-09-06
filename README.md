@@ -201,9 +201,11 @@ spinloop serve  [path] [--dry-run] [-a]    # run the PROVIDER's inference server
 spinloop daemon [--api-addr <addr>] [--loopback] # supervise an engine via the control API — reads
                                          #   no Spinloop, starts nothing until asked over the API
 spinloop fleet <status|metrics|logs|dashboard|route|start|stop>
-                                          # observe and drive the engines in
-                                          #   fleet.yaml (dashboard is the
-                                          #   interactive tiled view)
+                                           # observe and drive the engines in
+                                           #   fleet.yaml (dashboard is the
+                                           #   interactive tiled view)
+spinloop up   [node… | path]               # start what the directory holds: every node of a
+                                           #   fleet.yaml, else the Spinloop's server
 spinloop export [--provider <name>]        # print the current config as a Spinloop
 spinloop init-providers [path]             # write the built-in catalogue out to edit
 spinloop harness [<spinloop>] [-H <name>] [--spinloop[=<path>]] [args...]
@@ -372,6 +374,10 @@ CONTEXT  32768                                      # llama-server --ctx-size
 spinloop serve              # builds a llama-server command and runs it
 spinloop serve --dry-run    # just print the command — no server
 ```
+
+One word does the same: `spinloop up` runs `serve` for the directory's
+`Spinloop` — and `fleet start` for the fleet, when a `fleet.yaml` is in the
+directory instead. See [docs/commands/up.md](docs/commands/up.md).
 
 For flags a `Spinloop` doesn't model (`-ngl`, `--jinja`, KV-cache types, draft
 models), point at a llama.cpp preset `.ini` with `PRESET` and `serve` flattens

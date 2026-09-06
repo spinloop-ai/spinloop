@@ -92,6 +92,9 @@ spinloop serve    # runs llama-server for it
 spinloop apply    # points the agent at it
 ```
 
+Prefer one word? `spinloop up` starts the server here — and the whole fleet,
+wherever a `fleet.yaml` lives.
+
 ## 7. Name the ones you keep
 
 ```sh
