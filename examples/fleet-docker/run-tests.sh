@@ -430,9 +430,9 @@ test_routing() {
     fail "route really started nothing" "any state but running" "${state_after}"
   fi
 
-  # A real routed launch: it wakes studio, gates its engine with the key only
-  # this side holds, and hands the agent the address it resolved. The harness
-  # is a stub that prints what it was given, and HOME/XDG_CONFIG_HOME are
+  # A real routed launch: it wakes studio, gates its engine with the fleet's
+  # shared key, and hands the agent the address it resolved. The harness is a
+  # stub that prints what it was given, and HOME/XDG_CONFIG_HOME are
   # redirected so the run cannot touch the caller's own harness config.
   local sandbox="${HERE}/.routing-sandbox"
   rm -rf "${sandbox}"
@@ -450,7 +450,7 @@ STUB
   assert_contains "a routed launch wakes the node" "${launch}" "Waking studio"
   assert_contains "the agent is pointed at the published engine port" "${launch}" "18080"
   assert_contains "the agent is given the key the client set" \
-    "${launch}" "key=${STUDIO_ENGINE_KEY}"
+    "${launch}" "key=${FLEET_TOKEN}"
   if wait_for_state studio running 30; then
     pass "the launch left the node running"
   else
@@ -477,12 +477,12 @@ STUB
   assert_contains "a pinned node is reported even when idle" "${out}" "gpu-box"
 
   # studio names an engine key, so the engine it was woken with is gated —
-  # with a key that only ever existed on this side.
+  # with the fleet's shared key.
   local status
-  status="$(curl -fsS -H "Authorization: Bearer ${STUDIO_TOKEN}" \
+  status="$(curl -fsS -H "Authorization: Bearer ${FLEET_TOKEN}" \
     http://127.0.0.1:14242/v1/status 2>/dev/null || true)"
   assert_contains "a woken node reports its engine needs a key" "${status}" '"requiresKey":true'
-  assert_not_contains "the node never discloses the key" "${status}" "${STUDIO_ENGINE_KEY}"
+  assert_not_contains "the node never discloses the key" "${status}" "${FLEET_TOKEN}"
   # The key reached the engine as a path, not a literal. The shim echoes its
   # own argv into the engine log, which is where that can be checked — in the
   # process list the shim has already exec'd and replaced itself.
@@ -490,10 +490,10 @@ STUB
   enginelog="$(fleet logs studio --limit 50 2>/dev/null || true)"
   assert_contains "the engine was gated by file" "${enginelog}" "--api-key-file"
   assert_not_contains "the key itself never reaches the command line" \
-    "${enginelog}" "${STUDIO_ENGINE_KEY}"
+    "${enginelog}" "${FLEET_TOKEN}"
   local psout
   psout="$(docker compose -f "${HERE}/compose.yaml" exec -T studio ps ax 2>/dev/null || true)"
-  assert_not_contains "the key is not in the node's process list" "${psout}" "${STUDIO_ENGINE_KEY}"
+  assert_not_contains "the key is not in the node's process list" "${psout}" "${FLEET_TOKEN}"
 
   fleet stop studio >/dev/null
   wait_for_state studio stopped 30 || true
@@ -550,7 +550,7 @@ test_unreachable_node() {
 test_unauthorized() {
   echo "A rejected token is distinguished from an unreachable node"
   local out
-  out="$(STUDIO_TOKEN=definitely-not-the-token fleet status)"
+  out="$(FLEET_TOKEN=definitely-not-the-token fleet status)"
   assert_contains "a bad token reads unauthorized" "${out}" "unauthorized"
   assert_not_contains "a bad token is not reported as unreachable" \
     "$(echo "${out}" | grep '^studio')" "unreachable"
@@ -601,6 +601,11 @@ main() {
   fi
 
   cd "${HERE}"
+  # The routed launch asserts the key the fleet hands the agent, but a key or
+  # base URL already exported in this shell (say, for another provider) wins
+  # over what the fleet resolves, so the run needs the same clean slate CI
+  # gets.
+  unset OPENAI_API_KEY OPENAI_BASE_URL
   if [[ ! -f .env ]]; then
     echo "Using .env.example for tokens (no .env present)"
     cp .env.example .env

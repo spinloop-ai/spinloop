@@ -5,7 +5,7 @@ Observing several machines' engines from one place.
 Each machine runs the daemon — it takes no Spinloop of its own, just its flags:
 
 ```sh
-# on studio.local and gpu-box, with a token since they are network-reachable
+# on each network-reachable machine, with the fleet's shared token
 SPINLOOP_API_TOKEN=… spinloop daemon
 
 # on this machine, loopback-only needs no token
@@ -18,7 +18,7 @@ automatically since the subdirectory's name matches the node's), so
 `fleet start` knows what to push. Then from anywhere that can reach them:
 
 ```sh
-cp .env.example .env    # fill in each node's token
+cp .env.example .env    # fill in the fleet's shared token
 spinloop fleet status
 spinloop fleet metrics -w
 spinloop fleet start gpu-box

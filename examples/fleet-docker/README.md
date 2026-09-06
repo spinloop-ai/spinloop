@@ -9,7 +9,7 @@ hardware.
 cp .env.example .env
 docker compose up -d --build
 
-# from this directory, with the tokens exported
+# from this directory, with the token exported
 set -a && . ./.env && set +a
 
 spinloop fleet status --fleet ./fleet.yaml
@@ -57,11 +57,11 @@ There is only one Spinloop here, and it belongs to the client:
 with no arguments and no files, and run whatever a start request tells them to.
 That is why the container's `CMD` is a bare `spinloop daemon`.
 
-`studio`'s engine is also **gated**. Its `fleet.yaml` entry names
-`STUDIO_ENGINE_KEY`, which lives only on this side: the client sends it when it
-starts the engine, and uses the same value to talk to it. Nothing is kept in
-step between two ends, because only one end holds it. The node will tell you a
-key is required and never what it is, and the key reaches the engine as a file
+`studio`'s engine is also **gated**. Its `fleet.yaml` entry names the fleet's
+shared key as its engine key: the client sends it when it starts the engine,
+and uses the same value to talk to it. The node holds no engine key of its
+own, so nothing is kept in step between two ends. The node will tell you a key
+is required and never what it is, and the key reaches the engine as a file
 path — `docker compose exec studio ps ax` shows `--api-key-file`, not the key.
 
 ## Things worth trying
@@ -77,9 +77,9 @@ spinloop harness ./client/Spinloop
 docker compose stop gpu-box
 spinloop fleet status --fleet ./fleet.yaml
 
-# A wrong token reads `unauthorized`, not `unreachable` — the box is up, the
-# credential is wrong.
-STUDIO_TOKEN=nope spinloop fleet status --fleet ./fleet.yaml
+# A wrong token reads `unauthorized`, not `unreachable` — the boxes are up,
+# the credential is wrong.
+FLEET_TOKEN=nope spinloop fleet status --fleet ./fleet.yaml
 
 # Kill an engine and watch the node report `crashed`, then bring it back.
 docker compose exec studio sh -c 'kill -9 $(pgrep imposter-go)'
@@ -102,7 +102,7 @@ cannot quietly stop working.
 
 | File | What it is |
 | --- | --- |
-| `compose.yaml` | Three nodes. Each needs a token, because the daemon refuses to listen on a non-loopback address without one. |
+| `compose.yaml` | Three nodes, each on the fleet's shared token — the daemon refuses to listen on a non-loopback address without one. |
 | `fleet.yaml` | What `spinloop fleet` reads. Names each node's token by *variable name* — no secrets in the file. |
 | `Dockerfile` | Builds spinloop from this working tree, adds the Imposter engine and the shim. |
 | `shim/llama-server` | Stands in for the engine binary. Execs the Imposter engine **directly**, so the daemon supervises it as its own child. |

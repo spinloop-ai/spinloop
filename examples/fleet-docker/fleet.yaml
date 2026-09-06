@@ -1,8 +1,9 @@
 # The fleet the compose stack brings up. Ports are the host-side mappings from
 # compose.yaml, so this works from your machine with the stack running.
 #
-# No secrets here: each node names the environment variable holding its token,
-# resolved from your environment or the .env beside this file.
+# No secrets here: every node names the same environment variable, holding the
+# fleet's shared key — each node's daemon token and the key studio's engine is
+# gated with — resolved from your environment or the .env beside this file.
 #
 # Each node also declares where its *engine* answers. `port` above is the
 # daemon's; the engine is a different port, and normally the daemon reports it
@@ -18,14 +19,14 @@
 prefer: idle
 
 nodes:
-  # studio's engine is gated: the client sends this key when it starts the
-  # engine, and uses the same value to talk to it. The node holds no key of
-  # its own, so there is nothing to keep in step.
+  # studio's engine is gated with the fleet's shared key: the client sends it
+  # when it starts the engine, and uses the same value to talk to it. The node
+  # holds no engine key of its own, so there is nothing to keep in step.
   - name: studio
     host: 127.0.0.1
     port: 14242
-    tokenEnv: STUDIO_TOKEN
-    engineTokenEnv: STUDIO_ENGINE_KEY
+    tokenEnv: FLEET_TOKEN
+    engineTokenEnv: FLEET_TOKEN
     file: ./client/Spinloop
     engine:
       port: 18080
@@ -33,7 +34,7 @@ nodes:
   - name: gpu-box
     host: 127.0.0.1
     port: 14243
-    tokenEnv: GPU_BOX_TOKEN
+    tokenEnv: FLEET_TOKEN
     file: ./client/Spinloop
     engine:
       port: 18081
@@ -41,6 +42,6 @@ nodes:
   - name: laptop
     host: 127.0.0.1
     port: 14244
-    tokenEnv: LAPTOP_TOKEN
+    tokenEnv: FLEET_TOKEN
     engine:
       port: 18082
