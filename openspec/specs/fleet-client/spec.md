@@ -764,6 +764,19 @@ node in view in the detail view — and SHALL NOT name it for an idle or
 running node, or one whose in-flight action is a stop, so the operator is
 never invited to press a key that would do nothing there.
 
+The dashboard's key help SHALL name the start key for the node it describes
+only when that node has no action in flight and the board's current read of it
+does not report it running, and SHALL name the stop key for that node only when
+it has no action in flight and the board's current read of it reports it
+running, so the operator is never invited to press a key that would do nothing
+there. A read reports its node running when it answered and carries a running
+state; a node whose current read reports no state at all — no read has
+answered yet, or its newest read failed — SHALL be offered the start key rather
+than the stop key, since the board cannot say the node is running and start is
+the key that might still do something on it. A node that could not become a
+node at all SHALL be offered neither key, since neither would drive anything on
+it.
+
 #### Scenario: Starting a cold node
 
 - **WHEN** the operator selects a node with no engine running and issues the
@@ -802,7 +815,7 @@ never invited to press a key that would do nothing there.
   is issued once capacity is free
 - **THEN** the tile reports the capacity wait while it holds, and stops
   reporting it once the next attempt is under way, rather than showing it
-  beside a refresh that reports the node running
+  beside a refresh reporting the node running
 
 #### Scenario: A start's elapsed time keeps moving
 
@@ -870,6 +883,23 @@ never invited to press a key that would do nothing there.
 - **THEN** the key help does not name the abort key
 - **WHEN** that node has a start in flight
 - **THEN** the key help names the abort key
+
+#### Scenario: The key help hides start and stop where they would do nothing
+
+- **WHEN** the node under the cursor (or shown in the detail view) has no
+  action in flight and the board's current read of it reports it running
+- **THEN** the key help names the stop key and does not name the start key
+- **WHEN** that node has no action in flight and the board's current read of
+  it reports it not running
+- **THEN** the key help names the start key and does not name the stop key
+- **WHEN** that node has an action in flight, or could not become a node at all
+- **THEN** the key help names neither the start key nor the stop key
+
+#### Scenario: The key help offers start when the node's state is unknown
+
+- **WHEN** the node under the cursor has no action in flight, and no read of
+  it has answered yet, or its newest read failed
+- **THEN** the key help names the start key and does not name the stop key
 
 #### Scenario: An action that fails keeps the dashboard open
 
