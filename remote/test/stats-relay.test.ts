@@ -128,6 +128,36 @@ describe('stats relays the daemon’s activity record', () => {
   });
 });
 
+describe('stats relays the daemon’s retained history', () => {
+  it('carries it through unchanged', async () => {
+    const history = [
+      { t: 1785000000, c: 12.5, m: 37.5, g: [{ i: 0, u: 88, m: 51.3 }] },
+      { t: 1785000015, c: 62, m: 37.5, g: [{ i: 0, u: 95 }] },
+    ];
+    stubDaemon(JSON.stringify({ state: 'running', cpu: { utilization: 62 }, history }));
+
+    const body = bodyOf(await handler(statsEvent));
+    expect(body.history).toEqual(history);
+    expect(body.cpu).toBeDefined();
+  });
+
+  it('leaves it absent when the daemon predates the field', async () => {
+    stubDaemon(JSON.stringify({ state: 'running', cpu: { utilization: 5 } }));
+
+    const body = bodyOf(await handler(statsEvent));
+    expect(body).not.toHaveProperty('history');
+    expect(body.cpu).toBeDefined();
+  });
+
+  it('leaves it absent when the daemon is unreachable', async () => {
+    runShellCommand.mockResolvedValue({ status: 'Success', stdout: `${DAEMON_UNREACHABLE}\n` });
+
+    const body = bodyOf(await handler(statsEvent));
+    expect(body).not.toHaveProperty('history');
+    expect(body.errors).toContain('daemon: unreachable or unrecognisable metrics reply');
+  });
+});
+
 describe('stats relays the daemon’s version', () => {
   it('carries it through unchanged', async () => {
     stubDaemon(

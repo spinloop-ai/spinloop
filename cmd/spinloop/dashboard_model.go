@@ -71,6 +71,13 @@ type dashModel struct {
 	confirm    bool // a stop is waiting on its confirmation
 	statusLine string
 
+	// gauge is the board's resource-series format: false draws the bar
+	// format (the sparkline of each node's retained history), true the gauge
+	// format (the current reading). Board-wide, toggled by g — one format for
+	// every panel rather than a choice per node. The zero value opens the
+	// board in bar.
+	gauge bool
+
 	// send feeds a message back into the program from outside the Update
 	// loop — the in-flight progress of a start, which its call reports from
 	// its own goroutine. It is the tea.Program's Send, safe from any
@@ -351,6 +358,10 @@ func (m *dashModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if len(m.entries) > 0 && m.actions[m.cursor].verb == "" {
 				m.confirm = true
 			}
+		case "g":
+			// The board-wide format toggle: every panel redraws in the other
+			// format, and g again returns them.
+			m.gauge = !m.gauge
 		case "r":
 			// A manual refresh is due for every node, cloud or local,
 			// whatever their own deadlines say.
@@ -658,7 +669,7 @@ func (m dashModel) View() string {
 	tiles := make([]string, len(m.entries))
 	for i := range m.entries {
 		tiles[i] = dashTile(m.entries[i].name, m.results[i], i == m.cursor, m.actions[i],
-			now, dashStaleAfter(m.entries[i].kind))
+			now, dashStaleAfter(m.entries[i].kind), m.gauge)
 	}
 	rows := dashGridRows(tiles, dashCols(w))
 	lo := m.scrollRow
@@ -688,7 +699,7 @@ func (m dashModel) headerLine(w int) string {
 
 // dashGridKeys is the grid's own key help; the detail view's footer shares
 // footerLine but names its own keys instead (see dashDetailKeys).
-const dashGridKeys = "↑↓←→ move   s start   a abort   x stop   r refresh   q quit"
+const dashGridKeys = "↑↓←→ move   s start   a abort   x stop   g format   r refresh   q quit"
 
 // footerLine is the frame's bottom line: the given key help, replaced by the
 // stop confirmation prompt while one is pending, with the status line and a

@@ -39,6 +39,33 @@ export interface TokenStats {
   requests: number;
 }
 
+/**
+ * One GPU's figures in a retained system reading, relayed verbatim from the
+ * daemon (spinloop's metrics.HistoryGPU). One-letter fields, like its parent:
+ * the readings cross SSM, whose command output truncates at 4KB, so the
+ * window's forty samples must fit that budget alongside the current reading.
+ */
+export interface HistoryGPU {
+  /** The GPU's index. */
+  i: number;
+  /** Utilisation, percent. */
+  u: number;
+  /** Memory used over total, percent. Absent where the GPU reports no total. */
+  m?: number;
+}
+
+/** One retained system reading, as the bar format plots it: percent per series. */
+export interface HistorySample {
+  /** When the reading was taken, unix seconds. */
+  t: number;
+  /** Whole-host CPU utilisation, percent. */
+  c?: number;
+  /** System memory used over total, percent. */
+  m?: number;
+  /** Each GPU's figures, percent. */
+  g?: HistoryGPU[];
+}
+
 export interface StatsResult {
   /** Environment name. */
   environment: string;
@@ -62,6 +89,14 @@ export interface StatsResult {
   cpu?: CpuStat;
   /** System memory stats. */
   memory?: MemoryStat;
+  /**
+   * The daemon's retained system readings, oldest first — one per sampler
+   * tick while an engine ran, covering at most the last 10 minutes. They
+   * survive a stop and clear when the next engine starts. Absent for a daemon
+   * that predates the field or has never run an engine: the bar format falls
+   * back to the gauge for a series with no readings.
+   */
+  history?: HistorySample[];
   /** Any errors encountered while collecting metrics. */
   errors?: string[];
   /** When the engine last did any work, RFC 3339, as the daemon reports it. */

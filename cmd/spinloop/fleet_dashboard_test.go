@@ -288,11 +288,13 @@ func dashFixNow(t *testing.T, at time.Time) {
 	t.Cleanup(func() { dashNow = time.Now })
 }
 
-// dashTestTile draws one tile at the board's current clock, with the staleness
-// bound of a local node — the tile tests supply readings with no time on them,
-// which are never called stale, so the bound is not what any of them is about.
+// dashTestTile draws one tile at the board's current clock, in the board's
+// default format (bar), with the staleness bound of a local node — the tile
+// tests supply readings with no time on them, which are never called stale, so
+// the bound is not what any of them is about. A test that wants the gauge
+// format draws with dashTile directly.
 func dashTestTile(name string, r fleet.NodeResult, selected bool, a dashAction) string {
-	return dashTile(name, r, selected, a, dashNow(), dashStaleAfter(fleet.KindDaemon))
+	return dashTile(name, r, selected, a, dashNow(), dashStaleAfter(fleet.KindDaemon), false)
 }
 
 // dashExpectedHeader is the tile's header bar as a test spells it out: the
@@ -607,7 +609,7 @@ func TestDashNodeViewEveryPhaseAgainstEveryReading(t *testing.T) {
 		for _, rd := range readings {
 			t.Run(ph.name+" over "+rd.name, func(t *testing.T) {
 				a := dashAction{verb: "start", since: now.Add(-30 * time.Second), phase: ph.phase}
-				lines, tier := dashNodeView("n", rd.r, a, now, staleAfter)
+				lines, tier := dashNodeView("n", rd.r, a, now, staleAfter, false, barLineW)
 				joined := strings.Join(lines, "\n")
 				// The action's own account leads, and the node's report
 				// follows it where the reading has one to give.
@@ -633,7 +635,7 @@ func TestDashNodeViewEveryPhaseAgainstEveryReading(t *testing.T) {
 				}
 				// Nothing about the action is shown once it settles, and the
 				// reading alone then decides the tier.
-				settledLines, settledTier := dashNodeView("n", rd.r, dashAction{}, now, staleAfter)
+				settledLines, settledTier := dashNodeView("n", rd.r, dashAction{}, now, staleAfter, false, barLineW)
 				if settledTier != rd.settled {
 					t.Errorf("settled tier = %v, want %v", settledTier, rd.settled)
 				}
@@ -658,7 +660,7 @@ func TestDashTileStaleReadingShowsItsAgeAndRecovers(t *testing.T) {
 		Metrics: metrics.Stats{State: "running", Ready: "ready"},
 		At:      now.Add(-4 * time.Minute)}
 	staleAfter := dashStaleAfter(fleet.KindRemote) // three minutes, on the minute cadence
-	got := dashTile("dev-1", r, false, dashAction{}, now, staleAfter)
+	got := dashTile("dev-1", r, false, dashAction{}, now, staleAfter, false)
 	want := dashTileExpected([]string{
 		dashExpectedHeader("dev-1  running  · 4m 0s ago", dashUnknown),
 		"", "", "", "", "", "", "", "", "", "", "",
@@ -672,7 +674,7 @@ func TestDashTileStaleReadingShowsItsAgeAndRecovers(t *testing.T) {
 		dashExpectedHeader("dev-1  running", dashHealthy),
 		"", "", "", "", "", "", "", "", "", "", "",
 	})
-	if got := dashTile("dev-1", r, false, dashAction{}, now, staleAfter); got != wantFresh {
+	if got := dashTile("dev-1", r, false, dashAction{}, now, staleAfter, false); got != wantFresh {
 		t.Errorf("recovered tile mismatch:\ngot:\n%q\nwant:\n%q", got, wantFresh)
 	}
 }
@@ -3074,5 +3076,115 @@ func TestDashProgramDetailViewLogAndBack(t *testing.T) {
 	tm.WaitFinished(t)
 	if node.starts != 1 {
 		t.Fatalf("starts=%d, want 1", node.starts)
+	}
+}
+
+// A node with retained readings, for the format tests: the same engine a
+// byte-stability test would draw, with a short history behind its current
+// reading.
+func dashHistoryNode() fleet.NodeResult {
+	return fleet.NodeResult{
+		Name: "up", Outcome: fleet.OutcomeOK,
+		Metrics: metrics.Stats{
+			State: "running", Runner: "llamacpp", ModelID: "org/qwen:q4",
+			UptimeSeconds: 7200, LastActiveAt: "2026-08-21T10:00:00Z", IdleSeconds: 12,
+			CPU:    &metrics.CpuStat{Utilization: 42},
+			Memory: &metrics.MemoryStat{Total: 1000, Used: 300},
+			GPUs:   []metrics.GpuStat{{Index: 0, Name: "H100", Utilization: 61, MemoryUsed: 80, MemoryTotal: 160}},
+			Tokens: &metrics.TokenStats{Running: 2, PromptTokens: 4096, GenerationTokens: 1024, Requests: 17},
+			History: []metrics.HistorySample{
+				{Time: 1786276800, CPU: ptrPct(10), Mem: ptrPct(20), GPUs: []metrics.HistoryGPU{{Index: 0, Util: 50, Mem: ptrPct(40)}}},
+				{Time: 1786276815, CPU: ptrPct(20), Mem: ptrPct(30), GPUs: []metrics.HistoryGPU{{Index: 0, Util: 61, Mem: ptrPct(50)}}},
+			},
+		},
+	}
+}
+
+func dashTileAt(gauge bool) string {
+	return dashTile("up", dashHistoryNode(), false, dashAction{}, dashNow(), dashStaleAfter(fleet.KindDaemon), gauge)
+}
+
+// The g key toggles the board-wide format: every panel redraws in the other
+// format, and g again returns them. The formats differ only where a series
+// has history to draw — a node without it looks the same either way.
+func TestDashModelFormatToggle(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.Ascii)
+	dashFixNow(t, dashTestClock)
+	r := dashHistoryNode()
+	m := &dashModel{
+		entries: []dashEntry{{name: "up"}},
+		results: []fleet.NodeResult{r},
+		actions: []dashAction{{}},
+		width:   120, height: 40,
+	}
+
+	bar := dashTileAt(false)
+	gauge := dashTileAt(true)
+	if bar == gauge {
+		t.Fatal("the two formats drew identical tiles for a node with history")
+	}
+	// The bar format draws the retained readings: a fresh window, so leading
+	// blank columns, ending on the last retained sample — the current reading
+	// is the next point, not in the history yet.
+	cpuLine := "  CPU       " + strings.Repeat(" ", 23) + "▁" + ansiGreen + "▂" + ansiReset + " 20%"
+	if !strings.Contains(bar, cpuLine) {
+		t.Errorf("bar tile did not draw the history, want %q in:\n%s", cpuLine, bar)
+	}
+	// The gauge format draws the current reading filled, as before the change.
+	if !strings.Contains(gauge, dashBar("CPU", 42)) || strings.Contains(gauge, "▁") {
+		t.Errorf("gauge tile: %q", gauge)
+	}
+
+	// One press flips the flag, the second press returns it.
+	next, cmd := m.Update(dashKey("g"))
+	if cmd != nil {
+		t.Fatal("the format toggle returned a cmd")
+	}
+	m = next.(*dashModel)
+	if !m.gauge {
+		t.Fatal("g did not switch the board to gauge")
+	}
+	next, _ = m.Update(dashKey("g"))
+	m = next.(*dashModel)
+	if m.gauge {
+		t.Fatal("a second g did not return the board to bar")
+	}
+}
+
+// Both formats keep the tile's geometry: the frame is the same width and
+// height whatever the body draws, so the board's grid never shifts.
+func TestDashTileGeometryHoldsInBothFormats(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.Ascii)
+	dashFixNow(t, dashTestClock)
+	for _, gauge := range []bool{false, true} {
+		lines := strings.Split(dashTileAt(gauge), "\n")
+		if len(lines) != dashTileH+2 {
+			t.Errorf("gauge=%v: %d lines, want %d", gauge, len(lines), dashTileH+2)
+			continue
+		}
+		for i, line := range lines {
+			if w := lipgloss.Width(line); w != dashTileW+2 {
+				t.Errorf("gauge=%v line %d: width %d, want %d", gauge, i, w, dashTileW+2)
+			}
+		}
+	}
+}
+
+// A node the daemon has not filled the history for — old daemons, a series
+// the engine never reported — falls back to the gauge drawing in the bar
+// format, so it renders exactly as it did before the change.
+func TestDashTileBarFallsBackToGaugeWithoutHistory(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.Ascii)
+	dashFixNow(t, dashTestClock)
+	r := dashHistoryNode()
+	r.Metrics.History = nil
+	tile := func(gauge bool) string {
+		return dashTile("up", r, false, dashAction{}, dashNow(), dashStaleAfter(fleet.KindDaemon), gauge)
+	}
+	if got, want := tile(false), tile(true); got != want {
+		t.Errorf("a history-less node differs between formats:\nbar:\n%q\ngauge:\n%q", got, want)
+	}
+	if !strings.Contains(tile(false), dashBar("CPU", 42)) {
+		t.Errorf("the fallback did not draw the old gauges: %q", tile(false))
 	}
 }

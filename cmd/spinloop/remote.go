@@ -772,10 +772,12 @@ func runRemoteStatus(args []string) error {
 }
 
 // cmdRemoteMetrics queries the stats Lambda for instance metrics: token usage,
-// GPU, CPU, and RAM utilization. With --format=json it outputs JSON; the
-// default is a key-value table. With --cost, it looks up the on-demand price
-// for the instance type from the AWS Price List API. With --watch it polls
-// every 60 seconds until interrupted.
+// GPU, CPU, and RAM utilization. The default bar format draws each series as
+// a sparkline of the daemon's retained history; --format=gauge draws the
+// current reading as progress gauges instead. With --format=json it outputs
+// JSON. With --cost, it looks up the on-demand price for the instance type
+// from the AWS Price List API. With --watch it polls every 60 seconds until
+// interrupted.
 func remoteMetricsCmd() *cobra.Command {
 	var (
 		withCost bool
@@ -796,15 +798,15 @@ func remoteMetricsCmd() *cobra.Command {
 	}
 	fs := c.Flags()
 	fs.BoolVar(&withCost, "cost", false, "include cost estimate from AWS Price List API")
-	fs.StringVar(&format, "format", "bar", "output format: bar (default), table or json")
+	fs.StringVar(&format, "format", "bar", "output format: bar (default), gauge, table or json")
 	fs.BoolVarP(&watch, "watch", "w", false, "poll metrics every 60 seconds")
 	return c
 }
 
 // runRemoteMetrics is the body of `spinloop remote metrics`.
 func runRemoteMetrics(args []string, withCost bool, format string, watch bool) error {
-	if format != "table" && format != "json" && format != "bar" {
-		return fmt.Errorf("--format must be \"table\", \"bar\", or \"json\", got %q", format)
+	if err := validateMetricsFormat(format); err != nil {
+		return err
 	}
 
 	cfg, err := resolveRemoteConfig(spinloopArg(args))
@@ -824,10 +826,12 @@ func runMetricsOnce(ctx context.Context, cfg remote.Config, format string, withC
 		return err
 	}
 
-	if format == "json" {
+	switch format {
+	case "json":
 		return formatMetricsJSON(resp, withCost, cfg, w)
-	}
-	if format == "bar" {
+	case "gauge":
+		return formatMetricsGauge(resp, cfg, w)
+	case "bar":
 		return formatMetricsBar(resp, cfg, w)
 	}
 	return formatMetricsTable(ctx, resp, withCost, cfg, w)
@@ -955,7 +959,9 @@ func formatMetricsJSON(resp *remote.StatsResponse, withCost bool, cfg remote.Con
 	return nil
 }
 
-func formatMetricsBar(resp *remote.StatsResponse, cfg remote.Config, w io.Writer) error {
+// formatMetricsHeader draws the line both compact formats open with: the
+// environment, state, instance type, and model, double-spaced.
+func formatMetricsHeader(resp *remote.StatsResponse, w io.Writer) {
 	fmt.Fprintf(w, "%s  %s", resp.Environment, resp.State)
 	if resp.InstanceType != "" {
 		fmt.Fprintf(w, "  %s", resp.InstanceType)
@@ -967,45 +973,43 @@ func formatMetricsBar(resp *remote.StatsResponse, cfg remote.Config, w io.Writer
 		fmt.Fprintf(w, "  %s", resp.Version)
 	}
 	fmt.Fprintln(w)
+}
 
-	// Before the early return: a stopped endpoint draws no bars, but when it
-	// last did work is exactly what a stopped endpoint is worth asking about.
+func formatMetricsBar(resp *remote.StatsResponse, cfg remote.Config, w io.Writer) error {
+	formatMetricsHeader(resp, w)
+
+	// Before the series: when the endpoint last did work is worth showing for
+	// whatever state it is in, and the retained history is too — a stopped
+	// endpoint's readings up to the stop answer what it was doing until it
+	// stopped. A stopped endpoint's current reading carries no resource
+	// figures, so the series it draws come from the history alone, or not at
+	// all where the daemon predates it.
 	renderLastActiveIndented(w, resp.LastActiveAt, resp.IdleSeconds)
 
-	if resp.State != "running" {
-		return nil
-	}
-
-	renderStatBars(w, resp.CPU, resp.Memory, resp.GPUs)
+	renderStatBars(w, resp.CPU, resp.Memory, resp.GPUs, resp.History, barLineW)
 	renderTokenLines(w, resp.Tokens)
 	renderCollectionErrors(os.Stderr, resp.Errors)
 
 	return nil
 }
 
-func renderBar(w io.Writer, label string, pct float64) {
-	const width = 25
-	colour := "\033[92m"
-	if pct > 90 {
-		colour = "\033[31m"
-	} else if pct >= 80 {
-		colour = "\033[33m"
+func formatMetricsGauge(resp *remote.StatsResponse, cfg remote.Config, w io.Writer) error {
+	formatMetricsHeader(resp, w)
+
+	// Before the early return: a stopped endpoint draws no gauges, but when
+	// it last did work is exactly what a stopped endpoint is worth asking
+	// about.
+	renderLastActiveIndented(w, resp.LastActiveAt, resp.IdleSeconds)
+
+	if resp.State != "running" {
+		return nil
 	}
-	filled := int(pct / 100.0 * float64(width))
-	if filled > width {
-		filled = width
-	}
-	empty := width - filled
-	fmt.Fprintf(w, "  %-9s ", label)
-	fmt.Fprintf(w, "%s", colour)
-	for i := 0; i < filled; i++ {
-		fmt.Fprint(w, "█")
-	}
-	fmt.Fprintf(w, "\033[0m")
-	for i := 0; i < empty; i++ {
-		fmt.Fprint(w, "░")
-	}
-	fmt.Fprintf(w, " %.0f%%\n", pct)
+
+	renderStatGauges(w, resp.CPU, resp.Memory, resp.GPUs)
+	renderTokenLines(w, resp.Tokens)
+	renderCollectionErrors(os.Stderr, resp.Errors)
+
+	return nil
 }
 
 func formatDuration(seconds int) string {

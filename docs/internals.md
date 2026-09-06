@@ -38,9 +38,14 @@ A few Bubble Tea/lipgloss specifics that are easy to break by "simplifying":
 - One function, `dashNodeView`, produces both a panel's lines and its health tier, from the reading, the action, the current time, and how old a reading of that node may be. Nothing in it reads a clock, so every pairing of a start's phase against a reading can be enumerated in a test.
 - A tile's first line is a header bar drawn in raw ANSI — the body is one plain string under a single lipgloss style, so per-character colour cannot be lipgloss's. The board's own title bar (`dashTitleBar`) uses lipgloss instead, and the two share one surface index (`barSurface`) because they are set through different mechanisms and would otherwise drift.
 - A grid row joins the *corresponding lines* of the tiles it places, not the tile blocks — joining whole blocks glues the second tile's top border to the first tile's bottom border and shifts its body down a line.
-- A tile's content is exactly the lines `fleet metrics` bar format prints (`renderStatBars`/`renderTokenLines` are shared, not reimplemented), so the panel and `fleet metrics` can never disagree on a number.
+- A tile's content is exactly the lines `fleet metrics` prints for the node in the board's current format (`renderStatBars`/`renderStatGauges`/`renderTokenLines` are shared, not reimplemented), so the panel and `fleet metrics` can never disagree on a number. The format is board-wide, in `dashModel.gauge`, toggled by `g`, opening in bar; the tile draws the sparkline at `dashBarLineW`, chosen so a full row (label, glyphs, trailing percentage) fits the tile's width exactly.
 
 Behavior (panel contents, refresh cadence, start/stop/abort semantics, the detail view) is specified in `openspec/specs/fleet-client/spec.md`.
+
+## The metrics history
+
+- The bar format's data lives in the daemon, not the client: `systemHistory` (`internal/daemon/history.go`) is appended on each sampler tick while an engine runs, survives a stop, and clears on the next start alongside the counter baseline's `sample.forget()`. Every client — one-shot, watch, dashboard, the cloud relay — draws the same window from the one read.
+- The history samples' JSON field names are one letter each (`t`/`c`/`m`/`g`, `i`/`u`/`m`) because the reply crosses SSM on the cloud relay, and SSM command output truncates at 4KB. The window is 10 minutes at the 15s cadence (40 samples) and is capped at `historyLimit` samples regardless of cadence — the catch-up ticks run at 1s, and an engine with no scrape target never leaves that cadence. If the window or the sample shape grows, cap the size in the daemon, not the client: a truncated reply is corrupt JSON, and `parseDaemonMetrics` turns that into "daemon unreachable" for the whole metrics call.
 
 ## Adapter schema references
 

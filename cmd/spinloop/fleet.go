@@ -118,8 +118,8 @@ func fleetMetricsCmd() *cobra.Command {
 		SilenceUsage:  true,
 		RunE: func(c *cobra.Command, _ []string) error {
 			resolve(c)
-			if format != "bar" && format != "table" && format != "json" {
-				return fmt.Errorf("--format must be \"bar\", \"table\", or \"json\", got %q", format)
+			if err := validateMetricsFormat(format); err != nil {
+				return err
 			}
 			cfg, err := fleet.Resolve(path)
 			if err != nil {
@@ -134,7 +134,7 @@ func fleetMetricsCmd() *cobra.Command {
 	}
 	fs := c.Flags()
 	fs.StringVarP(&path, "fleet", "f", "", fleetFileUsage)
-	fs.StringVar(&format, "format", "bar", "output format: bar (default), table or json")
+	fs.StringVar(&format, "format", "bar", "output format: bar (default), gauge, table or json")
 	fs.BoolVarP(&watch, "watch", "w", false, "redraw the fleet every 60 seconds")
 	c.ValidArgsFunction = noPositionals
 	compRegister(c, "fleet", compFiles)
@@ -205,13 +205,24 @@ func renderFleetMetrics(w io.Writer, results []fleet.NodeResult, format string) 
 		// before theirs: a node whose engine has stopped still has a useful
 		// answer to "when did this last do anything?".
 		renderLastActiveIndented(w, stats.LastActiveAt, stats.IdleSeconds)
-		if stats.State != "running" {
-			continue
-		}
-		if format == "bar" {
-			renderStatBars(w, stats.CPU, stats.Memory, stats.GPUs)
+		switch format {
+		case "bar":
+			// No state gate, for the same reason the remote bar format has
+			// none: a stopped node's retained history says what its engine
+			// was doing until it stopped, and a stopped node's current
+			// reading carries no figures for it to fall back on.
+			renderStatBars(w, stats.CPU, stats.Memory, stats.GPUs, stats.History, barLineW)
 			renderTokenLines(w, stats.Tokens)
-		} else {
+		case "gauge":
+			if stats.State != "running" {
+				continue
+			}
+			renderStatGauges(w, stats.CPU, stats.Memory, stats.GPUs)
+			renderTokenLines(w, stats.Tokens)
+		default:
+			if stats.State != "running" {
+				continue
+			}
 			renderTokenLines(w, stats.Tokens)
 			renderGPUTable(w, stats.GPUs)
 			renderCPUMemTable(w, stats.CPU, stats.Memory)

@@ -93,6 +93,7 @@ func (d *Daemon) SampleActivity(ctx context.Context) {
 	for {
 		d.sampleOnce(ctx)
 		d.checkReadyOnce(ctx)
+		d.systemSampleOnce(ctx)
 		// Until a reading has landed there is nothing for /v1/metrics to
 		// report, so wait a short interval rather than the full one. That is
 		// the window just after an engine starts, when someone is most likely

@@ -32,6 +32,15 @@ type Stats struct {
 	// idle value: read LastActiveAt to decide whether there is anything to
 	// report, never IdleSeconds.
 	//
+	// History is the retained system readings, oldest first: one entry per
+	// sampler tick while an engine ran, each carrying 0-100% figures rather
+	// than raw ones, because that is the axis the bar format draws and raw
+	// figures would double the wire size for nothing the graph uses. Absent
+	// where no reading has been taken, and retained across a stop — the
+	// readings up to the stop answer what the engine was doing until it
+	// stopped — so, unlike the running-engine figures above, it can be
+	// present while they are absent.
+	History []HistorySample `json:"history,omitempty"`
 	// Unlike the figures above, these describe the engine whatever its state —
 	// a stopped engine still reports when it last worked.
 	LastActiveAt string `json:"lastActiveAt,omitempty"`
@@ -73,4 +82,36 @@ type CpuStat struct {
 type MemoryStat struct {
 	Total int64 `json:"total"`
 	Used  int64 `json:"used"`
+}
+
+// HistorySample is one point of the retained system-reading history: when the
+// reading was taken and the 0-100% figures the bar format plots for it. Every
+// figure is optional on the same terms as Stats — a sample taken on a host
+// with no source for one simply omits it — so a partial host yields a history
+// of partial samples rather than an error.
+//
+// The JSON field names are one letter each because the history rides the
+// remote relay over SSM, whose command output truncates at 4KB: forty
+// samples of the window must fit that budget alongside the current reading,
+// and at full names they would not.
+type HistorySample struct {
+	// Time is when the reading was taken, unix seconds.
+	Time int64 `json:"t"`
+	// CPU is whole-host CPU utilization, percent.
+	CPU *float64 `json:"c,omitempty"`
+	// Mem is system memory used over total, percent.
+	Mem *float64 `json:"m,omitempty"`
+	// GPUs is each GPU's figures, percent.
+	GPUs []HistoryGPU `json:"g,omitempty"`
+}
+
+// HistoryGPU is one GPU's figures in a history sample, one-letter fields as
+// its parent.
+type HistoryGPU struct {
+	Index int `json:"i"`
+	// Util is utilization, percent.
+	Util int `json:"u"`
+	// Mem is memory used over total, percent. Absent where the GPU reports
+	// no total.
+	Mem *float64 `json:"m,omitempty"`
 }

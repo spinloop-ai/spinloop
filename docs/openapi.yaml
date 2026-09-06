@@ -396,6 +396,17 @@ components:
           $ref: "#/components/schemas/CpuStat"
         memory:
           $ref: "#/components/schemas/MemoryStat"
+        history:
+          type: array
+          description: |
+            The retained system readings, oldest first — one per sampler tick
+            while an engine ran, covering at most the last 10 minutes. They
+            survive a stop (the readings up to the stop say what the engine
+            was doing until it stopped) and clear when the next engine
+            starts. Absent where no reading has been taken, on the same
+            absence-not-zero terms as the rest of the reply.
+          items:
+            $ref: "#/components/schemas/HistorySample"
         errors:
           type: array
           description: Collection failures. An absent source is omitted rather than reported here.
@@ -478,6 +489,45 @@ components:
           type: integer
         used:
           type: integer
+
+    HistorySample:
+      type: object
+      description: |
+        One retained reading of the host's figures, as the bar format plots
+        it: a 0-100% figure per series rather than the raw one. The field
+        names are one letter each because the readings ride the remote relay
+        over SSM, whose command output truncates at 4KB — forty samples of
+        the window must fit that budget alongside the current reading.
+      required: [t]
+      properties:
+        t:
+          type: integer
+          description: When the reading was taken, unix seconds.
+        c:
+          type: number
+          description: Whole-host CPU utilisation, percent.
+        m:
+          type: number
+          description: System memory used over total, percent.
+        g:
+          type: array
+          items:
+            $ref: "#/components/schemas/HistoryGPU"
+
+    HistoryGPU:
+      type: object
+      description: One GPU's figures in a retained reading, one-letter fields as its parent.
+      required: [i, u]
+      properties:
+        i:
+          type: integer
+          description: The GPU's index.
+        u:
+          type: integer
+          description: Utilisation, percent.
+        m:
+          type: number
+          description: Memory used over total, percent. Absent where the GPU reports no total.
 
     DeployConfig:
       type: object
