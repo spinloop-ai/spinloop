@@ -35,6 +35,8 @@ One file, several commands:
 - [`spinloop harness -O`](commands/harness.md) — apply it, then launch the agent
 - [`spinloop serve`](commands/serve.md) — run `llama-server` for the model it
   names
+- [`spinloop up`](commands/up.md) — the one-word start: its server, or the
+  fleet's nodes where a `fleet.yaml` is beside it
 - [`spinloop alias`](commands/alias.md) — register it under a short name
 - [`spinloop export`](commands/export.md) — write one from your current setup
 

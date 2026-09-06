@@ -390,6 +390,8 @@ output.
 
 ## See also
 
+- [`spinloop up`](up.md) — the one-word form: this, from a directory holding
+  the Spinloop
 - [`spinloop fleet`](fleet.md) — one spinloop observing the daemons on every
   machine you run
 - Worked examples with real models: [`examples/`](../../examples/)

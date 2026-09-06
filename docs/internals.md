@@ -27,6 +27,8 @@ These are mistakes already made here; each was silent rather than loud, which is
 
 **`contextsize.Parse` is decimal.** `128k` is 128000, not 131072 — a `CONTEXT` written that way is not the power-of-two window it looks like. It also *overrides* a preset's `ctx-size` (both in `serve` and in `remote deploy`), so the Spinloop, not the preset, decides the window whenever it states one.
 
+**`up` dispatches by directory and reuses both branches.** `cmd/spinloop/up.go` routes a working-directory `fleet.yaml` to the fleet start path — `runFleetDrive` over the named nodes, or over every node when none are given, since a bare `fleet start` lists and does nothing — and everything else to `runServe`'s own body, so `up` and `serve` resolve and word things identically by construction. The completion slot is the only CWD-dependent one: `upSlot` offers the fleet's node names where `./fleet.yaml` parses, the Spinloop slot elsewhere, and nothing where a fleet file is present but unreadable — `__complete` never errors, whatever the directory holds.
+
 ## Dashboard (`fleet_dashboard.go` and friends)
 
 A few Bubble Tea/lipgloss specifics that are easy to break by "simplifying":

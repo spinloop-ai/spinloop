@@ -454,7 +454,9 @@ spinloop fleet stop --all
 With neither a node nor `--all` they list the fleet and do nothing, rather
 than acting on the whole fleet by accident; `--all` together with node names
 is refused as ambiguous. An unknown name fails before anything is touched,
-naming the nodes you could have meant. Several targeted nodes are driven
+naming the nodes you could have meant. A fleet directory's
+[`spinloop up`](up.md) skips the choice: bare `up` starts every node,
+`up <node>` the named ones. Several targeted nodes are driven
 independently — one node's failure is reported against it alone and does not
 stop the others, and the command exits non-zero if any of them failed. The
 daemon's own rules still hold: starting a node whose engine is already
@@ -526,6 +528,7 @@ deploy`](remote.md), applied per node.
 
 ## See also
 
+- [`spinloop up`](up.md) — the one-word start, from a fleet directory
 - [`examples/fleet-local/`](../../examples/fleet-local/) — a fleet of one, on your own machine
 - [`examples/fleet-docker/`](../../examples/fleet-docker/) — a runnable fleet
 - [`spinloop daemon`](serve.md) — what runs on each node

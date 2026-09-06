@@ -19,6 +19,8 @@ them:
 - harness names after `-H`, `--harness`, or `--set`
 - your [registered aliases](alias.md) wherever a Spinloop path goes —
   `spinloop unalias <TAB>` offers exactly the names you have
+- the fleet's node names after `up` in a fleet directory — the Spinloop slot
+  elsewhere
 - the supported shells after `completion`
 
 ## See also
