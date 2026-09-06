@@ -350,6 +350,51 @@ describe('LlmStack (control plane)', () => {
     expect(actions).toContain('ec2:DescribeSecurityGroups');
   });
 
+  it('carries the seed environment and launch grants on the start Lambda', () => {
+    // The weights gate launches the seed itself, so the start Lambda needs
+    // the seed material deploy and seed carry — the actions test above cannot
+    // see this, because those grants duplicate the start's own.
+    const fns = template.findResources('AWS::Lambda::Function');
+    const start = Object.values(fns).find((f) =>
+      String(f.Properties.Description).includes('Launches an environment instance'),
+    );
+    const env = start!.Properties.Environment.Variables;
+    expect(env.MAX_CONCURRENT_SEEDS).toBeDefined();
+    expect(env.SEED_INSTANCE_TYPE).toBeDefined();
+    expect(env.SEED_INSTANCE_PROFILE_ARN).toBeDefined();
+    expect(env.SEEDER_BUCKET).toBeDefined();
+
+    const policies = template.findResources('AWS::IAM::Policy');
+    const startPolicy = Object.values(policies).find((p) =>
+      String(p.Properties.PolicyName).startsWith('StartFnServiceRoleDefaultPolicy'),
+    );
+    expect(startPolicy).toBeDefined();
+    const statements = startPolicy!.Properties.PolicyDocument.Statement as {
+      Action: string | string[];
+      Resource?: unknown;
+      Condition?: unknown;
+    }[];
+    // The start's own PassRole covers the inference role, so the seed one is
+    // found by its resource, not by the action.
+    const passSeedRole = statements.find(
+      (s) => [s.Action].flat().includes('iam:PassRole') && JSON.stringify(s.Resource).includes('SeedRole'),
+    );
+    expect(passSeedRole).toBeDefined();
+    expect(JSON.stringify(passSeedRole!.Condition)).toContain('ec2.amazonaws.com');
+    const amiParameter = statements.find(
+      (s) =>
+        [s.Action].flat().includes('ssm:GetParameter') &&
+        JSON.stringify(s.Resource).includes('ami-amazon-linux-latest'),
+    );
+    expect(amiParameter).toBeDefined();
+    const weightsRead = statements.find(
+      (s) =>
+        [s.Action].flat().some((a) => a.startsWith('s3:GetObject')) &&
+        JSON.stringify(s.Resource).includes('/models/*'),
+    );
+    expect(weightsRead).toBeDefined();
+  });
+
   it('scopes per-environment SSM and secret access to the cloud-vm-llm prefix', () => {
     const statements = allPolicyStatements(template);
     const ssmStatement = statements.find((s) => [s.Action].flat().includes('ssm:PutParameter'));

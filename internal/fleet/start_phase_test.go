@@ -96,6 +96,10 @@ func TestStartPhasesSeeding(t *testing.T) {
 	if line := RenderPhase(seed, base.Add(13*time.Minute)); line != "seeding the weights (13m 0s)" {
 		t.Errorf("RenderPhase(seed, +13m) = %q", line)
 	}
+	// A phase drawn without a clock renders its name alone, as a boot does.
+	if line := RenderPhase(StartPhase{Kind: PhaseSeeding, Detail: stateSeeding}, base); line != "seeding the weights" {
+		t.Errorf("RenderPhase(seed, no Since) = %q", line)
+	}
 }
 
 // The mapping from remote.Start's two callbacks onto phases: an attempt goes

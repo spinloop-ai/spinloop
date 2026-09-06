@@ -42,12 +42,14 @@ const readEnvApiKey = vi.fn();
 const weightsPresent = vi.fn();
 const launchSeedInstance = vi.fn();
 const buildSeedJob = vi.fn();
+const startInstance = vi.fn();
 
 vi.mock('../lambda/shared/aws', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../lambda/shared/aws')>()),
   findManagedInstance: (...args: unknown[]) => findManagedInstance(...args),
   findManagedInstances: (...args: unknown[]) => findManagedInstances(...args),
   getInstance: (...args: unknown[]) => getInstance(...args),
+  startInstance: (...args: unknown[]) => startInstance(...args),
   startEngineDaemon: (...args: unknown[]) => startEngineDaemon(...args),
   runInstance: (...args: unknown[]) => runInstance(...args),
   findLatestAmi: (...args: unknown[]) => findLatestAmi(...args),
@@ -142,6 +144,7 @@ beforeEach(() => {
       ? Promise.resolve({ status: 'Success', stdout: JSON.stringify({ state: 'stopped' }) })
       : Promise.resolve({ status: 'Success', stdout: '200' }),
   );
+  startInstance.mockResolvedValue(undefined);
   startEngineDaemon.mockResolvedValue(true);
   findManagedInstance.mockResolvedValue(null);
   getInstance.mockResolvedValue({ instanceId: 'i-new', state: 'running', launchTime: new Date() });
@@ -182,6 +185,40 @@ describe('the weights gate', () => {
     expect(reply.message).toContain(`spinloop remote seed status ${SEED_ID}`);
     expect(runInstance).not.toHaveBeenCalled();
     expect(launchSeedInstance).not.toHaveBeenCalled();
+  });
+
+  it('reports a manifest read failure as a 502, not a retryable seeding state', async () => {
+    // Read the failure as absent and a transient glitch pays for a full
+    // re-seed; read it as present and the wake boots on unverified weights.
+    // The gate says the check failed instead, and stops there.
+    weightsPresent.mockRejectedValue(new Error('AccessDenied'));
+    seeds = [seedInstance('i-seed', 'running')];
+    const result = await handler(wakeEvent, context);
+    const body = JSON.parse(structured(result).body);
+    expect(structured(result).statusCode).toBe(502);
+    expect(body.state).toBeUndefined();
+    expect(body.error).toContain('could not check whether the weights are present');
+    expect(body.error).toContain('AccessDenied');
+    expect(findManagedInstances).not.toHaveBeenCalled();
+    expect(launchSeedInstance).not.toHaveBeenCalled();
+    expect(runInstance).not.toHaveBeenCalled();
+  });
+
+  it('holds the re-wake too, not just the launch', async () => {
+    weightsPresent.mockResolvedValue(false);
+    seeds = [seedInstance('i-seed', 'running')];
+    // The environment's instance exists and is stopped: absent the gate this
+    // is the re-wake path.
+    findManagedInstance.mockResolvedValue({ instanceId: 'i-old', state: 'stopped' });
+    const result = await handler(wakeEvent, context);
+    const reply = JSON.parse(structured(result).body);
+    expect(structured(result).statusCode).toBe(503);
+    expect(reply.state).toBe('seeding');
+    expect(reply.seedId).toBe(SEED_ID);
+    // The gate answers before the re-wake: the stopped instance is not
+    // started and no fresh one is launched.
+    expect(startInstance).not.toHaveBeenCalled();
+    expect(runInstance).not.toHaveBeenCalled();
   });
 
   it('counts a pending seed as in flight', async () => {

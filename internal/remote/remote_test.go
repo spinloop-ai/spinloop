@@ -255,6 +255,46 @@ func TestStart_GiveUpDuringSeedingNamesTheSeed(t *testing.T) {
 	}
 }
 
+// The last reply was seeding and then the connection dropped: the give-up
+// that follows the drop still names the seed, so the state a reply carried
+// survives a dropped connection.
+func TestStart_GiveUpAfterADroppedConnectionNamesTheSeed(t *testing.T) {
+	stubAWSEnv(t)
+	origWait := startRetryWait
+	startRetryWait = time.Second
+	t.Cleanup(func() { startRetryWait = origWait })
+
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls++
+		if calls == 1 {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			w.Write([]byte(`{"state":"seeding","seedId":"llamacpp--org-model--Q4_K_M","retry_after_seconds":0}`))
+			return
+		}
+		conn, _, err := w.(http.Hijacker).Hijack()
+		if err != nil {
+			t.Fatal(err)
+		}
+		conn.Close()
+	}))
+	defer server.Close()
+
+	cfg := Config{StartURL: server.URL, StopURL: server.URL, Region: "eu-west-1"}
+	ctx, cancel := context.WithTimeout(context.Background(), 1800*time.Millisecond)
+	defer cancel()
+	_, err := Start(ctx, cfg, func(string) {}, nil, nil)
+	if err == nil {
+		t.Fatal("expected an error once the deadline passed")
+	}
+	for _, want := range []string{"seeding", "llamacpp--org-model--Q4_K_M", "spinloop remote seed status"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("give-up error does not name %q: %v", want, err)
+		}
+	}
+}
+
 // A deadline that expires outside seeding keeps today's give-up message.
 func TestStart_GiveUpOutsideSeedingIsGeneric(t *testing.T) {
 	stubAWSEnv(t)
