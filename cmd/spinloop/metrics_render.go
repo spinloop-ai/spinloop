@@ -139,11 +139,13 @@ const barLineW = 40
 // full row fits the tile exactly and the clip never takes the percentage.
 const dashBarLineW = 25
 
-// barGlyphs is the eight block elements the sparkline draws with, lightest to
-// heaviest: a series' value maps to the one whose fill height is nearest. A
-// rune slice, not a string — the elements are multibyte, so byte indexing
-// would not land on glyph boundaries.
-var barGlyphs = []rune("▁▂▃▄▅▆▇█")
+// barGlyphs is the seven sub-full block elements the sparkline draws with,
+// lightest to heaviest: a series' value maps to the one whose fill height is
+// nearest. The set stops one grade short of the full block, so the tallest row
+// leaves a sliver of space above it and adjacent maxed rows read as separate
+// bars instead of one solid block. A rune slice, not a string — the elements
+// are multibyte, so byte indexing would not land on glyph boundaries.
+var barGlyphs = []rune("▁▂▃▄▅▆▇")
 
 // barGlyph picks the block element for a 0-100% value.
 func barGlyph(pct float64) rune {
