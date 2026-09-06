@@ -100,7 +100,10 @@ func poolMax(values []float64, width int) []float64 {
 	for c := range out {
 		lo := int(float64(c) * per)
 		hi := int(float64(c+1) * per)
-		if hi > len(values) {
+		if c == width-1 {
+			// The split's rounding can leave the newest sample outside the
+			// final column, and the trailing figure is that sample's value —
+			// so the last column takes it whatever the arithmetic says.
 			hi = len(values)
 		}
 		m := values[lo]
