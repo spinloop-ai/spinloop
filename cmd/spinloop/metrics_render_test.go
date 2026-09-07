@@ -332,6 +332,14 @@ func TestRenderStatCombined(t *testing.T) {
 			t.Errorf("line for %s: %q", label, lines[i])
 		}
 	}
+	// The line is label, gauge half, figure, bar half — the figure between
+	// the two halves, and it is the current reading, not the bar's last
+	// sample.
+	cpuBar, _ := sparklineBlock([]float64{10, 95}, serveBarW)
+	wantCPU := "  CPU       " + gaugeBlock(42, serveGaugeW) + " 42% " + cpuBar
+	if lines[0] != wantCPU {
+		t.Errorf("CPU line:\ngot  %q\nwant %q", lines[0], wantCPU)
+	}
 	// Both halves take the state colour: the gauge over its whole fill, the
 	// sparkline on its last glyph only — and the sparkline stops one grade
 	// short of the full block, so the 95% sample draws the top of the seven
@@ -342,15 +350,12 @@ func TestRenderStatCombined(t *testing.T) {
 	if !strings.Contains(lines[0], ansiRed+"▇"+ansiReset) {
 		t.Errorf("CPU sparkline: %q", lines[0])
 	}
-	// The line's figure is the current reading, not the bar's last sample.
-	if !strings.HasSuffix(lines[0], " 42%") {
-		t.Errorf("the figure must be the current reading: %q", lines[0])
-	}
-	// Every line is label, gauge half, bar half and figure: the halves sit
-	// side by side, aligned across the series.
+	// Every line is label, gauge half, figure and bar half: the halves sit
+	// side by side, aligned across the series. 62 is label (12), gauge half,
+	// " 42%"-style figure (4, two digits in this data), a space, bar half.
 	for i, line := range lines {
-		if w := lipgloss.Width(line); w != 12+serveGaugeW+1+serveBarW+4 {
-			t.Errorf("line %d is %d columns wide, want %d: %q", i, w, 12+serveGaugeW+1+serveBarW+4, line)
+		if w := lipgloss.Width(line); w != 12+serveGaugeW+4+1+serveBarW {
+			t.Errorf("line %d is %d columns wide, want %d: %q", i, w, 12+serveGaugeW+4+1+serveBarW, line)
 		}
 	}
 }
@@ -376,10 +381,10 @@ func TestRenderStatCombinedWithoutHistory(t *testing.T) {
 	lines := strings.Split(strings.TrimSuffix(b.String(), "\n"), "\n")
 	blankBar := strings.Repeat(" ", serveBarW)
 	want := []string{
-		"  CPU       " + gaugeBlock(42, serveGaugeW) + " " + blankBar + " 42%",
-		"  RAM       " + gaugeBlock(30, serveGaugeW) + " " + blankBar + " 30%",
-		"  GPU util  " + gaugeBlock(61, serveGaugeW) + " " + blankBar + " 61%",
-		"  GPU mem   " + gaugeBlock(50, serveGaugeW) + " " + blankBar + " 50%",
+		"  CPU       " + gaugeBlock(42, serveGaugeW) + " 42% " + blankBar,
+		"  RAM       " + gaugeBlock(30, serveGaugeW) + " 30% " + blankBar,
+		"  GPU util  " + gaugeBlock(61, serveGaugeW) + " 61% " + blankBar,
+		"  GPU mem   " + gaugeBlock(50, serveGaugeW) + " 50% " + blankBar,
 	}
 	if len(lines) != len(want) {
 		t.Fatalf("drew %d lines, want %d: %q", len(lines), len(want), b.String())
@@ -408,18 +413,30 @@ func TestRenderStatCombinedStoppedEngineDrawsHistoryAlone(t *testing.T) {
 	if len(lines) != 4 {
 		t.Fatalf("drew %d lines, want CPU, RAM, GPU util and GPU mem: %q", len(lines), b.String())
 	}
-	for i, label := range []string{"CPU", "RAM", "GPU util", "GPU mem"} {
-		if !strings.HasPrefix(lines[i], "  "+label) {
-			t.Errorf("the history's series keep their labels: %q", lines[i])
+	blankGauge := strings.Repeat(" ", serveGaugeW)
+	wantPrefix := []string{
+		"  CPU       " + blankGauge + " 20% ",
+		"  RAM       " + blankGauge + " 30% ",
+		"  GPU util  " + blankGauge + " 60% ",
+		"  GPU mem   " + blankGauge + " 60% ",
+	}
+	for i, want := range wantPrefix {
+		if !strings.HasPrefix(lines[i], want) {
+			t.Errorf("line %d:\ngot  %q\nwant prefix %q", i, lines[i], want)
 		}
 	}
-	for _, line := range lines {
-		if !strings.Contains(line, strings.Repeat(" ", serveGaugeW+1)) {
-			t.Errorf("the gauge half must stay blank without a current reading: %q", line)
-		}
+	// The bar ends the line, its two samples as its two right-most glyphs,
+	// the newest in the state colour.
+	wantSuffix := []string{
+		"▁" + ansiGreen + "▂" + ansiReset,
+		"▂" + ansiGreen + "▃" + ansiReset,
+		"▄" + ansiGreen + "▅" + ansiReset,
+		"▄" + ansiGreen + "▅" + ansiReset,
 	}
-	if !strings.HasSuffix(lines[1], " 30%") || !strings.HasSuffix(lines[3], " 60%") {
-		t.Errorf("the lines must carry the bar's latest sample as their figure: %q", strings.Join(lines, " / "))
+	for i, want := range wantSuffix {
+		if !strings.HasSuffix(lines[i], want) {
+			t.Errorf("line %d must end with the bar's two samples:\ngot %q", i, lines[i])
+		}
 	}
 }
 

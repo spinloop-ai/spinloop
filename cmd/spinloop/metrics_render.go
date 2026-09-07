@@ -381,22 +381,22 @@ func renderStatBars(w io.Writer, cpu *metrics.CpuStat, mem *metrics.MemoryStat, 
 }
 
 // serveGaugeW and serveBarW are the two halves of the serve view's combined
-// line: gauge and sparkline side by side at these widths, one line per
-// series, sized so the line fits the default 80-column window label and
-// trailing figure included.
+// line: gauge and sparkline at these widths with the figure between them,
+// one line per series, sized so the line fits the default 80-column window
+// label and figure included.
 const (
 	serveGaugeW = 20
 	serveBarW   = 25
 )
 
 // renderStatCombined draws the resource series in the serve view's format:
-// each series on one line — its gauge of the current reading and its bar of
-// the retained history side by side — so "now" and "trend" sit together per
-// resource instead of being a toggle. The line's trailing figure is the
-// current reading, falling back to the bar's latest sample where the reading
-// carries no current one; a series with no history leaves its bar half blank
-// and a series with no current reading its gauge half blank, so the lines
-// align and the two halves never draw the same figure.
+// each series on one line — its gauge of the current reading, the figure,
+// and its bar of the retained history — so "now" and "trend" sit together
+// per resource instead of being a toggle. The figure is the current reading,
+// falling back to the bar's latest sample where the reading carries no
+// current one; a series with no history leaves its bar half blank and a
+// series with no current reading its gauge half blank, so the lines align
+// and the figure never draws a half's own number twice.
 func renderStatCombined(w io.Writer, cpu *metrics.CpuStat, mem *metrics.MemoryStat, gpus []metrics.GpuStat, history []metrics.HistorySample) {
 	for _, s := range barSeriesList(cpu, mem, gpus, history) {
 		gaugeHalf := strings.Repeat(" ", serveGaugeW)
@@ -413,7 +413,7 @@ func renderStatCombined(w io.Writer, cpu *metrics.CpuStat, mem *metrics.MemorySt
 				figure = last
 			}
 		}
-		fmt.Fprintf(w, "  %-9s %s %s %.0f%%\n", s.label, gaugeHalf, barHalf, figure)
+		fmt.Fprintf(w, "  %-9s %s %.0f%% %s\n", s.label, gaugeHalf, figure, barHalf)
 	}
 }
 
