@@ -420,9 +420,9 @@ func TestServeViewEngineExitedQuits(t *testing.T) {
 }
 
 // The frame: the title bar with the path and the log's state, the metrics
-// section in the view's own format — each series its gauge with its bar
-// beneath — the tailed log, the dividers, and the footer naming exactly the
-// keys the view answers to.
+// section in the view's own format — each series its gauge and its bar side
+// by side on one line — the tailed log, the dividers, and the footer naming
+// exactly the keys the view answers to.
 func TestServeViewFrame(t *testing.T) {
 	fixDashNow(t, time.Date(2026, 9, 6, 12, 0, 0, 0, time.UTC))
 	stats := metrics.Stats{
@@ -461,13 +461,18 @@ func TestServeViewFrame(t *testing.T) {
 			t.Errorf("the frame is missing %q:\n%s", want, v)
 		}
 	}
-	// The gauge of each series sits with its bar beneath: the series' label
-	// once, on the gauge line, the bar's label blank.
+	// The gauge of each series sits with its bar on the series' own line:
+	// the label once, and both drawings on it.
 	if strings.Count(v, "CPU") != 1 {
 		t.Errorf("the CPU series must draw once, label and all:\n%s", v)
 	}
 	if strings.Count(v, "RAM") != 1 {
 		t.Errorf("the RAM series must draw once, label and all:\n%s", v)
+	}
+	for _, line := range strings.Split(v, "\n") {
+		if strings.Contains(line, "CPU") && (!strings.Contains(line, "█") || !strings.Contains(line, "▁")) {
+			t.Errorf("the CPU line must carry its gauge and its bar side by side:\n%q", line)
+		}
 	}
 	// Every line fits the window.
 	for i, line := range strings.Split(v, "\n") {

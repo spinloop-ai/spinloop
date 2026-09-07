@@ -388,7 +388,7 @@ func (m serveView) metricsLines() []string {
 	// rule for when the series exist at all.
 	resources := m.stats.State == "running" || len(m.stats.History) > 0
 	if resources {
-		renderStatCombined(&b, m.stats.CPU, m.stats.Memory, m.stats.GPUs, m.stats.History, barLineW)
+		renderStatCombined(&b, m.stats.CPU, m.stats.Memory, m.stats.GPUs, m.stats.History)
 		renderTokenLines(&b, m.stats.Tokens)
 	}
 	lines := strings.Split(b.String(), "\n")

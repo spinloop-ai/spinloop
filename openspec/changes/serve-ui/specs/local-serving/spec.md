@@ -73,10 +73,11 @@ local cadence. A reading the view could not renew SHALL be shown with its age
 rather than drawn identically to one just read.
 
 The view SHALL draw every resource series the reading carries in both formats
-at once: the gauge of the current reading and, beneath it, the bar of the
-retained history — the same series and labelling the bar and gauge formats
-use, with the bar format's no-history rule where a series has no history to
-draw, so a series with none carries its gauge alone.
+at once, each series on one line: its gauge of the current reading and its
+bar of the retained history side by side — the same series and labelling the
+bar and gauge formats use, with the bar format's no-history rule where a
+series has no history to draw, so a series with none carries its gauge
+alone, its bar half blank.
 
 #### Scenario: The view opens on a terminal
 
@@ -99,13 +100,14 @@ draw, so a series with none carries its gauge alone.
 #### Scenario: Every series is drawn in both formats
 
 - **WHEN** the reading carries a CPU series with a retained history
-- **THEN** the view draws the series' gauge of the current reading and,
-  beneath it, its bar of the retained history
+- **THEN** the view draws the series on one line: its gauge of the current
+  reading and its bar of the retained history, side by side
 
 #### Scenario: A series with no history carries its gauge alone
 
 - **WHEN** a series has no retained history to draw
-- **THEN** the view draws its gauge of the current reading only
+- **THEN** the view draws its gauge of the current reading only, its bar
+  half left blank
 
 ### Requirement: The serve view's log
 

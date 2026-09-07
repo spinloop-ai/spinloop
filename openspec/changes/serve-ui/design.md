@@ -81,19 +81,23 @@ endpoint serves it. The file outlives the run, as the daemon's does.
 the `/v1/logs` improvement and stands up a second log mechanism beside the
 daemon's.
 
-**D4 — Both formats are one renderer, per series.**
-A new shared function in `metrics_render.go` (the bar and gauge formats'
+**D4 — Both formats share one line per series, in the view only.**
+A new function in `metrics_render.go` (the bar and gauge formats'
 `barSeriesList` supplies the series and their order: CPU, RAM, each GPU's
-utilisation and memory) draws, per series: the gauge of the current reading,
-then — where the history holds samples — the sparkline beneath it, the bar
-format's no-history rule making a history-less series gauge-only. The gauge
-line carries the label; the sparkline line passes an empty label so the two
-stack in the label column. `renderGauge` gains a width parameter (its
-callers pass today's 25; the view passes `barLineW`), so gauge and bar share
-one draw width and line up.
-*Alternative:* a gauge block over a bar block — rejected; it separates
-"now" from "trend" per resource, which is what the issue's "show both" does
-not ask for.
+utilisation and memory) draws one line per series — the gauge of the current
+reading and the sparkline of the retained history side by side — with the
+current reading as the line's figure, falling back to the bar's latest sample
+where the reading carries no current one. A series with no history leaves its
+bar half blank; a series with no current reading (the stopped engine) leaves
+its gauge half blank, so the lines align and the two halves never draw the
+same figure. The halves draw at `serveGaugeW` (20) and `serveBarW` (25)
+columns, so a line fits the default 80-column window label and figure
+included. `renderGauge` and `renderSparkline` sit on label-less, figure-less
+block helpers, so the combined line joins the two halves without duplicating
+their drawing, and the one-shot formats keep their own stacked output.
+*Alternative:* the gauge stacked above its bar — rejected; two lines per
+series at the 40-column width the stacked halves shared, wider than a row of
+the dashboard's reference screen.
 
 **D5 — The log pane scrolls an in-memory tail, clamped to a line budget.**
 The model keeps the tailed content (most recent last) and `behind` — how

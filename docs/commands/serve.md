@@ -28,11 +28,11 @@ and a footer naming the keys the view answers to.
 - **Metrics** — the same facts the fleet dashboard's node detail screen shows
   for the same engine: state and uptime, what is served, last active, and the
   resource series — CPU, RAM, and each GPU's utilisation and memory — with
-  every series drawn in both formats at once: a gauge of the current reading
-  and, beneath it, the bar of its retained history. Below them, the token and
-  request counters. The reading comes from the daemon the serve process runs
-  in-process and refreshes on the dashboard's own local cadence; a reading the
-  view could not renew is shown with its age.
+  every series drawn in both formats at once, each on one line: a gauge of
+  the current reading beside the bar of its retained history. Below them, the
+  token and request counters. The reading comes from the daemon the serve
+  process runs in-process and refreshes on the dashboard's own local cadence;
+  a reading the view could not renew is shown with its age.
 - **Log** — the engine's own output, tailed and followed, so new lines appear
   as they are written. An engine that has written nothing yet shows a waiting
   note, not an empty pane.

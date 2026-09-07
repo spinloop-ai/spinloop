@@ -1,7 +1,7 @@
 ## 1. Combined bar-and-gauge metrics rendering
 
 - [x] 1.1 Give `renderGauge` a width parameter in `cmd/spinloop/metrics_render.go`, updating its existing callers to pass today's 25-column width, and verify the existing metrics render tests pass unchanged
-- [x] 1.2 Add the combined renderer (each series from `barSeriesList` as its gauge line of the current reading, then its sparkline line beneath where the history holds samples, the sparkline's label blank so the pair stacks, a history-less series gauge-only) and verify with table-driven tests covering: a series with history (both lines), a series with none (gauge alone), multi-GPU labelling, and the 80/90 colour thresholds on the gauge
+- [x] 1.2 Add the combined renderer (each series from `barSeriesList` on one line: its gauge of the current reading beside its sparkline of the retained history, the line's figure the current reading or, where none, the bar's latest sample, a history-less series gauge-only its bar half blank, a current-less series history-only its gauge half blank) and verify with table-driven tests covering: a series with history (gauge and bar on one line), a series with none (gauge alone), a current-less series (history alone), multi-GPU labelling, and the 80/90 colour thresholds on both halves
 
 ## 2. Serve view model
 
