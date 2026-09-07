@@ -9,6 +9,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"os/exec"
@@ -22,6 +23,7 @@ import (
 	"github.com/spinloop-ai/spinloop/internal/preset"
 	"github.com/spinloop-ai/spinloop/internal/spinloop"
 	"github.com/spinloop-ai/spinloop/internal/spinloopsrc"
+	"golang.org/x/term"
 )
 
 // llamaServerBinary is the llama.cpp server executable that `serve` launches.
@@ -39,6 +41,13 @@ var vllmBinary = "vllm"
 // mtlxBinary is the MTPLX executable that `serve` launches. A package var so
 // tests can point it at a stub instead of a real install.
 var mtlxBinary = "mtplx"
+
+// stdoutIsTerminal reports whether serve's stdout is a terminal — the check
+// that decides whether the run draws the serve view. A variable so a test
+// takes either path without a terminal.
+var stdoutIsTerminal = func() bool {
+	return term.IsTerminal(int(os.Stdout.Fd()))
+}
 
 // omlxBundleBinary is where the macOS app installs its CLI. oMLX ships as a
 // signed app rather than a PATH install, so a user who has only ever launched
@@ -208,7 +217,15 @@ func serveCmd() *cobra.Command {
 With a PRESET it turns the matching section into the command, reading it in
 that engine's flag vocabulary; otherwise it derives one from the Spinloop's
 own instructions. Prints the command before running it; --dry-run/-n prints
-without launching the server.`, orList(servedProviders())),
+without launching the server.
+
+On a terminal the server runs under a full-screen view: its metrics — each
+resource series as a gauge of the current reading with its retained history
+as a bar beneath — above its log, which follows new output as it is written.
+The arrow keys scroll the log, page up and page down move it by a page, f
+pauses and resumes the follow, and q or Ctrl+C leaves, stopping the server
+with it. Piped and redirected runs forward the server's output as they
+always have, with no view.`, orList(servedProviders())),
 		Args:          cobra.ArbitraryArgs,
 		SilenceErrors: true,
 		SilenceUsage:  true,
@@ -252,21 +269,34 @@ func runServe(args []string, dryRun, apiOn bool, apiAddr, logLevel string) error
 	if err != nil {
 		return err
 	}
-	argv, err := buildServeArgv(engine, sel, spinloopPath)
+	// On a terminal the view draws on stdout, so the command and the
+	// narration go to stderr there — and stay on stdout wherever a pipe or
+	// redirect reads them. Never for a dry run, which prints and stops.
+	viewOn := !dryRun && stdoutIsTerminal()
+	narration := os.Stdout
+	if viewOn {
+		narration = os.Stderr
+	}
+	argv, err := buildServeArgv(narration, engine, sel, spinloopPath)
 	if err != nil {
 		return err
 	}
-	if apiOn {
+	if apiOn || viewOn {
 		// A supervised engine gets its metrics endpoint switched on, exactly
-		// as the cloud path does for a deployed one.
+		// as the cloud path does for a deployed one. Applied here so the
+		// printed command is the one that runs; the shared construction
+		// applies it to its own copy, where it is a no-op.
 		argv = withMetricsArgs(argv, engine)
 	}
 
-	fmt.Printf("%s\n\n", preset.FormatCommand(argv))
+	fmt.Fprintf(narration, "%s\n\n", preset.FormatCommand(argv))
 	if dryRun {
 		return nil
 	}
 
+	if viewOn {
+		return runServeView(sel, spinloopPath, engine, argv, apiOn, apiAddr, logLevel)
+	}
 	if apiOn {
 		return runServeForegroundAPI(sel, spinloopPath, engine, argv, apiAddr, logLevel)
 	}
@@ -286,9 +316,9 @@ func runServe(args []string, dryRun, apiOn bool, apiAddr, logLevel string) error
 
 // buildServeArgv turns a Spinloop into the engine command, from its PRESET
 // section when it names one and from the Spinloop's own instructions otherwise,
-// narrating which source it used. It is `spinloop serve`'s alone: the daemon
-// reads no Spinloop, so nothing else builds a command this way.
-func buildServeArgv(engine serveEngine, sel spinloop.Selection, spinloopPath string) ([]string, error) {
+// narrating which source it used to w. It is `spinloop serve`'s alone: the
+// daemon reads no Spinloop, so nothing else builds a command this way.
+func buildServeArgv(w io.Writer, engine serveEngine, sel spinloop.Selection, spinloopPath string) ([]string, error) {
 	// Anything the Spinloop states overrides the preset's own values.
 	params, err := engine.params(sel)
 	if err != nil {
@@ -315,7 +345,7 @@ func buildServeArgv(engine serveEngine, sel spinloop.Selection, spinloopPath str
 			return nil, fmt.Errorf("%s: %w", presetPath, err)
 		}
 		argv := pre.CommandIn(engine.dialect, engine.binary(), subcommandFor(engine, sel), sec, params)
-		fmt.Printf("Using preset %s (model %s)\n\n", presetPath, sec.Name)
+		fmt.Fprintf(w, "Using preset %s (model %s)\n\n", presetPath, sec.Name)
 		return argv, nil
 	}
 
@@ -324,11 +354,11 @@ func buildServeArgv(engine serveEngine, sel spinloop.Selection, spinloopPath str
 	}
 	argv := assembleEngineArgv(engine, subcommandFor(engine, sel), params, nil)
 	if sel.Model != "" {
-		fmt.Printf("Serving %s from %s\n\n", sel.Model, spinloopPath)
+		fmt.Fprintf(w, "Serving %s from %s\n\n", sel.Model, spinloopPath)
 	} else {
 		// An engine that needs no model to start (oMLX serves a whole
 		// directory) has nothing to name but itself.
-		fmt.Printf("Starting %s from %s\n\n", sel.Provider, spinloopPath)
+		fmt.Fprintf(w, "Starting %s from %s\n\n", sel.Provider, spinloopPath)
 	}
 	return argv, nil
 }

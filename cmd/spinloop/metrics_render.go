@@ -9,6 +9,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/spinloop-ai/spinloop/internal/metrics"
@@ -137,6 +138,11 @@ const barLineW = 40
 // full row fits the tile exactly and the clip never takes the percentage.
 const dashBarLineW = 25
 
+// gaugeW is the gauge's draw width in the one-shot formats — the width
+// renderGauge has always drawn at. The serve view draws its gauge half at
+// serveGaugeW instead, beside the bar half of serveBarW.
+const gaugeW = 25
+
 // barGlyphs is the seven sub-full block elements the sparkline draws with,
 // lightest to heaviest: a series' value maps to the one whose fill height is
 // nearest. The set stops one grade short of the full block, so the tallest row
@@ -191,6 +197,15 @@ func poolMax(values []float64, width int) []float64 {
 // gauge's 80/90 thresholds, and the trailing figure is the latest sample's
 // percentage — the exact value the last glyph approximates.
 func renderSparkline(w io.Writer, label string, samples []float64, width int) {
+	block, last := sparklineBlock(samples, width)
+	fmt.Fprintf(w, "  %-9s %s %.0f%%\n", label, block, last)
+}
+
+// sparklineBlock returns the sparkline's drawing across width, one glyph per
+// sample newest on the right, the window's leading columns blank while it
+// still fills, and the final glyph in the state colour — the label and the
+// trailing figure excluded — along with the latest sample the figure reports.
+func sparklineBlock(samples []float64, width int) (string, float64) {
 	pooled := poolMax(samples, width)
 	last := pooled[len(pooled)-1]
 	colour := ansiGreen
@@ -199,26 +214,30 @@ func renderSparkline(w io.Writer, label string, samples []float64, width int) {
 	} else if last >= 80 {
 		colour = ansiYellow
 	}
-	fmt.Fprintf(w, "  %-9s ", label)
-	for i := 0; i < width-len(pooled); i++ {
-		fmt.Fprint(w, " ")
-	}
+	var b strings.Builder
+	b.WriteString(strings.Repeat(" ", width-len(pooled)))
 	for i, v := range pooled {
 		if i == len(pooled)-1 {
-			fmt.Fprintf(w, "%s%c%s", colour, barGlyph(v), ansiReset)
+			b.WriteString(fmt.Sprintf("%s%c%s", colour, barGlyph(v), ansiReset))
 		} else {
-			fmt.Fprintf(w, "%c", barGlyph(v))
+			b.WriteRune(barGlyph(v))
 		}
 	}
-	fmt.Fprintf(w, " %.0f%%\n", last)
+	return b.String(), last
 }
 
 // renderGauge draws one resource series as a horizontal progress gauge: the
 // filled portion in the state colour, the unfilled portion in light shade,
 // the percentage in the terminal's default colour. It draws the current
 // reading only — it carries no history.
-func renderGauge(w io.Writer, label string, pct float64) {
-	const width = 25
+func renderGauge(w io.Writer, label string, pct float64, width int) {
+	fmt.Fprintf(w, "  %-9s %s %.0f%%\n", label, gaugeBlock(pct, width), pct)
+}
+
+// gaugeBlock returns the gauge's drawing at width — the filled portion in
+// the state colour, the rest in light shade — the label and the trailing
+// figure excluded.
+func gaugeBlock(pct float64, width int) string {
 	colour := ansiGreen
 	if pct > 90 {
 		colour = ansiRed
@@ -229,17 +248,7 @@ func renderGauge(w io.Writer, label string, pct float64) {
 	if filled > width {
 		filled = width
 	}
-	empty := width - filled
-	fmt.Fprintf(w, "  %-9s ", label)
-	fmt.Fprintf(w, "%s", colour)
-	for i := 0; i < filled; i++ {
-		fmt.Fprint(w, "█")
-	}
-	fmt.Fprintf(w, "%s", ansiReset)
-	for i := 0; i < empty; i++ {
-		fmt.Fprint(w, "░")
-	}
-	fmt.Fprintf(w, " %.0f%%\n", pct)
+	return colour + strings.Repeat("█", filled) + ansiReset + strings.Repeat("░", width-filled)
 }
 
 // barSeries is one resource series the bar and gauge formats draw: the label
@@ -366,8 +375,45 @@ func renderStatBars(w io.Writer, cpu *metrics.CpuStat, mem *metrics.MemoryStat, 
 		if len(s.history) > 0 {
 			renderSparkline(w, s.label, s.history, lineW)
 		} else {
-			renderGauge(w, s.label, *s.current)
+			renderGauge(w, s.label, *s.current, gaugeW)
 		}
+	}
+}
+
+// serveGaugeW and serveBarW are the two halves of the serve view's combined
+// line: gauge and sparkline at these widths with the figure between them,
+// one line per series, sized so the line fits the default 80-column window
+// label and figure included.
+const (
+	serveGaugeW = 20
+	serveBarW   = 25
+)
+
+// renderStatCombined draws the resource series in the serve view's format:
+// each series on one line — its gauge of the current reading, the figure,
+// and its bar of the retained history — so "now" and "trend" sit together
+// per resource instead of being a toggle. The figure is the current reading,
+// falling back to the bar's latest sample where the reading carries no
+// current one; a series with no history leaves its bar half blank and a
+// series with no current reading its gauge half blank, so the lines align
+// and the figure never draws a half's own number twice.
+func renderStatCombined(w io.Writer, cpu *metrics.CpuStat, mem *metrics.MemoryStat, gpus []metrics.GpuStat, history []metrics.HistorySample) {
+	for _, s := range barSeriesList(cpu, mem, gpus, history) {
+		gaugeHalf := strings.Repeat(" ", serveGaugeW)
+		barHalf := strings.Repeat(" ", serveBarW)
+		figure := 0.0
+		if s.current != nil {
+			gaugeHalf = gaugeBlock(*s.current, serveGaugeW)
+			figure = *s.current
+		}
+		if len(s.history) > 0 {
+			var last float64
+			barHalf, last = sparklineBlock(s.history, serveBarW)
+			if s.current == nil {
+				figure = last
+			}
+		}
+		fmt.Fprintf(w, "  %-9s %s %.0f%% %s\n", s.label, gaugeHalf, figure, barHalf)
 	}
 }
 
@@ -376,7 +422,7 @@ func renderStatBars(w io.Writer, cpu *metrics.CpuStat, mem *metrics.MemoryStat, 
 func renderStatGauges(w io.Writer, cpu *metrics.CpuStat, mem *metrics.MemoryStat, gpus []metrics.GpuStat) {
 	for _, s := range barSeriesList(cpu, mem, gpus, nil) {
 		if s.current != nil {
-			renderGauge(w, s.label, *s.current)
+			renderGauge(w, s.label, *s.current, gaugeW)
 		}
 	}
 }

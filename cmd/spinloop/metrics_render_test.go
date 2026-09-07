@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/spinloop-ai/spinloop/internal/metrics"
 	"github.com/spinloop-ai/spinloop/internal/remote"
 )
@@ -110,14 +111,14 @@ func TestRenderSparklineColoursOnlyTheLastPoint(t *testing.T) {
 
 func TestRenderGauge(t *testing.T) {
 	var b bytes.Buffer
-	renderGauge(&b, "CPU", 42)
+	renderGauge(&b, "CPU", 42, gaugeW)
 	want := "  CPU       " + ansiGreen + strings.Repeat("█", 10) + ansiReset + strings.Repeat("░", 15) + " 42%\n"
 	if got := b.String(); got != want {
 		t.Errorf("gauge = %q, want %q", got, want)
 	}
 	// A value beyond 100 fills the gauge rather than spilling past it.
 	b.Reset()
-	renderGauge(&b, "CPU", 150)
+	renderGauge(&b, "CPU", 150, gaugeW)
 	want = "  CPU       " + ansiRed + strings.Repeat("█", 25) + ansiReset + " 150%\n"
 	if got := b.String(); got != want {
 		t.Errorf("out-of-range gauge = %q, want %q", got, want)
@@ -304,6 +305,138 @@ func TestRenderStatGaugesIgnoresHistory(t *testing.T) {
 	renderStatGauges(&b, nil, nil, nil)
 	if b.String() != "" {
 		t.Errorf("a stopped engine drew gauges: %q", b.String())
+	}
+}
+
+// The serve view's format draws both halves together: each series as a gauge
+// of its current reading with its retained history as a sparkline beneath,
+// the gauge carrying the label and the sparkline a blank one, so the pair
+// stacks in the label column.
+func TestRenderStatCombined(t *testing.T) {
+	cpu := &metrics.CpuStat{Utilization: 42}
+	mem := &metrics.MemoryStat{Total: 1000, Used: 300}
+	gpus := []metrics.GpuStat{{Index: 0, Name: "H100", Utilization: 61, MemoryUsed: 80, MemoryTotal: 160}}
+	history := []metrics.HistorySample{
+		{Time: 1, CPU: ptrPct(10), Mem: ptrPct(20), GPUs: []metrics.HistoryGPU{{Index: 0, Util: 30, Mem: ptrPct(10)}}},
+		{Time: 2, CPU: ptrPct(95), Mem: ptrPct(30), GPUs: []metrics.HistoryGPU{{Index: 0, Util: 91, Mem: ptrPct(20)}}},
+	}
+	var b bytes.Buffer
+	renderStatCombined(&b, cpu, mem, gpus, history)
+	lines := strings.Split(strings.TrimSuffix(b.String(), "\n"), "\n")
+	// One line per series, in the bar series' order.
+	if len(lines) != 4 {
+		t.Fatalf("drew %d lines, want 4: %q", len(lines), b.String())
+	}
+	for i, label := range []string{"  CPU       ", "  RAM       ", "  GPU util  ", "  GPU mem   "} {
+		if !strings.HasPrefix(lines[i], label) {
+			t.Errorf("line for %s: %q", label, lines[i])
+		}
+	}
+	// The line is label, gauge half, figure, bar half — the figure between
+	// the two halves, and it is the current reading, not the bar's last
+	// sample.
+	cpuBar, _ := sparklineBlock([]float64{10, 95}, serveBarW)
+	wantCPU := "  CPU       " + gaugeBlock(42, serveGaugeW) + " 42% " + cpuBar
+	if lines[0] != wantCPU {
+		t.Errorf("CPU line:\ngot  %q\nwant %q", lines[0], wantCPU)
+	}
+	// Both halves take the state colour: the gauge over its whole fill, the
+	// sparkline on its last glyph only — and the sparkline stops one grade
+	// short of the full block, so the 95% sample draws the top of the seven
+	// sub-full glyphs.
+	if !strings.Contains(lines[0], ansiGreen+strings.Repeat("█", 8)+ansiReset+strings.Repeat("░", 12)) {
+		t.Errorf("CPU gauge: %q", lines[0])
+	}
+	if !strings.Contains(lines[0], ansiRed+"▇"+ansiReset) {
+		t.Errorf("CPU sparkline: %q", lines[0])
+	}
+	// Every line is label, gauge half, figure and bar half: the halves sit
+	// side by side, aligned across the series. 62 is label (12), gauge half,
+	// " 42%"-style figure (4, two digits in this data), a space, bar half.
+	for i, line := range lines {
+		if w := lipgloss.Width(line); w != 12+serveGaugeW+4+1+serveBarW {
+			t.Errorf("line %d is %d columns wide, want %d: %q", i, w, 12+serveGaugeW+4+1+serveBarW, line)
+		}
+	}
+}
+
+// A memory reading with no total reports 0, not a division by it, in either
+// half of the combined format.
+func TestRenderStatCombinedMemoryWithoutTotal(t *testing.T) {
+	var b bytes.Buffer
+	renderStatCombined(&b, nil, &metrics.MemoryStat{Total: 0, Used: 100}, nil, nil)
+	if !strings.Contains(b.String(), " 0%") || strings.Contains(b.String(), "NaN") {
+		t.Errorf("a memory reading with no total: %q", b.String())
+	}
+}
+
+// Without retained history each series carries its gauge alone, its bar
+// half left blank.
+func TestRenderStatCombinedWithoutHistory(t *testing.T) {
+	cpu := &metrics.CpuStat{Utilization: 42}
+	mem := &metrics.MemoryStat{Total: 1000, Used: 300}
+	gpus := []metrics.GpuStat{{Index: 0, Name: "H100", Utilization: 61, MemoryUsed: 80, MemoryTotal: 160}}
+	var b bytes.Buffer
+	renderStatCombined(&b, cpu, mem, gpus, nil)
+	lines := strings.Split(strings.TrimSuffix(b.String(), "\n"), "\n")
+	blankBar := strings.Repeat(" ", serveBarW)
+	want := []string{
+		"  CPU       " + gaugeBlock(42, serveGaugeW) + " 42% " + blankBar,
+		"  RAM       " + gaugeBlock(30, serveGaugeW) + " 30% " + blankBar,
+		"  GPU util  " + gaugeBlock(61, serveGaugeW) + " 61% " + blankBar,
+		"  GPU mem   " + gaugeBlock(50, serveGaugeW) + " 50% " + blankBar,
+	}
+	if len(lines) != len(want) {
+		t.Fatalf("drew %d lines, want %d: %q", len(lines), len(want), b.String())
+	}
+	for i := range want {
+		if lines[i] != want[i] {
+			t.Errorf("line %d:\ngot  %q\nwant %q", i, lines[i], want[i])
+		}
+	}
+}
+
+// A stopped engine carries no current figures, so the combined format draws
+// the retained readings alone — the sparkline lines with their blank label
+// column, no gauges at all.
+// A stopped engine carries no current figures, so the combined format draws
+// each series' history alone: the gauge half blank, the series' label kept,
+// and the bar's latest sample as the line's figure.
+func TestRenderStatCombinedStoppedEngineDrawsHistoryAlone(t *testing.T) {
+	history := []metrics.HistorySample{
+		{Time: 1, CPU: ptrPct(10), Mem: ptrPct(20), GPUs: []metrics.HistoryGPU{{Index: 0, Util: 50, Mem: ptrPct(50)}}},
+		{Time: 2, CPU: ptrPct(20), Mem: ptrPct(30), GPUs: []metrics.HistoryGPU{{Index: 0, Util: 60, Mem: ptrPct(60)}}},
+	}
+	var b bytes.Buffer
+	renderStatCombined(&b, nil, nil, nil, history)
+	lines := strings.Split(strings.TrimSuffix(b.String(), "\n"), "\n")
+	if len(lines) != 4 {
+		t.Fatalf("drew %d lines, want CPU, RAM, GPU util and GPU mem: %q", len(lines), b.String())
+	}
+	blankGauge := strings.Repeat(" ", serveGaugeW)
+	wantPrefix := []string{
+		"  CPU       " + blankGauge + " 20% ",
+		"  RAM       " + blankGauge + " 30% ",
+		"  GPU util  " + blankGauge + " 60% ",
+		"  GPU mem   " + blankGauge + " 60% ",
+	}
+	for i, want := range wantPrefix {
+		if !strings.HasPrefix(lines[i], want) {
+			t.Errorf("line %d:\ngot  %q\nwant prefix %q", i, lines[i], want)
+		}
+	}
+	// The bar ends the line, its two samples as its two right-most glyphs,
+	// the newest in the state colour.
+	wantSuffix := []string{
+		"▁" + ansiGreen + "▂" + ansiReset,
+		"▂" + ansiGreen + "▃" + ansiReset,
+		"▄" + ansiGreen + "▅" + ansiReset,
+		"▄" + ansiGreen + "▅" + ansiReset,
+	}
+	for i, want := range wantSuffix {
+		if !strings.HasSuffix(lines[i], want) {
+			t.Errorf("line %d must end with the bar's two samples:\ngot %q", i, lines[i])
+		}
 	}
 }
 

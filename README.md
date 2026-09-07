@@ -46,6 +46,12 @@ llama.cpp, vLLM, MTPLX and oMLX all run from those same few lines — change
 `PROVIDER` and the same file serves the model on a different engine.
 → [Serving a local model](#serving-a-local-model)
 
+<p align="center">
+  <img src="docs/img/serve_metrics.png" alt="The spinloop serve view: Gemma4 running locally under llama.cpp, with live engine and machine metrics" width="900">
+</p>
+
+> In this screenshot, Gemma4 running locally under llama.cpp, with live engine and machine metrics.
+
 ### 2. On every machine you own
 
 Whilst `serve` holds a terminal open for as long as the model runs, `spinloop daemon`
@@ -67,16 +73,16 @@ Start the whole fleet with `spinloop up` or just one with `spinloop fleet start 
   <img src="docs/img/fleet_dashboard.png" alt="The spinloop fleet dashboard: four nodes serving Qwen3.8-27B under llama.cpp, and a fifth cloud node not yet deployed" width="900">
 </p>
 
-In this screenshot, five nodes are configured and four are up, each serving the same
-`Qwen3.8-27B` model through llama.cpp. Three of them — `dev-2`, `dev-3`,
-`dev-4` — are mid-request: one slot running apiece, GPU util between 91% and
-98%. `dev-1` finished about a minute ago, so its GPU util has dropped to 0%
-while GPU memory stays at 89% — the weights are still loaded, and the next
-request it takes starts generating without a reload.
-
-The keys along the bottom drive the fleet from here: `s` start, `x` stop, `r`
-refresh, and `<enter>` for one node full-screen with its engine log tailed live.
-→ [The fleet](#the-fleet)
+> In this screenshot, five nodes are configured and four are up, each serving the same
+> `Qwen3.8-27B` model through llama.cpp. Three of them — `dev-2`, `dev-3`,
+> `dev-4` — are mid-request: one slot running apiece, GPU util between 91% and
+> 98%. `dev-1` finished about a minute ago, so its GPU util has dropped to 0%
+> while GPU memory stays at 89% — the weights are still loaded, and the next
+> request it takes starts generating without a reload.
+> 
+> The keys along the bottom drive the fleet from here: `s` start, `x` stop, `r`
+> refresh, and `<enter>` for one node full-screen with its engine log tailed live.
+> → [The fleet](#the-fleet)
 
 ### 3. On a cloud GPU, for as long as you need one
 

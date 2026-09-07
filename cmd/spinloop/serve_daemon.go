@@ -201,13 +201,30 @@ func runDaemonCommand(args []string, apiAddr, apiToken, apiTokenFile, logLevel s
 	return nil
 }
 
-// runServeForegroundAPI is `spinloop serve --api`: the engine runs in the
-// foreground with stdio forwarded as ever, with the control API alongside it. Start over the API always fails — the engine is
-// foreground-managed and already running — and stop terminates it, after
-// which serve exits exactly as it does when the engine exits on its own.
-func runServeForegroundAPI(sel spinloop.Selection, spinloopPath string, engine serveEngine, argv []string, apiAddr string, logLevel string) error {
+// supervisedForeground is one foreground engine serve supervises — the view
+// run and the --api run alike: the daemon and supervisor it runs under, the
+// stop that ends it gracefully, and the wait that reports its exit as the
+// run's result.
+type supervisedForeground struct {
+	d    *daemon.Daemon
+	stop func()       // stop the engine gracefully, escalating as a stop does elsewhere; blocks until it is down
+	wait func() error // block until the engine exits and the run is wound down; nil where a stop on request or a clean exit counts as success
+}
+
+// startSupervisedForeground is the supervised-foreground construction a
+// `spinloop serve` run shares whatever its foreground behaviour is: the
+// supervisor, the daemon with its served name, scrape target, engine
+// endpoint and refusing start stub, the metrics switch for an engine that
+// has one, the sampler for the run's life, the signal relay, the graceful
+// stop, and the exit-status rule. It is parameterised only by the
+// supervisor's log target — the state-dir engine log for a view run, empty
+// for a run that forwards stdio — and whether the control API listener comes
+// up, which is --api's own say. Nothing else differs, so the paths cannot
+// drift: served, scraped and probed the same way, stopped the same way,
+// exited the same way.
+func startSupervisedForeground(sel spinloop.Selection, spinloopPath string, engine serveEngine, argv []string, apiOn bool, apiAddr, logLevel, logPath string) (*supervisedForeground, error) {
 	if err := applySpinloopEnv(sel, spinloopPath); err != nil {
-		return err
+		return nil, err
 	}
 	token := os.Getenv(daemon.TokenEnvVar)
 	// Resolved after the Spinloop's environment is in place, so unlike the
@@ -216,19 +233,24 @@ func runServeForegroundAPI(sel spinloop.Selection, spinloopPath string, engine s
 	// before anything listens.
 	logger, err := commandLogger(logLevel)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	ln, err := daemon.Listen(apiAddr, token)
-	if err != nil {
-		return err
+	var ln net.Listener
+	if apiOn {
+		ln, err = daemon.Listen(apiAddr, token)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	stateDir, err := daemon.StateDir()
 	if err != nil {
-		ln.Close()
-		return err
+		if ln != nil {
+			ln.Close()
+		}
+		return nil, err
 	}
-	sup := daemon.NewSupervisor("") // empty LogPath: stdio stays forwarded
+	sup := daemon.NewSupervisor(logPath)
 	sup.Logger = logger
 	d := &daemon.Daemon{
 		Sup: sup,
@@ -246,6 +268,10 @@ func runServeForegroundAPI(sel spinloop.Selection, spinloopPath string, engine s
 		model = sel.Alias
 	}
 	d.SetServed(sel.Provider, model)
+	// A supervised engine gets its metrics endpoint switched on, exactly as
+	// the cloud path does for a deployed one; an engine with no metrics
+	// dialect gets no added switch and the host's series.
+	argv = withMetricsArgs(argv, engine)
 	d.SetScrape(scrapeTargetFor(engine, sel.BaseURL, argv))
 	d.SetEngineEndpoint(engineEndpointFor(engine, sel.BaseURL, argv))
 
@@ -254,42 +280,66 @@ func runServeForegroundAPI(sel spinloop.Selection, spinloopPath string, engine s
 	// window exists where a signal kills serve and orphans it.
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	stop := func() { sup.Stop() }
 	go func() {
 		<-sigCh
-		sup.Stop()
+		stop()
 	}()
 
 	if err := sup.Start(argv); err != nil {
-		ln.Close()
+		if ln != nil {
+			ln.Close()
+		}
 		signal.Stop(sigCh)
 		if errors.Is(err, exec.ErrNotFound) || errors.Is(err, os.ErrNotExist) {
-			return fmt.Errorf("%s not found — %s", argv[0], engine.installHint)
+			return nil, fmt.Errorf("%s not found — %s", argv[0], engine.installHint)
 		}
-		return err
+		return nil, err
 	}
 	// The engine started through the supervisor directly rather than through
 	// StartEngine, so the activity record is stamped here instead.
 	d.MarkActive()
-	srv := &http.Server{Handler: d.Handler(token)}
-	logger.Info("control API listening", slog.String("api", ln.Addr().String()))
-	go srv.Serve(ln)
+	var srv *http.Server
+	if apiOn {
+		srv = &http.Server{Handler: d.Handler(token)}
+		logger.Info("control API listening", slog.String("api", ln.Addr().String()))
+		go srv.Serve(ln)
+	}
 	sampleCtx, stopSampling := context.WithCancel(context.Background())
 	go d.SampleActivity(sampleCtx)
 
-	waitErr := sup.Wait()
-	stopSampling()
-	signal.Stop(sigCh)
-	// Graceful shutdown: a stop requested over the API lands here while its
-	// response is still in flight — let it finish rather than cutting the
-	// connection.
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	srv.Shutdown(shutdownCtx)
-	cancel()
-	if state, _, _ := sup.Status(); state == daemon.StateStopped {
-		// Stopped on request (signal or API) or exited cleanly: not an error.
-		return nil
+	wait := func() error {
+		waitErr := sup.Wait()
+		stopSampling()
+		signal.Stop(sigCh)
+		// Graceful shutdown: a stop requested over the API lands here while
+		// its response is still in flight — let it finish rather than cutting
+		// the connection.
+		if srv != nil {
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			srv.Shutdown(shutdownCtx)
+			cancel()
+		}
+		if state, _, _ := sup.Status(); state == daemon.StateStopped {
+			// Stopped on request (signal or API) or exited cleanly: not an error.
+			return nil
+		}
+		return waitErr
 	}
-	return waitErr
+	return &supervisedForeground{d: d, stop: stop, wait: wait}, nil
+}
+
+// runServeForegroundAPI is `spinloop serve --api` off the terminal: the
+// engine runs in the foreground with stdio forwarded as ever, with the
+// control API alongside it. Start over the API always fails — the engine is
+// foreground-managed and already running — and stop terminates it, after
+// which serve exits exactly as it does when the engine exits on its own.
+func runServeForegroundAPI(sel spinloop.Selection, spinloopPath string, engine serveEngine, argv []string, apiAddr string, logLevel string) error {
+	run, err := startSupervisedForeground(sel, spinloopPath, engine, argv, true, apiAddr, logLevel, "")
+	if err != nil {
+		return err
+	}
+	return run.wait()
 }
 
 // daemonAPIAddr resolves the daemon's listen address from its two flags.

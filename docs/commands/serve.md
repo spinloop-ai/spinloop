@@ -19,6 +19,52 @@ It prints the command before running it, and never touches your agent's
 config — pair it with [`spinloop apply`](apply.md) to point the agent at the
 server.
 
+## On a terminal, the serve view
+
+Run `serve` on a terminal and the engine runs under a full-screen view rather
+than forwarding its output: the engine's **metrics** above, its **log** below,
+and a footer naming the keys the view answers to.
+
+- **Metrics** — the same facts the fleet dashboard's node detail screen shows
+  for the same engine: state and uptime, what is served, last active, and the
+  resource series — CPU, RAM, and each GPU's utilisation and memory — with
+  every series drawn in both formats at once, each on one line: a gauge of
+  the current reading beside the bar of its retained history. Below them, the
+  token and request counters. The reading comes from the daemon the serve
+  process runs in-process and refreshes on the dashboard's own local cadence;
+  a reading the view could not renew is shown with its age.
+- **Log** — the engine's own output, tailed and followed, so new lines appear
+  as they are written. An engine that has written nothing yet shows a waiting
+  note, not an empty pane.
+- **Footer** — the view's keys, and nothing the view cannot do. Starting,
+  stopping, keeping and aborting are not among them: the engine is serve's
+  own, and leaving is what stops it.
+
+| Key | What it does |
+| --- | ------------ |
+| `↑` / `↓` | Scroll the log one line; a press at either end leaves the window where it is |
+| `pgup` / `pgdown` | Scroll the log by a page |
+| `f` | Pause and resume the log's follow — the metrics section keeps refreshing either way |
+| `q` or `Ctrl+C` | Leave — stops the engine and exits serve |
+
+While the log's window is on the newest line it sticks to the tail: new
+output appears as it is written. Scrolled away from it, the window stays put
+and the new lines accrue behind it. Pausing the follow holds the window, and
+resuming fetches whatever the engine wrote in the meantime — nothing is lost.
+
+The engine's own exit closes the view and serve exits with the engine's exit
+status, exactly as a foreground serve does.
+
+Under the view, the engine's stdout and stderr are captured to the same
+`daemon/engine.log` [spinloop's daemon](#the-control-api---api-and-spinloop-daemon)
+writes, from the engine's first line — so with `--api` the control API's log
+endpoint serves the engine's output rather than reporting the log missing.
+
+Off a terminal — piped or redirected — there is no view: the engine's output
+is forwarded to serve's own stdio as before, and the printed command stays on
+stdout. On a terminal the view owns stdout, so the command serve prints goes
+to stderr there. `--dry-run` never opens the view.
+
 ## The engine comes from `PROVIDER`
 
 `PROVIDER` already names the engine, so `serve` needs no keyword of its own —
@@ -257,7 +303,9 @@ of you exits. Two related surfaces build on it:
 - `serve --api` (`-a`) exposes the control API *beside* the foreground
   engine — status and metrics answer, start fails (the engine is already
   running), and stop terminates the engine, after which serve exits as it
-  always has.
+  always has. The flag changes only whether the API listens: the foreground
+  behaviour — the view on a terminal, stdio forwarding off one — is the same
+  with and without it.
 - `spinloop daemon` is the long-lived agent: it supervises one engine, writes
   its output to `daemon/engine.log` under
   [spinloop's config directory](../env-vars.md#config-directory-resolution),
@@ -290,7 +338,7 @@ See [HTTP Control API](../http-api.md) for details, or
 | `POST /v1/start` | Start the engine (optional deploy-config body, optionally carrying the engine's API key; 409 while one runs) |
 | `POST /v1/stop` | Stop the engine (idempotent; never ends the daemon) |
 | `GET /v1/metrics` | Engine token counters plus host GPU/CPU/RAM |
-| `GET /v1/logs` | A slice of the engine's captured output, by offset |
+| `GET /v1/logs` | A slice of the engine's captured output, by offset — where the output is captured: under the daemon, and under the serve view; a plain foreground serve forwards its engine's output to its own stdio, and the endpoint reports the log missing |
 | `PUT /v1/deploy-config` | Set what the *next* start serves |
 
 Requests carry `Authorization: Bearer <token>`. The token comes from one of
