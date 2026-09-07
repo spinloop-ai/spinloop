@@ -208,6 +208,14 @@ timestamp — in every format the command supports, and omitted in every format
 when the read carries none, following the same omission rule the active figure
 uses for a figure it does not have.
 
+The relative remaining time SHALL be worded in hours and minutes only, with
+any zero unit dropped — `keep for 2h`, `keep for 1h 30m`, `keep for 24m` — and
+SHALL NOT carry a seconds component: a keep is set in minutes or hours, and in
+a panel that re-renders, a seconds figure changes on every refresh without
+changing what the operator can do about it. A remaining time of less than a
+minute SHALL still render — as `keep for 1m` — so the figure is present for
+any future deadline and absent only once the deadline has passed.
+
 #### Scenario: A retained instance's stats carry the deadline
 
 - **WHEN** the user reads the stats of an environment whose instance carries a
@@ -240,3 +248,23 @@ uses for a figure it does not have.
   `table`, or `json` output
 - **THEN** each output carries the deadline in its own idiom on the active
    figure's line, and each omits it when the read carries none
+
+#### Scenario: The relative time carries no seconds
+
+- **WHEN** the user reads the stats of a retained environment whose deadline
+  is two hours, five minutes, and thirty seconds away
+- **THEN** the report's active-figure line renders `keep for 2h 5m`
+
+#### Scenario: A whole-hour or whole-minute deadline drops zero units
+
+- **WHEN** the user reads the stats of a retained environment whose deadline
+  is exactly two hours away, and later of one that is exactly twenty-four
+  minutes away
+- **THEN** the report's active-figure line renders `keep for 2h`, and later
+  `keep for 24m`
+
+#### Scenario: A sub-minute keep still renders
+
+- **WHEN** the user reads the stats of a retained environment whose deadline
+  is forty-five seconds away
+- **THEN** the report's active-figure line renders `keep for 1m`
