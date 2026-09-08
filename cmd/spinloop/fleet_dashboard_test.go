@@ -1908,6 +1908,7 @@ func TestDashModelStartOutcomeWordings(t *testing.T) {
 // A node without the progress capability starts through the plain verb, and
 // says nothing on the way — the tile shows the verb alone.
 func TestDashModelStartOnPlainNode(t *testing.T) {
+	dashFixNow(t, dashTestClock)
 	f := newFakeDashNode("stopped")
 	var caught []tea.Msg
 	m := &dashModel{
@@ -2235,6 +2236,9 @@ func TestDashModelForFleetFile(t *testing.T) {
 	}
 	if m.entries[1].standing.Outcome != fleet.OutcomeConfigError {
 		t.Fatalf("standing outcome: %v", m.entries[1].standing.Outcome)
+	}
+	if !m.gauge {
+		t.Fatal("the board did not open in gauge")
 	}
 	// A frame tall enough to show both rows: the model carries no size until
 	// the window reports one, and the default is short enough to scroll.
@@ -3380,8 +3384,9 @@ func dashTileAt(gauge bool) string {
 }
 
 // The g key toggles the board-wide format: every panel redraws in the other
-// format, and g again returns them. The formats differ only where a series
-// has history to draw — a node without it looks the same either way.
+// format, and g again returns them. The board opens in gauge, so the first g
+// switches it to bar. The formats differ only where a series has history to
+// draw — a node without it looks the same either way.
 func TestDashModelFormatToggle(t *testing.T) {
 	lipgloss.SetColorProfile(termenv.Ascii)
 	dashFixNow(t, dashTestClock)
@@ -3391,6 +3396,7 @@ func TestDashModelFormatToggle(t *testing.T) {
 		results: []fleet.NodeResult{r},
 		actions: []dashAction{{}},
 		width:   120, height: 40,
+		gauge: true,
 	}
 
 	bar := dashTileAt(false)
@@ -3410,19 +3416,20 @@ func TestDashModelFormatToggle(t *testing.T) {
 		t.Errorf("gauge tile: %q", gauge)
 	}
 
-	// One press flips the flag, the second press returns it.
+	// One press flips the flag to bar, the second returns the board to its
+	// opening format.
 	next, cmd := m.Update(dashKey("g"))
 	if cmd != nil {
 		t.Fatal("the format toggle returned a cmd")
 	}
 	m = next.(*dashModel)
-	if !m.gauge {
-		t.Fatal("g did not switch the board to gauge")
+	if m.gauge {
+		t.Fatal("g did not switch the board to bar")
 	}
 	next, _ = m.Update(dashKey("g"))
 	m = next.(*dashModel)
-	if m.gauge {
-		t.Fatal("a second g did not return the board to bar")
+	if !m.gauge {
+		t.Fatal("a second g did not return the board to gauge")
 	}
 }
 

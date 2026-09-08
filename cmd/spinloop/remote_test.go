@@ -774,7 +774,13 @@ func TestRemoteMetrics_DefaultFormat(t *testing.T) {
 			"state": "running",
 			"instanceId": "i-abc123",
 			"instanceType": "g6e.xlarge",
-			"uptimeSeconds": 100
+			"uptimeSeconds": 100,
+			"cpu": {"utilization": 45.5},
+			"memory": {"total": 1000, "used": 300},
+			"history": [
+				{"t": 1786276800, "c": 20.0, "m": 25.0},
+				{"t": 1786276815, "c": 45.5, "m": 30.0}
+			]
 		}`))
 	}))
 	defer server.Close()
@@ -787,7 +793,15 @@ func TestRemoteMetrics_DefaultFormat(t *testing.T) {
 		}
 	})
 	if !strings.Contains(out, "dev") || !strings.Contains(out, "running") {
-		t.Errorf("default format should be bar, got:\n%s", out)
+		t.Errorf("default format missing header, got:\n%s", out)
+	}
+	// The default is the gauge format: the current reading filled, with no
+	// sparkline of the retained history behind it.
+	if !strings.Contains(out, "CPU") || !strings.Contains(out, "█") {
+		t.Errorf("default format did not draw the gauge, got:\n%s", out)
+	}
+	if strings.Contains(out, "▁") || strings.Contains(out, "▃") {
+		t.Errorf("default format drew the bar's sparkline, got:\n%s", out)
 	}
 }
 

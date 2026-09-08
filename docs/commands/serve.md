@@ -402,14 +402,15 @@ Records are graded, which is what makes the level worth setting:
 
 | Level | What you see |
 | ----- | ------------ |
-| `debug` | The above, plus the full engine command line |
-| `info` (default) | Every request, plus starts, stops and clean exits |
+| `debug` | The above, plus every successful request summary and the full engine command line |
+| `info` (default) | Starts, stops, clean exits, rejections and failures — successful requests are debug |
 | `warn` | Only rejected requests (401, a bad cursor), a slow shutdown escalating to a kill, and crashes |
 | `error` | Only crashes, failed starts, and requests that failed inside spinloop |
 
 `--log-level warn` is the setting for a node a fleet polls: a `fleet status`
-refresh every few seconds is a request each, and at `info` that is all you will
-see. At `warn` the polling disappears and a wrong token still shows up.
+refresh every few seconds is a request each, and at the default level polling is
+quiet. `--log-level debug` is how to see the routine traffic; at `warn` the
+polling disappears and a wrong token still shows up.
 
 Records go to **stderr**, so a foreground `serve` keeps forwarding the engine's
 own output untouched. Nothing rotates them — where they end up is your service

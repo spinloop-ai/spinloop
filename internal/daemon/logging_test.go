@@ -248,7 +248,7 @@ func loggingDaemon(t *testing.T, buf *syncBuffer, level slog.Level) *Daemon {
 
 func TestRequestSummaryFields(t *testing.T) {
 	var buf syncBuffer
-	d := loggingDaemon(t, &buf, slog.LevelInfo)
+	d := loggingDaemon(t, &buf, slog.LevelDebug)
 	srv := httptest.NewServer(d.Handler("sekrit"))
 	defer srv.Close()
 
@@ -268,8 +268,8 @@ func TestRequestSummaryFields(t *testing.T) {
 		t.Fatalf("got %d summaries, want 1: %s", len(recs), buf.String())
 	}
 	rec := recs[0]
-	if rec.level != "INFO" {
-		t.Errorf("level = %s, want INFO for a served request", rec.level)
+	if rec.level != "DEBUG" {
+		t.Errorf("level = %s, want DEBUG for a served request", rec.level)
 	}
 	if got := rec.fields["method"]; got != "GET" {
 		t.Errorf("method = %q", got)
@@ -312,7 +312,7 @@ func TestRequestSummaryGradesBySeverity(t *testing.T) {
 		resp.Body.Close()
 	}
 
-	do("GET", "/v1/status", "sekrit")        // 200 -> INFO
+	do("GET", "/v1/status", "sekrit")        // 200 -> DEBUG
 	do("GET", "/v1/status", "")              // 401 -> WARN, from outside the auth layer
 	do("GET", "/v1/nope", "sekrit")          // 404 from the mux -> WARN
 	do("GET", "/v1/logs?offset=x", "sekrit") // 400 bad input -> WARN
@@ -322,7 +322,7 @@ func TestRequestSummaryGradesBySeverity(t *testing.T) {
 		t.Fatalf("got %d summaries, want 4: %s", len(recs), buf.String())
 	}
 	want := []struct{ status, level string }{
-		{"200", "INFO"},
+		{"200", "DEBUG"},
 		{"401", "WARN"},
 		{"404", "WARN"},
 		{"400", "WARN"},
@@ -436,33 +436,43 @@ func TestEveryRouteIsSummarised(t *testing.T) {
 }
 
 func TestSummariesAreSilencedAtWarnButFailuresAreNot(t *testing.T) {
-	var buf syncBuffer
-	d := loggingDaemon(t, &buf, slog.LevelWarn)
-	srv := httptest.NewServer(d.Handler("sekrit"))
-	defer srv.Close()
+	for _, level := range []struct {
+		name string
+		lvl  slog.Level
+	}{
+		{"warn", slog.LevelWarn},
+		{"info", slog.LevelInfo},
+	} {
+		t.Run(level.name, func(t *testing.T) {
+			var buf syncBuffer
+			d := loggingDaemon(t, &buf, level.lvl)
+			srv := httptest.NewServer(d.Handler("sekrit"))
+			defer srv.Close()
 
-	// The fleet-poll case: many successful status reads, one bad token.
-	for range 5 {
-		req, _ := http.NewRequest("GET", srv.URL+"/v1/status", nil)
-		req.Header.Set("Authorization", "Bearer sekrit")
-		resp, err := srv.Client().Do(req)
-		if err != nil {
-			t.Fatal(err)
-		}
-		resp.Body.Close()
-	}
-	resp, err := srv.Client().Get(srv.URL + "/v1/status")
-	if err != nil {
-		t.Fatal(err)
-	}
-	resp.Body.Close()
+			// The fleet-poll case: many successful status reads, one bad token.
+			for range 5 {
+				req, _ := http.NewRequest("GET", srv.URL+"/v1/status", nil)
+				req.Header.Set("Authorization", "Bearer sekrit")
+				resp, err := srv.Client().Do(req)
+				if err != nil {
+					t.Fatal(err)
+				}
+				resp.Body.Close()
+			}
+			resp, err := srv.Client().Get(srv.URL + "/v1/status")
+			if err != nil {
+				t.Fatal(err)
+			}
+			resp.Body.Close()
 
-	recs := requestRecords(parseRecords(t, buf.String()))
-	if len(recs) != 1 {
-		t.Fatalf("got %d summaries at warn, want only the rejection: %s", len(recs), buf.String())
-	}
-	if recs[0].fields["status"] != "401" {
-		t.Errorf("surviving summary = status %s, want the 401", recs[0].fields["status"])
+			recs := requestRecords(parseRecords(t, buf.String()))
+			if len(recs) != 1 {
+				t.Fatalf("got %d summaries at %s, want only the rejection: %s", len(recs), level.name, buf.String())
+			}
+			if recs[0].fields["status"] != "401" {
+				t.Errorf("surviving summary = status %s, want the 401", recs[0].fields["status"])
+			}
+		})
 	}
 }
 
@@ -672,8 +682,8 @@ func TestSummaryDefaultsTheStatusWhenAHandlerSetsNone(t *testing.T) {
 			if got := recs[0].fields["status"]; got != "200" {
 				t.Errorf("status = %q, want the 200 a silent handler actually sent", got)
 			}
-			if recs[0].level != "INFO" {
-				t.Errorf("level = %s, want INFO", recs[0].level)
+			if recs[0].level != "DEBUG" {
+				t.Errorf("level = %s, want DEBUG", recs[0].level)
 			}
 			if wantBytes := recs[0].fields["bytes"] != "0"; wantBytes != tc.wantBytes {
 				t.Errorf("bytes = %q, want non-zero: %v", recs[0].fields["bytes"], tc.wantBytes)
