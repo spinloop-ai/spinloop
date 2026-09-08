@@ -158,16 +158,16 @@ spinloop remote metrics                  # what is it doing — tokens, GPU, CPU
 spinloop remote metrics -w               # the same, redrawn every 60 seconds
 ```
 
-`metrics` draws its resource series as **bar** format by default: a sparkline
-of the last 10 minutes per series, taken by the on-instance daemon at its
-sampler's cadence while the engine ran, with only the latest point coloured —
-green at or below 80%, yellow to 90%, red above. `--format=gauge` draws the
-current reading as filled progress gauges instead, `--format=table` as a
-key-value table, and `--format=json` as the raw reply. A daemon that predates
-the history, or an engine with no reading yet, falls back to the gauge drawing
-of the current reading, so the default output degrades rather than goes blank.
-A stopped engine keeps its readings: the sparkline runs to the stop, ending
-at it.
+`metrics` draws its resource series as **gauge** format by default: the
+current reading per series as a filled progress gauge, coloured green at or
+below 80%, yellow to 90%, red above. `--format=bar` draws each series as a
+sparkline of the last 10 minutes instead, taken by the on-instance daemon at
+its sampler's cadence while the engine ran, with only the latest point
+coloured; a daemon that predates the history, or an engine with no reading
+yet, falls back to the gauge drawing of the current reading, so the bar
+output degrades rather than goes blank. `--format=table` is a key-value
+table, and `--format=json` is the raw reply. A stopped engine keeps its
+readings: the sparkline runs to the stop, ending at it.
 
 Both report **`active`** — how long since the endpoint's engine last did
 any work. It comes from the activity the on-instance daemon tracks, so it is

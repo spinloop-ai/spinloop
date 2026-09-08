@@ -49,17 +49,17 @@ When the user passes `--cost`, the stats report SHALL include an estimated on-de
 
 ### Requirement: Tabular display
 
-The stats output SHALL support four formats via the `--format` flag: `bar` (default), `gauge`, `table`, and `json`. The `bar` format SHALL produce a compact display drawing each resource series as a sparkline of the daemon's retained history, with the latest point colour-coded by utilization level. The `gauge` format SHALL produce a compact display with horizontal progress gauges for the current reading, colour-coded by utilization level. The `table` format SHALL produce a tab-separated key-value table, one line per metric, with the key column left-aligned and values right of it. The `json` format SHALL output the response as a JSON object to standard output. Progress and error messages SHALL go to standard error regardless of format.
+The stats output SHALL support four formats via the `--format` flag: `gauge` (default), `bar`, `table`, and `json`. The `gauge` format SHALL produce a compact display with horizontal progress gauges for the current reading, colour-coded by utilization level. The `bar` format SHALL produce a compact display drawing each resource series as a sparkline of the daemon's retained history, with the latest point colour-coded by utilization level. The `table` format SHALL produce a tab-separated key-value table, one line per metric, with the key column left-aligned and values right of it. The `json` format SHALL output the response as a JSON object to standard output. Progress and error messages SHALL go to standard error regardless of format.
 
 #### Scenario: Clean output
 
 - **WHEN** the command succeeds
 - **THEN** standard output contains only the stats data with no progress or debug lines
 
-#### Scenario: Default format is bar
+#### Scenario: Default format is gauge
 
 - **WHEN** the user runs `spinloop remote metrics` without `--format`
-- **THEN** the output is in bar format
+- **THEN** the output is in gauge format
 
 #### Scenario: Table format is explicit
 
@@ -180,7 +180,7 @@ When the on-instance daemon's metrics reply carries a history of system readings
 
 #### Scenario: A daemon without history degrades
 
-- **WHEN** the instance runs a daemon whose reply carries no history and the user runs `spinloop remote metrics`
+- **WHEN** the instance runs a daemon whose reply carries no history and the user runs `spinloop remote metrics --format=bar`
 - **THEN**    the report omits the history field and bar format draws the current reading in the gauge's filled style
 
 ### Requirement: The stats reply carries the retention deadline

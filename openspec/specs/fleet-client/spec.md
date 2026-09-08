@@ -81,16 +81,16 @@ command SHALL support a `--watch`/`-w` mode that refreshes on an interval,
 clearing and redrawing the screen in place with no scrollback accumulation,
 and exiting cleanly on interrupt.
 
-#### Scenario: Bar format per node
-
-- **WHEN** `spinloop fleet metrics` runs without `--format`
-- **THEN** each reachable node's metrics render in bar format under its name
-
 #### Scenario: Gauge format per node
 
-- **WHEN** `spinloop fleet metrics --format=gauge` runs
+- **WHEN** `spinloop fleet metrics` runs without `--format`
 - **THEN** each reachable node's resource series render in gauge format under
   its name
+
+#### Scenario: Bar format per node
+
+- **WHEN** `spinloop fleet metrics --format=bar` runs
+- **THEN** each reachable node's metrics render in bar format under its name
 
 #### Scenario: JSON aggregates the fleet
 
@@ -604,9 +604,9 @@ same facts the bar format of `fleet metrics` renders for that node: its state,
 what it serves (runner and model when known), how long since it last did work
 (with the same labelling rules as the rest of the fleet surfaces), its resource
 usage, and its token and request counters. A panel SHALL draw the node's
-resource series in the board's current format — bar by default — from the
-history the node's daemon reports, falling back per the bar format's no-history
-rule where it reports none. A panel SHALL show the answer of the last completed
+resource series in the board's current format — gauge by default; where the
+board is in bar format, from the history the node's daemon reports, falling
+back per the bar format's no-history rule where it reports none. A panel SHALL show the answer of the last completed
 refresh for that node — not a mix of refreshes and not a stale bar with a fresh
 outcome.
 
@@ -1327,7 +1327,7 @@ be left as it is.
 ### Requirement: Dashboard format toggle
 
 The dashboard SHALL provide a key, `g`, that toggles the resource series of
-every panel between bar and gauge. The board SHALL open in bar. The toggle
+every panel between bar and gauge. The board SHALL open in gauge. The toggle
 SHALL be board-wide — one format for every panel — rather than per node, and
 the key help line SHALL name it.
 
@@ -1337,10 +1337,10 @@ the key help line SHALL name it.
 - **THEN** every panel's resource series redraws in the other format, and
   pressing `g` again returns them
 
-#### Scenario: The board opens in bar
+#### Scenario: The board opens in gauge
 
 - **WHEN** the dashboard opens
-- **THEN** the panels draw the resource series in bar format
+- **THEN** the panels draw the resource series in gauge format
 
 #### Scenario: The key help names the toggle
 

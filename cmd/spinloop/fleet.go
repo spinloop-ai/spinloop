@@ -134,7 +134,7 @@ func fleetMetricsCmd() *cobra.Command {
 	}
 	fs := c.Flags()
 	fs.StringVarP(&path, "fleet", "f", "", fleetFileUsage)
-	fs.StringVar(&format, "format", "bar", "output format: bar (default), gauge, table or json")
+	fs.StringVar(&format, "format", "gauge", "output format: gauge (default), bar, table or json")
 	fs.BoolVarP(&watch, "watch", "w", false, "redraw the fleet every 60 seconds")
 	c.ValidArgsFunction = noPositionals
 	compRegister(c, "fleet", compFiles)
