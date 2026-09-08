@@ -97,8 +97,16 @@ describe('environments (pure helpers)', () => {
 
 describe('LlmStack (control plane)', () => {
   let template: Template;
+  let cliStatements: Statement[];
   beforeAll(() => {
     template = sharedTemplate();
+  });
+  // The control-plane CLI user's inline policy statements (see the
+  // control-plane-user tests below).
+  beforeAll(() => {
+    cliStatements = statementsForResource(template, 'AWS::IAM::User', (_, u) =>
+      (u as { Properties: { UserName: string } }).Properties.UserName === 'cloud-vm-llm-remote-cli',
+    );
   });
 
   it('holds no EC2 instance and no persistent EBS volume', () => {
@@ -134,6 +142,122 @@ describe('LlmStack (control plane)', () => {
     for (const url of Object.values(urls)) {
       expect(url.Properties.AuthType).toBe('AWS_IAM');
     }
+  });
+
+  it('creates the CLI user with one managed policy and no inline one', () => {
+    const users = template.findResources('AWS::IAM::User') as Record<string, any>;
+    const user = Object.values(users).find((u) => u.Properties.UserName === 'cloud-vm-llm-remote-cli');
+    expect(user).toBeDefined();
+    expect(user.Properties.ManagedPolicyArns).toHaveLength(1);
+    expect(user.Properties.Policies).toBeUndefined();
+    expect(cliStatements.length).toBeGreaterThan(0);
+  });
+
+  it('grants the CLI user invoke-url permission on all seven control functions, and nothing else in lambda', () => {
+    const actionsOf = (s: Statement): string[] => [s.Action].flat();
+    // The invoke-url grant takes the form grantInvokeUrl renders —
+    // lambda:InvokeFunctionUrl (AWS_IAM auth condition) plus
+    // lambda:InvokeFunction (InvokedViaFunctionUrl condition), on the backing
+    // functions' ARNs — merged into one statement per action.
+    const urls = template.findResources('AWS::Lambda::Url') as Record<string, any>;
+    const urlFunctionIds = new Set(
+      Object.values(urls).map((u) => u.Properties.TargetFunctionArn['Fn::GetAtt'][0]),
+    );
+    expect(urlFunctionIds).toHaveLength(7);
+    // The grant names the functions' ARNs through each URL resource's
+    // FunctionArn attribute; resolve that back to the backing function so the
+    // assertion is on the functions, not the reference path.
+    const grantedFunctions = (s: Statement): Set<string> =>
+      new Set(
+        ([s.Resource].flat() as { 'Fn::GetAtt': [string, string] }[]).map((r) => {
+          const [id, attr] = r['Fn::GetAtt'];
+          return attr === 'FunctionArn' && urls[id] ? urls[id].Properties.TargetFunctionArn['Fn::GetAtt'][0] : id;
+        }),
+      );
+    const invokeUrl = cliStatements.filter((s) => actionsOf(s).includes('lambda:InvokeFunctionUrl'));
+    expect(invokeUrl).toHaveLength(1);
+    expect(invokeUrl[0].Condition).toEqual({ StringEquals: { 'lambda:FunctionUrlAuthType': 'AWS_IAM' } });
+    expect(grantedFunctions(invokeUrl[0])).toEqual(urlFunctionIds);
+    const invokeViaUrl = cliStatements.filter((s) => actionsOf(s).includes('lambda:InvokeFunction'));
+    expect(invokeViaUrl).toHaveLength(1);
+    expect(invokeViaUrl[0].Condition).toEqual({ Bool: { 'lambda:InvokedViaFunctionUrl': true } });
+    expect(grantedFunctions(invokeViaUrl[0])).toEqual(urlFunctionIds);
+    const lambdaActions = cliStatements.flatMap(actionsOf).filter((a) => a.startsWith('lambda:'));
+    expect(lambdaActions.sort()).toEqual(['lambda:InvokeFunction', 'lambda:InvokeFunctionUrl']);
+  });
+
+  it('grants the CLI user log reading on the runner and boot groups, and their streams only', () => {
+    const actionsOf = (s: Statement): string[] => [s.Action].flat();
+    const logsStatements = cliStatements.filter((s) => actionsOf(s).some((a) => a.startsWith('logs:')));
+    expect(logsStatements).toHaveLength(1);
+    expect(actionsOf(logsStatements[0])).toEqual(
+      expect.arrayContaining(['logs:DescribeLogStreams', 'logs:FilterLogEvents', 'logs:GetLogEvents']),
+    );
+    const controlGroupIds = Object.entries(template.findResources('AWS::Logs::LogGroup')).filter(
+      ([, g]) => {
+        const name = String((g as { Properties: { LogGroupName: string } }).Properties.LogGroupName);
+        return name.startsWith('/cloud-vm-llm/') && !name.includes('/lambda/') && name !== '/cloud-vm-llm/seed';
+      },
+    );
+    expect(
+      controlGroupIds.map(([, g]) => (g as { Properties: { LogGroupName: string } }).Properties.LogGroupName).sort(),
+    ).toEqual(['/cloud-vm-llm/boot', '/cloud-vm-llm/llamacpp', '/cloud-vm-llm/vllm']);
+    // Each grant is a group's ARN (Fn::GetAtt) or a stream under it
+    // (Fn::Join of that GetAtt with ":*").
+    const granted = ([logsStatements[0].Resource].flat() as Record<string, unknown>[]).map((r) => {
+      const parts = r['Fn::Join'] ? (r['Fn::Join'] as [string, unknown[]])[1] : [r];
+      return (parts[0] as { 'Fn::GetAtt': string[] })['Fn::GetAtt'][0];
+    });
+    expect(granted).toHaveLength(controlGroupIds.length * 2);
+    for (const [id] of controlGroupIds) {
+      expect(granted.filter((g) => g === id)).toHaveLength(2);
+    }
+  });
+
+  it('grants the CLI user DescribeStacks on this stack and pricing lookups only, in their services', () => {
+    const actionsOf = (s: Statement): string[] => [s.Action].flat();
+    const cfn = cliStatements.find((s) => actionsOf(s).includes('cloudformation:DescribeStacks'));
+    expect(cfn).toBeDefined();
+    expect(cfn!.Resource).toEqual({ Ref: 'AWS::StackId' });
+    expect(actionsOf(cfn!)).toEqual(['cloudformation:DescribeStacks']);
+    const pricing = cliStatements.find((s) => actionsOf(s).includes('pricing:GetProducts'));
+    expect(pricing).toBeDefined();
+    expect(actionsOf(pricing!)).toEqual(['pricing:GetProducts']);
+  });
+
+  it('lets the CLI user manage its own access keys, scoped to its own ARN', () => {
+    const actionsOf = (s: Statement): string[] => [s.Action].flat();
+    const iam = cliStatements.filter((s) => actionsOf(s).some((a) => a.startsWith('iam:')));
+    expect(iam).toHaveLength(1);
+    expect(actionsOf(iam[0])).toEqual(
+      expect.arrayContaining(['iam:GetUser', 'iam:ListAccessKeys', 'iam:CreateAccessKey', 'iam:DeleteAccessKey']),
+    );
+    // Built from pseudo parameters (not the user's attribute, which would be
+    // a dependency cycle), so assert on its shape: the user's own ARN.
+    const resource = [iam[0].Resource].flat()[0] as { 'Fn::Join': [string, unknown[]] };
+    expect(resource['Fn::Join'][0]).toBe('');
+    expect(resource['Fn::Join'][1]).toEqual([
+      'arn:',
+      { Ref: 'AWS::Partition' },
+      ':iam::',
+      { Ref: 'AWS::AccountId' },
+      ':user/cloud-vm-llm-remote-cli',
+    ]);
+  });
+
+  it('grants the CLI user no provisioning permission: no stack creation, no image builder, no instance launch', () => {
+    const actions = cliStatements.flatMap((s) => [s.Action].flat());
+    expect(actions).not.toContain('cloudformation:CreateStack');
+    expect(actions).not.toContain('cloudformation:DeleteStack');
+    expect(actions.filter((a) => a.startsWith('imagebuilder:'))).toHaveLength(0);
+    expect(actions).not.toContain('ec2:RunInstances');
+    const selfService = new Set([
+      'iam:GetUser',
+      'iam:ListAccessKeys',
+      'iam:CreateAccessKey',
+      'iam:DeleteAccessKey',
+    ]);
+    expect(actions.filter((a) => a.startsWith('iam:') && !selfService.has(a))).toHaveLength(0);
   });
 
   it('lets the deploy Lambda create environments (EIP, SG, key) and seed weights', () => {
@@ -548,6 +672,26 @@ describe('ImageStack', () => {
     );
   });
 });
+
+type Statement = { Action: string | string[]; Resource?: unknown; Condition?: unknown };
+
+function statementsForResource(
+  template: Template,
+  type: string,
+  match: (logicalId: string, resource: any) => boolean,
+): Statement[] {
+  const resources = template.findResources(type) as Record<string, any>;
+  const [logicalId, resource] = Object.entries(resources).find(([id, r]) => match(id, r)) ?? [];
+  if (!logicalId) {
+    throw new Error(`no ${type} matched ${match}`);
+  }
+  const [arn] = (resource.Properties.ManagedPolicyArns ?? []) as { Ref?: string }[];
+  const policy = arn?.Ref ? (template.toJSON().Resources as Record<string, any>)[arn.Ref] : undefined;
+  if (!policy || policy.Type !== 'AWS::IAM::ManagedPolicy') {
+    throw new Error(`no managed policy attached to ${type} ${logicalId}`);
+  }
+  return policy.Properties.PolicyDocument.Statement;
+}
 
 function allPolicyStatements(
   template: Template,

@@ -85,7 +85,10 @@ and the wake/idle lifecycle — see [docs/architecture.md](docs/architecture.md)
 
 ## Prerequisites
 
-- An AWS account with admin (or equivalent) credentials configured locally
+- An AWS account with admin (or equivalent) credentials configured locally —
+  for `bootstrap`, `bake`, and `deploy`. Day-to-day commands (`start`,
+  `status`, …) can instead sign with the stored control-plane credential from
+  `spinloop remote auth --store`, so they keep working between SSO log-ins
 - Node.js 22+ and [pnpm](https://pnpm.io)
 - The [`spinloop`](https://github.com/spinloop-ai/spinloop) CLI, which drives the
   endpoint
@@ -128,10 +131,21 @@ it; endpoints come after that, one `spinloop remote deploy` per environment:
 
 ```sh
 spinloop remote bootstrap   # once per account: control-plane stack + pipelines
+spinloop remote auth --store  # optional: store a day-to-day credential in the OS keystore
 spinloop remote bake        # bakes the runner AMI(s); waits until they are available
 spinloop remote deploy      # creates the Spinloop's REMOTE environment and says
                           # what it serves; seeds the weights if missing
 ```
+
+`auth --store` creates an access key for the control plane's own IAM user and
+keeps it in the machine's OS keystore, so the day-to-day commands sign without
+a fresh SSO log-in. It needs a control plane that has that user: a control
+plane deployed before this capability must be re-bootstrapped first (re-running
+`spinloop remote bootstrap` is safe and updates the stack). Run `--store`
+again to rotate — it swaps the key using the stored one alone, so no
+administrator credential is needed, and deletes the superseded key; roughly
+every 90 days is a sane cadence. `bootstrap` and `bake` themselves always run
+on the administrator's credentials, never the stored key.
 
 Under the hood, bootstrap and bake run this directory's own commands — usable
 by hand too:

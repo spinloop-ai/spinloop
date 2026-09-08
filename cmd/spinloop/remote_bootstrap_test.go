@@ -168,6 +168,25 @@ func TestBootstrap_SignpostsTheBake(t *testing.T) {
 	}
 }
 
+// Bootstrap and bake provision the control plane, so their credential
+// preflight resolves the ambient chain only: with no ambient credentials
+// there is nothing to fall back to — the stored control-plane key must not
+// stand in for the administrator. The loader itself is pinned to that
+// behaviour by TestLoadAmbientAWSConfigIgnoresStoredKey in internal/remote.
+func TestLoadCredsRequiresAmbientCredentials(t *testing.T) {
+	isolateConfig(t)
+	t.Setenv("AWS_ACCESS_KEY_ID", "")
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "")
+	t.Setenv("AWS_SESSION_TOKEN", "")
+	t.Setenv("AWS_PROFILE", "")
+	t.Setenv("AWS_CONFIG_FILE", filepath.Join(t.TempDir(), "no-such-file"))
+	t.Setenv("AWS_SHARED_CREDENTIALS_FILE", filepath.Join(t.TempDir(), "no-such-file"))
+	t.Setenv("AWS_EC2_METADATA_DISABLED", "true")
+	if _, err := loadCreds(context.Background(), "us-east-1"); err == nil {
+		t.Fatal("loadCreds without ambient credentials should fail, got a config")
+	}
+}
+
 func TestBootstrap_Preflight(t *testing.T) {
 	t.Run("missing tooling fails naming both managers", func(t *testing.T) {
 		t.Setenv("PATH", t.TempDir()) // no node/pnpm/npm

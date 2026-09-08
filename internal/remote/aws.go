@@ -3,25 +3,77 @@ package remote
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
+	"os"
 	"strconv"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation"
+	"github.com/aws/aws-sdk-go-v2/service/iam"
+	iamb "github.com/aws/aws-sdk-go-v2/service/iam/types"
 	"github.com/aws/aws-sdk-go-v2/service/pricing"
 	"github.com/aws/aws-sdk-go-v2/service/pricing/types"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 )
 
-// LoadAWSConfig resolves the default AWS config for a region. Credentials are
-// not retrieved here — callers that need them (signing, the preflight check)
-// call Retrieve on the returned config, keeping the failure guidance close to
-// where it is reported.
+// LoadAWSConfig resolves the AWS config for a region, applying the credential
+// precedence the remote commands sign with: explicit AWS environment
+// credentials or an explicit profile selection win (the default chain, as
+// before); then a stored control-plane credential for the region, if one is
+// in the keystore; then the rest of the standard chain (shared config, SSO
+// sessions, instance metadata). Credentials are not retrieved here — callers
+// that need them (signing, the preflight check) call Retrieve on the returned
+// config, keeping the failure guidance close to where it is reported.
 func LoadAWSConfig(ctx context.Context, region string) (aws.Config, error) {
+	opts := []func(*awsconfig.LoadOptions) error{awsconfig.WithRegion(region)}
+	if opt, ok := storedCredsOption(region); ok {
+		opts = append(opts, opt)
+	}
+	return awsconfig.LoadDefaultConfig(ctx, opts...)
+}
+
+// LoadAmbientAWSConfig resolves the default credential chain only, never
+// consulting the stored control-plane credential. Bootstrap and bake use it:
+// they provision the control plane itself, so a stored day-to-day key must
+// not stand in for the administrator credentials they need.
+func LoadAmbientAWSConfig(ctx context.Context, region string) (aws.Config, error) {
 	return awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(region))
+}
+
+// storedCredsOption is the config option carrying the stored control-plane
+// credential for the region, when it applies — that is, when the process
+// environment carries no explicit AWS credentials and no explicit profile
+// selection. Those are a deliberate per-process choice (a Spinloop's .env or
+// ENV may inject them, and an operator may set them to debug with other
+// credentials) and override the stored key; everything else in the standard
+// chain yields to it, which is the point of storing a key that outlives SSO
+// log-ins.
+func storedCredsOption(region string) (func(*awsconfig.LoadOptions) error, bool) {
+	if explicitAmbientCreds() {
+		return nil, false
+	}
+	cred, ok := LookupStoredCredential(region)
+	if !ok {
+		return nil, false
+	}
+	return awsconfig.WithCredentialsProvider(
+		credentials.NewStaticCredentialsProvider(cred.AccessKeyID, cred.SecretAccessKey, "")), true
+}
+
+// explicitAmbientCreds reports whether the process environment names explicit
+// AWS credentials or an explicit profile selection.
+func explicitAmbientCreds() bool {
+	for _, key := range []string{"AWS_ACCESS_KEY_ID", "AWS_PROFILE"} {
+		if os.Getenv(key) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // CallerIdentity returns the AWS account id for the resolved credentials, so
@@ -32,6 +84,74 @@ func CallerIdentity(ctx context.Context, cfg aws.Config) (string, error) {
 		return "", err
 	}
 	return aws.ToString(out.Account), nil
+}
+
+// ControlPlaneUserName is the IAM user the control-plane stack creates for the
+// CLI's long-lived credential: `spinloop remote auth --store` creates access
+// keys for this user and stores one in this machine's keystore. The name is
+// fixed, so the CLI addresses the user without reading a stack output; the
+// stack and its tests use the same literal.
+const ControlPlaneUserName = "cloud-vm-llm-remote-cli"
+
+// ConfigFromStored builds the AWS config that signs with a stored
+// control-plane credential: a static provider for the key, no other chain.
+// The auth command uses it to verify a newly created key, to rotate with the
+// stored key alone, and to delete a key on the AWS side during a clear.
+func ConfigFromStored(cred StoredCredential) aws.Config {
+	return aws.Config{
+		Region:      cred.Region,
+		Credentials: credentials.NewStaticCredentialsProvider(cred.AccessKeyID, cred.SecretAccessKey, ""),
+	}
+}
+
+// IAMUserExists reports whether the named IAM user exists in the account and
+// region the config resolves for. An absent user is (false, nil), not an
+// error: a control plane deployed before the user existed is a normal,
+// fixable case the caller names its fix for.
+func IAMUserExists(ctx context.Context, cfg aws.Config, userName string) (bool, error) {
+	_, err := iam.NewFromConfig(cfg).GetUser(ctx, &iam.GetUserInput{UserName: aws.String(userName)})
+	if err != nil {
+		var noSuch *iamb.NoSuchEntityException
+		if errors.As(err, &noSuch) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
+// IAMUserAccessKeyIDs returns the access key ids the named IAM user currently
+// has.
+func IAMUserAccessKeyIDs(ctx context.Context, cfg aws.Config, userName string) ([]string, error) {
+	out, err := iam.NewFromConfig(cfg).ListAccessKeys(ctx, &iam.ListAccessKeysInput{UserName: aws.String(userName)})
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]string, 0, len(out.AccessKeyMetadata))
+	for _, k := range out.AccessKeyMetadata {
+		ids = append(ids, aws.ToString(k.AccessKeyId))
+	}
+	return ids, nil
+}
+
+// IAMCreateAccessKey creates an access key for the named IAM user and returns
+// it. The secret is returned only here, once: IAM never returns it again, so
+// a failure after this point has nothing to recover it with.
+func IAMCreateAccessKey(ctx context.Context, cfg aws.Config, userName string) (string, string, error) {
+	out, err := iam.NewFromConfig(cfg).CreateAccessKey(ctx, &iam.CreateAccessKeyInput{UserName: aws.String(userName)})
+	if err != nil {
+		return "", "", err
+	}
+	return aws.ToString(out.AccessKey.AccessKeyId), aws.ToString(out.AccessKey.SecretAccessKey), nil
+}
+
+// IAMDeleteAccessKey deletes the named access key from the named IAM user.
+func IAMDeleteAccessKey(ctx context.Context, cfg aws.Config, userName, accessKeyID string) error {
+	_, err := iam.NewFromConfig(cfg).DeleteAccessKey(ctx, &iam.DeleteAccessKeyInput{
+		UserName:    aws.String(userName),
+		AccessKeyId: aws.String(accessKeyID),
+	})
+	return err
 }
 
 // ControlPlaneStackDeployed reports whether the named CloudFormation stack exists in
@@ -111,13 +231,26 @@ func controlPlaneFromOutputs(stackName string, outputs map[string]string) (Contr
 	return layer, nil
 }
 
+// pricingConfig resolves the AWS config for the pricing call. The pricing
+// service is global, so the endpoint stays us-east-1; the credential, though,
+// resolves with the environment's region precedence — the stored
+// control-plane key, when nothing explicit is set, signs the call the same as
+// every other day-to-day command, and the user policy's pricing:GetProducts
+// grant is what authorises it.
+func pricingConfig(ctx context.Context, envRegion string) (aws.Config, error) {
+	opts := []func(*awsconfig.LoadOptions) error{awsconfig.WithRegion("us-east-1")}
+	if opt, ok := storedCredsOption(envRegion); ok {
+		opts = append(opts, opt)
+	}
+	return awsconfig.LoadDefaultConfig(ctx, opts...)
+}
+
 // GetOnDemandPrice returns the hourly on-demand price for an instance type in
 // a region, from the AWS Price List API. The result is cached for 5 minutes
 // within a single process lifetime. Returns an error if the pricing service is
 // unavailable or the instance type is not found.
 func GetOnDemandPrice(ctx context.Context, region, instanceType string) (float64, error) {
-	// Pricing is a global service — use us-east-1 as the API endpoint.
-	cfg, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion("us-east-1"))
+	cfg, err := pricingConfig(ctx, region)
 	if err != nil {
 		return 0, fmt.Errorf("loading AWS config for pricing: %w", err)
 	}

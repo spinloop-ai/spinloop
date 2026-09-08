@@ -663,6 +663,74 @@ export class LlmStack extends cdk.Stack {
 
     const updateUrl = updateFn.addFunctionUrl({ authType: lambda.FunctionUrlAuthType.AWS_IAM });
 
+    // The human-facing principal behind the CLI's long-lived credential:
+    // `spinloop remote auth --store` creates an access key for this user and
+    // keeps it in the operator's OS keystore, so day-to-day control calls
+    // work between SSO log-ins. The policy is day-to-day control only —
+    // invoke the control URLs, read the instance logs, discover the stack,
+    // price an instance, and manage this user's own access keys; bootstrap,
+    // bake, and provisioning stay with the administrator's credentials.
+    const remoteCliUserName = 'cloud-vm-llm-remote-cli';
+    const remoteCliUser = new iam.User(this, 'RemoteCliUser', { userName: remoteCliUserName });
+    // The grant is a customer managed policy, not an inline one: IAM caps the
+    // aggregate size of a user's inline policies at 2,048 characters, and the
+    // seven control functions plus their log groups do not fit in it (the
+    // managed-policy limit is 6,144). The invoke-url grant takes the form
+    // grantInvokeUrl renders — the two actions, the auth-type conditions, the
+    // backing functions' ARNs — merged into one statement per action.
+    const controlFunctionArns = [startUrl, stopUrl, deployUrl, statsUrl, seedUrl, envUrl, updateUrl].map(
+      (url) => url.functionArn,
+    );
+    const controlLogGroupArns = [
+      ...RUNNERS.map((runner) => engineLogGroups[runner].logGroupArn),
+      bootLogGroup.logGroupArn,
+    ];
+    const remoteCliPolicy = new iam.ManagedPolicy(this, 'RemoteCliPolicy', {
+      statements: [
+        new iam.PolicyStatement({
+          actions: ['lambda:InvokeFunctionUrl'],
+          resources: controlFunctionArns,
+          conditions: { StringEquals: { 'lambda:FunctionUrlAuthType': 'AWS_IAM' } },
+        }),
+        new iam.PolicyStatement({
+          actions: ['lambda:InvokeFunction'],
+          resources: controlFunctionArns,
+          conditions: { Bool: { 'lambda:InvokedViaFunctionUrl': true } },
+        }),
+        // GetLogEvents and DescribeLogStreams address the streams, so the
+        // grant covers the groups and their streams.
+        new iam.PolicyStatement({
+          actions: ['logs:DescribeLogStreams', 'logs:FilterLogEvents', 'logs:GetLogEvents'],
+          resources: [...controlLogGroupArns, ...controlLogGroupArns.map((arn) => `${arn}:*`)],
+        }),
+        // AWS::StackId resolves to this stack's ARN.
+        new iam.PolicyStatement({
+          actions: ['cloudformation:DescribeStacks'],
+          resources: [cdk.Fn.ref('AWS::StackId')],
+        }),
+        // The Price List API has no resource-level scoping.
+        new iam.PolicyStatement({ actions: ['pricing:GetProducts'], resources: ['*'] }),
+        // Self-service rotation: the stored key manages this user's own access
+        // keys, so `--store` can run with the stored key alone. The ARN is
+        // built from pseudo parameters rather than the user's attribute: the
+        // policy attaches to the user, so referencing the user would be a
+        // dependency cycle.
+        new iam.PolicyStatement({
+          actions: ['iam:GetUser', 'iam:ListAccessKeys', 'iam:CreateAccessKey', 'iam:DeleteAccessKey'],
+          resources: [
+            cdk.Fn.join('', [
+              'arn:',
+              cdk.Aws.PARTITION,
+              ':iam::',
+              cdk.Aws.ACCOUNT_ID,
+              `:user/${remoteCliUserName}`,
+            ]),
+          ],
+        }),
+      ],
+    });
+    remoteCliUser.addManagedPolicy(remoteCliPolicy);
+
     new events.Rule(this, 'IdleCheckRule', {
       description: 'Periodic idle sweep across every environment instance',
       schedule: events.Schedule.rate(cdk.Duration.minutes(5)),

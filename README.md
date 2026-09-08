@@ -643,11 +643,14 @@ the environment; deploying [`remote/`](remote/) yourself prints the same values:
 Spinloop wins if you do set one.
 
 Every URL and the region can be overridden with the matching
-[`SPINLOOP_REMOTE_*`](docs/env-vars.md) environment variable. The commands use
-your AWS credentials (environment, profile or SSO — the standard chain), which
-need `lambda:InvokeFunctionUrl` allowed. A cold `start` takes a few minutes
-while the instance boots and loads the model; `--timeout` (default 15m) caps
-the wait.
+[`SPINLOOP_REMOTE_*`](docs/env-vars.md) environment variable. The commands
+sign with an AWS credential resolved per region: explicit environment
+credentials or a named profile first, then the stored control-plane credential
+from [`spinloop remote auth --store`](docs/commands/remote.md#credentials),
+then the standard chain (config files, SSO sessions, instance metadata). The
+credential needs `lambda:InvokeFunctionUrl` allowed. A cold `start` takes a
+few minutes while the instance boots and loads the model; `--timeout`
+(default 15m) caps the wait.
 
 The AWS credentials, region and `SPINLOOP_REMOTE_*` overrides can all travel
 with the Spinloop, in the `.env` beside it. A value already set in your shell wins over the `.env`. To pin a value

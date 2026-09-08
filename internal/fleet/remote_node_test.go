@@ -49,6 +49,56 @@ func remoteControlServer(t *testing.T, body string, statusCode int) *httptest.Se
 	return srv
 }
 
+// Fleet operations on remote environments go through the same signed control
+// calls as `spinloop remote`, so they inherit the stored control-plane
+// credential: here the only credential the process can resolve is the one
+// stored for the region (the ambient chain is empty), and the status call
+// still signs and gets its answer. The file store behind SPINLOOP_REMOTE_KEYSTORE
+// keeps the entry in a temp directory, never in the machine's keystore.
+func TestRemoteNodeSignsWithStoredCredential(t *testing.T) {
+	region := "ap-southeast-2"
+	srv := remoteControlServer(t, `{"state":"stopped"}`, http.StatusOK)
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("SPINLOOP_CONFIG_DIR", "")
+	t.Setenv("SPINLOOP_REMOTE_KEYSTORE", "file")
+	// No ambient credential at all: env, profile, config files, IMDS.
+	t.Setenv("AWS_ACCESS_KEY_ID", "")
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "")
+	t.Setenv("AWS_SESSION_TOKEN", "")
+	t.Setenv("AWS_PROFILE", "")
+	t.Setenv("AWS_CONFIG_FILE", filepath.Join(home, "no-such-file"))
+	t.Setenv("AWS_SHARED_CREDENTIALS_FILE", filepath.Join(home, "no-such-file"))
+	t.Setenv("AWS_EC2_METADATA_DISABLED", "true")
+
+	cred := remote.StoredCredential{
+		AccessKeyID:     "AKIATESTTESTTESTTEST",
+		SecretAccessKey: "test-secret",
+		Account:         "0",
+		User:            "cloud-vm-llm-remote-cli",
+		Region:          region,
+		StoredAt:        time.Now().UTC(),
+	}
+	if err := remote.StoreCredential(cred); err != nil {
+		t.Fatalf("StoreCredential: %v", err)
+	}
+	t.Cleanup(func() { remote.DeleteStoredCredential(region) })
+
+	node, err := NewRemoteNode("env", remote.Config{StartURL: srv.URL, StopURL: srv.URL, Region: region})
+	if err != nil {
+		t.Fatal(err)
+	}
+	status, err := node.Status(context.Background())
+	if err != nil {
+		t.Fatalf("status with only a stored credential available: %v", err)
+	}
+	if status.State != "stopped" {
+		t.Fatalf("status = %+v, want stopped", status)
+	}
+}
+
 func TestNewRemoteNodeRequiresACompleteConfig(t *testing.T) {
 	if _, err := NewRemoteNode("env", remote.Config{StopURL: "http://x", Region: "r"}); err == nil {
 		t.Error("missing start_url should be a configuration error")

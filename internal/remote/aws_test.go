@@ -1,8 +1,11 @@
 package remote
 
 import (
+	"context"
 	"encoding/json"
 	"math"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -210,5 +213,169 @@ func TestExtractPrice_Fallback(t *testing.T) {
 	}
 	if math.Abs(got-0.3580) > 1e-4 {
 		t.Errorf("extractPrice fallback = %v, want 0.3580", got)
+	}
+}
+
+// pinChainHermetically keeps the standard credential chain inside the test:
+// the shared config and credentials files point at temp files, no explicit
+// env credential or profile, and IMDS is off so an unresolvable chain fails
+// fast instead of reaching for the metadata service.
+func pinChainHermetically(t *testing.T, sharedCredsFile, configFile string) {
+	t.Helper()
+	t.Setenv("AWS_ACCESS_KEY_ID", "")
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "")
+	t.Setenv("AWS_SESSION_TOKEN", "")
+	t.Setenv("AWS_PROFILE", "")
+	t.Setenv("AWS_SHARED_CREDENTIALS_FILE", sharedCredsFile)
+	t.Setenv("AWS_CONFIG_FILE", configFile)
+	t.Setenv("AWS_EC2_METADATA_DISABLED", "true")
+}
+
+func writeAWSCredsFile(t *testing.T, dir, content string) string {
+	t.Helper()
+	path := filepath.Join(dir, "aws-creds")
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+// storeCredForTest parks a stored credential in a file-backed store behind the
+// openCredStoreFn seam, so the tests never touch the machine's keystore.
+func storeCredForTest(t *testing.T, cred StoredCredential) {
+	t.Helper()
+	dir := t.TempDir()
+	t.Cleanup(func() { openCredStoreFn = openCredStore })
+	openCredStoreFn = func() (credentialStore, error) {
+		return fileStore(t, dir), nil
+	}
+	if err := StoreCredential(cred); err != nil {
+		t.Fatalf("StoreCredential: %v", err)
+	}
+}
+
+func resolvedAccessKeyID(t *testing.T, region string) string {
+	t.Helper()
+	cfg, err := LoadAWSConfig(context.Background(), region)
+	if err != nil {
+		t.Fatalf("LoadAWSConfig: %v", err)
+	}
+	creds, err := cfg.Credentials.Retrieve(context.Background())
+	if err != nil {
+		t.Fatalf("Retrieve: %v", err)
+	}
+	return creds.AccessKeyID
+}
+
+func TestLoadAWSConfigPrecedence(t *testing.T) {
+	const region = "ap-southeast-2"
+	stored := testCred(region)
+	storeCredForTest(t, stored)
+	chainFile := writeAWSCredsFile(t, t.TempDir(), `[default]
+aws_access_key_id = AKIACHAINCHAINCHAIN
+aws_secret_access_key = chain-secret
+`)
+
+	t.Run("env credentials override the stored key", func(t *testing.T) {
+		pinChainHermetically(t, chainFile, chainFile)
+		t.Setenv("AWS_ACCESS_KEY_ID", "AKIAENVENVENVENVENV")
+		t.Setenv("AWS_SECRET_ACCESS_KEY", "env-secret")
+		if got := resolvedAccessKeyID(t, region); got != "AKIAENVENVENVENVENV" {
+			t.Fatalf("resolved %q; want the env credential", got)
+		}
+	})
+
+	t.Run("a named profile overrides the stored key", func(t *testing.T) {
+		profileFile := writeAWSCredsFile(t, t.TempDir(), `[worker]
+aws_access_key_id = AKIAPROFILEPROFILE
+aws_secret_access_key = profile-secret
+`)
+		pinChainHermetically(t, profileFile, profileFile)
+		t.Setenv("AWS_PROFILE", "worker")
+		if got := resolvedAccessKeyID(t, region); got != "AKIAPROFILEPROFILE" {
+			t.Fatalf("resolved %q; want the profile credential", got)
+		}
+	})
+
+	t.Run("the stored key wins over the shared chain", func(t *testing.T) {
+		pinChainHermetically(t, chainFile, chainFile)
+		if got := resolvedAccessKeyID(t, region); got != stored.AccessKeyID {
+			t.Fatalf("resolved %q; want the stored credential", got)
+		}
+	})
+
+	t.Run("no stored key falls back to the chain", func(t *testing.T) {
+		// A region with no stored entry: the file store holds only ap-southeast-2.
+		pinChainHermetically(t, chainFile, chainFile)
+		if got := resolvedAccessKeyID(t, "eu-west-1"); got != "AKIACHAINCHAINCHAIN" {
+			t.Fatalf("resolved %q; want the shared-chain credential", got)
+		}
+	})
+}
+
+func TestPricingConfigPrecedence(t *testing.T) {
+	const region = "ap-southeast-2"
+	stored := testCred(region)
+	storeCredForTest(t, stored)
+	chainFile := writeAWSCredsFile(t, t.TempDir(), `[default]
+aws_access_key_id = AKIACHAINCHAINCHAIN
+aws_secret_access_key = chain-secret
+`)
+
+	t.Run("the stored key authorises pricing, endpoint stays us-east-1", func(t *testing.T) {
+		pinChainHermetically(t, chainFile, chainFile)
+		cfg, err := pricingConfig(context.Background(), region)
+		if err != nil {
+			t.Fatalf("pricingConfig: %v", err)
+		}
+		if cfg.Region != "us-east-1" {
+			t.Fatalf("endpoint region = %q; want us-east-1", cfg.Region)
+		}
+		creds, err := cfg.Credentials.Retrieve(context.Background())
+		if err != nil {
+			t.Fatalf("Retrieve: %v", err)
+		}
+		if creds.AccessKeyID != stored.AccessKeyID {
+			t.Fatalf("resolved %q; want the stored credential", creds.AccessKeyID)
+		}
+	})
+
+	t.Run("explicit env credentials override the stored key", func(t *testing.T) {
+		pinChainHermetically(t, chainFile, chainFile)
+		t.Setenv("AWS_ACCESS_KEY_ID", "AKIAENVENVENVENVENV")
+		t.Setenv("AWS_SECRET_ACCESS_KEY", "env-secret")
+		cfg, err := pricingConfig(context.Background(), region)
+		if err != nil {
+			t.Fatalf("pricingConfig: %v", err)
+		}
+		creds, err := cfg.Credentials.Retrieve(context.Background())
+		if err != nil {
+			t.Fatalf("Retrieve: %v", err)
+		}
+		if creds.AccessKeyID != "AKIAENVENVENVENVENV" {
+			t.Fatalf("resolved %q; want the env credential", creds.AccessKeyID)
+		}
+	})
+}
+
+func TestLoadAmbientAWSConfigIgnoresStoredKey(t *testing.T) {
+	const region = "ap-southeast-2"
+	storeCredForTest(t, testCred(region))
+	chainFile := writeAWSCredsFile(t, t.TempDir(), `[default]
+aws_access_key_id = AKIACHAINCHAINCHAIN
+aws_secret_access_key = chain-secret
+`)
+	pinChainHermetically(t, chainFile, chainFile)
+
+	cfg, err := LoadAmbientAWSConfig(context.Background(), region)
+	if err != nil {
+		t.Fatalf("LoadAmbientAWSConfig: %v", err)
+	}
+	creds, err := cfg.Credentials.Retrieve(context.Background())
+	if err != nil {
+		t.Fatalf("Retrieve: %v", err)
+	}
+	if creds.AccessKeyID != "AKIACHAINCHAINCHAIN" {
+		t.Fatalf("resolved %q; want the ambient credential, not the stored key", creds.AccessKeyID)
 	}
 }

@@ -126,7 +126,7 @@ func TestFetchLogsMergesGroupsInTimeOrder(t *testing.T) {
 		BootLogGroup():             {page("", event("c", 1500, "prod/i-1", "boot line"))},
 	}}
 
-	got, err := fetchLogs(context.Background(), api, LogQuery{Environment: "prod", Source: LogSourceAll})
+	got, err := fetchLogs(context.Background(), api, LogQuery{Environment: "prod", Source: LogSourceAll}, "us-east-1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,7 +149,7 @@ func TestFetchLogsOrdersEventsSharingAMillisecondByEventID(t *testing.T) {
 		EngineLogGroup("vllm"):     {page("", event("a", 1000, "prod/i-2", "first"))},
 	}}
 
-	got, err := fetchLogs(context.Background(), api, LogQuery{Environment: "prod", Source: LogSourceEngine})
+	got, err := fetchLogs(context.Background(), api, LogQuery{Environment: "prod", Source: LogSourceEngine}, "us-east-1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,7 +168,7 @@ func TestFetchLogsAsksForTheEnvironmentsStreamsAndWindow(t *testing.T) {
 	end := start.Add(time.Hour)
 	if _, err := fetchLogs(context.Background(), api, LogQuery{
 		Environment: "prod", Source: LogSourceBoot, Start: start, End: end,
-	}); err != nil {
+	}, "us-east-1"); err != nil {
 		t.Fatal(err)
 	}
 	if len(api.calls) != 1 {
@@ -198,7 +198,7 @@ func TestFetchLogsPagesAndKeepsTheMostRecentWithinTheLimit(t *testing.T) {
 
 	got, err := fetchLogs(context.Background(), api, LogQuery{
 		Environment: "prod", Source: LogSourceBoot, Limit: 3,
-	})
+	}, "us-east-1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -224,7 +224,7 @@ func TestFetchLogsFiltersToOneInstance(t *testing.T) {
 
 	got, err := fetchLogs(context.Background(), api, LogQuery{
 		Environment: "prod", Source: LogSourceBoot, Instance: "i-2",
-	})
+	}, "us-east-1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -243,7 +243,7 @@ func TestFetchLogsToleratesAGroupThatDoesNotExist(t *testing.T) {
 		},
 	}
 
-	got, err := fetchLogs(context.Background(), api, LogQuery{Environment: "prod", Source: LogSourceEngine})
+	got, err := fetchLogs(context.Background(), api, LogQuery{Environment: "prod", Source: LogSourceEngine}, "us-east-1")
 	if err != nil {
 		t.Fatalf("a missing group for the other engine should not fail the read: %v", err)
 	}
@@ -258,7 +258,7 @@ func TestFetchLogsReportsWhenNoGroupExistsAtAll(t *testing.T) {
 		EngineLogGroup("vllm"):     &cwltypes.ResourceNotFoundException{},
 	}}
 
-	_, err := fetchLogs(context.Background(), api, LogQuery{Environment: "prod", Source: LogSourceEngine})
+	_, err := fetchLogs(context.Background(), api, LogQuery{Environment: "prod", Source: LogSourceEngine}, "us-east-1")
 	if err == nil {
 		t.Fatal("every group missing should be an error, not an empty result")
 	}
@@ -278,7 +278,7 @@ func (deniedErr) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
 func TestFetchLogsExplainsAccessDenied(t *testing.T) {
 	api := &fakeLogs{errs: map[string]error{BootLogGroup(): deniedErr{}}}
 
-	_, err := fetchLogs(context.Background(), api, LogQuery{Environment: "prod", Source: LogSourceBoot})
+	_, err := fetchLogs(context.Background(), api, LogQuery{Environment: "prod", Source: LogSourceBoot}, "us-east-1")
 	if err == nil {
 		t.Fatal("expected the denial to be reported")
 	}
@@ -290,7 +290,7 @@ func TestFetchLogsExplainsAccessDenied(t *testing.T) {
 func TestFetchLogsExplainsExpiredCredentials(t *testing.T) {
 	api := &fakeLogs{errs: map[string]error{BootLogGroup(): errors.New("ExpiredToken: the token has expired")}}
 
-	_, err := fetchLogs(context.Background(), api, LogQuery{Environment: "prod", Source: LogSourceBoot})
+	_, err := fetchLogs(context.Background(), api, LogQuery{Environment: "prod", Source: LogSourceBoot}, "us-east-1")
 	if err == nil {
 		t.Fatal("expected the expiry to be reported")
 	}
@@ -304,7 +304,7 @@ func TestFetchLogsReturnsNoEventsWithoutError(t *testing.T) {
 		BootLogGroup(): {page("")},
 	}}
 
-	got, err := fetchLogs(context.Background(), api, LogQuery{Environment: "prod", Source: LogSourceBoot})
+	got, err := fetchLogs(context.Background(), api, LogQuery{Environment: "prod", Source: LogSourceBoot}, "us-east-1")
 	if err != nil {
 		t.Fatalf("an empty window is not an error: %v", err)
 	}
@@ -321,7 +321,7 @@ func TestFetchLogsStopsPagingAnUnboundedWindow(t *testing.T) {
 	}
 	api := &fakeLogs{pages: map[string][]*cloudwatchlogs.FilterLogEventsOutput{BootLogGroup(): endless}}
 
-	_, err := fetchLogs(context.Background(), api, LogQuery{Environment: "prod", Source: LogSourceBoot})
+	_, err := fetchLogs(context.Background(), api, LogQuery{Environment: "prod", Source: LogSourceBoot}, "us-east-1")
 	if err == nil {
 		t.Fatal("an endlessly paging window should be reported, not truncated silently")
 	}

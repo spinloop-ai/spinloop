@@ -8,8 +8,8 @@ what to serve from a Spinloop: the `spinloop remote` command group.
 ### Requirement: Remote command group
 
 The system SHALL provide a `remote` command group with the subcommands
-`bootstrap`, `bake`, `start`, `stop`, `restart`, `status`, `deploy`, `ls`,
-`metrics`, and `keep`. `start`, `stop`, `restart`, `status`, `metrics` and
+`bootstrap`, `bake`, `auth`, `start`, `stop`, `restart`, `status`, `deploy`,
+`ls`, `metrics`, and `keep`. `start`, `stop`, `restart`, `status`, `metrics` and
 `deploy` each take an optional Spinloop path:
 `start` SHALL boot the endpoint and block until it is serving, then perform a
 quick TCP probe of the inference endpoint — if the probe fails, a warning is
@@ -39,8 +39,10 @@ account-level AWS control plane (once per account) by obtaining and driving the
 CDK project, and takes its own flags rather than a Spinloop path (see the
 Endpoint Provisioning specification). `bake` SHALL start an AMI bake for each
 runner named, and takes runner names rather than a Spinloop path (see the
-Endpoint Provisioning specification). An unrecognised subcommand SHALL fail
-naming the accepted ones.
+Endpoint Provisioning specification). `auth` SHALL store, report, and clear the
+long-lived control-plane credential, and takes its own flags rather than a
+Spinloop path (see the Remote Auth specification). An unrecognised subcommand
+SHALL fail naming the accepted ones.
 
 #### Scenario: Starting the endpoint
 
@@ -117,8 +119,14 @@ naming the accepted ones.
 #### Scenario: Bake is a recognised subcommand
 
 - **WHEN** the user runs `spinloop remote bake llamacpp`
-- **THEN** the command is dispatched to the bake flow rather than reported as
-  unknown
+- **THEN** the command is dispatched to the bake flow rather than
+  reported as unknown
+
+#### Scenario: Auth is a recognised subcommand
+
+- **WHEN** the user runs `spinloop remote auth`
+- **THEN** the command is dispatched to the credential store, report, and clear
+  flow rather than reported as unknown
 
 #### Scenario: Unknown subcommand
 
@@ -281,9 +289,19 @@ it.
 ### Requirement: Authenticated control requests
 
 Requests to the control URLs SHALL be signed with the caller's own AWS
-credentials, resolved from the standard credential chain, and SHALL carry the
-hash of the request body so that a request with a payload is signed over that
-payload. Spinloop SHALL NOT store AWS credentials of its own.
+credentials, resolved in this order: explicit AWS environment credentials or an
+explicit profile selection, then a stored control-plane credential for the
+target region (see the Remote Auth specification), then the remaining standard
+credential sources — shared config files, SSO sessions, and instance metadata.
+The order applies to every signed control request, including the requests the
+fleet issues on a remote environment's behalf, which sign through the same
+client as the `remote` subcommands.
+Requests SHALL carry the hash of the request body so that a request with a
+payload is signed over that payload. The only credentials Spinloop stores of its
+own are the stored control-plane credentials, held in the OS keystore (or,
+where no keystore exists, an owner-only file under the user's config directory)
+and created or removed by `spinloop remote auth` (see the Remote Auth
+specification).
 
 Every control subcommand — `start`, `stop`, `status`, `deploy`, and `metrics` —
 SHALL treat a non-success reply from the control endpoint as a failure: it SHALL
@@ -293,8 +311,9 @@ result as though the call succeeded.
 A rejected request SHALL be reported with an actionable cause. When the request
 is rejected because the caller's AWS credentials are expired or invalid, the
 command SHALL say to refresh them (env credentials, a profile, or an SSO
-session), distinct from the case where the credentials are resolvable but may
-lack permission to invoke the endpoint.
+session; `spinloop remote auth --store` where a stored credential was in use),
+distinct from the case where the credentials are resolvable but may lack
+permission to invoke the endpoint.
 
 #### Scenario: A request carrying a body is signed over it
 
@@ -320,6 +339,13 @@ lack permission to invoke the endpoint.
   control endpoint
 - **THEN** the command reports the failure with its status and cause, and does
   not present the empty reply as a successful result
+
+#### Scenario: The stored credential signs when the ambient chain has none
+
+- **WHEN** a control-plane credential is stored for the region, no AWS
+  environment credential or profile is set, and no other standard-chain source
+  is available
+- **THEN** the control request is signed with the stored credential
 
 ### Requirement: Deploying what the endpoint serves
 
