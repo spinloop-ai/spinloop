@@ -404,7 +404,10 @@ func TestFollowFleetLogsResumesAfterTheLogIsTruncated(t *testing.T) {
 	if err := followFleetLogsLoop(ctx, cfg, 200, "text", &buf); err != nil {
 		t.Fatalf("a cancelled follow is a clean exit, got: %v", err)
 	}
-	// A poll can outlive the loop, so read a copy rather than the live slice.
+	// A poll can outlive the loop: the client abandons the request when the
+	// context cancels, but the server still receives and records it. Wait for
+	// the poll count to settle, then read a copy rather than the live slice.
+	waitFleetLogPollsSettled(t, &mu, &polls)
 	mu.Lock()
 	got := append([]string(nil), offsets...)
 	mu.Unlock()
@@ -422,6 +425,36 @@ func TestFollowFleetLogsResumesAfterTheLogIsTruncated(t *testing.T) {
 	// And output resumes rather than stopping at the truncation.
 	if !strings.Contains(buf.String(), "after") {
 		t.Errorf("output =\n%s\nwant output after the truncation", buf.String())
+	}
+}
+
+// waitFleetLogPollsSettled waits until the server-side poll count stops
+// changing, so a poll that is still in flight when the follow loop returns has
+// been received and recorded before the test reads it. The client abandons an
+// in-flight request the moment its context cancels, but the server still
+// receives and records it; a loopback request is received within a couple of
+// milliseconds, so the count is taken to have settled once it is unchanged
+// across two reads ten milliseconds apart, bounded by a second.
+func waitFleetLogPollsSettled(t *testing.T, mu *sync.Mutex, polls *int) {
+	t.Helper()
+	deadline := time.Now().Add(time.Second)
+	var last, stable int
+	for {
+		mu.Lock()
+		n := *polls
+		mu.Unlock()
+		if n == last {
+			stable++
+		} else {
+			last, stable = n, 0
+		}
+		if stable >= 2 {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the poll count did not settle within a second (last seen %d)", n)
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }
 
