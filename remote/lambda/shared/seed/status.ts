@@ -31,6 +31,7 @@ import {
   type SeedPhase,
   type SeedRecord,
 } from './contract';
+import { seedAlive } from './discovery';
 
 const logs = new CloudWatchLogsClient({});
 
@@ -141,7 +142,7 @@ export function joinState(
   record: SeedRecord | null,
   instance: InstanceInfo | null,
 ): SeedPhase {
-  const alive = !!instance && (instance.state === 'pending' || instance.state === 'running');
+  const alive = !!instance && seedAlive(instance.state);
 
   if (!record) {
     // No word at all: alive means it has not reported yet, gone means it died

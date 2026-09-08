@@ -17,6 +17,7 @@ const LAMBDA_ENV = {
   // guard's 12-digit patterns can never mistake for a real ARN.
   INSTANCE_PROFILE_ARN: 'arn:aws:iam::0:instance-profile/test',
   WEIGHTS_BUCKET: 'test-bucket',
+  MAX_CONCURRENT_SEEDS: '2',
   AWS_REGION: 'us-east-1',
   BOOT_LOG_GROUP: '/test/boot',
   LLAMACPP_LOG_GROUP: '/test/llamacpp',
