@@ -142,12 +142,12 @@ before it silences problems:
 
 | Status | Level |
 | ------ | ----- |
-| 2xx, 3xx | `info` |
+| 2xx, 3xx | `debug` |
 | 4xx (bad token, bad cursor) | `warn` |
 | 5xx | `error` |
 
-A node that a fleet polls will log a line per poll per client at the default
-level. Run it with `--log-level warn` (or `SPINLOOP_LOG_LEVEL=warn`) and the
-polling goes quiet while rejections and failures still show up. Nothing rotates
+A node that a fleet polls is quiet at the default level; the successful polls are
+`debug`. Run it with `--log-level warn` (or `SPINLOOP_LOG_LEVEL=warn`) and the
+polling stays quiet while rejections and failures still show up. Nothing rotates
 this output — it goes to stderr, and where that lands is your service manager's
 business. See [what gets logged](commands/serve.md#what-gets-logged).

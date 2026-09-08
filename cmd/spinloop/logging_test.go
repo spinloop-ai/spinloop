@@ -116,19 +116,28 @@ func runDaemon(t *testing.T, args ...string) (string, func() string, func()) {
 	return base, read, stop
 }
 
-func TestCmdDaemon_SummarisesRequestsByDefault(t *testing.T) {
+func TestCmdDaemon_SummarisesRejectionsByDefaultNotSuccesses(t *testing.T) {
 	base, read, stop := runDaemon(t)
 	defer stop()
 
 	if code, _ := apiDo(t, "GET", base+"/v1/status", "sekrit", ""); code != 200 {
 		t.Fatalf("status = %d", code)
 	}
-	out := waitForLog(t, read, "api request")
-	if !strings.Contains(out, "path=/v1/status") || !strings.Contains(out, "status=200") {
-		t.Errorf("summary missing path or status:\n%s", out)
+	// Successful request is debug, so it is silent at the default info level.
+	if out := read(); strings.Contains(out, "api request") && strings.Contains(out, "status=200") {
+		t.Errorf("a successful request was summarised at the default level:\n%s", out)
 	}
-	if !strings.Contains(out, "level=INFO") {
-		t.Errorf("a served request was not summarised at info:\n%s", out)
+
+	// Rejection is warn, so it is visible at the default level.
+	if code, _ := apiDo(t, "GET", base+"/v1/status", "wrong", ""); code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", code)
+	}
+	out := waitForLog(t, read, "status=401")
+	if !strings.Contains(out, "level=WARN") {
+		t.Errorf("rejection was not recorded at warn:\n%s", out)
+	}
+	if !strings.Contains(out, "path=/v1/status") {
+		t.Errorf("summary missing path:\n%s", out)
 	}
 }
 
@@ -161,7 +170,7 @@ func TestCmdDaemon_LogLevelSilencesSuccessesNotRejections(t *testing.T) {
 func TestCmdDaemon_LogLevelFlagBeatsEnvironment(t *testing.T) {
 	// The variable says be silent; the flag says be loud. The flag wins.
 	t.Setenv(daemon.LevelEnvVar, "error")
-	base, read, stop := runDaemon(t, "--log-level", "info")
+	base, read, stop := runDaemon(t, "--log-level", "debug")
 	defer stop()
 
 	if code, _ := apiDo(t, "GET", base+"/v1/status", "sekrit", ""); code != 200 {
