@@ -1908,6 +1908,7 @@ func TestDashModelStartOutcomeWordings(t *testing.T) {
 // A node without the progress capability starts through the plain verb, and
 // says nothing on the way — the tile shows the verb alone.
 func TestDashModelStartOnPlainNode(t *testing.T) {
+	dashFixNow(t, dashTestClock)
 	f := newFakeDashNode("stopped")
 	var caught []tea.Msg
 	m := &dashModel{
