@@ -146,7 +146,7 @@ func FetchLogs(ctx context.Context, cfg Config, q LogQuery) (LogResult, error) {
 	if err != nil {
 		return LogResult{}, err
 	}
-	return fetchLogs(ctx, cloudwatchlogs.NewFromConfig(awsCfg), q)
+	return fetchLogs(ctx, cloudwatchlogs.NewFromConfig(awsCfg), q, cfg.Region)
 }
 
 // fetchLogs queries every group the source selects and merges the results. A
@@ -154,7 +154,7 @@ func FetchLogs(ctx context.Context, cfg Config, q LogQuery) (LogResult, error) {
 // environment only ever ships to the group for the engine it runs — but a read
 // where every group is absent is the control plane predating log shipping, which
 // is reported.
-func fetchLogs(ctx context.Context, api logsAPI, q LogQuery) (LogResult, error) {
+func fetchLogs(ctx context.Context, api logsAPI, q LogQuery, region string) (LogResult, error) {
 	groups, err := logGroupsFor(q.Source)
 	if err != nil {
 		return LogResult{}, err
@@ -172,7 +172,7 @@ func fetchLogs(ctx context.Context, api logsAPI, q LogQuery) (LogResult, error) 
 				missing++
 				continue
 			}
-			return LogResult{}, logsError(err)
+			return LogResult{}, logsError(region, err)
 		}
 		events = append(events, found...)
 		omitted += dropped
@@ -287,11 +287,12 @@ func groupNames(groups []logGroup) []string {
 }
 
 // logsError turns the two AWS failures an operator can act on into guidance:
-// credentials that have expired, and credentials that resolve but may not read
-// the logs. Anything else is passed through as it came.
-func logsError(err error) error {
+// credentials that have expired (naming the source that signed the read), and
+// credentials that resolve but may not read the logs. Anything else is passed
+// through as it came.
+func logsError(region string, err error) error {
 	if credentialError(err) {
-		return fmt.Errorf("reading logs failed: AWS credentials are expired or invalid — %s", refreshCredsHint)
+		return fmt.Errorf("reading logs failed: AWS credentials are expired or invalid — %s", credsRefreshHint(region))
 	}
 	if accessDenied(err) {
 		return fmt.Errorf(

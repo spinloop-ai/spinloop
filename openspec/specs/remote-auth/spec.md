@@ -1,8 +1,10 @@
+# Remote Auth Specification
+
 ## Purpose
 
 Define how `spinloop remote auth` stores a long-lived control-plane AWS credential in the OS keystore, how that credential resolves in preference to other sources, and how it is reported, rotated, and cleared.
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: Storing a control-plane credential
 
@@ -12,7 +14,7 @@ When a credential is already stored for the region, `--store` SHALL rotate rathe
 
 When the control-plane IAM user does not exist — a control plane deployed before this capability — the command SHALL fail, naming `spinloop remote bootstrap` as the step to re-run first.
 
-The secret SHALL never be printed in any output. Where no OS keystore is available on the machine, the entry MAY instead be stored in an owner-only file under the user's spinloop config directory, and the command SHALL say which store it used.
+The secret SHALL never be printed in any output. Where no OS keystore is available on the machine, the entry MAY instead be stored in an owner-only file under the user's spinloop config directory. Setting `SPINLOOP_REMOTE_KEYSTORE` to `file` SHALL select that file store even where a keystore is reachable — a machine whose keystore is locked or unreachable, such as a headless session with no keychain access — and the command SHALL say which store it used in every case.
 
 #### Scenario: First store
 
@@ -39,9 +41,14 @@ The secret SHALL never be printed in any output. Where no OS keystore is availab
 - **WHEN** the user runs `spinloop remote auth --store` on a machine with no OS keystore available
 - **THEN** the entry is stored in an owner-only file under the user's spinloop config directory instead, and the report says where
 
+#### Scenario: The file store is forced
+
+- **WHEN** `SPINLOOP_REMOTE_KEYSTORE` is set to `file` and the user runs `spinloop remote auth --store` on a machine with a reachable keystore
+- **THEN** the entry is stored in the owner-only file under the user's spinloop config directory, not the keystore, and the report says which store was used
+
 ### Requirement: Stored credentials resolve for control calls
 
-For any `spinloop remote` subcommand that resolves AWS credentials for a target region, a stored credential for that region SHALL be used when no explicit AWS environment credentials and no explicit profile selection are present, and SHALL take precedence over the remaining standard credential sources — shared config files, SSO sessions, and instance metadata. Explicit AWS environment credentials (access key id, secret, and session token set in the process environment) or an explicit profile selection SHALL override the stored credential. When no credential is stored for the region, resolution SHALL fall back to the standard credential chain as before this capability.
+For every signed control-plane request made for a target region — each `spinloop remote` subcommand, and the fleet's operations on remote environments (the fleet dashboard and `fleet start`, `stop`, `status`, and `keep`), which sign through the same client — a stored credential for that region SHALL be used when no explicit AWS environment credentials and no explicit profile selection are present, and SHALL take precedence over the remaining standard credential sources — shared config files, SSO sessions, and instance metadata. Explicit AWS environment credentials (access key id, secret, and session token set in the process environment) or an explicit profile selection SHALL override the stored credential. When no credential is stored for the region, resolution SHALL fall back to the standard credential chain as before this capability.
 
 `spinloop remote bootstrap` and `spinloop remote bake` SHALL NOT consult a stored credential: they provision the control plane itself and SHALL resolve from ambient sources only.
 
@@ -49,6 +56,11 @@ For any `spinloop remote` subcommand that resolves AWS credentials for a target 
 
 - **WHEN** a credential is stored for the region, no AWS environment credential or profile is set, and the ambient SSO session is absent or expired
 - **THEN** `spinloop remote status` signs with the stored credential and succeeds
+
+#### Scenario: A fleet operation signs with the stored key
+
+- **WHEN** a credential is stored for the region, no other AWS credential is resolvable, and a fleet operation on that region's environment (a dashboard refresh, `fleet status`, `start`, or `stop`) issues its signed control call
+- **THEN** the call is signed with the stored credential and the operation succeeds, exactly as the equivalent `spinloop remote` subcommand does
 
 #### Scenario: Explicit environment credentials win
 

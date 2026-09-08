@@ -684,6 +684,72 @@ func TestStop_ExpiredCredentials(t *testing.T) {
 	}
 }
 
+// noExplicitAmbient keeps explicitAmbientCreds false regardless of the
+// machine the tests run on: no env credential, no profile, IMDS off.
+func noExplicitAmbient(t *testing.T) {
+	t.Helper()
+	t.Setenv("AWS_ACCESS_KEY_ID", "")
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "")
+	t.Setenv("AWS_SESSION_TOKEN", "")
+	t.Setenv("AWS_PROFILE", "")
+	t.Setenv("AWS_EC2_METADATA_DISABLED", "true")
+}
+
+func TestCredsRefreshHintVariants(t *testing.T) {
+	const region = "ap-southeast-2"
+
+	t.Run("no stored key names the ambient credentials", func(t *testing.T) {
+		noExplicitAmbient(t)
+		storeCredForTest(t, testCred("eu-west-1"))
+		if got := credsRefreshHint(region); got != refreshCredsHint {
+			t.Fatalf("hint = %q; want the ambient hint", got)
+		}
+	})
+
+	t.Run("a stored key in use names the store command", func(t *testing.T) {
+		noExplicitAmbient(t)
+		storeCredForTest(t, testCred(region))
+		if got := credsRefreshHint(region); got != storedCredsHint {
+			t.Fatalf("hint = %q; want the stored-key hint", got)
+		}
+	})
+
+	t.Run("explicit ambient credentials win over the stored key", func(t *testing.T) {
+		noExplicitAmbient(t)
+		t.Setenv("AWS_ACCESS_KEY_ID", "AKIAENVENVENVENVENV")
+		storeCredForTest(t, testCred(region))
+		if got := credsRefreshHint(region); got != refreshCredsHint {
+			t.Fatalf("hint = %q; want the ambient hint", got)
+		}
+	})
+}
+
+// A rejected request signed with the stored key must point at the store
+// command, not at ambient credentials that play no part.
+func TestStatus_ExpiredStoredCredentials(t *testing.T) {
+	const region = "eu-west-1"
+	noExplicitAmbient(t)
+	storeCredForTest(t, testCred(region))
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		w.Write([]byte(expiredTokenBody))
+	}))
+	defer server.Close()
+
+	cfg := Config{StartURL: server.URL, StopURL: server.URL, Region: region}
+	_, err := Status(context.Background(), cfg)
+	if err == nil {
+		t.Fatal("expected an error for expired credentials")
+	}
+	if !strings.Contains(err.Error(), "expired or invalid") ||
+		!strings.Contains(err.Error(), storedCredsHint) {
+		t.Errorf("expected the stored-key refresh hint, got %v", err)
+	}
+	if strings.Contains(err.Error(), refreshCredsHint) {
+		t.Errorf("the ambient hint must not appear for a stored-key rejection: %v", err)
+	}
+}
+
 // A JSON-parseable 403 that is not a credential problem keeps the IAM hint —
 // the parse-success path must classify the same way as the non-JSON one.
 func TestStatus_ForbiddenKeepsPermissionHint(t *testing.T) {

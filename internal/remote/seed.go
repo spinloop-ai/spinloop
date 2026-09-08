@@ -125,7 +125,7 @@ func seedCall(ctx context.Context, cfg Config, method, id string, body []byte, o
 	if err := json.Unmarshal(respBody, out); err != nil {
 		hint := ""
 		if status == http.StatusForbidden {
-			hint = forbiddenHint(string(respBody))
+			hint = forbiddenHint(cfg.Region, string(respBody))
 		}
 		return status, fmt.Errorf("seed %s returned HTTP %d%s: %s",
 			method, status, hint, truncate(string(respBody), 200))

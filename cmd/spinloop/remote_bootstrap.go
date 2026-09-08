@@ -302,9 +302,13 @@ func resolveRegion(flagVal string) string {
 	return "us-east-1"
 }
 
-// loadCreds resolves an AWS config and confirms credentials are retrievable.
+// loadCreds resolves an AWS config from the ambient credential chain only and
+// confirms credentials are retrievable. Bootstrap and bake provision the
+// control plane itself, so they need the administrator's own credentials; the
+// stored control-plane key is deliberately not consulted here — a day-to-day
+// key must not stand in for the admin while the account is being (re)built.
 func loadCreds(ctx context.Context, region string) (aws.Config, error) {
-	cfg, err := remote.LoadAWSConfig(ctx, region)
+	cfg, err := remote.LoadAmbientAWSConfig(ctx, region)
 	if err != nil {
 		return aws.Config{}, err
 	}

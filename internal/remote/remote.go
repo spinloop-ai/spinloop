@@ -305,7 +305,7 @@ func Deploy(ctx context.Context, cfg Config, dc DeployConfig, allowedCidr string
 		}
 		hint := ""
 		if resp.StatusCode == http.StatusForbidden {
-			hint = forbiddenHint(detail)
+			hint = forbiddenHint(cfg.Region, detail)
 		}
 		return nil, fmt.Errorf("deploy failed (HTTP %d)%s: %s", resp.StatusCode, hint, detail)
 	}
@@ -396,7 +396,7 @@ func Start(ctx context.Context, cfg Config, progress func(string), onState func(
 		default:
 			hint := ""
 			if resp.StatusCode == http.StatusForbidden {
-				hint = forbiddenHint(resp.Message)
+				hint = forbiddenHint(cfg.Region, resp.Message)
 			}
 			return nil, fmt.Errorf("start failed (HTTP %d, state %q)%s: %s",
 				resp.StatusCode, resp.State, hint, resp.Message)
@@ -411,7 +411,7 @@ func Status(ctx context.Context, cfg Config) (*Response, error) {
 		return nil, err
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, controlReplyError("status", resp)
+		return nil, controlReplyError(cfg.Region, "status", resp)
 	}
 	return resp, nil
 }
@@ -425,7 +425,7 @@ func Stop(ctx context.Context, cfg Config) (*Response, error) {
 		return nil, err
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, controlReplyError("stop", resp)
+		return nil, controlReplyError(cfg.Region, "stop", resp)
 	}
 	return resp, nil
 }
@@ -443,7 +443,7 @@ func Pause(ctx context.Context, cfg Config, force bool) (*Response, error) {
 		return nil, err
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, controlReplyError("pause", resp)
+		return nil, controlReplyError(cfg.Region, "pause", resp)
 	}
 	return resp, nil
 }
@@ -509,7 +509,7 @@ func Keep(ctx context.Context, cfg Config, retainUntil time.Time) (*Response, er
 		return nil, err
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, controlReplyError("keep", resp)
+		return nil, controlReplyError(cfg.Region, "keep", resp)
 	}
 	return resp, nil
 }
@@ -557,7 +557,7 @@ func call(ctx context.Context, cfg Config, method, rawURL string, body []byte) (
 	if err := json.Unmarshal(respBody, out); err != nil {
 		hint := ""
 		if status == http.StatusForbidden {
-			hint = forbiddenHint(string(respBody))
+			hint = forbiddenHint(cfg.Region, string(respBody))
 		}
 		return nil, fmt.Errorf("%s returned HTTP %d%s: %s",
 			method, status, hint, truncate(string(respBody), 200))
@@ -614,7 +614,7 @@ func sign(ctx context.Context, req *http.Request, region string, body []byte) er
 	if err != nil {
 		if credentialError(err) {
 			return fmt.Errorf(
-				"AWS credentials are expired or invalid: %w (%s)", err, refreshCredsHint)
+				"AWS credentials are expired or invalid: %w (%s)", err, credsRefreshHint(region))
 		}
 		return fmt.Errorf(
 			"resolving AWS credentials: %w (configure env credentials, a profile or an SSO session)", err)
@@ -635,9 +635,25 @@ func truncate(s string, n int) string {
 }
 
 // refreshCredsHint is the fix appended when a request is rejected because the
-// caller's AWS credentials are expired or invalid, rather than lacking
-// permission — spinloop stores no credentials of its own to refresh.
+// caller's ambient AWS credentials are expired or invalid, rather than lacking
+// permission.
 const refreshCredsHint = "refresh your env credentials, profile, or SSO session"
+
+// storedCredsHint is the refresh guidance when the stored control-plane key
+// was the credential in use: refreshing the ambient credentials would not
+// change what signs the request, so the fix is to store a new key.
+const storedCredsHint = "run `spinloop remote auth --store` to create a new stored key"
+
+// credsRefreshHint picks the refresh guidance for a rejected request by the
+// source of the credential that signed it: explicit ambient credentials win
+// over the stored key in resolution, so they name themselves; a stored key in
+// use names `spinloop remote auth --store`; anything else is ambient.
+func credsRefreshHint(region string) string {
+	if _, ok := LookupStoredCredential(region); ok && !explicitAmbientCreds() {
+		return storedCredsHint
+	}
+	return refreshCredsHint
+}
 
 // credentialErrorCodes are the SDK/smithy error codes that mean the caller's
 // credentials are expired or otherwise invalid. The same tokens appear in the
@@ -684,12 +700,13 @@ func expiredCredsMarker(s string) bool {
 
 // forbiddenHint builds the guidance appended to an HTTP 403 from a control
 // endpoint: a rejection carrying an expired/invalid-credential marker tells the
-// user to refresh their credentials; anything else keeps the IAM-permission
-// hint, since a resolvable credential that lacks lambda:InvokeFunctionUrl fails
-// the same way.
-func forbiddenHint(detail string) string {
+// user to refresh the credential that signed the request (source-aware — the
+// stored key, if that is what signed it); anything else keeps the
+// IAM-permission hint, since a resolvable credential that lacks
+// lambda:InvokeFunctionUrl fails the same way.
+func forbiddenHint(region, detail string) string {
 	if expiredCredsMarker(detail) {
-		return fmt.Sprintf(" (AWS credentials are expired or invalid — %s)", refreshCredsHint)
+		return fmt.Sprintf(" (AWS credentials are expired or invalid — %s)", credsRefreshHint(region))
 	}
 	return " (do your AWS credentials grant lambda:InvokeFunctionUrl?)"
 }
@@ -699,14 +716,14 @@ func forbiddenHint(detail string) string {
 // credentials are expired/invalid or merely lack permission. Callers that treat
 // some non-200 statuses as expected (Start's 503 "still starting") must handle
 // those before falling through to this.
-func controlReplyError(method string, resp *Response) error {
+func controlReplyError(region, method string, resp *Response) error {
 	detail := resp.Error
 	if detail == "" {
 		detail = resp.Message
 	}
 	hint := ""
 	if resp.StatusCode == http.StatusForbidden {
-		hint = forbiddenHint(detail)
+		hint = forbiddenHint(region, detail)
 	}
 	return fmt.Errorf("%s returned HTTP %d%s: %s", method, resp.StatusCode, hint, truncate(detail, 200))
 }
@@ -785,7 +802,7 @@ func Stats(ctx context.Context, cfg Config) (*StatsResponse, error) {
 		}
 		hint := ""
 		if out.StatusCode == http.StatusForbidden {
-			hint = forbiddenHint(detail)
+			hint = forbiddenHint(cfg.Region, detail)
 		}
 		return nil, fmt.Errorf("stats failed (HTTP %d)%s: %s", out.StatusCode, hint, detail)
 	}
@@ -827,7 +844,7 @@ func callStats(ctx context.Context, cfg Config) (*StatsResponse, error) {
 	if err := json.Unmarshal(respBody, out); err != nil {
 		hint := ""
 		if resp.StatusCode == http.StatusForbidden {
-			hint = forbiddenHint(string(respBody))
+			hint = forbiddenHint(cfg.Region, string(respBody))
 		}
 		return nil, fmt.Errorf("stats returned HTTP %d%s: %s",
 			resp.StatusCode, hint, truncate(string(respBody), 200))

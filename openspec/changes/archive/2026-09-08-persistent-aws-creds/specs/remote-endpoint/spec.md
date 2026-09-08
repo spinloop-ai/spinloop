@@ -136,6 +136,9 @@ credentials, resolved in this order: explicit AWS environment credentials or an
 explicit profile selection, then a stored control-plane credential for the
 target region (see the Remote Auth specification), then the remaining standard
 credential sources — shared config files, SSO sessions, and instance metadata.
+The order applies to every signed control request, including the requests the
+fleet issues on a remote environment's behalf, which sign through the same
+client as the `remote` subcommands.
 Requests SHALL carry the hash of the request body so that a request with a
 payload is signed over that payload. The only credentials Spinloop stores of its
 own are the stored control-plane credentials, held in the OS keystore (or,

@@ -6,6 +6,7 @@ while you're using it.
 
 ```sh
 spinloop remote bootstrap  # once per account: deploy the control plane
+spinloop remote auth       # store or report the credential this machine signs with
 spinloop remote bake       # bake the runner AMI(s) an environment runs from
 spinloop remote deploy     # create an endpoint (environment) and tell it what to serve
 spinloop remote start      # boot it; prints the exports your agent needs (progress on stderr)
@@ -144,11 +145,68 @@ spinloop remote ls
 lists each registered environment with its base URL and region, marking any
 whose `remote.json` is missing or unreadable. It contacts no endpoint.
 
-Requests are signed with **your** AWS credentials (the usual profile, SSO
-session, or environment variables), and the endpoint's URLs require it. Spinloop
-stores no credentials of its own. Beyond invoking those URLs, the only extra
-permission it wants is for [reading logs](#reading-the-logs), which talks to
-CloudWatch rather than to an endpoint.
+Requests are signed with an AWS credential resolved per region — explicit
+environment credentials or a named profile first, then the stored
+control-plane credential from `spinloop remote auth --store`, then the usual
+chain of config files, SSO sessions, and instance metadata; see
+[credentials](#credentials). The endpoint's URLs require it. Beyond invoking
+those URLs, the only extra permission it wants is for
+[reading logs](#reading-the-logs), which talks to CloudWatch rather than to an
+endpoint.
+
+## Credentials
+
+Every `spinloop remote` command signs its requests with an AWS credential,
+resolved for the region the command targets, in this order:
+
+1. Explicit credentials in the process environment (`AWS_ACCESS_KEY_ID` and
+   friends) or an explicit `AWS_PROFILE` — a deliberate per-process choice, so
+   they always win.
+2. The stored control-plane credential, when one is stored for the region —
+   it outlives SSO log-ins, which is the point of it.
+3. The standard chain: shared config files, SSO sessions, instance metadata.
+
+`spinloop remote auth` manages the stored credential on this machine:
+
+```sh
+spinloop remote auth                # what is stored (no AWS call)
+spinloop remote auth --store        # store one for the region; rotates it when stored
+spinloop remote auth --store --region ap-southeast-2
+spinloop remote auth --clear        # remove it and delete the access key
+```
+
+`--store` creates an access key for the control-plane user the stack makes
+(`cloud-vm-llm-remote-cli`) and keeps it in this machine's OS keystore —
+Keychain on macOS, Credential Manager on Windows, the Secret Service on Linux.
+Where no keystore is reachable it keeps it in an owner-only file under the
+spinloop config directory instead, and every report says which store it used;
+`SPINLOOP_REMOTE_KEYSTORE=file` selects the file store even where a keystore
+is, for a machine whose keystore is locked or unreachable. The secret is never
+printed. The key is scoped to day-to-day control only: invoke the control
+URLs, read the instance logs, discover the stack, price an instance, and manage
+this user's own access keys — nothing that provisions.
+
+A first store runs on the administrator's ambient credentials and verifies the
+new key resolves to the caller's account before storing it; a key that
+resolves elsewhere is deleted, not kept. When a credential is already stored,
+`--store` rotates instead: it creates the replacement with the stored key
+alone — no other AWS credential needed — swaps the entry, and deletes the
+superseded key on the AWS side. Rotate roughly every 90 days, like any
+long-lived key.
+
+`--clear` removes the local entry and deletes the access key on the AWS side
+with the stored credential, so a cleared key does not linger in the account.
+If the AWS-side deletion cannot be made, the local entry is still removed and
+the failure reported.
+
+A control plane deployed before this capability has no control-plane user, so
+`--store` against it fails naming `spinloop remote bootstrap` — re-run it to
+add the user, then store.
+
+`bootstrap` and `bake` never consult the stored credential: they provision the
+control plane itself and run on the administrator's ambient credentials. The
+fleet's operations on remote environments sign through the same resolution, so
+a stored key covers them too.
 
 ## Checking on an endpoint
 
@@ -371,8 +429,9 @@ included) for every `kind: remote` node a fleet file names — or a chosen few
 
 ## Notes
 
-- `bootstrap` and `bake` are account-level and take no Spinloop: the control
-  plane and the AMIs are shared by every environment.
+- `bootstrap`, `bake`, and `auth` take no Spinloop: the control plane and the
+  AMIs are shared by every environment, and the stored credential belongs to
+  the machine, not a project.
 - `deploy` always needs a Spinloop — it's the thing being deployed. The others
   take an optional Spinloop path, a [registered alias](alias.md), or a URL.
   Given none, they use the alias `SPINLOOP_ALIAS` names, and failing that
