@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [1.37.0] - 2026-09-08
+### Added
+- feat(daemon): silence successful API request summaries at default level (#183)
+- feat(remote): add auth --store for a persistent control-plane credential
+- feat: default the metrics formats to gauge
+
+### Changed
+- build(deps): bump pnpm/action-setup in the github-actions group
+- build(deps): bump the go-dependencies group with 7 updates
+- docs(openspec): archive daemon-log-level change
+- docs: align Muse Glimmer model name
+- test(fleet): pin the clock and settle the poll count in two tests
+
+### Fixed
+- fix(remote): guard start against seeding and count only alive seeds as in flight
+
 ## [1.36.0] - 2026-09-07
 ### Added
 - feat(serve): show the engine's metrics and log in a full-screen view
