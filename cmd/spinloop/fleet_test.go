@@ -145,20 +145,37 @@ func TestCmdFleetStatusShowsVersion(t *testing.T) {
 func TestCmdFleetMetricsFormats(t *testing.T) {
 	twoNodeFleet(t, "running")
 
-	t.Run("bar", func(t *testing.T) {
+	t.Run("default (gauge)", func(t *testing.T) {
 		out := captureStdout(t, func() {
 			if err := cmdFleet([]string{"metrics"}); err != nil {
 				t.Error(err)
 			}
 		})
 		if !strings.Contains(out, "CPU") || !strings.Contains(out, "RAM") {
-			t.Errorf("no resource bars:\n%s", out)
+			t.Errorf("no resource gauges:\n%s", out)
+		}
+		if !strings.Contains(out, "█") {
+			t.Errorf("the gauge's fill is missing:\n%s", out)
 		}
 		if !strings.Contains(out, "prompt tokens") {
 			t.Errorf("no token block:\n%s", out)
 		}
 		if !strings.Contains(out, "unreachable") {
 			t.Errorf("unreachable node omitted:\n%s", out)
+		}
+	})
+
+	t.Run("bar", func(t *testing.T) {
+		out := captureStdout(t, func() {
+			if err := cmdFleet([]string{"metrics", "--format=bar"}); err != nil {
+				t.Error(err)
+			}
+		})
+		if !strings.Contains(out, "CPU") || !strings.Contains(out, "RAM") {
+			t.Errorf("no resource bars:\n%s", out)
+		}
+		if !strings.Contains(out, "█") {
+			t.Errorf("the bar's no-history fallback did not draw the gauge:\n%s", out)
 		}
 	})
 
@@ -209,9 +226,11 @@ func TestCmdFleetMetricsRejectsBadFormat(t *testing.T) {
 	}
 }
 
-// The fleet's entry point draws what the daemons report: a running node's
-// retained readings as bars with the per-series gauge fallback, a stopped
-// node's history on its own, and the gauge format the current reading only.
+// The fleet's entry point draws what the daemons report: by default the
+// gauge of each node's current reading, and — for a stopped node, nothing
+// after its header; with --format=bar, a running node's retained readings
+// with the per-series gauge fallback, and a stopped node's history on its
+// own.
 func TestCmdFleetMetricsDrawsHistory(t *testing.T) {
 	t.Setenv("SPINLOOP_CONFIG_DIR", t.TempDir())
 	running := metricsOnlyDaemon(t, map[string]any{
@@ -247,33 +266,33 @@ func TestCmdFleetMetricsDrawsHistory(t *testing.T) {
 			t.Error(err)
 		}
 	})
-	// up: the CPU series drew its history, RAM fell back to the gauge on the
-	// same screen.
+	// The default gauge format draws the current reading only: up's CPU gauge
+	// shows 50 with no sparkline, and halted draws nothing after its header.
+	if !strings.Contains(out, " 50%") || strings.Contains(out, "▃") {
+		t.Errorf("up's CPU gauge drew history or missed the current reading:\n%s", out)
+	}
+	halted := out[strings.Index(out, "halted"):]
+	if strings.Contains(halted, "GPU util") || strings.Contains(halted, " 60%") {
+		t.Errorf("a stopped node drew series in the gauge format:\n%s", halted)
+	}
+
+	// The bar format draws the retained history: up's CPU series drew its
+	// readings, RAM fell back to the gauge on the same screen, and halted's
+	// bar draws the retained readings alone, including the GPU series the
+	// current reading no longer names.
+	out = captureStdout(t, func() {
+		if err := cmdFleet([]string{"metrics", "--format=bar"}); err != nil {
+			t.Error(err)
+		}
+	})
 	if !strings.Contains(out, " 50%") || !strings.Contains(out, "▃") {
 		t.Errorf("up's CPU did not draw its history:\n%s", out)
 	}
 	if !strings.Contains(out, "░") {
 		t.Errorf("up's RAM did not fall back to the gauge:\n%s", out)
 	}
-	// halted: a stopped node's bar draws the retained readings alone,
-	// including the GPU series the current reading no longer names.
 	if !strings.Contains(out, "halted  stopped  org/qwen") || !strings.Contains(out, "GPU util") {
 		t.Errorf("halted's history not drawn:\n%s", out)
-	}
-
-	// The gauge format draws the current reading only: up's CPU gauge shows
-	// 50 with no sparkline, and halted draws nothing after its header.
-	out = captureStdout(t, func() {
-		if err := cmdFleet([]string{"metrics", "--format=gauge"}); err != nil {
-			t.Error(err)
-		}
-	})
-	if !strings.Contains(out, " 50%") || strings.Contains(out, "▃") {
-		t.Errorf("gauge drew history or missed the current reading:\n%s", out)
-	}
-	halted := out[strings.Index(out, "halted"):]
-	if strings.Contains(halted, "GPU util") || strings.Contains(halted, " 60%") {
-		t.Errorf("a stopped node drew series in the gauge format:\n%s", halted)
 	}
 }
 

@@ -81,8 +81,8 @@ type dashModel struct {
 	// gauge is the board's resource-series format: false draws the bar
 	// format (the sparkline of each node's retained history), true the gauge
 	// format (the current reading). Board-wide, toggled by g — one format for
-	// every panel rather than a choice per node. The zero value opens the
-	// board in bar.
+	// every panel rather than a choice per node. The board opens in gauge;
+	// dashModelFor sets it.
 	gauge bool
 
 	// send feeds a message back into the program from outside the Update

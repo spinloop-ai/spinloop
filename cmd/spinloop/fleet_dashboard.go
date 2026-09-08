@@ -23,8 +23,8 @@ func fleetDashboardCmd() *cobra.Command {
 		Use:   "dashboard",
 		Short: "watch the fleet in an interactive tiled view",
 		Long: `An interactive live view of the fleet: a tile per node, each drawing
-what the bar format of fleet metrics prints — state, what it serves, the
-resource bars, the token counters — repainted on an interval.
+what the gauge format of fleet metrics prints — state, what it serves, the
+resource gauges, the token counters — repainted on an interval.
 
 The view is read-only apart from four keys: s starts the selected node, k
 keeps a remote environment for a duration you type — it asks how long,
@@ -98,7 +98,7 @@ func dashModelFor(path string) (dashModel, error) {
 		results = append(results, e.standing)
 		actions = append(actions, dashAction{})
 	}
-	return dashModel{fleetPath: cfg.Path, entries: entries, results: results, actions: actions}, nil
+	return dashModel{fleetPath: cfg.Path, entries: entries, results: results, actions: actions, gauge: true}, nil
 }
 
 // runDashProgram runs the view on the alternate screen. Bubble Tea restores

@@ -779,9 +779,9 @@ func runRemoteStatus(args []string) error {
 }
 
 // cmdRemoteMetrics queries the stats Lambda for instance metrics: token usage,
-// GPU, CPU, and RAM utilization. The default bar format draws each series as
-// a sparkline of the daemon's retained history; --format=gauge draws the
-// current reading as progress gauges instead. With --format=json it outputs
+// GPU, CPU, and RAM utilization. The default gauge format draws the current
+// reading as progress gauges; --format=bar draws each series as a sparkline
+// of the daemon's retained history instead. With --format=json it outputs
 // JSON. With --cost, it looks up the on-demand price for the instance type
 // from the AWS Price List API. With --watch it polls every 60 seconds until
 // interrupted.
@@ -805,7 +805,7 @@ func remoteMetricsCmd() *cobra.Command {
 	}
 	fs := c.Flags()
 	fs.BoolVar(&withCost, "cost", false, "include cost estimate from AWS Price List API")
-	fs.StringVar(&format, "format", "bar", "output format: bar (default), gauge, table or json")
+	fs.StringVar(&format, "format", "gauge", "output format: gauge (default), bar, table or json")
 	fs.BoolVarP(&watch, "watch", "w", false, "poll metrics every 60 seconds")
 	return c
 }
