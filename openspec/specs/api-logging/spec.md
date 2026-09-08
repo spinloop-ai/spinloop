@@ -53,18 +53,19 @@ the configured level.
 
 Each record SHALL carry a severity so that turning the volume down silences
 routine traffic first and failures last. A summary of a request that succeeded
-SHALL be recorded at informational severity; a summary of a request rejected as
+SHALL be recorded at debug severity; a summary of a request rejected as
 the caller's fault SHALL be recorded at warning severity; a summary of a request
 that failed inside spinloop SHALL be recorded at error severity.
 
-The consequence SHALL hold in both directions: an operator running at warning
-severity sees rejected and failed requests and no successful ones, and an
-operator running at error severity sees only spinloop's own failures.
+The consequence SHALL hold in both directions: an operator at the default
+informational severity, or at warning severity, sees rejected and failed
+requests and no successful ones, and an operator running at error severity sees
+only spinloop's own failures.
 
 #### Scenario: Routine traffic is silenced without silencing failures
 
-- **WHEN** the level is set to warning and a fleet client polls status
-  repeatedly, one of those requests carrying a bad token
+- **WHEN** a fleet client polls status repeatedly at the default level, one of
+  those requests carrying a bad token
 - **THEN** no record is emitted for the successful polls
 - **AND** the rejected request is still recorded
 
@@ -133,8 +134,9 @@ records are emitted, choosing between debug, informational, warning and error.
 It SHALL be settable by a command-line flag on both `spinloop daemon` and
 `spinloop serve`, and by an environment variable, with the flag taking precedence
 over the variable. With neither set, the threshold SHALL be informational — so
-request summaries appear by default and an operator silences them deliberately
-rather than discovering them missing.
+rejected and failed requests, and the engine's starts and stops, appear by default,
+and an operator who wants the routine request traffic lowers the threshold to debug
+deliberately.
 
 An unrecognised level SHALL be rejected at startup, naming the accepted values,
 rather than being silently treated as the default: a mistyped level that
@@ -143,13 +145,22 @@ needed.
 
 #### Scenario: Summaries appear by default
 
-- **WHEN** the API is exposed with no level configured
-- **THEN** request summaries are emitted
+- **WHEN** the API is exposed with no level configured, and one request is
+  rejected as the caller's fault while another fails inside spinloop and a
+  third is served successfully
+- **THEN** a summary is emitted for the rejected request and for the failed
+  one
+- **AND** no summary is emitted for the successful one
 
 #### Scenario: Raising the level silences summaries
 
 - **WHEN** the level is set to warning
 - **THEN** no summary is emitted for a successfully served request
+
+#### Scenario: Debug brings summaries back
+
+- **WHEN** the level is set to debug
+- **THEN** a summary is emitted for a successfully served request
 
 #### Scenario: The flag beats the environment
 

@@ -166,8 +166,9 @@ func summarize(logger *slog.Logger, next http.Handler) http.Handler {
 }
 
 // levelForStatus grades a summary by outcome, which is what makes a single
-// level knob useful: raising it to warn silences a fleet's polling without
-// silencing the rejected token, the malformed cursor or the failed start.
+// level knob useful: the default level already silences a fleet's polling,
+// and raising it to warn keeps rejected tokens, malformed cursors and failed
+// starts visible.
 func levelForStatus(status int) slog.Level {
 	switch {
 	case status >= 500:
@@ -175,6 +176,6 @@ func levelForStatus(status int) slog.Level {
 	case status >= 400:
 		return slog.LevelWarn
 	default:
-		return slog.LevelInfo
+		return slog.LevelDebug
 	}
 }
