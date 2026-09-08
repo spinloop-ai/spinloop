@@ -20,7 +20,7 @@ import { jsonResponse } from '../shared/http';
 import { weightsPresent } from '../shared/seed';
 import { buildSeedJob, launchSeedInstance, seedInfraFromEnv } from '../shared/seed/launch';
 import { SEED_ID_TAG_KEY, SEED_MODEL_TAG_KEY, seedIdFor } from '../shared/seed/identity';
-import { findSeedInstances } from '../shared/seed/discovery';
+import { findSeedInstances, seedAlive } from '../shared/seed/discovery';
 import { readSeedStatus, writeTerminalRecord } from '../shared/seed/status';
 
 const TAG_KEY = requireEnv('TAG_KEY');
@@ -83,8 +83,10 @@ async function start(event: LambdaFunctionURLEvent): Promise<LambdaFunctionURLRe
   const infra = seedInfraFromEnv();
 
   // Already in flight: join it. Reported as started:false so a repeated start
-  // is unambiguous rather than looking like a fresh one.
-  const running = await findSeedInstances(TAG_KEY, seedId);
+  // is unambiguous rather than looking like a fresh one. A stopped instance
+  // is not joined: its compute has ceased, and waiting on it would wedge
+  // every request for these weights.
+  const running = (await findSeedInstances(TAG_KEY, seedId)).filter((i) => seedAlive(i.state));
   if (running.length > 0) {
     return jsonResponse(200, {
       seedId,
@@ -123,8 +125,10 @@ async function start(event: LambdaFunctionURLEvent): Promise<LambdaFunctionURLRe
   }
 
   // The cap bounds what a caller in a loop can launch. Counted after the
-  // join above, so a repeat of an existing seed is never refused by it.
-  const inFlight = await findSeedInstances(TAG_KEY);
+  // join above, so a repeat of an existing seed is never refused by it, and
+  // over alive seeds only: a stopped instance holds no compute, and it would
+  // be a cap that a dead body keeps filled.
+  const inFlight = (await findSeedInstances(TAG_KEY)).filter((i) => seedAlive(i.state));
   if (inFlight.length >= MAX_CONCURRENT_SEEDS) {
     return jsonResponse(429, {
       error: `${inFlight.length} seeds are already running (cap ${MAX_CONCURRENT_SEEDS}) — wait for one to finish`,

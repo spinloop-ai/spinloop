@@ -37,7 +37,7 @@ import {
 import { DAEMON_STATUS_CMD, parseDaemonStatus } from '../shared/daemon';
 import { jsonResponse } from '../shared/http';
 import { weightsPresent } from '../shared/seed';
-import { findSeedInstances } from '../shared/seed/discovery';
+import { findSeedInstances, seedAlive } from '../shared/seed/discovery';
 import { seedIdFor } from '../shared/seed/identity';
 import { buildSeedJob, launchSeedInstance, seedInfraFromEnv } from '../shared/seed/launch';
 import { DAEMON_CONFIG_DIR, runnerSpec } from '../runners';
@@ -215,11 +215,6 @@ async function readDaemonActivity(
 // seed runs for minutes, so nothing is learned by polling faster — and the
 // reply stays in the same shape as the other 503s the wake gives out.
 const SEED_RETRY_SECONDS = 60;
-
-/** Instance states that mean a seed's compute is alive. */
-function seedAlive(state: string): boolean {
-  return state === 'pending' || state === 'running';
-}
 
 function seedingReply(seedId: string, message: string): LambdaFunctionURLResult {
   return jsonResponse(503, {

@@ -102,6 +102,45 @@ func TestStartPhasesSeeding(t *testing.T) {
 	}
 }
 
+// The fetch finishing is a handoff, not a continuation: the reply that
+// reports the instance coming up enters a boot with its own clock, so the
+// line counts the boot up from the handoff rather than carrying the
+// fetch's elapsed time over into it.
+func TestStartPhasesHandsTheSeedingOffToTheBoot(t *testing.T) {
+	var got []StartPhase
+	progress, onState := StartPhases(func(p StartPhase) { got = append(got, p) })
+
+	onState(remote.StateInFlight)
+	onState(stateSeeding)
+	progress("seeding the weights (seed llamacpp--org-model--Q4_K_M); retrying in 60s")
+	// The weights are in: the next reply reports the instance coming up.
+	onState(remote.StateInFlight)
+	onState("starting")
+	progress("instance starting; retrying in 5s")
+
+	want := []StartPhaseKind{PhaseAttempting, PhaseSeeding, PhaseBooting}
+	kinds := make([]StartPhaseKind, len(got))
+	for i, p := range got {
+		kinds[i] = p.Kind
+	}
+	if len(kinds) != len(want) {
+		t.Fatalf("phases = %v, want %v", kinds, want)
+	}
+	for i := range want {
+		if kinds[i] != want[i] {
+			t.Fatalf("phases = %v, want %v", kinds, want)
+		}
+	}
+	if got[2].Detail != "starting" {
+		t.Errorf("boot phase detail = %q, want the control plane's state", got[2].Detail)
+	}
+	// The boot's clock starts at the handoff: a little after it began, the
+	// line counts the boot, not the fetch that preceded it.
+	if line := RenderPhase(got[2], got[2].Since.Add(7*time.Second)); line != "booting (7s)" {
+		t.Errorf("rendered boot at +7s = %q, want the boot counting up from the handoff", line)
+	}
+}
+
 // The mapping from remote.Start's two callbacks onto phases: an attempt goes
 // out, is refused for capacity with a due time for the next one, and the
 // attempt that follows retires the refusal rather than leaving it standing

@@ -317,6 +317,36 @@ func TestStart_GiveUpOutsideSeedingIsGeneric(t *testing.T) {
 	}
 }
 
+// A seeding reply that carries no seed id names nothing: the progress line
+// keeps the plain form, and a deadline that expires on it keeps the generic
+// give-up — a follow command for a seed there is none of would be a lie.
+func TestStart_SeedingWithoutASeedIdStaysGeneric(t *testing.T) {
+	stubAWSEnv(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		w.Write([]byte(`{"state":"seeding","retry_after_seconds":30}`))
+	}))
+	defer server.Close()
+
+	cfg := Config{StartURL: server.URL, StopURL: server.URL, Region: "eu-west-1"}
+	var progress []string
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	_, err := Start(ctx, cfg, func(msg string) { progress = append(progress, msg) }, nil, nil)
+	if err == nil {
+		t.Fatal("expected an error when the deadline expires")
+	}
+	if want := "gave up waiting for the endpoint: context deadline exceeded"; err.Error() != want {
+		t.Errorf("give-up error = %q, want the generic message with no seed to name", err.Error())
+	}
+	for _, line := range progress {
+		if strings.Contains(line, "seeding the weights (seed") {
+			t.Errorf("progress line names a seed the reply did not carry: %q", line)
+		}
+	}
+}
+
 // onState must see both the raw state of every poll and each attempt as it is
 // issued, so a caller can tell a capacity wait apart from a boot rather than
 // assume the instance is starting.
