@@ -47,14 +47,14 @@ The sparkline's latest point SHALL be colour-coded based on utilization: green f
 - **WHEN** the latest sample of a series is 95%
 - **THEN** the sparkline's final glyph appears in red
 
-### Requirement: Bar format is default
+### Requirement: Gauge format is default
 
-The system SHALL use bar format as the default output when no `--format` flag is specified.
+The system SHALL use gauge format as the default output when no `--format` flag is specified.
 
-#### Scenario: Default format is bar
+#### Scenario: Default format is gauge
 
 - **WHEN** the user runs `spinloop remote metrics` without `--format`
-- **THEN** the output is in bar format
+- **THEN** the output is in gauge format
 
 ### Requirement: Bar format with stopped instance
 
@@ -123,7 +123,7 @@ Bar format SHALL draw each series from the history the on-instance daemon retain
 
 The format SHALL be usable in one-shot mode: the history comes from the daemon, not from the command's own polling, so `--format=bar` without `--watch` draws the same window `--watch` would.
 
-Where the daemon reports no history — a daemon that predates the feature, or an engine with no reading yet — bar format SHALL draw each series from the current reading alone, in the gauge's filled style, so the default format still shows the current level and a pre-history daemon renders exactly as it does today.
+Where the daemon reports no history — a daemon that predates the feature, or an engine with no reading yet — bar format SHALL draw each series from the current reading alone, in the gauge's filled style, so a bar format that is asked for still shows the current level and a pre-history daemon renders what it can.
 
 #### Scenario: One-shot bar shows the daemon's window
 
