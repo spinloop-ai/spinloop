@@ -2,15 +2,15 @@
 
 See proposal.md — Why. The constraints that shape the approach:
 
-- **outfit has almost nothing to install.** Three direct module dependencies
+- **spinloop has almost nothing to install.** Three direct module dependencies
   today (`hujson`, `yaml.v3`, `aws-sdk-go-v2`), and the AWS SDK is called out in
   AGENTS.md as "the repo's only AWS/network dependency". Anything added here is
   measured against that.
 - **`internal/discovery` already sets the pattern for outbound HTTP**: a small
   client, a bounded timeout, an in-process cache, and failures that never spew.
   Hub access should look like its sibling, not like a new subsystem.
-- **The pieces the command produces already exist.** `outfit.Selection` and
-  `outfit.Format` render an Outfit; `applySelection` writes one to a harness;
+- **The pieces the command produces already exist.** `spinloop.Selection` and
+  `spinloop.Format` render a Spinloop; `applySelection` writes one to a harness;
   `contextsize.Parse` reads `128k`. This change is a resolver feeding parts that
   are already built.
 - **The engines already download.** `llama-server -hf`, vLLM and mlx all fetch
@@ -21,7 +21,7 @@ See proposal.md — Why. The constraints that shape the approach:
 
 **Goals:**
 
-- One command from a pasted model reference to a working Outfit, with every
+- One command from a pasted model reference to a working Spinloop, with every
   inference visible and individually overridable.
 - Use the Hugging Face cache that is already on the machine — for the weights
   and, when possible, for the metadata, so a downloaded model resolves offline.
@@ -29,12 +29,12 @@ See proposal.md — Why. The constraints that shape the approach:
 
 **Non-Goals:**
 
-- Downloading weights (see the spec — `outfit hf` never transfers a weights
+- Downloading weights (see the spec — `spinloop hf` never transfers a weights
   file). No `--pull`, no progress bars, no resumable transfers.
 - Writing the Hugging Face cache in any way. Reading it is a stable, documented
   layout; writing it correctly means blob dedup, symlinks, locking and etag
   bookkeeping, and there is nothing to gain from owning that.
-- Searching or browsing the Hub (`outfit hf --search qwen`). A reference is
+- Searching or browsing the Hub (`spinloop hf --search qwen`). A reference is
   something you paste, and the model page is a better browser than a terminal.
 - Datasets, spaces, adapters, or non-model repo types.
 - Teaching the catalogue about Hugging Face. `providers.yaml` stays plumbing
@@ -42,7 +42,7 @@ See proposal.md — Why. The constraints that shape the approach:
 
 ## Decisions
 
-### A new `outfit hf` command rather than `--hf` on `add`/`apply`
+### A new `spinloop hf` command rather than `--hf` on `add`/`apply`
 
 The output of this work is a *file* — a reproducible description of a model
 choice — and the existing commands take a selection rather than produce one.
@@ -53,16 +53,16 @@ and `--output-file` are meaningless on `add`.
 the same `applySelection` that `add` and `apply` use, so there is one code path
 that dresses a harness, not two.
 
-*Alternative considered:* `outfit add --hf <ref>`. Rejected because it produces
-no artefact — the user ends up running `outfit export` to get back the file the
+*Alternative considered:* `spinloop add --hf <ref>`. Rejected because it produces
+no artefact — the user ends up running `spinloop export` to get back the file the
 resolver already had in hand.
 
 ### `-o` means `--output-file` here, and there is no output-tokens flag
 
 Every other command spells `-o` as `--output` (max output tokens). On `hf` it
 names the file to write, as requested. To make that unambiguous rather than
-merely inconsistent, `outfit hf` **omits an output-tokens flag entirely**: the
-Outfit it writes carries no `OUTPUT` line, and applying one defaults output to a
+merely inconsistent, `spinloop hf` **omits an output-tokens flag entirely**: the
+Spinloop it writes carries no `OUTPUT` line, and applying one defaults output to a
 quarter of the context (`contextsize.DefaultOutput`), which is what an
 unspecified `OUTPUT` already means. There is therefore no reading of `-o` on
 this command that silently does the other thing. The docs page states the
@@ -114,7 +114,7 @@ the Hugging Face cache, so a model downloaded by `serve` is invisible to the HF
 layout and vice versa. Its filename convention is not a documented contract, so
 the lookup is a case-insensitive scan of that directory for a `.gguf` whose name
 carries the repo's owner, name and the chosen quant. A false negative costs
-nothing — the Outfit falls back to the repo reference and `llama-server` finds
+nothing — the Spinloop falls back to the repo reference and `llama-server` finds
 its own cached copy anyway. A false positive is what must not happen, hence
 requiring all three parts to match.
 
@@ -159,8 +159,8 @@ per request, and vLLM resolves repo ids through the HF cache on its own, so
 neither gains from a path — and `local-serving` already says `MODEL` keeps its
 harness-facing meaning for oMLX.
 
-`--no-cache` forces the right-hand column. A path makes an Outfit
-machine-specific, and Outfits get committed (`remote/Outfit` is, deliberately),
+`--no-cache` forces the right-hand column. A path makes a Spinloop
+machine-specific, and Spinloops get committed (`remote/Spinloop` is, deliberately),
 so the escape hatch is a flag rather than a comment in the docs.
 
 ### Context comes from the config, or not at all
@@ -174,12 +174,12 @@ refusal to invent one.
 
 The declared maximum is written as-is even when it is large. It is a published
 fact rather than a guess, the narration shows it, and `-c` overrides it; picking
-a "sensible" smaller number would be outfit inventing a policy it cannot justify
+a "sensible" smaller number would be spinloop inventing a policy it cannot justify
 per machine.
 
 ### stdout is the artefact, stderr is the reasoning
 
-`outfit hf <ref> > Outfit` has to produce a clean file, so every explanation —
+`spinloop hf <ref> > Spinloop` has to produce a clean file, so every explanation —
 provider and why, quant chosen and alternatives, context and its source, cache
 hit and which cache — goes to stderr. This matches `export` (pure stdout) and
 `serve` (which narrates before it runs).
@@ -188,7 +188,7 @@ hit and which cache — goes to stderr. This matches `export` (pure stdout) and
 
 **A cached-path `MODEL` is not portable** → the narration says so at the moment
 it happens, and `--no-cache` produces the shareable form. The default favours
-the common case: an Outfit in a working directory, on the machine that has the
+the common case: a Spinloop in a working directory, on the machine that has the
 model.
 
 **Hub API responses could change shape** → only three fields are relied on
@@ -214,12 +214,12 @@ locations. No test may depend on what the developer has downloaded.
 
 ## Migration Plan
 
-Purely additive: a new command, a new leaf package, no change to the Outfit
+Purely additive: a new command, a new leaf package, no change to the Spinloop
 format, the catalogue, or any harness adapter. Nothing to migrate and nothing to
 roll back beyond reverting the commit.
 
 ## Open Questions
 
 - Whether a later change should add `--pull` (fetch into the HF cache through
-  outfit) or `outfit hf list` (what is already cached). Both sit on top of this
+  spinloop) or `spinloop hf list` (what is already cached). Both sit on top of this
   package without altering it, and neither is needed to make the command useful.

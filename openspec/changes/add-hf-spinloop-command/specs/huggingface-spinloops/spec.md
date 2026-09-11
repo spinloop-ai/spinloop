@@ -1,40 +1,40 @@
 ## Purpose
 
-Define `outfit hf`: turning a Hugging Face model reference into a working
-Outfit — inferring the engine, the quantisation, the context window and the
+Define `spinloop hf`: turning a Hugging Face model reference into a working
+Spinloop — inferring the engine, the quantisation, the context window and the
 name from what the repo actually holds, preferring a copy already on disk, and
 printing, writing or applying the result.
 
 ## ADDED Requirements
 
-### Requirement: Creating an Outfit from a reference
+### Requirement: Creating a Spinloop from a reference
 
-`outfit hf <ref>` SHALL read the named Hugging Face model, derive a provider
-selection from it, and render it as an Outfit on stdout. Rendered output SHALL
-be the same canonical form `outfit export` produces, so `outfit hf <ref> >
-Outfit` yields a file every other command accepts. A missing reference SHALL
+`spinloop hf <ref>` SHALL read the named Hugging Face model, derive a provider
+selection from it, and render it as a Spinloop on stdout. Rendered output SHALL
+be the same canonical form `spinloop export` produces, so `spinloop hf <ref> >
+Spinloop` yields a file every other command accepts. A missing reference SHALL
 fail showing the command's usage.
 
 What was inferred, and from what, SHALL be reported on stderr — the provider
 and why, the quantisation chosen and the alternatives available, the context
 window and where it came from, and whether a local copy was used — so stdout
-stays a clean Outfit while the reasoning is still visible.
+stays a clea Spinloop while the reasoning is still visible.
 
-#### Scenario: A reference becomes an Outfit
+#### Scenario: A reference becomes a Spinloop
 
-- **WHEN** the user runs `outfit hf unsloth/Qwen3.6-35B-A3B-GGUF`
-- **THEN** an Outfit naming a provider, model, alias and context is printed on
+- **WHEN** the user runs `spinloop hf unsloth/Qwen3.6-35B-A3B-GGUF`
+- **THEN** a Spinloop naming a provider, model, alias and context is printed on
   stdout, and the reasoning is printed on stderr
 
 #### Scenario: Redirecting produces a usable file
 
-- **WHEN** the printed output is redirected to `./Outfit` and `outfit apply` is
+- **WHEN** the printed output is redirected to `./Spinloop` and `spinloop apply` is
   run
 - **THEN** the harness is configured from it with no editing
 
 #### Scenario: No reference
 
-- **WHEN** the user runs `outfit hf` with no argument
+- **WHEN** the user runs `spinloop hf` with no argument
 - **THEN** it fails showing how the command is called
 
 ### Requirement: The provider is inferred from the repo
@@ -43,28 +43,28 @@ The `PROVIDER` SHALL be inferred from what the repo holds: a repo publishing
 GGUF files SHALL yield `llamacpp`; a repo published for MLX SHALL yield `omlx`;
 a repo publishing plain safetensors weights SHALL yield `vllm`. A repo matching
 none of these SHALL fail saying what it appears to hold and which providers
-`outfit hf` can infer, rather than guessing one.
+`spinloop hf` can infer, rather than guessing one.
 
 `--provider`/`-p` SHALL override the inference, and SHALL be accepted even when
 inference would have chosen otherwise, so a repo carrying both GGUF and
 safetensors can be pointed at either engine. A `-p` naming a provider that is
-not a self-hosted engine SHALL still be honoured — the Outfit describes what a
+not a self-hosted engine SHALL still be honoured — the Spinloop describes what a
 harness talks to, and only `serve` requires a local engine.
 
 #### Scenario: A GGUF repo
 
 - **WHEN** the reference names a repo whose files are GGUF
-- **THEN** the Outfit says `PROVIDER llamacpp`
+- **THEN** the Spinloop says `PROVIDER llamacpp`
 
 #### Scenario: An MLX repo
 
 - **WHEN** the reference names a repo published for MLX
-- **THEN** the Outfit says `PROVIDER omlx`
+- **THEN** the Spinloop says `PROVIDER omlx`
 
 #### Scenario: A safetensors repo
 
 - **WHEN** the reference names a repo of plain safetensors weights
-- **THEN** the Outfit says `PROVIDER vllm`
+- **THEN** the Spinloop says `PROVIDER vllm`
 
 #### Scenario: A repo that is not a model
 
@@ -76,7 +76,7 @@ harness talks to, and only `serve` requires a local engine.
 
 - **WHEN** the user passes `-p vllm` for a repo carrying both GGUF and
   safetensors files
-- **THEN** the Outfit says `PROVIDER vllm`
+- **THEN** the Spinloop says `PROVIDER vllm`
 
 ### Requirement: Choosing a quantisation
 
@@ -102,7 +102,7 @@ never a single shard in isolation.
 #### Scenario: An explicit quantisation wins
 
 - **WHEN** the reference ends `:Q8_0`
-- **THEN** the Outfit's `MODEL` names that quantisation
+- **THEN** the Spinloop's `MODEL` names that quantisation
 
 #### Scenario: A quantisation the repo does not have
 
@@ -125,22 +125,22 @@ a plausible number being invented.
 The `ALIAS` SHALL be a short, lower-cased name derived from the repo's own
 name with a packaging suffix such as `-GGUF` or `-MLX` removed, and
 `--alias`/`-a` SHALL override it. `OUTPUT` SHALL NOT be written: it already
-defaults to a quarter of the context when an Outfit is applied.
+defaults to a quarter of the context when a Spinloop is applied.
 
 #### Scenario: The declared window is used
 
 - **WHEN** the model's configuration declares a 262144-token window
-- **THEN** the Outfit says `CONTEXT 262144`
+- **THEN** the Spinloop says `CONTEXT 262144`
 
 #### Scenario: An overridden window
 
 - **WHEN** the user passes `-c 32k`
-- **THEN** the Outfit says `CONTEXT 32000` whatever the model declares
+- **THEN** the Spinloop says `CONTEXT 32000` whatever the model declares
 
 #### Scenario: No declared window
 
 - **WHEN** the model publishes no configuration stating a window
-- **THEN** the Outfit has no `CONTEXT` line and the narration says why
+- **THEN** the Spinloop has no `CONTEXT` line and the narration says why
 
 #### Scenario: The alias drops the packaging suffix
 
@@ -161,11 +161,11 @@ engine that loads a repo or a directory rather than a single weights file, the
 `MODEL` SHALL stay the repo reference whether or not a copy is cached.
 
 Because a path names one machine's disk, `--no-cache` SHALL write the repo
-reference even when a copy is cached, so an Outfit meant to be committed and
+reference even when a copy is cached, so a Spinloop meant to be committed and
 shared can be produced deliberately. The narration SHALL note when a path was
 written for exactly this reason.
 
-`outfit hf` SHALL NOT download weights under any circumstances. Reading a repo
+`spinloop hf` SHALL NOT download weights under any circumstances. Reading a repo
 is metadata only, and a command that describes a model SHALL never begin a
 multi-gigabyte transfer as a side effect.
 
@@ -179,30 +179,30 @@ multi-gigabyte transfer as a side effect.
 - **WHEN** nothing for the reference is cached
 - **THEN** the `MODEL` is the repo reference, and nothing is downloaded
 
-#### Scenario: A portable Outfit is asked for
+#### Scenario: A portable Spinloop is asked for
 
 - **WHEN** the chosen quantisation is cached and the user passes `--no-cache`
 - **THEN** the `MODEL` is the repo reference rather than the local path
 
 #### Scenario: Describing a model never downloads it
 
-- **WHEN** `outfit hf` runs for a repo holding many gigabytes of weights
+- **WHEN** `spinloop hf` runs for a repo holding many gigabytes of weights
 - **THEN** only metadata is fetched and no weights file is transferred
 
 ### Requirement: Printing, writing and applying
 
-By default the Outfit SHALL be printed to stdout. `--output-file`/`-o` SHALL
+By default the Spinloop SHALL be printed to stdout. `--output-file`/`-o` SHALL
 write it to the named path instead, reporting where it went; an existing file
-SHALL NOT be overwritten unless `--force` is given, so a hand-edited Outfit
+SHALL NOT be overwritten unless `--force` is given, so a hand-edited Spinloop
 cannot be lost to a mistyped command. `--apply` SHALL additionally configure
-the active harness from the selection, by the same path `outfit apply` uses and
+the active harness from the selection, by the same path `spinloop apply` uses and
 honouring `--harness`/`-H`, so one command goes from a model page to a dressed
 agent.
 
 #### Scenario: Writing to a file
 
-- **WHEN** the user runs `outfit hf <ref> -o ./Outfit` and no such file exists
-- **THEN** the Outfit is written there and the path is reported
+- **WHEN** the user runs `spinloop hf <ref> -o ./Spinloop` and no such file exists
+- **THEN** the Spinloop is written there and the path is reported
 
 #### Scenario: An existing file is not clobbered
 
@@ -211,11 +211,11 @@ agent.
 
 #### Scenario: Applying directly
 
-- **WHEN** the user runs `outfit hf <ref> --apply`
+- **WHEN** the user runs `spinloop hf <ref> --apply`
 - **THEN** the active harness is configured exactly as applying the printed
-  Outfit would have configured it
+  Spinloop would have configured it
 
 #### Scenario: Applying to a named harness
 
-- **WHEN** the user runs `outfit hf <ref> --apply --harness pi`
+- **WHEN** the user runs `spinloop hf <ref> --apply --harness pi`
 - **THEN** the Pi harness is configured rather than the active default

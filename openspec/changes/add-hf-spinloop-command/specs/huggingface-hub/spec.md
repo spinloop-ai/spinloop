@@ -1,6 +1,6 @@
 ## Purpose
 
-Define how outfit reads Hugging Face: the reference forms it accepts, the repo
+Define how spinloop reads Hugging Face: the reference forms it accepts, the repo
 metadata it fetches, the optional token it sends, the already-downloaded copies
 it finds in the local caches, and the bounded, explained failures that keep a
 slow or unreachable Hub from hanging a command.
@@ -70,7 +70,7 @@ A token SHALL be resolved, when one exists, from `HF_TOKEN`, then
 its home directory. A resolved token SHALL be sent as the request's bearer
 credential; with no token, requests SHALL be made unauthenticated and public
 repos SHALL work exactly as before. A token SHALL NOT be written to any file
-outfit produces, printed, or included in narration.
+spinloop produces, printed, or included in narration.
 
 Where a repo is unreadable because it is private or gated, the failure SHALL
 say which — and, when no token was resolved, SHALL say that setting `HF_TOKEN`

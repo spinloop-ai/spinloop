@@ -67,7 +67,7 @@
   case-insensitively; an unmatched name fails listing what the repo offers.
 - [ ] 4.4 Derive the alias from the repo name: lower-cased, with a trailing
   `-GGUF`/`-MLX` packaging suffix removed.
-- [ ] 4.5 Build the `outfit.Selection`: provider, the `MODEL` per the design's
+- [ ] 4.5 Build the `spinloop.Selection`: provider, the `MODEL` per the design's
   engine table (cached path for `llamacpp`, repo reference otherwise), alias,
   context from the declared window, and no `OUTPUT`.
 - [ ] 4.6 Return the reasoning alongside the selection (provider and why, quant
@@ -79,26 +79,26 @@
 
 ## 5. The command
 
-- [ ] 5.1 Add `cmd/outfit/hf.go` with `cmdHF`: flags `-p/--provider`,
+- [ ] 5.1 Add `cmd/spinloop/hf.go` with `cmdHF`: flags `-p/--provider`,
   `-q/--quant`, `-c/--context`, `-a/--alias`, `-o/--output-file`, `--force`,
   `--no-cache`, `--apply`, `-H/--harness`; no output-tokens flag. Register
   `case "hf":` in `run`'s switch in `main.go` (the command body stays out of
   `main.go` so the dispatch-coverage scan sees only that switch).
-- [ ] 5.2 Render the selection with `outfit.Format` to stdout; write the
+- [ ] 5.2 Render the selection with `spinloop.Format` to stdout; write the
   reasoning to stderr.
-- [ ] 5.3 Implement `-o`: write the rendered Outfit to the path, report where it
+- [ ] 5.3 Implement `-o`: write the rendered Spinloop to the path, report where it
   went, and refuse to overwrite an existing file unless `--force` is given.
 - [ ] 5.4 Implement `--apply`: route the resolved selection through
   `applySelection`, honouring `--harness`/`-H`.
 - [ ] 5.5 Fail with usage when no reference is given.
-- [ ] 5.6 Tests in `cmd/outfit/hf_test.go` against a stub Hub and temp caches:
-  the printed Outfit round-trips through `outfit.Parse`, `-o` writes and refuses
+- [ ] 5.6 Tests in `cmd/spinloop/hf_test.go` against a stub Hub and temp caches:
+  the printed Spinloop round-trips through `spinloop.Parse`, `-o` writes and refuses
   to clobber, `--force` overwrites, `--apply` configures the harness, `--no-cache`
   forces the repo form, and stdout stays free of narration.
 
 ## 6. Completion, docs and checks
 
-- [ ] 6.1 Add `hf` to the `commands` table in `cmd/outfit/complete.go` with its
+- [ ] 6.1 Add `hf` to the `commands` table in `cmd/spinloop/complete.go` with its
   flags, provider-name candidates for `-p`, and a file directive for `-o`; check
   `TestCompletionCoversDispatch` passes.
 - [ ] 6.2 Write `docs/commands/hf.md`: the reference forms, each inference and
@@ -109,7 +109,7 @@
   `HUGGING_FACE_HUB_TOKEN`, `HF_HOME`, `HF_HUB_CACHE`, `HF_ENDPOINT` and
   `LLAMA_CACHE` in `docs/env-vars.md`, and add a quickstart line to the root
   `README.md`.
-- [ ] 6.4 Add an `internal/hf` entry and a `cmd/outfit/hf.go` note to AGENTS.md's
+- [ ] 6.4 Add an `internal/hf` entry and a `cmd/spinloop/hf.go` note to AGENTS.md's
   Layout, plus a Traps entry for the two caches being separate (a model
   downloaded by `llama-server` is not in the Hugging Face cache, and vice versa).
 - [ ] 6.5 Run `gofmt -w ./...`, `go vet ./...` and `go test ./... -cover`,
