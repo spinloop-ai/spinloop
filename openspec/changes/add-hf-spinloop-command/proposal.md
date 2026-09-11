@@ -78,11 +78,12 @@ cached-file `MODEL` is the local-path form `serve` already understands.
   resolution, cache lookup, and the inference rules that turn a repo into a
   `Selection`. A leaf package — stdlib only, importing nothing of ours but
   `internal/contextsize`.
-- New `cmd/spinloop/hf.go` holding the command and its flag set, kept out of
-  `main.go` for the same reason `serve.go` is (the dispatch-coverage scan reads
-  `main.go`'s switch).
-- `cmd/spinloop/complete.go` gains the command, its flags and provider-name
-  completion for `-p`; `TestCompletionCoversDispatch` requires it.
+- New `cmd/spinloop/hf.go` holding the `hfCmd` constructor and its flag set,
+  added to `newRootCmd`'s `AddCommand` list in `commands.go`.
+- `cmd/spinloop/complete.go` supplies what the tree cannot: provider-name
+  completion for `-p` (the `compProviders` `add` uses), a file completion for
+  `-o`, and a no-candidate slot for the reference; `TestCompletionCoversTree`
+  walks the tree so the completions cannot drift from it.
 - Docs: a new `docs/commands/hf.md`, entries in `docs/README.md` and
   `docs/env-vars.md` (`HF_TOKEN`, `HF_HOME`, `HF_HUB_CACHE`, `LLAMA_CACHE`),
   a README quickstart line, and an `AGENTS.md` layout entry.

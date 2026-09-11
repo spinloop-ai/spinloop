@@ -79,11 +79,10 @@
 
 ## 5. The command
 
-- [ ] 5.1 Add `cmd/spinloop/hf.go` with `cmdHF`: flags `-p/--provider`,
+- [ ] 5.1 Add `cmd/spinloop/hf.go` with `hfCmd()`: flags `-p/--provider`,
   `-q/--quant`, `-c/--context`, `-a/--alias`, `-o/--output-file`, `--force`,
-  `--no-cache`, `--apply`, `-H/--harness`; no output-tokens flag. Register
-  `case "hf":` in `run`'s switch in `main.go` (the command body stays out of
-  `main.go` so the dispatch-coverage scan sees only that switch).
+  `--no-cache`, `--apply`, `-H/--harness`; no output-tokens flag. Add
+  `hfCmd()` to `newRootCmd`'s `AddCommand` list in `commands.go`.
 - [ ] 5.2 Render the selection with `spinloop.Format` to stdout; write the
   reasoning to stderr.
 - [ ] 5.3 Implement `-o`: write the rendered Spinloop to the path, report where it
@@ -98,9 +97,10 @@
 
 ## 6. Completion, docs and checks
 
-- [ ] 6.1 Add `hf` to the `commands` table in `cmd/spinloop/complete.go` with its
-  flags, provider-name candidates for `-p`, and a file directive for `-o`; check
-  `TestCompletionCoversDispatch` passes.
+- [ ] 6.1 Name the command's value completions the way `addCmd` does —
+  `compRegister` with `compProviders` for `provider`, a file completion for
+  `output-file`, and a no-candidate, no-file slot for the reference — and
+  check `TestCompletionCoversTree` passes.
 - [ ] 6.2 Write `docs/commands/hf.md`: the reference forms, each inference and
   how to override it, the quant preference order, cache behaviour and
   `--no-cache`, token setup, and an explicit note that `-o` here is the output
@@ -109,8 +109,9 @@
   `HUGGING_FACE_HUB_TOKEN`, `HF_HOME`, `HF_HUB_CACHE`, `HF_ENDPOINT` and
   `LLAMA_CACHE` in `docs/env-vars.md`, and add a quickstart line to the root
   `README.md`.
-- [ ] 6.4 Add an `internal/hf` entry and a `cmd/spinloop/hf.go` note to AGENTS.md's
-  Layout, plus a Traps entry for the two caches being separate (a model
-  downloaded by `llama-server` is not in the Hugging Face cache, and vice versa).
+- [ ] 6.4 Add an `internal/hf` entry and a `cmd/spinloop/hf.go` note to
+  AGENTS.md's Layout, plus a gotchas entry in `docs/internals.md` for the two
+  caches being separate (a model downloaded by `llama-server` is not in the
+  Hugging Face cache, and vice versa).
 - [ ] 6.5 Run `gofmt -w ./...`, `go vet ./...` and `go test ./... -cover`,
   keeping total coverage at or above 80%.
