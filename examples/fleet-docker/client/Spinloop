@@ -4,9 +4,8 @@
 #
 # Note the missing BASEURL. The whole point is that spinloop picks a node and
 # fills the address in; a Spinloop that states one is taken at its word and
-# never routed.
+# never routed. The fleet file is named at launch (--fleet), not here.
 PROVIDER llamacpp
 MODEL    org/fake-model
 ALIAS    fake-model
 CONTEXT  4096
-FLEET    ../fleet.yaml

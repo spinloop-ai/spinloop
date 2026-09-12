@@ -17,8 +17,8 @@ spinloop fleet deploy --all    # create every kind: remote node's AWS environmen
 ```
 
 A fleet is also where [`spinloop harness`](harness.md#launching-against-your-fleet)
-sends an agent: a Spinloop naming a `FLEET` picks a node and launches against it,
-so the machine you are sitting at needs no engine of its own.
+sends an agent: a launch routed through a fleet file picks a node and launches
+against it, so the machine you are sitting at needs no engine of its own.
 
 ## Try it without any hardware
 
@@ -224,16 +224,17 @@ the launch queries no node and wakes none:
 ```yaml
 nodes: …
 gateway:
-  url: http://gateway.internal:4000   # required, with a scheme, like a FLEET endpoint
+  url: http://gateway.internal:4000   # required, with a scheme
   tokenEnv: GATEWAY_TOKEN             # optional; OPENAI_API_KEY when absent
 ```
 
-A launch through such a file is dressed exactly as a launch whose `FLEET`
-names an endpoint: the section's address is the agent's base URL, and the
-token is resolved from the variable the section names — `OPENAI_API_KEY` when
-it names none — the way a key is resolved elsewhere: an `ENV` instruction,
-then the process environment, then the `.env` beside the Spinloop. A variable
-set nowhere fails the launch before anything is written, naming the variable.
+A launch through such a file is pointed at the section's address — the agent's
+base URL, with the OpenAI-compatible `/v1` prefix added when it carries no path
+— and the token is resolved from the variable the section names —
+`OPENAI_API_KEY` when it names none — the way a key is resolved elsewhere: an
+`ENV` instruction, then the process environment, then the `.env` beside the
+Spinloop. A variable set nowhere fails the launch before anything is written,
+naming the variable.
 As with a node's choice, the launch reports the address on stderr before the
 agent starts.
 
@@ -556,10 +557,10 @@ Use it to check a route before an agent depends on it, to see what the other
 
 `spinloop fleet harness` is the fleet-level form of a
 [harness launch](harness.md#launching-against-your-fleet): the fleet file comes
-from the command — `--fleet`, or the `fleet.yaml` beside it — rather than from
-the Spinloop's `FLEET`, which stands in when `--fleet` is not given. A fleet
-file that names a [gateway](#gateway) points the agent there, so the address
-lives in the file, not in every Spinloop:
+from the command — `--fleet`, or the `fleet.yaml` in the working directory —
+never from the Spinloop. A fleet file that names a
+[gateway](#gateway) points the agent there, so the address lives in the file,
+not in every Spinloop:
 
 ```sh
 spinloop fleet harness                  # the Spinloop and fleet.yaml beside it

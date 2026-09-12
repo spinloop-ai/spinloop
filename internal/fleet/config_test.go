@@ -686,9 +686,7 @@ gateway:
 	}
 }
 
-// A section that names no tokenEnv resolves under the endpoint FLEET's
-// variable, so moving a launch from an endpoint to a section changes nothing
-// the client has to export.
+// A section that names no tokenEnv resolves under the default variable.
 func TestGatewaySectionTokenDefaults(t *testing.T) {
 	path := writeFleet(t, `
 nodes:

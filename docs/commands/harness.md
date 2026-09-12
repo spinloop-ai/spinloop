@@ -61,7 +61,7 @@ variable chooses which Spinloop, never whether you are configured. See
 | `--set` | Store the default harness and exit |
 | `--get` | Print the active harness instead of launching |
 | `--providers` | Path to a custom catalogue, for the applied Spinloop |
-| `-f`, `--fleet` | Route through this fleet file (overrides the Spinloop's `FLEET`) |
+| `-f`, `--fleet` | Route through this fleet file (default: `./fleet.yaml`, when the Spinloop is not named) |
 | `--node` | Pin the launch to one fleet node |
 | `--prefer` | Rank fleet nodes by `idle` or `active` (overrides the fleet file) |
 | `--no-wake` | Fail rather than starting an engine on an idle fleet node |
@@ -69,14 +69,18 @@ variable chooses which Spinloop, never whether you are configured. See
 
 ## Launching against your fleet
 
-A Spinloop with a [`FLEET`](../spinloop-file.md#running-the-model-on-another-machine-you-own)
-instruction sends the agent to a machine on your network instead of a local
-engine:
+A fleet file sends the agent to a machine on your network instead of a local
+engine. Which one a launch routes through is a launch concern, not a Spinloop
+field: `--fleet <path>` names it explicitly, and without the flag a Spinloop you
+did not name — the default `./Spinloop`, worn by a valueless `-O` — takes the
+`fleet.yaml` in the working directory. A Spinloop you did name — a path, a `-O`
+value, or the alias `SPINLOOP_ALIAS` names — routes only by flag. See
+[fleet files](../spinloop-file.md#running-the-model-on-another-machine-you-own).
 
 ```sh
-spinloop harness my-spinloop          # picks a node, launches the agent at it
-spinloop harness --node gpu-box my-spinloop
-spinloop harness --prefer active my-spinloop
+spinloop harness -O -f fleet.yaml     # valueless -O wears ./Spinloop; routes through fleet.yaml
+spinloop harness --node gpu-box -f fleet.yaml
+spinloop harness --prefer active -f fleet.yaml
 ```
 
 spinloop queries the fleet, prefers a node already serving the Spinloop's model,
@@ -97,8 +101,8 @@ takes the machine that has been quiet longest, keeping a second agent off an
 engine that is mid-request; `active` consolidates onto the busy one instead.
 
 [`spinloop fleet harness`](fleet.md#launching-the-harness) is the fleet-level
-form of this launch: the fleet file comes from the command rather than from the
-Spinloop's `FLEET`, and a fleet file that names a
+form of this launch: the fleet file comes from the command — `-f`, or the
+`fleet.yaml` beside it — and a fleet file that names a
 [gateway](fleet.md#gateway) points the agent there, so the address lives in the
 file, not in every Spinloop.
 

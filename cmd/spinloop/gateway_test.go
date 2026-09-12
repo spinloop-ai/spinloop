@@ -15,7 +15,7 @@ import (
 )
 
 // The gateway starts with the fleet file it serves and answers, and its
-// banner names the address a Spinloop puts in its FLEET.
+// banner names the address a fleet file's gateway section puts in.
 func TestGatewayStartsAndAnswers(t *testing.T) {
 	isolateConfig(t)
 	t.Setenv("SPINLOOP_API_TOKEN", "")
@@ -38,7 +38,7 @@ func TestGatewayStartsAndAnswers(t *testing.T) {
 
 	port := ln.Addr().(*net.TCPAddr).Port
 	if !strings.Contains(out, "http://127.0.0.1:"+fmt.Sprint(port)) {
-		t.Errorf("the banner should name the address to put in a Spinloop's FLEET, got:\n%s", out)
+		t.Errorf("the banner should name the address to put in the fleet file's gateway section, got:\n%s", out)
 	}
 
 	client := &http.Client{Timeout: 2 * time.Second}
@@ -50,8 +50,8 @@ func TestGatewayStartsAndAnswers(t *testing.T) {
 		t.Errorf("health answered %d", resp.StatusCode)
 	}
 
-	// The printed address is the one a Spinloop's FLEET names: asking it for
-	// the fleet's models gets the running node's.
+	// The printed address is the one the fleet file's gateway section names:
+	// asking it for the fleet's models gets the running node's.
 	resp, err = client.Get(fmt.Sprintf("http://127.0.0.1:%d/v1/models", port))
 	if err != nil {
 		t.Fatalf("models: %v", err)

@@ -547,11 +547,14 @@ When no node would be chosen, it SHALL report each node's state and the reason
 it was passed over, and SHALL name what would happen on a real launch: which
 node would be woken, or that none could serve it.
 
-The Spinloop and the fleet file SHALL resolve as they do for a launch: the Spinloop
-path defaults to `./Spinloop`, and `--fleet` overrides the Spinloop's `FLEET`. It
-SHALL accept `--prefer` and `--node` as a launch does, and SHALL name the
-activity preference in force — comparing the two preferences on a live fleet is
-the cheapest way to decide which one a fleet should be run with.
+The Spinloop and the fleet file SHALL resolve as they do for a launch: the
+Spinloop path defaults to `./Spinloop`, the fleet file comes from
+`--fleet`/`-f`, and a Spinloop the user did not name explicitly picks up a
+`./fleet.yaml` in the working directory. It SHALL accept `--prefer` and
+`--node` as a launch does, and SHALL name the activity preference in force —
+comparing the two preferences on a live fleet is the cheapest way to decide
+which one a fleet should be run with. With no fleet file in force, the command
+SHALL fail naming `--fleet`.
 
 #### Scenario: The chosen node is explained
 
@@ -579,6 +582,13 @@ the cheapest way to decide which one a fleet should be run with.
 - **WHEN** `spinloop fleet route` runs and no node is serving the model but one
   could
 - **THEN** it names the node a launch would wake, and does not wake it
+
+#### Scenario: No fleet file names the flag
+
+- **WHEN** `spinloop fleet route` runs on an explicitly named Spinloop in a
+  directory holding no `fleet.yaml`, passing no `--fleet`
+- **THEN** it fails saying there is no fleet file to route through, and names
+  `--fleet`
 
 ### Requirement: Fleet dashboard
 
@@ -1541,28 +1551,25 @@ the sweep has already moved past as though the node were still held.
 - **THEN** the detail screen's deadline line is the same line, worded the
    same, the tile draws for the same read
 
-### Requirement: A fleet harness command
+### Requirement: The fleet harness command
 
 `spinloop fleet harness` SHALL configure the active harness for a fleet and
-launch it: the fleet-level form of a fleet-routed launch, in which the fleet
-file comes from the command rather than from a Spinloop's `FLEET`. The command
-SHALL take a Spinloop the way `spinloop harness` does — an
+launch it: the fleet-level form of a launch routed through a fleet, in which
+the fleet file comes from the command rather than from the Spinloop. The
+command SHALL take a Spinloop the way `spinloop harness` does — an
 `-O`/`--spinloop` argument, a leading alias or path, or the `Spinloop` beside
 it — and a fleet file from `--fleet`/`-f`, defaulting to the `fleet.yaml`
 beside it.
 
-The command SHALL route the launch the way a fleet-routed launch routes: at
-the gateway where the effective fleet file names one, otherwise by choosing a
-node and, where the fleet's wake policy allows it, waking one — honouring
-`--node`, `--prefer`, `--no-wake` and `--wake-timeout` as the launch does. The
-choice SHALL be reported on stderr before the harness launches, as a
-fleet-routed launch reports its choice.
+The command SHALL route the launch the way a launch routed through a fleet
+routes: at the gateway where the effective fleet file names one, otherwise by
+choosing a node and, where the fleet's wake policy allows it, waking one —
+honouring `--node`, `--prefer`, `--no-wake` and `--wake-timeout` as the launch
+does. The choice SHALL be reported on stderr before the harness launches, as a
+launch routed through a fleet reports its choice.
 
-Where the command is given no `-f`, a Spinloop that names a `FLEET` — a file
-or an endpoint — SHALL be used, exactly as `--fleet` overrides an instruction
-on `spinloop harness`; an explicit `-f` SHALL win over the instruction. A
-Spinloop that pins a `BASEURL` SHALL NOT be routed, and a variable already set
-in spinloop's environment SHALL win, in each case as on the launch path. A
+A Spinloop that pins a `BASEURL` SHALL NOT be routed, and a variable already
+set in spinloop's environment SHALL win, in each case as on the launch path. A
 command with no Spinloop to route SHALL fail before launching, saying that a
 launch needs a Spinloop to know which model to route.
 
@@ -1579,12 +1586,12 @@ launch needs a Spinloop to know which model to route.
 - **WHEN** the user runs `spinloop fleet harness` against a fleet file that
   names no gateway, and a node is running the Spinloop's model
 - **THEN** the harness is applied with that node's engine as the agent's
-  endpoint, as a fleet-routed launch would apply it
+  endpoint, as a launch routed through a fleet would apply it
 
-#### Scenario: The command's file wins over the Spinloop's FLEET
+#### Scenario: The command's file wins over the fleet file beside it
 
-- **WHEN** the user runs `spinloop fleet harness -f ./a.yaml` with a Spinloop
-  whose `FLEET` names a different file
+- **WHEN** the user runs `spinloop fleet harness -f ./a.yaml` in a directory
+  holding a `./fleet.yaml`
 - **THEN** the fleet in `./a.yaml` is the one the launch routes through
 
 #### Scenario: No Spinloop, no route

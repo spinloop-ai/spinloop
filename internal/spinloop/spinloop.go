@@ -15,7 +15,6 @@
 //	BASEURL  https://gateway/v1         # optional; API base URL override
 //	PRESET   ./preset.ini               # optional; llama.cpp preset for `serve`
 //	REMOTE   ./remote.json              # optional; remote-instance config for `remote`
-//	FLEET    ./fleet.yaml               # optional; the fleet a harness launch routes through
 //	ENV      AWS_PROFILE=dev            # optional, repeatable; local env var
 //
 // MODEL is the reference the provider itself understands: an OpenRouter/Bedrock
@@ -59,10 +58,6 @@ type Selection struct {
 	// local-serving capability for how it and Context translate into each
 	// engine's own flags.
 	Parallel string
-	// Fleet is the FLEET instruction's value: a path to a fleet file whose
-	// nodes a launch chooses between, or a URL naming an endpoint that has
-	// already chosen (see FleetIsEndpoint).
-	Fleet string
 	// DisplayName is the harness provider's display name, derived at apply time
 	// rather than parsed from a Spinloop — like BaseURL, it may be filled from the
 	// remote environment. It is set only when a REMOTE renames the provider, to
@@ -92,7 +87,6 @@ const (
 	kwBaseURL  = "baseurl"
 	kwPreset   = "preset"
 	kwRemote   = "remote"
-	kwFleet    = "fleet"
 	kwEnv      = "env"
 )
 
@@ -101,7 +95,7 @@ const (
 // "" for an unrecognised keyword.
 func canonicalKeyword(kw string) string {
 	switch kw {
-	case kwProvider, kwModel, kwAlias, kwContext, kwOutput, kwParallel, kwPreset, kwRemote, kwFleet, kwEnv:
+	case kwProvider, kwModel, kwAlias, kwContext, kwOutput, kwParallel, kwPreset, kwRemote, kwEnv:
 		return kw
 	case kwBaseURL, "base-url", "base_url", "url":
 		return kwBaseURL
@@ -129,7 +123,7 @@ func Parse(data []byte) (Selection, error) {
 		fields := strings.Fields(text)
 		canon := canonicalKeyword(strings.ToLower(fields[0]))
 		if canon == "" {
-			return Selection{}, fmt.Errorf("line %d: unknown keyword %q (expected PROVIDER, MODEL, ALIAS, CONTEXT, OUTPUT, PARALLEL, BASEURL, PRESET, REMOTE, FLEET, or ENV)", line, fields[0])
+			return Selection{}, fmt.Errorf("line %d: unknown keyword %q (expected PROVIDER, MODEL, ALIAS, CONTEXT, OUTPUT, PARALLEL, BASEURL, PRESET, REMOTE, or ENV)", line, fields[0])
 		}
 		switch {
 		case len(fields) < 2:
@@ -175,8 +169,6 @@ func Parse(data []byte) (Selection, error) {
 			sel.Preset = value
 		case kwRemote:
 			sel.Remote = value
-		case kwFleet:
-			sel.Fleet = value
 		}
 	}
 	if err := scanner.Err(); err != nil {
@@ -186,26 +178,7 @@ func Parse(data []byte) (Selection, error) {
 	if sel.Provider == "" {
 		return Selection{}, fmt.Errorf("Spinloop is missing a PROVIDER instruction")
 	}
-	// REMOTE and FLEET are two different answers to where the model is served
-	// from — a deployed endpoint, or a machine on your network. A Spinloop
-	// stating both is a mistake rather than a precedence to resolve. BASEURL is
-	// not in conflict: it is the pinned address that already wins over REMOTE,
-	// and it wins over FLEET the same way.
-	if sel.Remote != "" && sel.Fleet != "" {
-		return Selection{}, fmt.Errorf(
-			"Spinloop sets both REMOTE (line %d) and FLEET (line %d): each names where the model is served from, so state one",
-			seen[kwRemote], seen[kwFleet])
-	}
 	return sel, nil
-}
-
-// FleetIsEndpoint reports whether a FLEET value names an endpoint that has
-// already chosen a node — a gateway — rather than a fleet file to choose from.
-// A value carrying a scheme is an endpoint; anything else is a path. Keeping
-// both behind one instruction is what lets a gateway slot in later without a
-// second keyword.
-func (s Selection) FleetIsEndpoint() bool {
-	return strings.Contains(s.Fleet, "://")
 }
 
 // stripComment removes a comment from a Spinloop line. A line whose first
@@ -242,7 +215,6 @@ func Format(sel Selection) string {
 	line("BASEURL", sel.BaseURL)
 	line("PRESET", sel.Preset)
 	line("REMOTE", sel.Remote)
-	line("FLEET", sel.Fleet)
 	for _, e := range sel.Env {
 		line("ENV", e.Key+"="+e.Value)
 	}

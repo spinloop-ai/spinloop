@@ -99,9 +99,9 @@ func TestCmdFleetHarnessRoutesToANode(t *testing.T) {
 	}
 }
 
-// -f beats the Spinloop's FLEET: the section in the named file is where the
-// agent is pointed, not the endpoint the Spinloop names.
-func TestCmdFleetHarnessFileFlagBeatsTheSpinloopsFleet(t *testing.T) {
+// -f beats the fleet.yaml beside the command: the section in the named file is
+// where the agent is pointed, not the one in the working directory.
+func TestCmdFleetHarnessFileFlagBeatsTheCwdFleet(t *testing.T) {
 	isolateConfig(t)
 	t.Setenv("OPENAI_API_KEY", "gw-token")
 	t.Setenv("OPENAI_BASE_URL", "")
@@ -111,9 +111,11 @@ func TestCmdFleetHarnessFileFlagBeatsTheSpinloopsFleet(t *testing.T) {
 
 	fleetPath := fleetFileIn(t, t.TempDir(),
 		"nodes:\n  - name: dead\n    host: 127.0.0.1\n    port: 1\ngateway:\n  url: http://b.internal:4000\n")
-	spinloopDir := routedSpinloop(t, "qwen3-27b", "http://a.internal:4000")
+	fleetHarnessDir(t,
+		"nodes:\n  - name: dead\n    host: 127.0.0.1\n    port: 1\ngateway:\n  url: http://a.internal:4000\n",
+		"PROVIDER llamacpp\nMODEL qwen3-27b\n")
 	captureStdout(t, func() {
-		if err := cmdFleetHarness([]string{"-f", fleetPath, filepath.Join(spinloopDir, "Spinloop")}); err != nil {
+		if err := cmdFleetHarness([]string{"-f", fleetPath}); err != nil {
 			t.Fatalf("cmdFleetHarness: %v", err)
 		}
 	})
@@ -123,31 +125,6 @@ func TestCmdFleetHarnessFileFlagBeatsTheSpinloopsFleet(t *testing.T) {
 	}
 	if !strings.Contains(string(data), "BASE=http://b.internal:4000/v1") {
 		t.Errorf("the command's file should be the one routed through, got:\n%s", data)
-	}
-}
-
-// With no -f, the Spinloop's FLEET — an endpoint here — is used, exactly as
-// --fleet overrides an instruction on spinloop harness.
-func TestCmdFleetHarnessSpinloopFleetIsUsedWithoutAFlag(t *testing.T) {
-	isolateConfig(t)
-	t.Setenv("OPENAI_API_KEY", "gw-token")
-	t.Setenv("OPENAI_BASE_URL", "")
-	argsFile := filepath.Join(t.TempDir(), "args")
-	envFile := filepath.Join(t.TempDir(), "env")
-	stubHarnessBinaryWithEnv(t, argsFile, envFile)
-
-	spinloopDir := routedSpinloop(t, "qwen3-27b", "http://a.internal:4000")
-	captureStdout(t, func() {
-		if err := cmdFleetHarness([]string{filepath.Join(spinloopDir, "Spinloop")}); err != nil {
-			t.Fatalf("cmdFleetHarness: %v", err)
-		}
-	})
-	data, err := os.ReadFile(envFile)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(data), "BASE=http://a.internal:4000/v1") {
-		t.Errorf("without -f the Spinloop's FLEET should be routed through, got:\n%s", data)
 	}
 }
 

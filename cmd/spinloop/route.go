@@ -1,8 +1,8 @@
-// Routing a launch through the fleet: turning a Spinloop's FLEET into the node
-// the agent talks to. It sits beside the remote path in main.go — both answer
-// "where does this agent send its requests", one by asking a control plane and
-// one by choosing a machine — and it runs before the apply for the same reason
-// the remote fetch does: a failed route must leave the harness config alone.
+// Routing a launch through the fleet: choosing the node the agent talks to. It
+// sits beside the remote path in main.go — both answer "where does this agent
+// send its requests", one by asking a control plane and one by choosing a
+// machine — and it runs before the apply for the same reason the remote fetch
+// does: a failed route must leave the harness config alone.
 
 package main
 
@@ -12,7 +12,6 @@ import (
 	"fmt"
 	"net/url"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -23,8 +22,12 @@ import (
 // routeOptions is what the launch flags say about routing. They are inert
 // unless something names a fleet.
 type routeOptions struct {
-	// fleetPath overrides the Spinloop's FLEET.
+	// fleetPath is the fleet file to route through when given.
 	fleetPath string
+	// spinloopNamed says the worn Spinloop was named by the user — a
+	// positional argument, a --spinloop value, or SPINLOOP_ALIAS — so a
+	// fleet.yaml in the working directory is not picked up for it.
+	spinloopNamed bool
 	// node pins the selection to one node.
 	node string
 	// prefer overrides the fleet file's activity preference.
@@ -35,13 +38,22 @@ type routeOptions struct {
 	wakeTimeout time.Duration
 }
 
-// fleetTarget is the fleet a launch routes through: the flag when given,
-// otherwise the Spinloop's own FLEET. Empty means this launch does not route.
-func (o routeOptions) fleetTarget(sel spinloop.Selection) string {
+// fleetFile is the fleet file a launch routes through: the flag's path when
+// given, otherwise the fleet.yaml in the working directory when the worn
+// Spinloop was not named explicitly — a named Spinloop travels to its fleet
+// only by flag, and a working directory with no fleet.yaml gives no fleet at
+// all. Both sources are working-directory paths.
+func (o routeOptions) fleetFile() string {
 	if o.fleetPath != "" {
 		return o.fleetPath
 	}
-	return sel.Fleet
+	if o.spinloopNamed {
+		return ""
+	}
+	if _, err := os.Stat(fleet.DefaultFile); err == nil {
+		return fleet.DefaultFile
+	}
+	return ""
 }
 
 // routeThroughFleet chooses the node an agent will talk to, waking one when
@@ -53,7 +65,7 @@ func (o routeOptions) fleetTarget(sel spinloop.Selection) string {
 // way. Saying so matters — silently selecting a node whose address is then
 // discarded would be a puzzle rather than a behaviour.
 func routeThroughFleet(sel spinloop.Selection, spinloopPath string, opts routeOptions) (*fleet.Choice, error) {
-	target := opts.fleetTarget(sel)
+	target := opts.fleetFile()
 	if target == "" {
 		return nil, nil
 	}
@@ -62,28 +74,14 @@ func routeThroughFleet(sel spinloop.Selection, spinloopPath string, opts routeOp
 			"Not routing through %s: this Spinloop pins BASEURL %s.\n", target, sel.BaseURL)
 		return nil, nil
 	}
-	// A FLEET naming a URL is the gateway shape: it has already done the
-	// choosing, so there is no fleet file to read and no node to contact. The
-	// token is not resolved here: applyBeforeLaunch resolves it through the
-	// same chain the launch uses, so a missing value fails before anything is
-	// written.
-	if isEndpoint(target) {
-		return &fleet.Choice{
-			Gateway: true,
-			BaseURL: endpointBaseURL(target),
-			Reason:  "FLEET names an endpoint",
-		}, nil
-	}
-
-	cfg, err := fleet.Resolve(resolveFleetPath(target, opts.fleetPath != "", spinloopPath))
+	cfg, err := fleet.Resolve(target)
 	if err != nil {
 		return nil, err
 	}
-	// A fleet file that names a gateway routes the way an endpoint FLEET
-	// does: the gateway has already done the choosing, so there is no node to
-	// contact and nothing to wake. The token is not resolved here: the launch
-	// resolves it through the same chain, under the variable the section
-	// names.
+	// A fleet file that names a gateway routes at the gateway rather than a
+	// node: it has already done the choosing, so there is no node to contact
+	// and nothing to wake. The token is not resolved here: the launch resolves
+	// it through the same chain, under the variable the section names.
 	if gw, ok := cfg.GatewaySection(); ok {
 		choice := &fleet.Choice{
 			Gateway:         true,
@@ -170,34 +168,14 @@ func announceChoice(c *fleet.Choice) {
 	fmt.Fprintf(os.Stderr, "Using %s at %s — %s\n", c.Node.Name, c.BaseURL, c.Reason)
 }
 
-// endpointBaseURL is the address a launch gives an agent for a FLEET that names
-// an endpoint: the value as given when it carries a path, and the OpenAI-
-// compatible prefix added when it does not, so FLEET http://gw:4000 points the
-// agent at http://gw:4000/v1.
+// endpointBaseURL is the address a launch gives an agent for a gateway: the
+// value as given when it carries a path, and the OpenAI-compatible prefix
+// added when it does not, so a gateway at http://gw:4000 points the agent at
+// http://gw:4000/v1.
 func endpointBaseURL(target string) string {
 	u, err := url.Parse(target)
 	if err != nil || (u.Path != "" && u.Path != "/") {
 		return target
 	}
 	return strings.TrimRight(target, "/") + "/v1"
-}
-
-// resolveFleetPath resolves a fleet file's path. A relative FLEET is resolved
-// against the Spinloop that names it, the same rule PRESET and REMOTE follow — an
-// Spinloop and the fleet beside it travel together, and resolving against the
-// working directory would make the same Spinloop work from one directory and not
-// another. A path given on the command line is the user's own, so it is
-// resolved against the working directory as any other argument would be.
-func resolveFleetPath(target string, fromFlag bool, spinloopPath string) string {
-	if fromFlag || spinloopPath == "" || filepath.IsAbs(target) {
-		return target
-	}
-	return filepath.Join(filepath.Dir(spinloopPath), target)
-}
-
-// isEndpoint reports whether a FLEET value names an endpoint rather than a
-// file. It mirrors spinloop.Selection.FleetIsEndpoint for a value that came from
-// a flag rather than a Spinloop.
-func isEndpoint(target string) bool {
-	return strings.Contains(target, "://")
 }
