@@ -9,7 +9,11 @@
 
 package main
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/spinloop-ai/spinloop/internal/daemon"
+)
 
 // statusFact is the shared status view: the facts both status commands have in
 // common. A command fills it from its own native reply and reads the shared text
@@ -22,6 +26,11 @@ type statusFact struct {
 	UptimeSeconds int
 	LastActiveAt  string
 	IdleSeconds   int
+	// Ready is the daemon's readiness reading, daemon.ReadyYes or
+	// daemon.ReadyNo, empty when none applies. Only ReadyNo is rendered: a
+	// running engine that has answered is the ordinary case and needs no mark,
+	// and an absent reading is not evidence of anything to report.
+	Ready string
 }
 
 // servingText is the "what it serves" text: runner and model, then the uptime and
@@ -39,6 +48,13 @@ func (f statusFact) servingText() string {
 		} else {
 			serving = f.Runner + "  " + serving
 		}
+	}
+	// A node whose engine process is up but has not answered its health check
+	// is not servable yet, however long its uptime says it has been running.
+	// Shown next to the model, before the timings, because it changes what the
+	// rest of the row means.
+	if f.Ready == daemon.ReadyNo {
+		serving += "  (not ready)"
 	}
 	if f.UptimeSeconds > 0 {
 		serving += fmt.Sprintf("  (up %s)", formatDuration(f.UptimeSeconds))

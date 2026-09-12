@@ -1,0 +1,390 @@
+# fleet-gateway Specification
+
+## Purpose
+One OpenAI-compatible endpoint in front of a fleet: a foreground process that
+answers agent requests by choosing a node with the fleet's own selector, holds
+each node's engine key, and wakes a node when nothing is serving what a request
+asks for — so a machine running an agent needs nothing but a URL and one token.
+
+## Requirements
+
+### Requirement: The gateway command
+
+`spinloop gateway` SHALL run in the foreground, the way `spinloop serve` does,
+holding the fleet file it serves: `--fleet <path>` (with the `-f <path>` short
+form) when given, otherwise `./fleet.yaml` in the working directory, and a
+missing file SHALL fail naming the expected path, as the fleet commands do.
+The gateway SHALL listen on an address given by `--listen`, defaulting to
+port 4000 on all interfaces, and SHALL print the address to name in a fleet
+file's `gateway` section when it starts.
+
+The gateway's own startup failures SHALL be the fleet file's: a fleet file that
+does not parse, or that names a token variable set nowhere, SHALL fail the
+gateway at startup naming the problem, rather than listening and failing per
+request.
+
+#### Scenario: The gateway starts and answers
+
+- **WHEN** the user runs `spinloop gateway --listen :4000` in a directory
+  holding a `fleet.yaml`
+- **THEN** it prints the address to name in the fleet file's `gateway` section
+  and serves requests until it is stopped
+
+#### Scenario: An explicit fleet file is served
+
+- **WHEN** the gateway is given a `--fleet` path
+- **THEN** that file is the one it serves
+
+#### Scenario: A missing fleet file names itself
+
+- **WHEN** the user runs `spinloop gateway` in a directory holding no
+  `fleet.yaml` and passes no `--fleet`
+- **THEN** it fails naming `./fleet.yaml`, and nothing listens
+
+#### Scenario: A broken fleet file fails at startup
+
+- **WHEN** the gateway's fleet file names a token variable that is set nowhere
+- **THEN** the gateway fails at startup naming the node and the variable,
+  rather than listening
+
+### Requirement: Caller authentication
+
+The gateway SHALL authenticate callers with one bearer token, on the same
+terms the daemon's control API authenticates: the token MAY be supplied by a
+file (`--api-token-file`), the environment (`SPINLOOP_API_TOKEN`), or the
+command line (`--api-token`); giving more than one SHALL fail naming the
+conflict. Requests without the correct token SHALL be rejected with `401`.
+When no token is configured, the gateway SHALL refuse to listen on a
+non-loopback address and SHALL say why, and listening on loopback without a
+token SHALL be allowed.
+
+The caller's token authorises use of the gateway only. It SHALL NOT be
+forwarded to a node's engine or control API: the gateway reaches a node with
+the node's own credentials, resolved from the fleet file the way every other
+fleet client does.
+
+#### Scenario: A wrong token is rejected
+
+- **WHEN** a request carries a missing or incorrect bearer token
+- **THEN** the response is `401` and no node is contacted
+
+#### Scenario: A tokenless non-loopback listen refuses to start
+
+- **WHEN** the gateway would listen on a non-loopback address and no token is
+  configured
+- **THEN** startup fails saying a token is required for non-loopback exposure,
+  naming every way one can be supplied
+
+#### Scenario: A tokenless loopback is permitted
+
+- **WHEN** the gateway listens on a loopback address with no token configured
+- **THEN** it serves requests without authentication
+
+#### Scenario: The caller's token stops at the gateway
+
+- **WHEN** an authenticated request is routed to a node
+- **THEN** the node is reached with the node's own credentials from the fleet
+  file, and the caller's token is not sent to it
+
+### Requirement: Listing the fleet's models
+
+The gateway SHALL serve `GET /v1/models` returning, in the OpenAI list shape,
+the union of the models a request can reach. For each node whose state is
+`running`, the list SHALL carry the name it reports serving — the served name
+when it reports one, otherwise the model id. When the fleet's wake allows
+starting an engine, the list SHALL additionally carry, for each node that is
+not running and answers its status, the model that node's own Spinloop source
+describes — the same served-name-first naming the wake would start it with —
+since a request naming that model starts that node. A running node SHALL
+contribute nothing but what it reports: a running engine is never displaced,
+so its source's model is not a request the gateway would answer from it. A
+node the gateway cannot start — a remote environment, which starts from
+`spinloop remote deploy`, not from a request — and a fleet whose wake is off
+SHALL contribute nothing beyond what is running, and duplicates SHALL be
+listed once. The source a node describes SHALL be resolved at most once in a
+short window shared by all models requests, so a burst does not re-read every
+node's source.
+
+#### Scenario: Running models are listed
+
+- **WHEN** two nodes are running, one serving a model under an alias and one
+  under its id, and a models request is made
+- **THEN** the response lists the alias and the id, each once
+
+#### Scenario: A stopped node's wakeable model is listed
+
+- **WHEN** a node is stopped, its own source describes a model, and the fleet
+  allows waking, and a models request is made
+- **THEN** the response lists the model the source describes, beside what the
+  running nodes serve
+
+#### Scenario: A stopped node's model is not listed when wake is off
+
+- **WHEN** a node is stopped and the fleet's wake is off, and a models request
+  is made
+- **THEN** the response lists only what the running nodes serve
+
+#### Scenario: A stopped remote environment's model is not listed
+
+- **WHEN** a remote environment is stopped and a models request is made
+- **THEN** the response does not list what its source describes: the gateway
+  cannot start it, so a request naming that model would fail
+
+#### Scenario: A running node's source adds no second model
+
+- **WHEN** a running node reports one model and its source describes another,
+  and a models request is made
+- **THEN** the response lists only what the node reports
+
+#### Scenario: A burst of models requests resolves each source once
+
+- **WHEN** several models requests arrive within the window in which a node's
+  source is resolved
+- **THEN** each node's source is read once for the burst
+
+#### Scenario: Nothing reachable lists nothing
+
+- **WHEN** no node is running and nothing is wakeable — no stopped node's
+  source describes a model, or the fleet's wake is off — and a models request
+  is made
+- **THEN** the response is an empty list, not an error
+
+### Requirement: Routing a request to a node
+
+The gateway SHALL serve `POST /v1/chat/completions` and `POST /v1/completions`
+by choosing a node and reverse-proxying the request to that node's engine. The
+choice SHALL be the fleet's own selection: every node's state is considered, a
+node matches when what it reports serving — its model id or its served name —
+equals the model the request names, and matching nodes are ranked by the fleet
+file's activity preference, ties broken by fleet-file order. A request naming
+no model SHALL be refused saying so, not routed at a guess.
+
+A node whose daemon reports the engine not ready SHALL NOT be selected: the
+state turns running when the engine's process exists, which is before the
+weights are fetched and loaded, and during that window nothing is listening on
+the engine's port. A node whose daemon reports no readiness at all SHALL NOT be
+disqualified: the absence of a reading is not evidence of not-readiness.
+
+When nothing is serving the model the request names, a node already running it
+whose engine has not answered yet SHALL be waited for rather than passed over:
+it is loading the weights the request needs, so it serves sooner than anything
+a wake would start from cold, and waking a second node would leave two engines
+up for one request. The wait SHALL be bounded by the wake timeout, SHALL name
+the node it holds the request for, and a node that does not answer in time
+SHALL fail the request naming it, leaving its engine running. Waiting is not
+waking: a fleet whose wake is off SHALL still hold a request for a node already
+loading the model it named, since no engine is being started.
+
+The request's body SHALL reach the chosen engine unmodified, and the engine's
+reply SHALL reach the caller unmodified, including a streamed reply, which the
+gateway SHALL pass through without holding it back. The gateway SHALL replace
+the caller's authorisation with the engine key it holds for that node — the
+value the node's fleet entry names, resolved the way every other fleet client
+resolves it — and SHALL send no authorisation at all to an engine that needs
+none. The gateway SHALL NOT retry a failed request at another node: the reply
+the chosen engine gives is the reply the caller gets.
+
+The engine's address SHALL be resolved the way routing resolves it: the node's
+declared engine override as given, otherwise the node's host with the port and
+path the engine reports. Where a node reports its engine's host — a remote
+environment, whose control plane publishes the instance's address and which the
+fleet file names by environment alone — that reported host SHALL be used in
+place of the node's host, so the request reaches the instance rather than an
+address the fleet file never held. A node that reports its engine bound to
+loopback, without an override taking responsibility for reachability, SHALL NOT
+be selected: it answers only on its own machine, and where no other node serves
+the wanted model the request SHALL fail saying so and naming the fix.
+
+The gateway SHALL reuse node state it has recently read — a reading taken
+within the last couple of seconds — rather than query every node on every
+request, so a burst of requests does not pay a fan-out each. The freshness of
+the reading SHALL NOT matter to the choice: the same fleet in the same state
+chooses the same node.
+
+Each routed request SHALL be logged as one line — the model, the node chosen,
+and the outcome — and the gateway SHALL log no request body.
+
+#### Scenario: A request goes to the node serving its model
+
+- **WHEN** one node is running the model a request names and another is
+  running a different model
+- **THEN** the request is proxied to the first node and the engine's reply
+  reaches the caller unmodified
+
+#### Scenario: The engine key is swapped, not the caller's token
+
+- **WHEN** a request is routed to a node whose engine is gated, and the node's
+  fleet entry names the key
+- **THEN** the engine receives the key's value as its authorisation, and the
+  caller's token is not sent to the engine
+
+#### Scenario: A streamed reply passes through
+
+- **WHEN** a streamed completion is requested and the chosen engine streams its
+  reply
+- **THEN** the caller receives the stream as the engine sent it
+
+#### Scenario: An engine error is the caller's error
+
+- **WHEN** the chosen engine refuses the request
+- **THEN** the engine's refusal reaches the caller and no other node is tried
+
+#### Scenario: A request naming no model is refused
+
+- **WHEN** a completion request carries no model
+- **THEN** it is refused saying the request names no model, and no node is
+  contacted
+
+#### Scenario: A loopback-bound engine is not selected
+
+- **WHEN** the only node serving the wanted model reports its engine bound to
+  loopback and names no engine override, and the node is not reached over
+  loopback
+- **THEN** the request fails saying the engine answers only on that machine,
+  naming the bind and the override as the fixes
+
+#### Scenario: A not-ready engine is not selected
+
+- **WHEN** the only node running the model a request names reports its engine
+  not ready, and the fleet's wake is off
+- **THEN** the request fails naming that node marked not ready, and nothing is
+  started
+
+#### Scenario: A request waits for an engine that is still starting
+
+- **WHEN** no node is serving the model a request names, one node is running
+  it but its engine has not answered yet, and no other node is running it
+- **THEN** the request is held for that node and answered when its engine
+  answers, and no other node is started
+
+#### Scenario: A still-starting engine that does not answer fails the request
+
+- **WHEN** a node is running the model a request names, its engine has not
+  answered yet, and it does not answer within the wake timeout
+- **THEN** the request fails saying so, naming the node, and the engine is left
+  running
+
+#### Scenario: Wake off still waits for an engine already starting
+
+- **WHEN** the fleet file declares the wake policy off and the only node
+  running the model a request names has not answered its engine yet
+- **THEN** the request is held for that node and answered when the engine
+  answers, since waiting starts nothing
+
+#### Scenario: A burst of requests does not fan out per request
+
+- **WHEN** several requests arrive within a couple of seconds of each other
+- **THEN** the fleet is queried once for the burst, and the requests are
+  answered from that reading
+
+#### Scenario: A routed request leaves one log line
+
+- **WHEN** a request is routed and answered
+- **THEN** the gateway's log gains one line naming the model, the node, and the
+  outcome, and carries no part of the request body
+
+### Requirement: Waking a node for a request
+
+When no running node serves the model a request names, and the fleet file's
+wake policy allows it, the gateway SHALL start an engine on a node that is not
+running one, and SHALL hold the request until the engine answers. A node is a
+wake candidate when it is not running and the Spinloop source it names — its
+`file` field, a registered alias named after it, or a same-named directory
+beside the fleet file, resolved the way `spinloop fleet start` resolves it —
+describes a config whose model or served name is the one the request asks for:
+a node is started with what it was told to run, never with a config invented
+for the request. Candidates whose stored config already names the model SHALL
+be tried first, since they have the weights, and the rest in fleet-file order.
+A node that refuses the start — a runner or model it cannot serve — SHALL NOT
+fail the request while other candidates remain.
+
+The started engine SHALL be gated with the key the node's fleet entry names,
+supplied by the gateway: the gateway is the client that starts the engine, so
+the key the client sets is the key the engine takes. The wait SHALL be bounded
+by a wake timeout, defaulting to five minutes and overridable by
+`--wake-timeout`; exceeding it SHALL fail the request saying the engine did
+not answer in time, and the started engine SHALL be left running rather than
+stopped, so a slow load is not thrown away.
+
+When several requests ask for a model nothing is serving at once, the gateway
+SHALL start at most one engine per node and answer every request from it: the
+first request's wait is the wait the rest join. A node another request woke
+first SHALL be used the same way, and only once its engine answers.
+
+With the wake policy off, a request for a model nothing is serving SHALL fail
+without starting anything, naming the nodes and what they could serve, and the
+command that would start one. A model no node is running and no node's source
+describes SHALL fail the same way, whatever the policy: nothing to wake with,
+and the failure SHALL say so rather than trying to start a node with nothing.
+
+#### Scenario: A cold request wakes a node and is served
+
+- **WHEN** no node is running the model a request names, one node's Spinloop
+  source describes it, and the wake policy allows it
+- **THEN** that node is started with its own config, gated with the key its
+  fleet entry names, and the request is answered once the engine answers
+
+#### Scenario: The request is held while the engine loads
+
+- **WHEN** the woken node reports running while its engine is still loading
+- **THEN** the request waits, and is answered when the engine answers, rather
+  than failing against an endpoint that refuses connections
+
+#### Scenario: A wake that does not finish in time fails the request
+
+- **WHEN** a woken node's engine does not answer within the wake timeout
+- **THEN** the request fails saying so, naming the node, and the engine is left
+  running
+
+#### Scenario: Concurrent cold requests share one wake
+
+- **WHEN** two requests arrive at once for a model nothing is serving, and one
+  node's source describes it
+- **THEN** that node is started once, and both requests are answered from the
+  same engine
+
+#### Scenario: A woken engine takes the gateway's key
+
+- **WHEN** the gateway starts an engine on a node whose fleet entry names an
+  engine key
+- **THEN** the engine is gated with that value, the gateway's requests to it
+  carry it, and no reply to any caller contains it
+
+#### Scenario: Wake refused by the fleet file
+
+- **WHEN** the fleet file declares the wake policy off and no node is serving
+  the model a request names
+- **THEN** nothing is started, and the request fails naming the node whose
+  source describes the model and the command that would start it
+
+#### Scenario: Nothing can serve the model
+
+- **WHEN** no node is running the model a request names and no node's Spinloop
+  source describes it
+- **THEN** the request fails, naming each node and why it cannot serve the
+  model, and nothing is started
+
+#### Scenario: A sourceless node is not woken
+
+- **WHEN** the only node that could take a request names no Spinloop source
+  that resolves
+- **THEN** it is not started, and the failure names it and the ways a source
+  could have been given
+
+### Requirement: Paths the gateway does not serve
+
+A path other than `/v1/models`, `/v1/chat/completions`, `/v1/completions`, and
+the gateway's own health path SHALL be answered with `404` naming the paths the
+gateway serves. The health path SHALL answer that the gateway is up without
+contacting any node, so an operator can tell the gateway down from the fleet
+down.
+
+#### Scenario: An unknown path is named as such
+
+- **WHEN** a request is made to a path the gateway does not serve
+- **THEN** the response is `404` and names the paths it does serve
+
+#### Scenario: The health path does not touch the fleet
+
+- **WHEN** the health path is requested and every node is unreachable
+- **THEN** it still answers that the gateway is up

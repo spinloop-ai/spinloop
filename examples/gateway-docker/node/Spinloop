@@ -1,0 +1,14 @@
+# What each node runs when a start request gives it work — the source both
+# fleet files point at. The image bakes a copy beside the gateway's fleet
+# files, so the gateway's own wakes resolve it from inside the container.
+#
+# The BASEURL is the point: it binds the engine to every interface. Without
+# it llama-server binds 127.0.0.1, the daemon reports the engine loopback-only,
+# and the gateway — a different container — is right to refuse routing to it.
+# The client's Spinloop has no BASEURL at all: it names no engine, because it
+# never talks to one.
+PROVIDER llamacpp
+MODEL    org/fake-model
+ALIAS    fake-model
+CONTEXT  4096
+BASEURL  http://0.0.0.0:8080/v1

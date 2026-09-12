@@ -29,6 +29,7 @@ const LAMBDA_ENV = {
 const findManagedInstance = vi.fn();
 const isSsmAgentOnline = vi.fn();
 const runShellCommand = vi.fn();
+const readDeployConfig = vi.fn();
 const findEnvEip = vi.fn();
 
 vi.mock('../lambda/shared/aws', async (importOriginal) => ({
@@ -36,6 +37,7 @@ vi.mock('../lambda/shared/aws', async (importOriginal) => ({
   findManagedInstance: (...args: unknown[]) => findManagedInstance(...args),
   isSsmAgentOnline: (...args: unknown[]) => isSsmAgentOnline(...args),
   runShellCommand: (...args: unknown[]) => runShellCommand(...args),
+  readDeployConfig: (...args: unknown[]) => readDeployConfig(...args),
 }));
 
 vi.mock('../lambda/shared/environments', async (importOriginal) => ({
@@ -79,11 +81,23 @@ const daemonReply = (fields: Record<string, unknown>) => ({
   stdout: JSON.stringify({ state: 'running', ...fields }),
 });
 
+/** The stored deploy config the status branch reads its model facts from. */
+const deployConfig = (fields: Record<string, unknown> = {}) =>
+  readDeployConfig.mockResolvedValue({
+    runner: 'llamacpp',
+    modelId: 'org/Qwen3.8-27B',
+    servedModelName: 'qwen3.8-27b',
+    ...fields,
+  });
+
 beforeEach(() => {
   vi.clearAllMocks();
   findEnvEip.mockResolvedValue({ publicIp: '198.51.100.7' });
   findManagedInstance.mockResolvedValue({ instanceId: 'i-abc', state: 'running' });
   isSsmAgentOnline.mockResolvedValue(true);
+  // A deploy config is present for a running environment by default; tests
+  // that care about the model facts override it, the rest ignore it.
+  deployConfig();
 });
 
 /** Route each SSM invocation by the command it was given. */
@@ -103,6 +117,65 @@ describe('remote status activity reporting', () => {
     expect(body.healthy).toBe(true);
     expect(body.lastActiveAt).toBe('2026-08-09T12:00:00Z');
     expect(body.idleSeconds).toBe(42);
+  });
+
+  it('reports what the environment is serving alongside its activity', async () => {
+    // The model facts come from the stored deploy config (the default one
+    // here); the daemon supplies only the activity.
+    runShellCommand.mockImplementation(
+      ssmRouter(daemonReply({ lastActiveAt: '2026-08-09T12:00:00Z', idleSeconds: 42 })),
+    );
+
+    const body = bodyOf(await handler(statusEvent, {} as Context));
+    expect(body.state).toBe('running');
+    expect(body.runner).toBe('llamacpp');
+    expect(body.modelId).toBe('org/Qwen3.8-27B');
+    expect(body.servedName).toBe('qwen3.8-27b');
+    expect(body.lastActiveAt).toBe('2026-08-09T12:00:00Z');
+    expect(body.idleSeconds).toBe(42);
+  });
+
+  it('reports the model before the engine has done any work', async () => {
+    // The model facts come from the deploy config, so they are present
+    // whenever the instance is running — even before the engine has answered a
+    // request. That is the case a router needs, so the model is not gated on
+    // activity.
+    runShellCommand.mockImplementation(ssmRouter(daemonReply({})));
+
+    const body = bodyOf(await handler(statusEvent, {} as Context));
+    expect(body.state).toBe('running');
+    expect(body.modelId).toBe('org/Qwen3.8-27B');
+    expect(body.servedName).toBe('qwen3.8-27b');
+    expect(body).not.toHaveProperty('lastActiveAt');
+    expect(body).not.toHaveProperty('idleSeconds');
+  });
+
+  it('omits the served name when the deploy named none', async () => {
+    // A deploy before the served-name feature stored no servedModelName, so
+    // the report carries the model id but no served name.
+    deployConfig({ servedModelName: '' });
+    runShellCommand.mockImplementation(
+      ssmRouter(daemonReply({ lastActiveAt: '2026-08-09T12:00:00Z', idleSeconds: 5 })),
+    );
+
+    const body = bodyOf(await handler(statusEvent, {} as Context));
+    expect(body.modelId).toBe('org/Qwen3.8-27B');
+    expect(body).not.toHaveProperty('servedName');
+  });
+
+  it('omits the model facts when the deploy config cannot be read', async () => {
+    readDeployConfig.mockRejectedValue(new Error('InvalidParameter'));
+    runShellCommand.mockImplementation(
+      ssmRouter(daemonReply({ lastActiveAt: '2026-08-09T12:00:00Z', idleSeconds: 5 })),
+    );
+
+    const result = await handler(statusEvent, {} as Context);
+    expect(structured(result).statusCode).toBe(200);
+    const body = bodyOf(result);
+    expect(body.lastActiveAt).toBe('2026-08-09T12:00:00Z');
+    expect(body).not.toHaveProperty('runner');
+    expect(body).not.toHaveProperty('modelId');
+    expect(body).not.toHaveProperty('servedName');
   });
 
   it('treats an omitted idleSeconds as zero, not as absent', async () => {

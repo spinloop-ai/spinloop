@@ -62,6 +62,36 @@ func ParsePrefer(s string) (Prefer, error) {
 	return "", fmt.Errorf("unknown preference %q: use %q or %q", s, PreferIdle, PreferActive)
 }
 
+// WakePolicy is whether routing may start an engine on a node that is not
+// running one when no running node serves what is wanted. It sits in the fleet
+// file beside prefer for the reason prefer does: it describes how this
+// cluster is to be used — may work be started on its machines on demand, or
+// only used where it is already running.
+type WakePolicy string
+
+const (
+	// WakeOn starts an engine on an idle node when nothing is serving.
+	WakeOn WakePolicy = "on"
+	// WakeOff never starts one: a request nothing is serving fails, naming
+	// the node that would have been woken and the command that would start it.
+	WakeOff WakePolicy = "off"
+)
+
+// ParseWakePolicy validates a wake policy from a file.
+func ParseWakePolicy(s string) (WakePolicy, error) {
+	switch WakePolicy(s) {
+	case WakeOn, WakeOff:
+		return WakePolicy(s), nil
+	}
+	return "", fmt.Errorf("unknown wake policy %q: use %q or %q", s, WakeOn, WakeOff)
+}
+
+// Wakes reports whether routing may start an engine on a node that is not
+// running one. A file that declares nothing wakes, as routing has always done.
+func (c *Config) Wakes() bool {
+	return c.WakePolicy != WakeOff
+}
+
 // Config is a parsed fleet.yaml: the nodes, plus where the file was read from
 // (the directory whose .env supplies token values).
 type Config struct {
@@ -71,6 +101,10 @@ type Config struct {
 	// should be used — spread the work, or consolidate it. Empty means
 	// PreferIdle.
 	Prefer Prefer `yaml:"prefer"`
+	// WakePolicy is the fleet-wide wake policy: whether routing may start an
+	// engine on a node that is not running one. Empty means WakeOn, as
+	// routing has always done when the setting is absent.
+	WakePolicy WakePolicy `yaml:"wake"`
 	// APIKeyEnv names the environment variable holding the key this fleet's
 	// remote nodes require, shared by every one of them: a remote's engine is
 	// always gated by its key, so a fleet of remotes can name the variable
@@ -199,6 +233,11 @@ func (c *Config) validate() error {
 	}
 	if c.Prefer != "" {
 		if _, err := ParsePrefer(string(c.Prefer)); err != nil {
+			return err
+		}
+	}
+	if c.WakePolicy != "" {
+		if _, err := ParseWakePolicy(string(c.WakePolicy)); err != nil {
 			return err
 		}
 	}

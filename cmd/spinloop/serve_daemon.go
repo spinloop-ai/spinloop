@@ -267,7 +267,7 @@ func startSupervisedForeground(sel spinloop.Selection, spinloopPath string, engi
 	if model == "" {
 		model = sel.Alias
 	}
-	d.SetServed(sel.Provider, model)
+	d.SetServed(sel.Provider, model, sel.Alias)
 	// A supervised engine gets its metrics endpoint switched on, exactly as
 	// the cloud path does for a deployed one; an engine with no metrics
 	// dialect gets no added switch and the host's series.

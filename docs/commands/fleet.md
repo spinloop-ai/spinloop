@@ -191,6 +191,29 @@ nodes: …
 override the file for one command, which is the cheap way to see what the other
 setting would do before committing to it.
 
+### Waking
+
+`wake` decides whether routing may start an engine on a node that is not
+running one:
+
+```yaml
+wake: off      # or: on
+nodes: …
+```
+
+- **`on`** (the default, and the behaviour of a file that declares nothing) —
+  when nothing is serving, spinloop starts a node and waits for its engine to
+  answer before the agent launches or the request is answered.
+- **`off`** — a request nothing is serving fails rather than starting
+  anything, naming the node that would have been woken and the `spinloop fleet
+  start <node>` command that would start it. Use it where the machines are not
+  to be started on demand — the models are loaded by hand, or someone else
+  drives the starts.
+
+An explicit `--no-wake` still refuses to start anything, whatever the file
+says; an explicit `spinloop fleet start` does the opposite — it always starts,
+because it was asked.
+
 ### Tokens
 
 `tokenEnv` names an environment variable; the value is resolved from the

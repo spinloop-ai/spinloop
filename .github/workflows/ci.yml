@@ -90,3 +90,19 @@ jobs:
 
       - name: Fleet integration test
         run: examples/fleet-docker/run-tests.sh
+
+  # The dockerised gateway example, driven end to end: real daemons, a real
+  # gateway process selecting, waking and keying over the network. Same
+  # double duty as the fleet job — coverage and example at once.
+  gateway-integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Gateway integration test
+        run: examples/gateway-docker/run-tests.sh

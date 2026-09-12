@@ -1,0 +1,79 @@
+# What the fake engine serves.
+#
+# The two ungated routes are for the daemon itself: /health is its readiness
+# probe and /metrics the scrape its collector parses in llama.cpp's dialect.
+# Both run on the node's own machine, so neither needs the credential that
+# stands between the gateway and the engine.
+#
+# The three OpenAI routes are gated: the gateway presents the key its fleet
+# entry names, and the shim hands it to this process as the ENGINE_API_KEY
+# environment variable. gate.js applies the check and, for the completion
+# routes, answers streaming requests in the server-sent-events shape.
+plugin: rest
+resources:
+  - path: /health
+    method: GET
+    response:
+      statusCode: 200
+      headers:
+        Content-Type: application/json
+      content: '{"status":"ok"}'
+
+  # The llamacpp: counters internal/metrics parses. Static values keep the
+  # assertions deterministic; what is being tested is the collection path, not
+  # the arithmetic of a real engine.
+  - path: /metrics
+    method: GET
+    response:
+      statusCode: 200
+      headers:
+        Content-Type: text/plain
+      content: |
+        # HELP llamacpp:prompt_tokens_total Number of prompt tokens processed.
+        llamacpp:prompt_tokens_total 4096
+        # HELP llamacpp:tokens_predicted_total Number of tokens predicted.
+        llamacpp:tokens_predicted_total 1024
+        # HELP llamacpp:n_decode_total Number of decode runs.
+        llamacpp:n_decode_total 900
+        # HELP llamacpp:requests_processing Number of processing requests.
+        llamacpp:requests_processing 2
+        # HELP llamacpp:requests_deferred Number of deferred requests.
+        llamacpp:requests_deferred 1
+        # HELP llamacpp:request_success_total Number of successful requests.
+        llamacpp:request_success_total 17
+
+  - path: /v1/models
+    method: GET
+    steps:
+      - type: script
+        lang: javascript
+        file: gate.js
+    response:
+      statusCode: 200
+      headers:
+        Content-Type: application/json
+      content: '{"object":"list","data":[{"id":"fake-model","object":"model"}]}'
+
+  - path: /v1/chat/completions
+    method: POST
+    steps:
+      - type: script
+        lang: javascript
+        file: gate.js
+    response:
+      statusCode: 200
+      headers:
+        Content-Type: application/json
+      content: '{"id":"chatcmpl-1","object":"chat.completion","created":1,"model":"fake-model","choices":[{"index":0,"message":{"role":"assistant","content":"Hello from the fake engine"},"finish_reason":"stop"}],"usage":{"prompt_tokens":8,"completion_tokens":5,"total_tokens":13}}'
+
+  - path: /v1/completions
+    method: POST
+    steps:
+      - type: script
+        lang: javascript
+        file: gate.js
+    response:
+      statusCode: 200
+      headers:
+        Content-Type: application/json
+      content: '{"id":"cmpl-1","object":"text_completion","created":1,"model":"fake-model","choices":[{"index":0,"text":"Hello from the fake engine","finish_reason":"stop"}],"usage":{"prompt_tokens":8,"completion_tokens":5,"total_tokens":13}}'

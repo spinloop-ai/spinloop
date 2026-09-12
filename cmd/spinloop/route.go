@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -62,12 +63,16 @@ func routeThroughFleet(sel spinloop.Selection, spinloopPath string, opts routeOp
 		return nil, nil
 	}
 	// A FLEET naming a URL is the gateway shape: it has already done the
-	// choosing. Parsing accepts it so the eventual gateway needs no new
-	// keyword; nothing here can act on it yet.
+	// choosing, so there is no fleet file to read and no node to contact. The
+	// token is not resolved here: applyBeforeLaunch resolves it through the
+	// same chain the launch uses, so a missing value fails before anything is
+	// written.
 	if isEndpoint(target) {
-		return nil, fmt.Errorf(
-			"FLEET %s names an endpoint, and gateway routing is not implemented yet: "+
-				"name a fleet file to choose a node from", target)
+		return &fleet.Choice{
+			Gateway: true,
+			BaseURL: endpointBaseURL(target),
+			Reason:  "FLEET names an endpoint",
+		}, nil
 	}
 
 	cfg, err := fleet.Resolve(resolveFleetPath(target, opts.fleetPath != "", spinloopPath))
@@ -115,10 +120,22 @@ func routeThroughFleet(sel spinloop.Selection, spinloopPath string, opts routeOp
 	if opts.noWake {
 		return nil, fmt.Errorf("%w\nStart one with `spinloop fleet start <node>`, or drop --no-wake to have spinloop do it", err)
 	}
+	if !cfg.Wakes() {
+		// The fleet file says the machines are not to be started on demand. The
+		// refusal still names the node that would have been woken, the way a
+		// --no-wake refusal does: the setting decides whether to wake, not what
+		// would be woken.
+		if wake, ok := cfg.WouldWake(none.Results, fleet.ConstantConfig(dc, dcErr)); ok {
+			return nil, fmt.Errorf(
+				"%w\nwake is off in %s: start %s with `spinloop fleet start %s`",
+				err, cfg.Path, wake.Name, wake.Name)
+		}
+		return nil, fmt.Errorf("%w\nwake is off in %s", err, cfg.Path)
+	}
 	if dcErr != nil {
 		return nil, fmt.Errorf("%w\nand this Spinloop cannot be turned into something to start: %v", err, dcErr)
 	}
-	choice, err = cfg.Wake(ctx, want, dc, none.Results, func(format string, args ...any) {
+	choice, err = cfg.Wake(ctx, want, fleet.ConstantConfig(dc, dcErr), none.Results, func(format string, args ...any) {
 		fmt.Fprintf(os.Stderr, format, args...)
 	})
 	if err != nil {
@@ -131,7 +148,23 @@ func routeThroughFleet(sel spinloop.Selection, spinloopPath string, opts routeOp
 // announceChoice names the node a launch landed on before the agent starts, so
 // an unexpected route says so at the time rather than at the first request.
 func announceChoice(c *fleet.Choice) {
+	if c.Gateway {
+		fmt.Fprintf(os.Stderr, "Routing at the FLEET endpoint %s\n", c.BaseURL)
+		return
+	}
 	fmt.Fprintf(os.Stderr, "Using %s at %s — %s\n", c.Node.Name, c.BaseURL, c.Reason)
+}
+
+// endpointBaseURL is the address a launch gives an agent for a FLEET that names
+// an endpoint: the value as given when it carries a path, and the OpenAI-
+// compatible prefix added when it does not, so FLEET http://gw:4000 points the
+// agent at http://gw:4000/v1.
+func endpointBaseURL(target string) string {
+	u, err := url.Parse(target)
+	if err != nil || (u.Path != "" && u.Path != "/") {
+		return target
+	}
+	return strings.TrimRight(target, "/") + "/v1"
 }
 
 // resolveFleetPath resolves a fleet file's path. A relative FLEET is resolved

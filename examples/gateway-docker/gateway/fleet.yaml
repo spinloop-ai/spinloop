@@ -1,0 +1,32 @@
+# What the gateway serves: this stack's two nodes, addressed the way the
+# gateway's container reaches them — by compose service name, on the daemon's
+# port.
+#
+# The gateway is the client that wakes a node, so it must resolve each node's
+# Spinloop source from its own filesystem: the Dockerfile bakes node/Spinloop
+# in beside this file as /opt/gw/Spinloop, which is what `file` names.
+#
+# No engine: blocks, for once: each engine binds 0.0.0.0:8080 — its Spinloop's
+# BASEURL says so, the daemon reports it — and the gateway dials <node>:8080
+# over the compose network. The client-side fleet.yaml needs the override,
+# because the engine is published to the host on another port.
+#
+# Tokens are named by variable, as everywhere: the gateway container's
+# environment supplies the values (compose.yaml), so nothing secret is in this
+# file.
+prefer: idle
+
+nodes:
+  - name: node-a
+    host: node-a
+    port: 4242
+    tokenEnv: NODE_A_TOKEN
+    engineTokenEnv: NODE_A_ENGINE_KEY
+    file: ./Spinloop
+
+  - name: node-b
+    host: node-b
+    port: 4242
+    tokenEnv: NODE_B_TOKEN
+    engineTokenEnv: NODE_B_ENGINE_KEY
+    file: ./Spinloop

@@ -145,12 +145,28 @@ picking one. As with `REMOTE`, note the missing `BASEURL` — the address is
 whichever node gets chosen. Writing one pins the address and turns routing off,
 and spinloop says so rather than choosing a node and discarding it.
 
-A `FLEET` may also name a URL rather than a file, for a single endpoint that has
-already done the choosing. That is the shape the spinloop gateway will take; it is
-not implemented yet, and naming one today fails saying so.
+A `FLEET` may also name a URL rather than a file: a single endpoint that has
+already done the choosing, the shape
+[`spinloop gateway`](commands/gateway.md) serves:
+
+```dockerfile
+PROVIDER llamacpp
+MODEL    qwen3-27b
+FLEET    http://gateway.internal:4000
+```
+
+Naming one reads no fleet file and contacts no node. The launch is pointed at
+the address as given — with the OpenAI-compatible `/v1` prefix added when it
+carries no path, and a value that already carries one used as given — and the
+agent it launches authenticates with the endpoint's token, resolved the way a
+key is resolved elsewhere: an `ENV` instruction, then the process environment,
+then the `.env` beside the Spinloop. A variable already set wins, as on the
+remote path. Set nowhere, the launch fails before it writes anything, naming
+`OPENAI_API_KEY`.
 
 See [`spinloop fleet route`](commands/fleet.md#which-node-would-i-get) to check
-which node you would get before launching anything.
+which node you would get before launching anything — a route against an
+endpoint just names it, without querying a node or starting one.
 
 ## Syntax
 

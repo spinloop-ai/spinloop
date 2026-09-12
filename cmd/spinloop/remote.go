@@ -1242,27 +1242,34 @@ func deployConfigFor(sel spinloop.Selection, spinloopPath string) (remote.Deploy
 }
 
 // deployConfigForNode derives the same config for a machine that already
-// exists — a fleet node being woken. Two things differ from a cloud
-// deployment, both because the machine is the operator's rather than the
+// exists — a fleet node being woken. Three things differ from a cloud
+// deployment, all because the machine is the operator's rather than the
 // deployment's: sizing falls back to the engine's own default, so a Spinloop
-// that `spinloop serve` runs happily needs no CONTEXT added merely to be routed;
-// and the preset's bind survives, so an engine told to listen on 0.0.0.0 does.
+// that `spinloop serve` runs happily needs no CONTEXT added merely to be
+// routed; the preset's bind survives, so an engine told to listen on 0.0.0.0
+// does; and the Spinloop's own BASEURL is carried too, so a node with no
+// preset does not wake onto the engine's default — llama.cpp's loopback,
+// reachable from nobody but the node itself.
 func deployConfigForNode(sel spinloop.Selection, spinloopPath string) (remote.DeployConfig, error) {
 	return deployConfig(sel, spinloopPath, deployTarget{
-		runner: nodeRunnerFor,
-		owns:   isNodeOwned,
+		runner:         nodeRunnerFor,
+		owns:           isNodeOwned,
+		carriesBaseURL: true,
 	})
 }
 
 // deployTarget is what the derivation cannot decide for itself: which runners
 // it accepts, whether a context size is required, which preset flags the
-// destination assigns, and whether it fetches the weights itself (and so needs
-// companions named).
+// destination assigns, whether it fetches the weights itself (and so needs
+// companions named), and whether the Spinloop's BASEURL is rendered into the
+// engine's bind — a machine the operator owns listens wherever the Spinloop
+// says; the cloud assigns its own port, so it keeps the field empty.
 type deployTarget struct {
 	runner         func(provider string) (string, error)
 	requireContext bool
 	seedsWeights   bool
 	owns           func(key string) bool
+	carriesBaseURL bool
 }
 
 func deployConfig(sel spinloop.Selection, spinloopPath string, target deployTarget) (remote.DeployConfig, error) {
@@ -1371,7 +1378,19 @@ func deployConfig(sel spinloop.Selection, spinloopPath string, target deployTarg
 		dc.Companions = companionsFrom(global, params)
 	}
 
-	dc.ServeArgs = preset.Flags(dropOwned(target.owns, global), dropOwned(target.owns, params))
+	// The Spinloop's own bind is the final layer, where it travels at all: it
+	// wins over the preset's host and port exactly as it does for a local
+	// serve, so a woken engine listens wherever the Spinloop says rather than
+	// on the engine's default.
+	layers := [][]preset.Param{dropOwned(target.owns, global), dropOwned(target.owns, params)}
+	if target.carriesBaseURL {
+		bind, err := bindAddressParams(sel)
+		if err != nil {
+			return dc, err
+		}
+		layers = append(layers, bind)
+	}
+	dc.ServeArgs = preset.Flags(layers...)
 	if dc.ServeArgs == nil {
 		dc.ServeArgs = []string{}
 	}

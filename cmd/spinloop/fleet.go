@@ -98,6 +98,7 @@ func fleetRow(r fleet.NodeResult) (state, serving string) {
 		UptimeSeconds: r.Status.UptimeSeconds,
 		LastActiveAt:  r.Status.LastActiveAt,
 		IdleSeconds:   r.Status.IdleSeconds,
+		Ready:         r.Status.Ready,
 	}
 	return f.State, f.servingText()
 }
@@ -777,9 +778,17 @@ func runFleetRoute(path, node, prefer string, args []string) error {
 			resolvedPath)
 	}
 	if isEndpoint(target) {
-		return fmt.Errorf(
-			"FLEET %s names an endpoint, and gateway routing is not implemented yet: "+
-				"name a fleet file to choose a node from", target)
+		// The endpoint has already done the choosing: no fleet file to read,
+		// no node to query, nothing to start. Say where a launch would point
+		// the agent.
+		if sel.BaseURL != "" {
+			fmt.Printf("This Spinloop pins BASEURL %s, so a launch would not route at all.\n", sel.BaseURL)
+			return nil
+		}
+		fmt.Printf("Spinloop: %s\nFleet:  %s (an endpoint, not a fleet file)\n\n", resolvedPath, target)
+		fmt.Printf("The endpoint has already chosen: a launch would point the agent at %s.\n", endpointBaseURL(target))
+		fmt.Println("No node is queried, and nothing is started.")
+		return nil
 	}
 	cfg, err := fleet.Resolve(resolveFleetPath(target, fromFlag, resolvedPath))
 	if err != nil {
@@ -820,8 +829,13 @@ func runFleetRoute(path, node, prefer string, args []string) error {
 		fmt.Printf("\nA launch could not start one either: %v\n", dcErr)
 		return nil
 	}
-	if wake, ok := cfg.WouldWake(none.Results, dc); ok {
-		fmt.Printf("\nA launch would wake %s and wait for its engine. Nothing has been started.\n", wake.Name)
+	if wake, ok := cfg.WouldWake(none.Results, fleet.ConstantConfig(dc, dcErr)); ok {
+		if cfg.Wakes() {
+			fmt.Printf("\nA launch would wake %s and wait for its engine. Nothing has been started.\n", wake.Name)
+		} else {
+			fmt.Printf("\nA launch would refuse: wake is off in %s. Start %s with `spinloop fleet start %s`. Nothing has been started.\n",
+				cfg.Path, wake.Name, wake.Name)
+		}
 		return nil
 	}
 	fmt.Println("\nNo node could be woken for it either. Nothing has been started.")

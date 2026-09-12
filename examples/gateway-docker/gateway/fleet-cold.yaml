@@ -1,0 +1,22 @@
+# The same fleet as fleet.yaml, with waking refused: a request nothing is
+# serving fails naming the node that would be started and the command that
+# would start it, rather than starting it. It is the wake: off policy for the
+# whole file — may work be started on these machines on demand, or only used
+# where it is already running.
+prefer: idle
+wake: off
+
+nodes:
+  - name: node-a
+    host: node-a
+    port: 4242
+    tokenEnv: NODE_A_TOKEN
+    engineTokenEnv: NODE_A_ENGINE_KEY
+    file: ./Spinloop
+
+  - name: node-b
+    host: node-b
+    port: 4242
+    tokenEnv: NODE_B_TOKEN
+    engineTokenEnv: NODE_B_ENGINE_KEY
+    file: ./Spinloop

@@ -314,20 +314,170 @@ func TestRoutingToARunningNodeToleratesAnUnusableParallel(t *testing.T) {
 	})
 }
 
-// A FLEET naming a URL is the gateway shape: it parses, and says plainly that
-// it is not implemented rather than being treated as a filename.
-func TestFleetURLIsRefusedAsUnimplemented(t *testing.T) {
+// A FLEET naming a URL is the gateway shape: the endpoint has already done the
+// choosing, so no fleet file is read, no node is contacted, and the node-
+// steering flags are inert. A value with no path gets the OpenAI-compatible
+// prefix.
+func TestFleetURLYieldsTheEndpoint(t *testing.T) {
 	spinloopDir := routedSpinloop(t, "qwen3-27b", "http://gateway.internal:4000")
 	sel, path, err := readSpinloop("test", spinloopDir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = routeThroughFleet(sel, path, routeOptions{})
-	if err == nil {
-		t.Fatal("a gateway URL should fail for now")
+	captureStderr(t, func() {
+		c, err := routeThroughFleet(sel, path, routeOptions{node: "nobody", prefer: "sideways", noWake: true})
+		if err != nil {
+			t.Fatalf("an endpoint FLEET should not consult any node: %v", err)
+		}
+		if !c.Gateway {
+			t.Fatalf("the choice should mark itself as an endpoint, got %+v", c)
+		}
+		if c.BaseURL != "http://gateway.internal:4000/v1" {
+			t.Errorf("an endpoint without a path gets the prefix, got %s", c.BaseURL)
+		}
+	})
+}
+
+func TestFleetURLWithAPathIsUsedAsGiven(t *testing.T) {
+	spinloopDir := routedSpinloop(t, "qwen3-27b", "http://gateway.internal:4000/proxy/v1")
+	sel, path, err := readSpinloop("test", spinloopDir)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if !strings.Contains(err.Error(), "not implemented yet") {
-		t.Errorf("error should say it is not implemented, got: %v", err)
+	captureStderr(t, func() {
+		c, err := routeThroughFleet(sel, path, routeOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !c.Gateway || c.BaseURL != "http://gateway.internal:4000/proxy/v1" {
+			t.Errorf("an endpoint carrying a path is used as given, got %+v", c)
+		}
+	})
+}
+
+// A pinned BASEURL wins over an endpoint FLEET, as it wins over a fleet file.
+func TestPinnedBaseURLBeatsAnEndpointFleet(t *testing.T) {
+	spinloopDir := t.TempDir()
+	mustWrite(t, filepath.Join(spinloopDir, "Spinloop"),
+		"PROVIDER llamacpp\nMODEL qwen3-27b\nBASEURL http://pinned:9999/v1\nFLEET http://gateway.internal:4000\n")
+	sel, path, err := readSpinloop("test", spinloopDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stderr := captureStderr(t, func() {
+		c, err := routeThroughFleet(sel, path, routeOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if c != nil {
+			t.Errorf("a pinned BASEURL is not routed, got %+v", c)
+		}
+	})
+	if !strings.Contains(stderr, "Not routing") {
+		t.Errorf("spinloop should say it is not routing, got:\n%s", stderr)
+	}
+}
+
+// stubHarnessBinaryWithEnv is stubHarnessBinary plus a dump of the two
+// variables a routed launch injects, for asserting what the agent actually
+// got.
+func stubHarnessBinaryWithEnv(t *testing.T, argsFile, envFile string) {
+	t.Helper()
+	dir := t.TempDir()
+	body := "#!/bin/sh\n" +
+		"printf '%s\\n' \"$@\" > " + argsFile + "\n" +
+		"printf 'BASE=%s\\nKEY=%s\\n' \"$OPENAI_BASE_URL\" \"$OPENAI_API_KEY\" > " + envFile + "\n"
+	if err := os.WriteFile(filepath.Join(dir, "opencode"), []byte(body), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
+
+// A FLEET naming an endpoint points the agent at it: the address gets the
+// OpenAI-compatible prefix, and the token is resolved from the client's
+// environment the way a key is resolved elsewhere.
+func TestLaunchWithEndpointFleetPointsTheAgentAtTheGateway(t *testing.T) {
+	isolateConfig(t)
+	t.Setenv("OPENAI_API_KEY", "gw-token")
+	t.Setenv("OPENAI_BASE_URL", "")
+	argsFile := filepath.Join(t.TempDir(), "args")
+	envFile := filepath.Join(t.TempDir(), "env")
+	stubHarnessBinaryWithEnv(t, argsFile, envFile)
+
+	spinloopDir := routedSpinloop(t, "qwen3-27b", "http://gateway.internal:4000")
+	captureStdout(t, func() {
+		if err := cmdHarness([]string{"--spinloop=" + spinloopDir, "--", "run"}); err != nil {
+			t.Fatalf("cmdHarness: %v", err)
+		}
+	})
+	if _, err := os.ReadFile(argsFile); err != nil {
+		t.Fatalf("harness was not launched: %v", err)
+	}
+	data, err := os.ReadFile(envFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := string(data)
+	if !strings.Contains(out, "BASE=http://gateway.internal:4000/v1") {
+		t.Errorf("the agent's base URL should be the endpoint with the prefix, got:\n%s", out)
+	}
+	if !strings.Contains(out, "KEY=gw-token") {
+		t.Errorf("the agent should carry the gateway's token as its key, got:\n%s", out)
+	}
+}
+
+// A FLEET naming an endpoint with no token anywhere fails before the agent
+// launches and before the harness config is written, naming the variable.
+func TestLaunchWithEndpointFleetFailsWithoutAToken(t *testing.T) {
+	home := isolateConfig(t)
+	t.Setenv("OPENAI_API_KEY", "")
+	argsFile := filepath.Join(t.TempDir(), "args")
+	stubHarnessBinary(t, "opencode", argsFile)
+
+	spinloopDir := routedSpinloop(t, "qwen3-27b", "http://gateway.internal:4000")
+	captureStdout(t, func() {
+		err := cmdHarness([]string{"--spinloop=" + spinloopDir, "--", "run"})
+		if err == nil {
+			t.Fatal("a launch that cannot authenticate the endpoint should fail")
+		}
+		if !strings.Contains(err.Error(), "OPENAI_API_KEY") {
+			t.Errorf("the failure should name the variable to set, got:\n%v", err)
+		}
+	})
+	if _, err := os.ReadFile(argsFile); err == nil {
+		t.Error("the agent launched without a token to reach the endpoint")
+	}
+	if _, err := os.Stat(filepath.Join(home, ".config", "opencode", "opencode.json")); err == nil {
+		t.Error("the harness config was written for a launch that could not authenticate")
+	}
+}
+
+// A fleet that declares wake: off refuses to start anything when nothing is
+// serving, and names the node that would have been woken with the command that
+// would start it.
+func TestWakeOffRefusesNamingTheNode(t *testing.T) {
+	node := newRoutableNode(t, "", false, 0)
+	dir := t.TempDir()
+	fleetPath := fleetFileIn(t, dir, "wake: off\nnodes:\n"+node.entry("idle-box"))
+	spinloopDir := routedSpinloop(t, "qwen3-27b", fleetPath)
+
+	sel, path, err := readSpinloop("test", spinloopDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	captureStderr(t, func() {
+		_, err := routeThroughFleet(sel, path, routeOptions{})
+		if err == nil {
+			t.Fatal("wake: off with nothing serving should fail")
+		}
+		for _, want := range []string{"wake is off", "idle-box", "spinloop fleet start idle-box"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("message should mention %q, got:\n%s", want, err)
+			}
+		}
+	})
+	if node.started {
+		t.Error("wake: off started an engine")
 	}
 }
 
@@ -456,6 +606,27 @@ func TestCmdFleetRouteExplainsTheChoice(t *testing.T) {
 	}
 }
 
+// A FLEET naming an endpoint has already chosen: the route says where a launch
+// would point the agent, and queries nothing.
+func TestCmdFleetRouteAgainstAnEndpoint(t *testing.T) {
+	spinloopDir := routedSpinloop(t, "qwen3-27b", "http://gw.internal:4000")
+
+	out := captureStdout(t, func() {
+		if err := cmdFleetRoute([]string{filepath.Join(spinloopDir, "Spinloop")}); err != nil {
+			t.Fatal(err)
+		}
+	})
+	for _, want := range []string{
+		"gw.internal:4000 (an endpoint, not a fleet file)",
+		"would point the agent at http://gw.internal:4000/v1",
+		"nothing is started",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output should mention %q, got:\n%s", want, out)
+		}
+	}
+}
+
 // The flag lets the two preferences be compared on a live fleet without
 // editing the file.
 func TestCmdFleetRoutePreferenceFlagBeatsTheFile(t *testing.T) {
@@ -521,6 +692,30 @@ func TestCmdFleetRouteStartsNothing(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(home, ".config", "opencode", "opencode.json")); !os.IsNotExist(err) {
 		t.Errorf("fleet route wrote a harness config (stat: %v)", err)
+	}
+}
+
+// A fleet that declares wake: off still reports, when nothing is running, the
+// node whose source describes the model and the command that would start it —
+// but says a launch would refuse.
+func TestCmdFleetRouteWakeOffRefusal(t *testing.T) {
+	node := newRoutableNode(t, "", false, 0)
+	dir := t.TempDir()
+	fleetPath := fleetFileIn(t, dir, "wake: off\nnodes:\n"+node.entry("idle-box"))
+	spinloopDir := routedSpinloop(t, "qwen3-27b", fleetPath)
+
+	out := captureStdout(t, func() {
+		if err := cmdFleetRoute([]string{filepath.Join(spinloopDir, "Spinloop")}); err != nil {
+			t.Fatal(err)
+		}
+	})
+	for _, want := range []string{"wake is off", "idle-box", "spinloop fleet start idle-box", "Nothing has been started"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output should mention %q, got:\n%s", want, out)
+		}
+	}
+	if node.started {
+		t.Error("fleet route started an engine")
 	}
 }
 

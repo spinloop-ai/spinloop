@@ -46,7 +46,7 @@ while true; do sleep 0.05; done`)
 		t.Fatal(err)
 	}
 	waitForState(t, d.Sup, StateRunning)
-	d.SetServed(runner, "model")
+	d.SetServed(runner, "model", "")
 	return d
 }
 
