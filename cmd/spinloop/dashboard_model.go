@@ -18,8 +18,12 @@ import (
 )
 
 // dashboardRefreshInterval is how often the board re-reads the local daemon
-// machines. It is a variable so a test never waits for a slow node.
-var dashboardRefreshInterval = 2 * time.Second
+// machines. It is one call per machine per tick, so the cost is the fleet's
+// size times this rate; the figures it draws — utilization, token counters,
+// idle time — are sampled by each daemon every 15 seconds anyway, so polling
+// faster than this re-fetches readings that have not changed. It is a
+// variable so a test never waits for a slow node.
+var dashboardRefreshInterval = 5 * time.Second
 
 // dashboardRemoteRefreshInterval is the cadence for kind: remote
 // environments instead. Each of their statuses is a signed call through the

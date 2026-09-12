@@ -101,7 +101,7 @@ func (d *Daemon) SampleActivity(ctx context.Context) {
 		// can answer, instead of up to a full interval later. A tick with no
 		// engine running costs a state check.
 		wait := interval
-		if !d.sample.haveTokens() {
+		if d.awaitingFirstSample() {
 			wait = catchUpInterval
 		}
 		select {
@@ -117,6 +117,22 @@ func (d *Daemon) SampleActivity(ctx context.Context) {
 // promptly, and harmless when nothing is running because sampling stops at the
 // engine-state check.
 var catchUpInterval = time.Second
+
+// awaitingFirstSample reports whether the short catch-up interval still
+// applies: a scrape target is known and no counters have come back from it
+// yet. The target check is what bounds the catch-up. Without it, an engine
+// whose runner exposes no metrics endpoint never yields counters, so the
+// sampler would stay at the catch-up interval for the engine's whole life —
+// running the host commands every second for a reading that is not coming.
+func (d *Daemon) awaitingFirstSample() bool {
+	if d.sample.haveTokens() {
+		return false
+	}
+	d.mu.Lock()
+	scrape := d.scrape
+	d.mu.Unlock()
+	return scrape.BaseURL != "" && scrape.Engine != ""
+}
 
 // sampleOnce takes one reading, feeding both a success and a failure through
 // observe so there is exactly one place where a sample becomes activity. The
