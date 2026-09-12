@@ -18,7 +18,7 @@ fail showing the command's usage.
 What was inferred, and from what, SHALL be reported on stderr — the provider
 and why, the quantisation chosen and the alternatives available, the context
 window and where it came from, and whether a local copy was used — so stdout
-stays a clea Spinloop while the reasoning is still visible.
+stays a clean Spinloop while the reasoning is still visible.
 
 #### Scenario: A reference becomes a Spinloop
 
