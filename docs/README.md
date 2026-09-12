@@ -62,7 +62,7 @@ Four words carry the whole tool:
 | [`spinloop serve`](commands/serve.md) | Run the inference server for the model a `Spinloop` names |
 | [`spinloop up`](commands/up.md) | Start the engine this directory holds: the fleet, or the `Spinloop`'s server |
 | [`spinloop daemon`](commands/serve.md#the-control-api---api-and-spinloop-daemon) | Supervise an engine over the [control API](http-api.md) |
-| [`spinloop fleet`](commands/fleet.md) | Observe and drive the engines on every machine you run |
+| [`spinloop fleet`](commands/fleet.md) | Observe and drive the engines on every machine you run, and launch your agent against them |
 | [`spinloop gateway`](commands/gateway.md) | Serve the fleet under one OpenAI-compatible endpoint |
 | [`spinloop remote`](commands/remote.md) | Run the model on a cloud GPU that stops when you do |
 | [`spinloop export`](commands/export.md) | Capture the current setup as a `Spinloop` |

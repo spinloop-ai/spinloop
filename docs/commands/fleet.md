@@ -214,6 +214,35 @@ An explicit `--no-wake` still refuses to start anything, whatever the file
 says; an explicit `spinloop fleet start` does the opposite — it always starts,
 because it was asked.
 
+### Gateway
+
+`gateway` names the address this fleet is served under by a
+[`spinloop gateway`](gateway.md): a launch routed through this file is pointed
+at the gateway rather than at a node. The gateway has done the choosing, so
+the launch queries no node and wakes none:
+
+```yaml
+nodes: …
+gateway:
+  url: http://gateway.internal:4000   # required, with a scheme, like a FLEET endpoint
+  tokenEnv: GATEWAY_TOKEN             # optional; OPENAI_API_KEY when absent
+```
+
+A launch through such a file is dressed exactly as a launch whose `FLEET`
+names an endpoint: the section's address is the agent's base URL, and the
+token is resolved from the variable the section names — `OPENAI_API_KEY` when
+it names none — the way a key is resolved elsewhere: an `ENV` instruction,
+then the process environment, then the `.env` beside the Spinloop. A variable
+set nowhere fails the launch before anything is written, naming the variable.
+As with a node's choice, the launch reports the address on stderr before the
+agent starts.
+
+This is how a machine that holds the fleet file points a harness at the fleet:
+`spinloop fleet harness` reads the section when it is there, so a Spinloop
+beside the file needs only the model, and the address travels with the file.
+`spinloop fleet route` answers a file that names a gateway the same way — the
+address, and that no node is queried and nothing is started.
+
 ### Tokens
 
 `tokenEnv` names an environment variable; the value is resolved from the
@@ -504,6 +533,10 @@ Would use gpu-box at http://gpu-box:8080/v1
   serving qwen3-27b, active 312s ago (prefer idle)
 ```
 
+A file that names a [gateway](#gateway) is answered the way a launch answers
+it — the gateway's address, and that no node is queried and nothing is
+started.
+
 When nothing is serving that model it shows the whole fleet's state and names
 the node a real launch would wake, without waking it:
 
@@ -518,6 +551,31 @@ A launch would wake studio and wait for its engine. Nothing has been started.
 
 Use it to check a route before an agent depends on it, to see what the other
 `prefer` setting would choose, or to work out why a launch landed where it did.
+
+## Launching the harness
+
+`spinloop fleet harness` is the fleet-level form of a
+[harness launch](harness.md#launching-against-your-fleet): the fleet file comes
+from the command — `--fleet`, or the `fleet.yaml` beside it — rather than from
+the Spinloop's `FLEET`, which stands in when `--fleet` is not given. A fleet
+file that names a [gateway](#gateway) points the agent there, so the address
+lives in the file, not in every Spinloop:
+
+```sh
+spinloop fleet harness                  # the Spinloop and fleet.yaml beside it
+spinloop fleet harness my-spinloop      # a leading Spinloop
+spinloop fleet harness -O=./client/Spinloop
+spinloop fleet harness --node gpu-box   # the launch's steering flags
+```
+
+Routing is the launch's routing: at the gateway where the file names one,
+otherwise by node selection and, where the file's
+[wake policy](#waking) allows, a wake — `--node`, `--prefer`, `--no-wake` and
+`--wake-timeout` steer it as on the launch. A Spinloop that pins a `BASEURL` is
+not routed, and a variable already set in spinloop's environment wins, in each
+case as on the launch. With no Spinloop to route — none passed, none beside the
+fleet file — the command fails saying a launch needs a Spinloop to know which
+model to route.
 
 ## Starting and stopping
 

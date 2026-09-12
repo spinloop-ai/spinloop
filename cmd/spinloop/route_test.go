@@ -378,6 +378,90 @@ func TestPinnedBaseURLBeatsAnEndpointFleet(t *testing.T) {
 	}
 }
 
+// gatewayFleetFile writes a fleet file naming a gateway whose nodes point at a
+// port nothing listens on — so a route that consults them fails loudly rather
+// than passing quietly.
+func gatewayFleetFile(t *testing.T, section string) string {
+	t.Helper()
+	return fleetFileIn(t, t.TempDir(),
+		"nodes:\n  - name: dead\n    host: 127.0.0.1\n    port: 1\n"+section)
+}
+
+// A fleet file naming a gateway routes at it the way an endpoint FLEET does:
+// no node is consulted — the dead node below would fail a route that tried.
+func TestRouteToFileNamingAGateway(t *testing.T) {
+	fleetPath := gatewayFleetFile(t,
+		"gateway:\n  url: http://gw.internal:4000\n  tokenEnv: GW_TOKEN\n")
+	spinloopDir := routedSpinloop(t, "qwen3-27b", fleetPath)
+	sel, path, err := readSpinloop("test", spinloopDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stderr := captureStderr(t, func() {
+		c, err := routeThroughFleet(sel, path, routeOptions{node: "nobody", prefer: "sideways", noWake: true})
+		if err != nil {
+			t.Fatalf("a file naming a gateway should not consult any node: %v", err)
+		}
+		if !c.Gateway {
+			t.Fatalf("the choice should mark itself as a gateway, got %+v", c)
+		}
+		if c.BaseURL != "http://gw.internal:4000/v1" {
+			t.Errorf("a section without a path gets the prefix, got %s", c.BaseURL)
+		}
+		if c.GatewayTokenEnv != "GW_TOKEN" {
+			t.Errorf("the choice should carry the section's variable, got %q", c.GatewayTokenEnv)
+		}
+	})
+	// The choice is reported before anything launches, the way a node choice is.
+	if !strings.Contains(stderr, "Routing at http://gw.internal:4000/v1 — the fleet file names a gateway") {
+		t.Errorf("the choice should be reported on stderr, got:\n%s", stderr)
+	}
+}
+
+// A section url carrying a path is used as given, like an endpoint's.
+func TestRouteToFileNamingAGatewayWithAPath(t *testing.T) {
+	fleetPath := gatewayFleetFile(t,
+		"gateway:\n  url: http://gw.internal:4000/proxy/v1\n")
+	spinloopDir := routedSpinloop(t, "qwen3-27b", fleetPath)
+	sel, path, err := readSpinloop("test", spinloopDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	captureStderr(t, func() {
+		c, err := routeThroughFleet(sel, path, routeOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !c.Gateway || c.BaseURL != "http://gw.internal:4000/proxy/v1" {
+			t.Errorf("a section carrying a path is used as given, got %+v", c)
+		}
+	})
+}
+
+// A pinned BASEURL wins over a gateway section, as it wins over an endpoint.
+func TestPinnedBaseURLBeatsAGatewaySection(t *testing.T) {
+	fleetPath := gatewayFleetFile(t, "gateway:\n  url: http://gw.internal:4000\n")
+	spinloopDir := t.TempDir()
+	mustWrite(t, filepath.Join(spinloopDir, "Spinloop"),
+		"PROVIDER llamacpp\nMODEL qwen3-27b\nBASEURL http://pinned:9999/v1\nFLEET "+fleetPath+"\n")
+	sel, path, err := readSpinloop("test", spinloopDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stderr := captureStderr(t, func() {
+		c, err := routeThroughFleet(sel, path, routeOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if c != nil {
+			t.Errorf("a pinned BASEURL is not routed, got %+v", c)
+		}
+	})
+	if !strings.Contains(stderr, "Not routing") {
+		t.Errorf("spinloop should say it is not routing, got:\n%s", stderr)
+	}
+}
+
 // stubHarnessBinaryWithEnv is stubHarnessBinary plus a dump of the two
 // variables a routed launch injects, for asserting what the agent actually
 // got.
@@ -449,6 +533,139 @@ func TestLaunchWithEndpointFleetFailsWithoutAToken(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(home, ".config", "opencode", "opencode.json")); err == nil {
 		t.Error("the harness config was written for a launch that could not authenticate")
+	}
+}
+
+// A fleet file naming a gateway points the agent at it: the address is the
+// applied provider's base URL, and the token is resolved under the variable
+// the section names, not the endpoint's default.
+func TestLaunchWithAGatewaySectionPointsTheAgentAtTheGateway(t *testing.T) {
+	home := isolateConfig(t)
+	t.Setenv("GATEWAY_TOKEN", "gw-token")
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("OPENAI_BASE_URL", "")
+	argsFile := filepath.Join(t.TempDir(), "args")
+	envFile := filepath.Join(t.TempDir(), "env")
+	stubHarnessBinaryWithEnv(t, argsFile, envFile)
+
+	fleetPath := gatewayFleetFile(t,
+		"gateway:\n  url: http://gw.internal:4000\n  tokenEnv: GATEWAY_TOKEN\n")
+	spinloopDir := routedSpinloop(t, "qwen3-27b", fleetPath)
+	captureStdout(t, func() {
+		if err := cmdHarness([]string{"--spinloop=" + spinloopDir, "--", "run"}); err != nil {
+			t.Fatalf("cmdHarness: %v", err)
+		}
+	})
+	if _, err := os.ReadFile(argsFile); err != nil {
+		t.Fatalf("harness was not launched: %v", err)
+	}
+	data, err := os.ReadFile(envFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := string(data)
+	if !strings.Contains(out, "BASE=http://gw.internal:4000/v1") {
+		t.Errorf("the agent's base URL should be the section's address with the prefix, got:\n%s", out)
+	}
+	if !strings.Contains(out, "KEY=gw-token") {
+		t.Errorf("the agent should carry the token the section's variable holds, got:\n%s", out)
+	}
+	config, err := os.ReadFile(filepath.Join(home, ".config", "opencode", "opencode.json"))
+	if err != nil {
+		t.Fatalf("the harness config was not written: %v", err)
+	}
+	if !strings.Contains(string(config), "http://gw.internal:4000/v1") {
+		t.Errorf("the applied provider's base URL should be the section's address, got:\n%s", config)
+	}
+}
+
+// A section naming no tokenEnv resolves under the endpoint FLEET's variable,
+// so moving a launch from an endpoint to a section changes nothing the client
+// has to export.
+func TestLaunchWithAGatewaySectionDefaultsToOpenAIKey(t *testing.T) {
+	isolateConfig(t)
+	t.Setenv("OPENAI_API_KEY", "gw-token")
+	t.Setenv("OPENAI_BASE_URL", "")
+	argsFile := filepath.Join(t.TempDir(), "args")
+	envFile := filepath.Join(t.TempDir(), "env")
+	stubHarnessBinaryWithEnv(t, argsFile, envFile)
+
+	fleetPath := gatewayFleetFile(t, "gateway:\n  url: http://gw.internal:4000\n")
+	spinloopDir := routedSpinloop(t, "qwen3-27b", fleetPath)
+	captureStdout(t, func() {
+		if err := cmdHarness([]string{"--spinloop=" + spinloopDir, "--", "run"}); err != nil {
+			t.Fatalf("cmdHarness: %v", err)
+		}
+	})
+	data, err := os.ReadFile(envFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "KEY=gw-token") {
+		t.Errorf("the agent should carry the token under the default variable, got:\n%s", data)
+	}
+}
+
+// A launch at a gateway section whose variable is set nowhere fails before the
+// agent launches and before the harness config is written, naming the variable
+// the section names.
+func TestLaunchWithAGatewaySectionFailsNamingItsVariable(t *testing.T) {
+	home := isolateConfig(t)
+	t.Setenv("GATEWAY_TOKEN", "")
+	t.Setenv("OPENAI_API_KEY", "")
+	argsFile := filepath.Join(t.TempDir(), "args")
+	stubHarnessBinary(t, "opencode", argsFile)
+
+	fleetPath := gatewayFleetFile(t,
+		"gateway:\n  url: http://gw.internal:4000\n  tokenEnv: GATEWAY_TOKEN\n")
+	spinloopDir := routedSpinloop(t, "qwen3-27b", fleetPath)
+	captureStdout(t, func() {
+		err := cmdHarness([]string{"--spinloop=" + spinloopDir, "--", "run"})
+		if err == nil {
+			t.Fatal("a launch that cannot authenticate the gateway should fail")
+		}
+		if !strings.Contains(err.Error(), "GATEWAY_TOKEN") {
+			t.Errorf("the failure should name the variable the section names, got:\n%v", err)
+		}
+	})
+	if _, err := os.ReadFile(argsFile); err == nil {
+		t.Error("the agent launched without a token to reach the gateway")
+	}
+	if _, err := os.Stat(filepath.Join(home, ".config", "opencode", "opencode.json")); err == nil {
+		t.Error("the harness config was written for a launch that could not authenticate")
+	}
+}
+
+// The section's token may sit in the `.env` beside the Spinloop, the way any
+// key the launch resolves does: set nowhere in the environment, found beside
+// the file.
+func TestLaunchWithAGatewaySectionTokenFromDotEnv(t *testing.T) {
+	isolateConfig(t)
+	t.Setenv("GATEWAY_TOKEN", "")
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("OPENAI_BASE_URL", "")
+	argsFile := filepath.Join(t.TempDir(), "args")
+	envFile := filepath.Join(t.TempDir(), "env")
+	stubHarnessBinaryWithEnv(t, argsFile, envFile)
+
+	fleetPath := gatewayFleetFile(t,
+		"gateway:\n  url: http://gw.internal:4000\n  tokenEnv: GATEWAY_TOKEN\n")
+	spinloopDir := routedSpinloop(t, "qwen3-27b", fleetPath)
+	mustWrite(t, filepath.Join(spinloopDir, ".env"), "GATEWAY_TOKEN=dotenv-token\n")
+	captureStdout(t, func() {
+		if err := cmdHarness([]string{"--spinloop=" + spinloopDir, "--", "run"}); err != nil {
+			t.Fatalf("cmdHarness: %v", err)
+		}
+	})
+	if _, err := os.ReadFile(argsFile); err != nil {
+		t.Fatalf("harness was not launched: %v", err)
+	}
+	data, err := os.ReadFile(envFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "KEY=dotenv-token") {
+		t.Errorf("the agent should carry the token the .env beside the Spinloop holds, got:\n%s", data)
 	}
 }
 
@@ -618,6 +835,28 @@ func TestCmdFleetRouteAgainstAnEndpoint(t *testing.T) {
 	})
 	for _, want := range []string{
 		"gw.internal:4000 (an endpoint, not a fleet file)",
+		"would point the agent at http://gw.internal:4000/v1",
+		"nothing is started",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output should mention %q, got:\n%s", want, out)
+		}
+	}
+}
+
+// A fleet file naming a gateway is answered the way an endpoint is: the
+// address is named, and the dead node below proves none is queried.
+func TestCmdFleetRouteAgainstAFileNamingAGateway(t *testing.T) {
+	fleetPath := gatewayFleetFile(t, "gateway:\n  url: http://gw.internal:4000\n")
+	spinloopDir := routedSpinloop(t, "qwen3-27b", fleetPath)
+
+	out := captureStdout(t, func() {
+		if err := cmdFleetRoute([]string{filepath.Join(spinloopDir, "Spinloop")}); err != nil {
+			t.Fatal(err)
+		}
+	})
+	for _, want := range []string{
+		"names a gateway",
 		"would point the agent at http://gw.internal:4000/v1",
 		"nothing is started",
 	} {

@@ -96,6 +96,12 @@ Which node wins among several that could all serve you is a
 takes the machine that has been quiet longest, keeping a second agent off an
 engine that is mid-request; `active` consolidates onto the busy one instead.
 
+[`spinloop fleet harness`](fleet.md#launching-the-harness) is the fleet-level
+form of this launch: the fleet file comes from the command rather than from the
+Spinloop's `FLEET`, and a fleet file that names a
+[gateway](fleet.md#gateway) points the agent there, so the address lives in the
+file, not in every Spinloop.
+
 ## Notes
 
 - Trailing arguments and stdio go to the agent untouched, and its exit code is
@@ -108,4 +114,5 @@ engine that is mid-request; `active` consolidates onto the busy one instead.
 - [`spinloop show`](show.md) — what the active harness has configured
 - [`spinloop apply`](apply.md) — configure without launching
 - [`spinloop fleet route`](fleet.md#which-node-would-i-get) — which node a launch would pick
+- [`spinloop fleet harness`](fleet.md#launching-the-harness) — launch against the fleet file beside you
 - [`examples/fleet-local/`](../../examples/fleet-local/) — routing at a single local node, end to end

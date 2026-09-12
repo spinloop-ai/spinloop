@@ -1171,6 +1171,20 @@ func applyBeforeLaunch(f spinloopPathFlag, providers string, h harness.Harness, 
 	if err != nil {
 		return spinloop.Selection{}, "", nil, nil, err
 	}
+	sel, envDir, remoteResp, choice, err := applyRoutedSpinloop(sel, path, providers, h, route)
+	if err != nil {
+		return spinloop.Selection{}, "", nil, nil, err
+	}
+	return sel, envDir, remoteResp, choice, nil
+}
+
+// applyRoutedSpinloop routes an already-read Spinloop and applies it to the
+// harness that is about to be launched: routing first, so a launch that cannot
+// find a node leaves the harness config exactly as it was, then the remote
+// fetch and the apply themselves. `spinloop harness` reads its Spinloop on the
+// way in; `spinloop fleet harness` reads its own, because with none it fails on
+// its own terms. Both then run this one path.
+func applyRoutedSpinloop(sel spinloop.Selection, path string, providers string, h harness.Harness, route routeOptions) (spinloop.Selection, string, *remote.Response, *fleet.Choice, error) {
 	// As for apply, --providers overrides the catalogue the selection resolves
 	// against (a Spinloop never names one).
 	sel.Providers = providers
@@ -1200,16 +1214,22 @@ func applyBeforeLaunch(f spinloopPathFlag, providers string, h harness.Harness, 
 		resolve = fleetLaunchResolver(resolve, choice.APIKey)
 	}
 	if choice != nil && choice.Gateway {
-		// A FLEET naming an endpoint authenticates with a token the client
-		// holds itself, resolved the way a key is resolved elsewhere: an ENV
-		// instruction, else the process environment, else the .env beside the
-		// Spinloop. Set nowhere, the launch cannot authenticate, and an
-		// endpoint that refuses every request is not one to point an agent at.
-		key := localKey(sel, localResolve)
+		// A FLEET naming an endpoint — or a fleet file naming a gateway —
+		// authenticates with a token the client holds itself, resolved the way
+		// a key is resolved elsewhere: an ENV instruction, else the process
+		// environment, else the .env beside the Spinloop. The variable is the
+		// one the section names, or the endpoint's default where the section
+		// names none. Set nowhere, the launch cannot authenticate, and a
+		// gateway that refuses every request is not one to point an agent at.
+		env := choice.GatewayTokenEnv
+		if env == "" {
+			env = remoteAPIKeyEnv
+		}
+		key := localKeyUnder(sel, localResolve, env)
 		if key == "" {
 			return spinloop.Selection{}, "", nil, nil, fmt.Errorf(
-				"no token to reach the FLEET endpoint %s: export %s, or set it in the .env beside %s",
-				choice.BaseURL, remoteAPIKeyEnv, path)
+				"no token to reach the gateway %s: export %s, or set it in the .env beside %s",
+				choice.BaseURL, env, path)
 		}
 		choice.APIKey = key
 		resolve = fleetLaunchResolver(resolve, key)
@@ -1279,17 +1299,23 @@ func fetchRemoteEnv(sel spinloop.Selection, spinloopPath string, resolve func(st
 	return nil, nil
 }
 
-// localKey returns the API key the launch can supply without the control
-// plane: an ENV instruction in the Spinloop, which overrides everything at launch
-// (see overlayLocalEnv), otherwise whatever the environment or the adjacent
-// `.env` holds.
-func localKey(sel spinloop.Selection, resolve func(string) string) string {
+// localKeyUnder returns the key the launch can supply without a control
+// plane, under the variable name: an ENV instruction in the Spinloop that
+// names it, which overrides everything at launch (see overlayLocalEnv),
+// otherwise whatever the environment or the adjacent `.env` holds.
+func localKeyUnder(sel spinloop.Selection, resolve func(string) string, name string) string {
 	for _, e := range sel.Env {
-		if e.Key == remoteAPIKeyEnv {
+		if e.Key == name {
 			return e.Value
 		}
 	}
-	return resolve(remoteAPIKeyEnv)
+	return resolve(name)
+}
+
+// localKey resolves under the remote API key's variable — the one a REMOTE
+// endpoint and a FLEET endpoint authenticate under.
+func localKey(sel spinloop.Selection, resolve func(string) string) string {
+	return localKeyUnder(sel, resolve, remoteAPIKeyEnv)
 }
 
 // remoteLaunchResolver extends an environment-variable lookup with the key

@@ -96,6 +96,13 @@ func (c *Config) Wakes() bool {
 // (the directory whose .env supplies token values).
 type Config struct {
 	Nodes []NodeConfig `yaml:"nodes"`
+	// Gateway names the address the fleet is served under by its gateway. A
+	// launch routed through this file points the agent at the gateway rather
+	// than at a node: the gateway has done the choosing, so routing contacts
+	// no node and wakes none. It is a section rather than a node kind because
+	// it is not a machine the fleet drives — it has no control API, and no
+	// fleet operation but routing ever looks at it.
+	Gateway *GatewayConfig `yaml:"gateway"`
 	// Prefer ranks nodes that could all serve a request. It belongs to the
 	// file rather than to a node because it describes how this cluster
 	// should be used — spread the work, or consolidate it. Empty means
@@ -179,6 +186,38 @@ type EngineOverride struct {
 	Path string `yaml:"path"`
 }
 
+// DefaultGatewayTokenEnv is the variable a gateway's token is resolved under
+// when the section names none: the same variable an endpoint FLEET resolves
+// under, so a file that moves a launch from an endpoint to a section changes
+// nothing the client has to export.
+const DefaultGatewayTokenEnv = "OPENAI_API_KEY"
+
+// GatewayConfig is the fleet file's gateway section: the address the fleet is
+// served under, and where the client's token for it lives. As with every other
+// secret in this file, the token itself is never written here.
+type GatewayConfig struct {
+	// URL is the gateway's address. It carries a scheme, the way an endpoint
+	// value does — the gateway is reached over HTTP, and a bare host names
+	// nothing spinloop could dial.
+	URL string `yaml:"url"`
+	// TokenEnv names the environment variable holding the gateway's token.
+	// Empty means DefaultGatewayTokenEnv.
+	TokenEnv string `yaml:"tokenEnv"`
+}
+
+// GatewaySection returns the file's gateway section, with its token variable
+// defaulted, and whether the file names a gateway at all.
+func (c *Config) GatewaySection() (GatewayConfig, bool) {
+	if c.Gateway == nil {
+		return GatewayConfig{}, false
+	}
+	gw := *c.Gateway
+	if gw.TokenEnv == "" {
+		gw.TokenEnv = DefaultGatewayTokenEnv
+	}
+	return gw, true
+}
+
 // BaseURL is the root of this node's control API.
 func (n NodeConfig) BaseURL() string {
 	return fmt.Sprintf("http://%s:%d", n.Host, n.port())
@@ -239,6 +278,19 @@ func (c *Config) validate() error {
 	if c.WakePolicy != "" {
 		if _, err := ParseWakePolicy(string(c.WakePolicy)); err != nil {
 			return err
+		}
+	}
+	if c.Gateway != nil {
+		if c.Gateway.URL == "" {
+			return fmt.Errorf("the gateway section names no url: name the gateway's address under `url:`")
+		}
+		// The section's url is an endpoint value wearing a section: it is
+		// dialed over HTTP, so it carries a scheme the way FLEET's endpoint
+		// values do.
+		if !strings.Contains(c.Gateway.URL, "://") {
+			return fmt.Errorf(
+				"the gateway section's url %q has no scheme: give the gateway's full address, the way an endpoint value does",
+				c.Gateway.URL)
 		}
 	}
 	seen := map[string]bool{}

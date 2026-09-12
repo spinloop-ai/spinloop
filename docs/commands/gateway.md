@@ -49,6 +49,23 @@ credential; the node tokens and engine keys live with the gateway, which
 presents them to the nodes and the engines. See
 [The `Spinloop` file](../spinloop-file.md#running-the-model-on-another-machine-you-own).
 
+The same pointing can live in the fleet file instead of the Spinloop: a
+[`gateway` section](fleet.md#gateway) beside its `nodes` names the address and
+the variable holding the token, and `spinloop fleet harness` — the fleet-level
+form of a launch — reads it. A Spinloop beside that file then needs only the
+model, and the address travels with the file when the gateway moves:
+
+```yaml
+# fleet.yaml
+gateway:
+  url: http://gateway.internal:4000
+  tokenEnv: GATEWAY_TOKEN
+```
+
+```sh
+spinloop fleet harness -O=./Spinloop   # from the fleet file's directory
+```
+
 ## What it answers
 
 | Path | Meaning |

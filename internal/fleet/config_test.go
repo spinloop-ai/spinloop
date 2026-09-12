@@ -663,3 +663,87 @@ func TestWakeRejectsUnknownValue(t *testing.T) {
 		}
 	}
 }
+
+func TestGatewaySection(t *testing.T) {
+	path := writeFleet(t, `
+nodes:
+  - name: studio
+    host: studio.local
+gateway:
+  url: https://gw.example.com
+  tokenEnv: GW_TOKEN
+`, "")
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gw, ok := cfg.GatewaySection()
+	if !ok {
+		t.Fatal("a file with a gateway section should report one")
+	}
+	if gw.URL != "https://gw.example.com" || gw.TokenEnv != "GW_TOKEN" {
+		t.Errorf("gateway = %+v", gw)
+	}
+}
+
+// A section that names no tokenEnv resolves under the endpoint FLEET's
+// variable, so moving a launch from an endpoint to a section changes nothing
+// the client has to export.
+func TestGatewaySectionTokenDefaults(t *testing.T) {
+	path := writeFleet(t, `
+nodes:
+  - name: studio
+    host: studio.local
+gateway:
+  url: https://gw.example.com
+`, "")
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gw, ok := cfg.GatewaySection()
+	if !ok {
+		t.Fatal("a file with a gateway section should report one")
+	}
+	if gw.TokenEnv != DefaultGatewayTokenEnv {
+		t.Errorf("tokenEnv = %q, want the default %q", gw.TokenEnv, DefaultGatewayTokenEnv)
+	}
+}
+
+// No section: the accessor says so, and the file behaves as it always has.
+func TestNoGatewaySection(t *testing.T) {
+	path := writeFleet(t, `
+nodes:
+  - name: studio
+    host: studio.local
+`, "")
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := cfg.GatewaySection(); ok {
+		t.Error("a file without a gateway section should report none")
+	}
+}
+
+func TestLoadRefusesAGatewayWithoutAURL(t *testing.T) {
+	_, err := Load(writeFleet(t,
+		"nodes:\n  - name: a\n    host: a.local\ngateway:\n  tokenEnv: GW_TOKEN\n", ""))
+	if err == nil {
+		t.Fatal("a gateway section naming no url should be refused")
+	}
+	if !strings.Contains(err.Error(), "url") {
+		t.Errorf("the refusal should name the missing field, got %q", err)
+	}
+}
+
+func TestLoadRefusesAGatewayURLWithoutAScheme(t *testing.T) {
+	_, err := Load(writeFleet(t,
+		"nodes:\n  - name: a\n    host: a.local\ngateway:\n  url: gw.example.com\n", ""))
+	if err == nil {
+		t.Fatal("a gateway url without a scheme should be refused")
+	}
+	if !strings.Contains(err.Error(), "scheme") {
+		t.Errorf("the refusal should say the url lacks a scheme, got %q", err)
+	}
+}

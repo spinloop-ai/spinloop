@@ -79,6 +79,21 @@ func routeThroughFleet(sel spinloop.Selection, spinloopPath string, opts routeOp
 	if err != nil {
 		return nil, err
 	}
+	// A fleet file that names a gateway routes the way an endpoint FLEET
+	// does: the gateway has already done the choosing, so there is no node to
+	// contact and nothing to wake. The token is not resolved here: the launch
+	// resolves it through the same chain, under the variable the section
+	// names.
+	if gw, ok := cfg.GatewaySection(); ok {
+		choice := &fleet.Choice{
+			Gateway:         true,
+			BaseURL:         endpointBaseURL(gw.URL),
+			GatewayTokenEnv: gw.TokenEnv,
+			Reason:          "the fleet file names a gateway",
+		}
+		announceChoice(choice)
+		return choice, nil
+	}
 	prefer, err := cfg.Preference(opts.prefer)
 	if err != nil {
 		return nil, err
@@ -149,7 +164,7 @@ func routeThroughFleet(sel spinloop.Selection, spinloopPath string, opts routeOp
 // an unexpected route says so at the time rather than at the first request.
 func announceChoice(c *fleet.Choice) {
 	if c.Gateway {
-		fmt.Fprintf(os.Stderr, "Routing at the FLEET endpoint %s\n", c.BaseURL)
+		fmt.Fprintf(os.Stderr, "Routing at %s — %s\n", c.BaseURL, c.Reason)
 		return
 	}
 	fmt.Fprintf(os.Stderr, "Using %s at %s — %s\n", c.Node.Name, c.BaseURL, c.Reason)

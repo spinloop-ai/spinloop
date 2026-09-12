@@ -492,13 +492,14 @@ test_cold_request_wakes_and_streams() {
 }
 
 #######################################
-# Assert a harness launch against the client's Spinloop points the agent at
-# the gateway's address with the gateway's token as its key.
+# Assert `spinloop fleet harness` against the client's Spinloop points the
+# agent at the fleet file's gateway — the section's address, the section's
+# token variable — and writes the harness config for it.
 # Globals:
-#   HERE, SPINLOOP_BIN
+#   HERE, SPINLOOP_BIN, GATEWAY_TOKEN
 #######################################
 test_launch_points_agent_at_gateway() {
-  echo "A launch points the agent at the gateway"
+  echo "A launch points the agent at the fleet's gateway"
   local sandbox="${HERE}/.launch-sandbox"
   rm -rf "${sandbox}"
   mkdir -p "${sandbox}/bin" "${sandbox}/home"
@@ -508,12 +509,14 @@ echo "HARNESS base_url=${OPENAI_BASE_URL:-<unset>} key=${OPENAI_API_KEY:-<unset>
 STUB
   chmod +x "${sandbox}/bin/opencode"
 
+  # From this directory: no -f, so the fleet.yaml beside the Spinloop is the
+  # one routed through, and its gateway section is where the agent goes.
   local launch
   launch="$(PATH="${sandbox}/bin:${PATH}" HOME="${sandbox}/home" \
     XDG_CONFIG_HOME="${sandbox}/home/.config" \
     OPENAI_BASE_URL="" \
-    OPENAI_API_KEY="${GATEWAY_TOKEN}" \
-    "${SPINLOOP_BIN}" harness -O="${HERE}/client/Spinloop" -H opencode 2>&1 || true)"
+    OPENAI_API_KEY="" \
+    "${SPINLOOP_BIN}" fleet harness -O=client/Spinloop -H opencode 2>&1 || true)"
   assert_contains "the agent is pointed at the gateway with its prefix" \
     "${launch}" "base_url=http://127.0.0.1:4000/v1"
   assert_contains "the agent is given the gateway's token as its key" \
@@ -531,7 +534,8 @@ STUB
 
 #######################################
 # Assert a launch that cannot authenticate the gateway fails before the agent
-# is started and before anything is written, naming the variable.
+# is started and before anything is written, naming the variable the fleet
+# file's gateway section holds.
 # Globals:
 #   HERE, SPINLOOP_BIN
 #######################################
@@ -550,9 +554,9 @@ STUB
   launch="$(PATH="${sandbox}/bin:${PATH}" HOME="${sandbox}/home" \
     XDG_CONFIG_HOME="${sandbox}/home/.config" \
     OPENAI_BASE_URL="" \
-    OPENAI_API_KEY="" \
-    "${SPINLOOP_BIN}" harness -O="${HERE}/client/Spinloop" -H opencode 2>&1 || true)"
-  assert_contains "the failure names the variable to set" "${launch}" "OPENAI_API_KEY"
+    GATEWAY_TOKEN="" \
+    "${SPINLOOP_BIN}" fleet harness -O=client/Spinloop -H opencode 2>&1 || true)"
+  assert_contains "the failure names the variable to set" "${launch}" "GATEWAY_TOKEN"
   assert_not_contains "the agent was not started" "${launch}" "HARNESS"
   if [[ ! -f "${sandbox}/home/.config/opencode/opencode.json" ]]; then
     pass "no harness config was written"
