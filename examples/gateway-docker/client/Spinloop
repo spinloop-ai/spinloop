@@ -1,13 +1,13 @@
-# What an agent's machine wears to use this stack: a model, and a FLEET that
-# names the gateway's address rather than a fleet file. The gateway has done
-# the choosing; the agent is only pointed at it.
+# What an agent's machine wears to use this stack: a model, and nothing about
+# where it is served — the fleet file's gateway section says that. `spinloop
+# fleet harness` with this Spinloop beside that fleet file points the agent at
+# the gateway; the Spinloop stays valid whatever address the gateway moves to.
 #
 # The agent holds exactly one credential — the gateway's token, as
-# OPENAI_API_KEY (from the environment, or a .env beside this file). The node
-# tokens and engine keys live with the gateway, which presents them to the
-# nodes and the engines; none of them ever reach the agent.
+# GATEWAY_TOKEN (from the environment, or a .env beside the fleet file). The
+# node tokens and engine keys live with the gateway, which presents them to
+# the nodes and the engines; none of them ever reach the agent.
 PROVIDER llamacpp
 MODEL    org/fake-model
 ALIAS    fake-model
 CONTEXT  4096
-FLEET    http://127.0.0.1:4000

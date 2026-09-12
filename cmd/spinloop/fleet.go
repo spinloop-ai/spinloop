@@ -26,6 +26,8 @@ import (
 	"github.com/spinloop-ai/spinloop/internal/config"
 	"github.com/spinloop-ai/spinloop/internal/daemon"
 	"github.com/spinloop-ai/spinloop/internal/fleet"
+	"github.com/spinloop-ai/spinloop/internal/harness"
+	"github.com/spinloop-ai/spinloop/internal/spinloop"
 )
 
 // cmdFleet runs the fleet subcommands through the tree — the seam the suite
@@ -811,6 +813,13 @@ func runFleetRoute(path, node, prefer string, args []string) error {
 		fmt.Printf("This Spinloop pins BASEURL %s, so a launch would not route at all.\n", sel.BaseURL)
 		return nil
 	}
+	if gw, ok := cfg.GatewaySection(); ok {
+		// The file names a gateway: as for an endpoint FLEET, the choosing is
+		// already done — no node is queried, and nothing is started.
+		fmt.Printf("The fleet file names a gateway: a launch would point the agent at %s.\n", endpointBaseURL(gw.URL))
+		fmt.Println("No node is queried, and nothing is started.")
+		return nil
+	}
 
 	choice, err := cfg.Select(context.Background(), want)
 	if err == nil {
@@ -844,3 +853,105 @@ func runFleetRoute(path, node, prefer string, args []string) error {
 
 // cmdFleetRoute runs the command through the tree — the seam the suite calls.
 func cmdFleetRoute(args []string) error { return execCmd(fleetRouteCmd(), args) }
+
+// fleetHarnessCmd configures the active harness for the fleet file and
+// launches it: the fleet-level form of a fleet-routed launch, in which the
+// fleet file comes from the command rather than from a Spinloop's FLEET.
+func fleetHarnessCmd() *cobra.Command {
+	var spinloopPath spinloopPathFlag
+	var fleetPath, node, prefer, harnessName string
+	var noWake bool
+	var wakeTimeout time.Duration
+	c := &cobra.Command{
+		Use:   "harness",
+		Short: "configure the active harness for this fleet and launch it",
+		Long: `configures the active harness for the fleet in the fleet file and launches it:
+the fleet-level form of a fleet-routed launch. The Spinloop is taken the way
+spinloop harness takes one — a leading alias or path, -O/--spinloop, or the
+Spinloop beside the fleet file — and the fleet file from -f/--fleet, defaulting
+to the fleet.yaml beside it. Where no -f is given, a Spinloop's FLEET — a file
+or an endpoint — is used, exactly as --fleet overrides an instruction on
+spinloop harness; a Spinloop's pinned BASEURL is not routed, as on the launch.`,
+		Args:              cobra.MaximumNArgs(1),
+		SilenceErrors:     true,
+		SilenceUsage:      true,
+		ValidArgsFunction: aliasSlot,
+		RunE: func(c *cobra.Command, args []string) error {
+			resolve(c)
+			return runFleetHarness(spinloopPath, fleetPath, node, prefer, harnessName, noWake, wakeTimeout, args)
+		},
+	}
+	fs := c.Flags()
+	fs.VarP(&spinloopPath, "spinloop", "O", "the Spinloop to route (bare: ./"+spinloop.DefaultFile+")")
+	// Bare -O arrives as NoOptDefVal; spinloopPathFlag maps it to the empty
+	// path readSpinloop resolves as SPINLOOP_ALIAS > ./Spinloop.
+	fs.Lookup("spinloop").NoOptDefVal = "true"
+	fs.StringVarP(&fleetPath, "fleet", "f", "", fleetFileUsage)
+	fs.StringVar(&node, "node", "", "route to this node rather than choosing one")
+	fs.StringVar(&prefer, "prefer", "", "rank nodes by `idle` or `active` (overrides the fleet file)")
+	fs.BoolVar(&noWake, "no-wake", false, "fail rather than starting an engine on an idle fleet node")
+	fs.DurationVar(&wakeTimeout, "wake-timeout", 0, "how long to wait for a woken node's engine")
+	fs.StringVarP(&harnessName, "harness", "H", "", "which harness to launch")
+	compRegister(c, "fleet", compFiles)
+	return c
+}
+
+// cmdFleetHarness runs the command through the tree — the seam the suite calls.
+func cmdFleetHarness(args []string) error { return execCmd(fleetHarnessCmd(), args) }
+
+// runFleetHarness is the body of `spinloop fleet harness`: read the Spinloop,
+// route the launch at the fleet's gateway or a chosen node, apply, launch.
+func runFleetHarness(sp spinloopPathFlag, fleetPath, node, prefer, harnessName string, noWake bool, wakeTimeout time.Duration, args []string) error {
+	h, _, err := harness.Resolve(harnessName)
+	if err != nil {
+		return err
+	}
+
+	// The Spinloop is what gets routed: its model is what the fleet is chosen
+	// against. A leading argument names one the way spinloop harness takes one;
+	// -O does; with neither, the Spinloop beside the fleet file.
+	var spinloopArg string
+	given := false
+	if sp.set && sp.path != "" {
+		spinloopArg, given = sp.path, true
+	} else if len(args) > 0 {
+		if !namesAnSpinloopOrAlias(args[0]) {
+			return fmt.Errorf("%s does not name a Spinloop: pass one with -O, or put one beside the fleet file", args[0])
+		}
+		spinloopArg, given = args[0], true
+	} else if sp.set {
+		// A bare -O: pflag delivers the flag's NoOptDefVal, which stands for
+		// the default Spinloop, resolved as SPINLOOP_ALIAS > ./Spinloop.
+		given = true
+	}
+	sel, resolvedPath, err := readSpinloop("spinloop fleet harness <spinloop>", spinloopArg)
+	if err != nil {
+		if !given {
+			// Nothing was given, so the default file was looked for and not
+			// found: say what a launch cannot do without it.
+			return fmt.Errorf("a launch needs a Spinloop to know which model to route: %v", err)
+		}
+		return err
+	}
+
+	// The fleet file: -f when given, the Spinloop's FLEET when -f is not, and
+	// the fleet.yaml beside it when neither is — the launch's own precedence,
+	// with the default the launch does not have, because routing is what this
+	// command exists to do.
+	route := routeOptions{
+		fleetPath:   fleetPath,
+		node:        node,
+		prefer:      prefer,
+		noWake:      noWake,
+		wakeTimeout: wakeTimeout,
+	}
+	if route.fleetTarget(sel) == "" {
+		route.fleetPath = fleet.DefaultFile
+	}
+
+	sel, envDir, remoteResp, choice, err := applyRoutedSpinloop(sel, resolvedPath, "", h, route)
+	if err != nil {
+		return err
+	}
+	return launchAgent(h, nil, "", envDir, remoteResp, sel, true, choice)
+}

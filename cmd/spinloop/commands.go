@@ -197,65 +197,7 @@ exits. Honours -H/--harness and SPINLOOP_HARNESS.`,
 			} else if route.fleetPath != "" {
 				return fmt.Errorf("--fleet needs a Spinloop: it is the Spinloop's model that decides which node can serve you")
 			}
-			// The resolver the launch uses knows the remote key too, so every
-			// key the agent is given comes from the same place the apply step
-			// reported.
-			resolveKey := remoteLaunchResolver(opencode.EnvResolver(envDir), remoteResp)
-
-			// Launch the harness, forwarding stdio and any trailing args.
-			bin := h.Command()
-			cmd := exec.Command(bin, rest...)
-			cmd.Stdin = os.Stdin
-			cmd.Stdout = os.Stdout
-			cmd.Stderr = os.Stderr
-			cmd.Env = harnessEnv(providers, resolveKey, remoteResp)
-			// A routed launch points the agent at the node that was chosen. As
-			// on the remote path, an explicit setting in the environment already
-			// won: routing fills what is unset rather than overriding a
-			// deliberate choice.
-			if choice != nil {
-				cmd.Env = setEnvIfBlank(cmd.Env, "OPENAI_BASE_URL", choice.BaseURL)
-				if choice.APIKey != "" {
-					cmd.Env = setEnvIfBlank(cmd.Env, "OPENAI_API_KEY", choice.APIKey)
-				}
-			}
-			// A worn Spinloop brings its whole local environment to the launched
-			// agent: its adjacent .env fills any gaps left above, and its ENV
-			// instructions override everything. These shape only the child's
-			// environment — spinloop never mutates its own — and follow the same
-			// precedence the remote commands use: ENV > process environment >
-			// .env.
-			if spinloopPath.set {
-				cmd.Env = overlayLocalEnv(cmd.Env, sel, envDir)
-			}
-			// lucinate reads an OpenAI-compatible key from
-			// LUCINATE_OPENAI_API_KEY when its stored secret is empty — which is
-			// exactly how spinloop configures it, with no secret on disk. Supply
-			// the active provider's key here so the launched agent can
-			// authenticate the model it boots into, without ever writing it to
-			// lucinate's config. An explicit setting already in the child's env
-			// wins.
-			if h.Name() == "lucinate" {
-				if choice != nil && choice.APIKey != "" {
-					cmd.Env = setEnvIfBlank(cmd.Env, "LUCINATE_OPENAI_API_KEY", choice.APIKey)
-				}
-				if key, ok := lucinateLaunchKey(providers, resolveKey, sel, spinloopPath.set); ok {
-					cmd.Env = setEnvIfAbsent(cmd.Env, "LUCINATE_OPENAI_API_KEY", key)
-				}
-			}
-			if err := cmd.Run(); err != nil {
-				if errors.Is(err, exec.ErrNotFound) || errors.Is(err, os.ErrNotExist) {
-					return fmt.Errorf("%s not found — install the %s harness or add it to your PATH", bin, h.Name())
-				}
-				var exitErr *exec.ExitError
-				if errors.As(err, &exitErr) {
-					// The harness ran and chose its own exit code; surface it
-					// verbatim.
-					os.Exit(exitErr.ExitCode())
-				}
-				return err
-			}
-			return nil
+			return launchAgent(h, rest, providers, envDir, remoteResp, sel, spinloopPath.set, choice)
 		},
 	}
 	fs := c.Flags()
@@ -274,6 +216,72 @@ exits. Honours -H/--harness and SPINLOOP_HARNESS.`,
 	fs.BoolVar(&route.noWake, "no-wake", false, "fail rather than starting an engine on an idle fleet node")
 	fs.DurationVar(&route.wakeTimeout, "wake-timeout", 0, "how long to wait for a woken node's engine")
 	return c
+}
+
+// launchAgent runs the harness as the launch's child: stdio and any trailing
+// args forwarded, and the environment the apply step reported as the source of
+// every key the agent is given. Both launch commands end here, so the agent a
+// launch is given can only differ the way the apply that preceded it did.
+func launchAgent(h harness.Harness, rest []string, providers, envDir string, remoteResp *remote.Response, sel spinloop.Selection, worn bool, choice *fleet.Choice) error {
+	// The resolver the launch uses knows the remote key too, so every
+	// key the agent is given comes from the same place the apply step
+	// reported.
+	resolveKey := remoteLaunchResolver(opencode.EnvResolver(envDir), remoteResp)
+
+	// Launch the harness, forwarding stdio and any trailing args.
+	bin := h.Command()
+	cmd := exec.Command(bin, rest...)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Env = harnessEnv(providers, resolveKey, remoteResp)
+	// A routed launch points the agent at the node that was chosen. As
+	// on the remote path, an explicit setting in the environment already
+	// won: routing fills what is unset rather than overriding a
+	// deliberate choice.
+	if choice != nil {
+		cmd.Env = setEnvIfBlank(cmd.Env, "OPENAI_BASE_URL", choice.BaseURL)
+		if choice.APIKey != "" {
+			cmd.Env = setEnvIfBlank(cmd.Env, "OPENAI_API_KEY", choice.APIKey)
+		}
+	}
+	// A worn Spinloop brings its whole local environment to the launched
+	// agent: its adjacent .env fills any gaps left above, and its ENV
+	// instructions override everything. These shape only the child's
+	// environment — spinloop never mutates its own — and follow the same
+	// precedence the remote commands use: ENV > process environment >
+	// .env.
+	if worn {
+		cmd.Env = overlayLocalEnv(cmd.Env, sel, envDir)
+	}
+	// lucinate reads an OpenAI-compatible key from
+	// LUCINATE_OPENAI_API_KEY when its stored secret is empty — which is
+	// exactly how spinloop configures it, with no secret on disk. Supply
+	// the active provider's key here so the launched agent can
+	// authenticate the model it boots into, without ever writing it to
+	// lucinate's config. An explicit setting already in the child's env
+	// wins.
+	if h.Name() == "lucinate" {
+		if choice != nil && choice.APIKey != "" {
+			cmd.Env = setEnvIfBlank(cmd.Env, "LUCINATE_OPENAI_API_KEY", choice.APIKey)
+		}
+		if key, ok := lucinateLaunchKey(providers, resolveKey, sel, worn); ok {
+			cmd.Env = setEnvIfAbsent(cmd.Env, "LUCINATE_OPENAI_API_KEY", key)
+		}
+	}
+	if err := cmd.Run(); err != nil {
+		if errors.Is(err, exec.ErrNotFound) || errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("%s not found — install the %s harness or add it to your PATH", bin, h.Name())
+		}
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			// The harness ran and chose its own exit code; surface it
+			// verbatim.
+			os.Exit(exitErr.ExitCode())
+		}
+		return err
+	}
+	return nil
 }
 
 // versionCmd prints the version, the same spelling the old dispatch gave
@@ -331,6 +339,7 @@ error — only a problem with the fleet file itself fails a command.`,
 		fleetLogsCmd(),
 		fleetDashboardCmd(),
 		fleetRouteCmd(),
+		fleetHarnessCmd(),
 		fleetStartCmd(),
 		fleetStopCmd(),
 		fleetDeployCmd(),

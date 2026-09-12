@@ -120,8 +120,14 @@ type Choice struct {
 	Woken bool
 	// Gateway records that FLEET named an endpoint rather than a fleet file:
 	// the endpoint has already done the choosing, Node is empty, and BaseURL
-	// is the endpoint's address rather than a node's engine.
+	// is the endpoint's address rather than a node's engine. A fleet file's
+	// gateway section yields the same shape.
 	Gateway bool
+	// GatewayTokenEnv names the variable holding the token for a Gateway
+	// choice: the variable a fleet file's gateway section names, defaulted to
+	// the endpoint FLEET's variable when the section names none. The launch
+	// resolves it through its key chain, as with every other key.
+	GatewayTokenEnv string
 }
 
 // candidate pairs a node's file entry with what it answered, keeping the

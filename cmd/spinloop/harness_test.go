@@ -1126,3 +1126,67 @@ func TestHarness_LucinateInjectsKeyAtLaunch(t *testing.T) {
 		t.Errorf("launched agent's env is missing the injected key:\n%s", got)
 	}
 }
+
+// A routed launch gives lucinate the fleet's key, not the provider's: the
+// endpoint's token is the one the agent will authenticate with.
+func TestHarness_LucinateCarriesTheFleetKeyAtLaunch(t *testing.T) {
+	isolateConfig(t)
+	t.Setenv("SPINLOOP_HARNESS", "lucinate")
+	t.Setenv("OPENAI_API_KEY", "gw-token")
+	t.Setenv("OPENAI_BASE_URL", "")
+	t.Setenv("DEEPSEEK_API_KEY", "sk-or-v1-test")
+
+	envFile := filepath.Join(t.TempDir(), "env")
+	dir := t.TempDir()
+	body := "#!/bin/sh\nenv > " + envFile + "\n"
+	if err := os.WriteFile(filepath.Join(dir, "lucinate"), []byte(body), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	spinloopDir := t.TempDir()
+	mustWrite(t, filepath.Join(spinloopDir, "Spinloop"),
+		"PROVIDER openrouter\nMODEL deepseek/deepseek-v4-flash\nFLEET http://gw.internal:4000\n")
+
+	captureStdout(t, func() {
+		if err := cmdHarness([]string{"--spinloop=" + spinloopDir}); err != nil {
+			t.Fatalf("cmdHarness --spinloop: %v", err)
+		}
+	})
+
+	got, err := os.ReadFile(envFile)
+	if err != nil {
+		t.Fatalf("lucinate was not launched: %v", err)
+	}
+	if !strings.Contains(string(got), "LUCINATE_OPENAI_API_KEY=gw-token") {
+		t.Errorf("the fleet's key should reach lucinate in preference to the provider's:\n%s", got)
+	}
+	if !strings.Contains(string(got), "OPENAI_BASE_URL=http://gw.internal:4000/v1") {
+		t.Errorf("the endpoint's address should reach lucinate:\n%s", got)
+	}
+}
+
+// A harness whose binary is not on the PATH fails naming the fix, after the
+// apply — the config is written, the agent is not started.
+func TestHarness_NamesTheMissingHarness(t *testing.T) {
+	home := isolateConfig(t)
+	t.Setenv("PATH", t.TempDir())
+
+	spinloopDir := t.TempDir()
+	mustWrite(t, filepath.Join(spinloopDir, "Spinloop"),
+		"PROVIDER openrouter\nMODEL deepseek/deepseek-v4-flash\n")
+
+	captureStdout(t, func() {
+		err := cmdHarness([]string{"-H", "lucinate", "--spinloop=" + spinloopDir})
+		if err == nil {
+			t.Fatal("a launch whose harness is not installed should fail")
+		}
+		if !strings.Contains(err.Error(), "lucinate not found") ||
+			!strings.Contains(err.Error(), "install the lucinate harness") {
+			t.Errorf("the failure should name the harness and the fix, got:\n%v", err)
+		}
+	})
+	if _, err := os.Stat(filepath.Join(home, ".lucinate", "connections.json")); err != nil {
+		t.Errorf("the apply should have written the config before the launch failed (stat: %v)", err)
+	}
+}

@@ -59,10 +59,11 @@ is the one place that holds all of them.
 
 There are three Spinloops here:
 
-- [`client/Spinloop`](client/Spinloop) — what an *agent's* machine wears. Its
-  `FLEET` is the gateway's address, a URL rather than a file: the gateway has
-  done the choosing, and the agent is only pointed at it, with the gateway's
-  token as its key.
+- [`client/Spinloop`](client/Spinloop) — what an *agent's* machine wears: just
+  the model. Where it is served lives in [`fleet.yaml`](fleet.yaml)'s `gateway`
+  section, and `spinloop fleet harness` from this directory reads it: the
+  gateway has done the choosing, and the agent is only pointed at it, with the
+  gateway's token as its key.
 - [`node/Spinloop`](node/Spinloop) — what a *node* runs when started. Its
   `BASEURL` binds the engine to every interface, which is why the gateway — a
   different container — can reach it at all.
@@ -103,9 +104,9 @@ curl -i -X POST http://127.0.0.1:18080/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{"model":"fake-model","messages":[{"role":"user","content":"hi"}]}'
 
-# Launch an agent against the gateway: the agent gets the gateway's address
-# and the gateway's token, and nothing else.
-OPENAI_API_KEY="$GATEWAY_TOKEN" spinloop harness ./client/Spinloop
+# Launch an agent at the fleet's gateway: fleet.yaml's gateway section points
+# the agent at the gateway, with the gateway's token, and nothing else.
+spinloop fleet harness -O=./client/Spinloop
 ```
 
 ## It is also the integration test
@@ -126,14 +127,14 @@ an example that is exercised cannot quietly stop working.
 | File | What it is |
 | --- | --- |
 | `compose.yaml` | Two nodes, a gateway that wakes, a gateway that refuses to. Every service that listens on a non-loopback address needs a token, and the gateways need the fleet file's node tokens and engine keys in their environment. |
-| `fleet.yaml` | The *operator's* view: the two nodes over their published ports, with `engine:` blocks because the engines are published on ports the daemons cannot know. |
+| `fleet.yaml` | The *operator's* view: the two nodes over their published ports, with `engine:` blocks because the engines are published on ports the daemons cannot know — and a `gateway` section naming the waking gateway, so a launch through this file is pointed at it. |
 | `gateway/fleet.yaml` | What the `gateway` service serves: the same two nodes, addressed by compose service name — where the gateway can reach them, with no `engine:` override needed. |
 | `gateway/fleet-cold.yaml` | The same fleet with `wake: off`, served by `gateway-cold`. |
 | `Dockerfile` | Builds spinloop from this working tree, adds the Imposter engine and the shim, and bakes the gateway's files in. |
 | `shim/llama-server` | Stands in for the engine binary. Reads the key file the daemon passes and hands the mock its gate as an environment variable, so the value never rides on a command line. |
 | `engine/` | What the fake engine serves: `/health` and `/metrics` for the daemon, and the gated, stream-answering OpenAI routes. |
 | `node/Spinloop` | What a node runs when started: a model, and a `BASEURL` that binds the engine to every interface. |
-| `client/Spinloop` | What an *agent's* machine wears: a model, and a `FLEET` that is the gateway's address. |
+| `client/Spinloop` | What an *agent's* machine wears: the model. Its address comes from `fleet.yaml`'s gateway section, via `spinloop fleet harness`. |
 
 Two details that are easy to get wrong, and matter:
 

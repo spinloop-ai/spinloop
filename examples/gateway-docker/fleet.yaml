@@ -2,9 +2,10 @@
 # ports compose publishes.
 #
 # The gateways are not nodes in it — they serve the fleet files baked into
-# the image — and the client's Spinloop names the gateway's published address,
-# not this file. This is how you watch and drive the fleet itself: status,
-# start, stop, metrics, logs.
+# the image. The `gateway` section below names the waking gateway's published
+# address instead: `spinloop fleet harness` from here points the agent at the
+# gateway, with the gateway's token, and never at a node. This is also how you
+# watch and drive the fleet itself: status, start, stop, metrics, logs.
 #
 # The engine: blocks here are not optional: each engine binds 8080 inside its
 # container and is published on 18080/18081 outside, which the daemons cannot
@@ -15,6 +16,12 @@
 # `spinloop fleet start` works from here: it resolves what to run on a node
 # and pushes that.
 prefer: idle
+
+# A launch routed through this file is pointed at the gateway: the address it
+# serves on, and the variable holding the token for it (exported by .env).
+gateway:
+  url: http://127.0.0.1:4000
+  tokenEnv: GATEWAY_TOKEN
 
 nodes:
   - name: node-a
