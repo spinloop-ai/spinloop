@@ -299,6 +299,14 @@ targeted nodes. The resolved source (the path used, or the alias name when
 one was used) SHALL be reported alongside that node's plan, so which of the
 three supplied it is never left to be inferred.
 
+Where a node declares an `instance-type` in the fleet file, the deploy config
+derived for it SHALL carry that type, so the node's environment launches as
+named — the same value a standalone `spinloop remote deploy --instance-type`
+would record for the environment — and a node declaring none SHALL deploy an
+environment on the control plane's default type. This keeps `fleet deploy` and
+a matching standalone deploy in agreement about what a node's environment
+launches as.
+
 Nodes SHALL be deployed independently: one node already registered or live
 SHALL require `--overwrite` for that node exactly as a standalone `remote
 deploy` does, and refusing it SHALL NOT stop the other targeted nodes from
@@ -318,6 +326,21 @@ any of them, exactly as a standalone `remote deploy --dry-run` does for one.
 - **THEN** that node's environment is created and registered from that file,
   the same as `spinloop remote deploy ./envs/gpu.Spinloop` would produce, and
   the resolved path is reported against that node
+
+#### Scenario: A node's declared instance type is deployed
+
+- **WHEN** `fleet deploy` targets a `kind: remote` node declaring
+  `instance-type: g6e.2xlarge`
+- **THEN** the environment it deploys launches as `g6e.2xlarge`, the same
+  value a standalone `spinloop remote deploy --instance-type g6e.2xlarge` of
+  the node's source would record
+
+#### Scenario: A node with no instance type deploys the default
+
+- **WHEN** `fleet deploy` targets a `kind: remote` node declaring no
+  `instance-type`
+- **THEN** the environment it deploys launches as the control plane's default
+  instance type
 
 #### Scenario: A node with no resolvable source fails only that node
 

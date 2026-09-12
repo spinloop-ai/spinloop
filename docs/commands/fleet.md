@@ -105,6 +105,27 @@ blanking the fleet. See
 [`examples/fleet-remote`](../../examples/fleet-remote/README.md) and
 [`examples/fleet-mixed`](../../examples/fleet-mixed/README.md).
 
+A `kind: remote` node may also name the EC2 instance type its environment
+launches as, with `instance-type` (a family and size separated by a dot, e.g.
+`g6e.xlarge`):
+
+```yaml
+nodes:
+  - name: qwen
+    kind: remote
+    instance-type: g6e.2xlarge
+```
+
+It is a property of the cloud environment, not of the fleet's view of it:
+`fleet deploy` records it on the environment, and the environment's next
+**fresh** launch uses it. A re-wake of a stopped instance keeps the type it
+was launched with — EC2 cannot resize a running or stopped box — so a changed
+value takes effect only after the instance is terminated (an idle sweep or
+`spinloop remote stop`) and launched again. Omitted, the environment launches
+as its control plane's default type. Naming `instance-type` on a `kind: daemon`
+node is a configuration error: a daemon's hardware is the operator's to choose,
+not the fleet file's.
+
 ### A node's Spinloop source
 
 Both `fleet deploy` (for a `kind: remote` node's environment) and `fleet

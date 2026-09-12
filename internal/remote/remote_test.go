@@ -1033,6 +1033,68 @@ func TestDeploy_SpinloopVersionOmittedWhenUnpinned(t *testing.T) {
 	}
 }
 
+func TestDeploy_InstanceTypeReachesTheRequest(t *testing.T) {
+	stubAWSEnv(t)
+	var gotBody []byte
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotBody, _ = io.ReadAll(r.Body)
+		w.Write([]byte(`{"state":"deployed","deployed":true}`))
+	}))
+	defer server.Close()
+
+	cfg := Config{DeployURL: server.URL, Region: "eu-west-1"}
+	dc := DeployConfig{Runner: "vllm", ModelID: "org/model", InstanceType: "g6e.2xlarge"}
+	if _, err := Deploy(context.Background(), cfg, dc, "", false, ""); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(gotBody), `"instanceType":"g6e.2xlarge"`) {
+		t.Errorf("instanceType did not reach the request body: %s", gotBody)
+	}
+}
+
+// An untyped deploy sends exactly the body a control plane predating the field
+// expects — the key is absent, not null or empty.
+func TestDeploy_InstanceTypeOmittedWhenUntyped(t *testing.T) {
+	stubAWSEnv(t)
+	var gotBody []byte
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotBody, _ = io.ReadAll(r.Body)
+		w.Write([]byte(`{"state":"deployed","deployed":true}`))
+	}))
+	defer server.Close()
+
+	cfg := Config{DeployURL: server.URL, Region: "eu-west-1"}
+	dc := DeployConfig{Runner: "vllm", ModelID: "org/model"}
+	if _, err := Deploy(context.Background(), cfg, dc, "", false, ""); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(gotBody), "instanceType") {
+		t.Errorf("instanceType should be omitted when empty: %s", gotBody)
+	}
+}
+
+// TestIsInstanceType pins the shape guard a deploy runs before sending a type
+// the control plane would otherwise reject at launch.
+func TestIsInstanceType(t *testing.T) {
+	for _, ok := range []string{
+		"g6e.xlarge", "g6e.2xlarge", "g5.2xlarge", "trn1.2xlarge",
+		"inf2.xlarge", "c7g.large", "m5.xlarge", "u7i-6tb.112xlarge",
+		"mac2-m2.2xlarge", "p4d.24xlarge", "g6e.metal",
+	} {
+		if !IsInstanceType(ok) {
+			t.Errorf("IsInstanceType(%q) = false, want true", ok)
+		}
+	}
+	for _, bad := range []string{
+		"", "g6exlarge", "G6E.xlarge", "g6e.xlarge.extra", "g6e.", ".xlarge",
+		"g6e.xlarge ", " g6e.xlarge", "g6e_xlarge", "g6e..xlarge",
+	} {
+		if IsInstanceType(bad) {
+			t.Errorf("IsInstanceType(%q) = true, want false", bad)
+		}
+	}
+}
+
 func TestDeploy_ReseedReachesTheRequest(t *testing.T) {
 	stubAWSEnv(t)
 	var gotBody []byte

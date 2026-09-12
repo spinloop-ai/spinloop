@@ -94,11 +94,13 @@ nodes:
 
 func TestLoadRejectsIncompleteNodes(t *testing.T) {
 	for name, body := range map[string]string{
-		"no nodes":              "nodes: []\n",
-		"no name":               "nodes:\n  - host: a.local\n",
-		"no host":               "nodes:\n  - name: studio\n",
-		"remote name is a path": "nodes:\n  - name: a/b\n    kind: remote\n",
-		"remote name has .json": "nodes:\n  - name: prod.json\n    kind: remote\n",
+		"no nodes":                 "nodes: []\n",
+		"no name":                  "nodes:\n  - host: a.local\n",
+		"no host":                  "nodes:\n  - name: studio\n",
+		"remote name is a path":    "nodes:\n  - name: a/b\n    kind: remote\n",
+		"remote name has .json":    "nodes:\n  - name: prod.json\n    kind: remote\n",
+		"daemon instance-type":     "nodes:\n  - name: studio\n    host: a.local\n    instance-type: g6e.xlarge\n",
+		"remote bad instance-type": "nodes:\n  - name: prod\n    kind: remote\n    instance-type: g6exlarge\n",
 	} {
 		t.Run(name, func(t *testing.T) {
 			if _, err := Load(writeFleet(t, body, "")); err == nil {
@@ -134,6 +136,59 @@ nodes:
 	}
 	if n.Host != "" {
 		t.Errorf("remote node needs no host, got %q", n.Host)
+	}
+}
+
+// A kind-remote node may name the instance type its environment launches as;
+// the field parses onto the node so `fleet deploy` can read it.
+func TestLoadRemoteKindInstanceType(t *testing.T) {
+	path := writeFleet(t, `
+nodes:
+  - name: prod
+    kind: remote
+    instance-type: g6e.2xlarge
+`, "")
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Nodes[0].InstanceType != "g6e.2xlarge" {
+		t.Errorf("instance-type = %q, want g6e.2xlarge", cfg.Nodes[0].InstanceType)
+	}
+}
+
+// A remote node naming a malformed instance type is a configuration error that
+// names both the node and the value, not a silent deploy of junk.
+func TestLoadRemoteKindBadInstanceTypeNamesIt(t *testing.T) {
+	_, err := Load(writeFleet(t, `
+nodes:
+  - name: prod
+    kind: remote
+    instance-type: g6exlarge
+`, ""))
+	if err == nil {
+		t.Fatal("accepted a remote node with a malformed instance-type")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "prod") || !strings.Contains(msg, "g6exlarge") {
+		t.Errorf("error %q does not name the node and the value", msg)
+	}
+}
+
+// A daemon node's hardware is the operator's to choose, so naming an instance
+// type on one is a configuration error, not silently ignored.
+func TestLoadDaemonKindInstanceTypeNamesIt(t *testing.T) {
+	_, err := Load(writeFleet(t, `
+nodes:
+  - name: studio
+    host: a.local
+    instance-type: g6e.xlarge
+`, ""))
+	if err == nil {
+		t.Fatal("accepted a daemon node with an instance-type")
+	}
+	if !strings.Contains(err.Error(), "studio") {
+		t.Errorf("error %q does not name the node", err)
 	}
 }
 

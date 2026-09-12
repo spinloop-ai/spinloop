@@ -220,3 +220,46 @@ describe('parseDeployConfig spinloopVersion', () => {
     );
   });
 });
+
+describe('parseDeployConfig instanceType', () => {
+  it('defaults to undefined, so a config written before the field existed parses unchanged', () => {
+    expect(parseDeployConfig(JSON.stringify(VLLM)).instanceType).toBeUndefined();
+  });
+
+  it('round-trips a named type, and accepts the hyphenated families EC2 ships', () => {
+    for (const type of ['g6e.2xlarge', 'u7i-6tb.112xlarge', 'mac2-m2.2xlarge', 'trn1.2xlarge']) {
+      const withType = { ...VLLM, instanceType: type };
+      expect(parseDeployConfig(JSON.stringify(withType))).toEqual(withType);
+    }
+  });
+
+  it('treats an empty or whitespace value as no type', () => {
+    expect(parseDeployConfig(JSON.stringify({ ...VLLM, instanceType: '' })).instanceType).toBeUndefined();
+    expect(parseDeployConfig(JSON.stringify({ ...VLLM, instanceType: '   ' })).instanceType).toBeUndefined();
+  });
+
+  it('rejects a malformed value, naming the field', () => {
+    for (const bad of ['g6exlarge', 'G6E.xlarge', 'g6e.xlarge.extra', 'g6e.', '.xlarge']) {
+      expect(() => parseDeployConfig(JSON.stringify({ ...VLLM, instanceType: bad }))).toThrow(
+        /instanceType/,
+      );
+    }
+  });
+
+  it('rejects a non-string value', () => {
+    expect(() => parseDeployConfig(JSON.stringify({ ...VLLM, instanceType: 7 }))).toThrow(
+      /instanceType/,
+    );
+  });
+
+  it('survives the write-then-read path the Lambdas perform (stringify on write, parse on read)', () => {
+    // writeDeployConfig stores JSON.stringify(config); readDeployConfig runs
+    // parseDeployConfig over the stored value. instanceType is a plain field,
+    // so a config written with the type reads it back.
+    const written: DeployConfig = { ...LLAMACPP, instanceType: 'g6e.2xlarge' };
+    const stored = JSON.stringify(written); // what writeDeployConfig puts in SSM
+    const readBack = parseDeployConfig(stored); // what readDeployConfig returns
+    expect(readBack.instanceType).toBe('g6e.2xlarge');
+    expect(readBack).toEqual(written);
+  });
+});

@@ -377,6 +377,14 @@ pin (`1.26.1`; a leading `v` is fine) it installs exactly that. The pin is
 environment state, not engine state: it takes effect at the next boot, so a
 running instance keeps the daemon it was deployed with.
 
+`--instance-type` names the EC2 instance type the environment's instances
+launch as (a family and size separated by a dot, e.g. `g6e.2xlarge`). Like the
+pin, it is recorded on the environment at deploy time and applies from its next
+**fresh** launch: a re-wake of a stopped instance keeps the type it launched
+with, so a changed value takes effect only once the instance is terminated and
+launched again. Without it the environment launches as the control plane's
+default type.
+
 Deploying doesn't start anything. If the shared bucket doesn't have those
 weights yet it fetches them (about 15–20 minutes, entirely on its side) and
 says so; wait for that before your first `start`, or the model won't be there.
@@ -421,6 +429,7 @@ included) for every `kind: remote` node a fleet file names — or a chosen few
 | `-n`, `--dry-run` | `deploy` only: print what would be sent, without sending it |
 | `--reseed` | `deploy` only: re-fetch the weights even if they are already in S3 |
 | `--spinloop-version` | `deploy` only: the spinloop release fresh boots install (default: the latest published release) |
+| `--instance-type` | `deploy` only: the EC2 instance type the environment's instances launch as (e.g. `g6e.xlarge`); recorded on the environment, applied on its next fresh launch (default: the control plane's default type) |
 | `--api-key-env` | `deploy` only: name the environment variable holding the engine key to create or rotate; with no flag the stored key is kept |
 
 `bootstrap` and `bake` have their own too (`--ref`, `--dir`, `--region`,

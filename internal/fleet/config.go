@@ -127,6 +127,13 @@ type NodeConfig struct {
 	// beside the fleet file, before either command gives up on it. Not
 	// read by any other fleet command.
 	File string `yaml:"file"`
+	// InstanceType names the EC2 instance type a kind: remote node's
+	// environment launches as, read by `spinloop fleet deploy` into the
+	// deploy config it derives. It is a property of the remote environment
+	// only — a kind: daemon node's hardware is the operator's to choose, so
+	// naming one there is a configuration error. Empty means the node's
+	// environment launches as the control plane's default type.
+	InstanceType string `yaml:"instance-type"`
 }
 
 // EngineOverride is a node's declared engine endpoint. Each field is optional
@@ -213,6 +220,11 @@ func (c *Config) validate() error {
 			if n.Host == "" {
 				return fmt.Errorf("node %q has no host", n.Name)
 			}
+			if n.InstanceType != "" {
+				return fmt.Errorf(
+					"node %q is kind %q: instance-type names the cloud environment's machine, and a daemon's hardware is the operator's to choose, not the fleet file's",
+					n.Name, KindDaemon)
+			}
 		case KindRemote:
 			// The node's name *is* the registered environment's key, so it must
 			// be env-shaped; a path-like name would be read as a registry
@@ -221,6 +233,11 @@ func (c *Config) validate() error {
 				return fmt.Errorf(
 					"node %q is kind %q: its name must be a registered environment name (no /, no .json)",
 					n.Name, KindRemote)
+			}
+			if n.InstanceType != "" && !remote.IsInstanceType(n.InstanceType) {
+				return fmt.Errorf(
+					"node %q has instance-type %q, which is not shaped like an EC2 instance type (a family and size separated by a dot, e.g. g6e.xlarge)",
+					n.Name, n.InstanceType)
 			}
 		default:
 			return fmt.Errorf(

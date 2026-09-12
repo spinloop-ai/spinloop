@@ -54,6 +54,14 @@ export const COMPANION_FILENAME = /^[A-Za-z0-9._-]+$/;
 export const SPINLOOP_VERSION_PIN = /^[0-9A-Za-z.-]+$/;
 
 /**
+ * What an EC2 instance type may look like: a lowercase family and size
+ * separated by a single dot. Deliberately permissive to every current family
+ * (hyphenated families like u7i-6tb and mac2-m2 are valid) while rejecting
+ * obvious junk before it reaches a RunInstances call.
+ */
+export const INSTANCE_TYPE = /^[a-z0-9]+(?:-[a-z0-9]+)*\.[a-z0-9]+$/;
+
+/**
  * The boot's spinloop default: the latest published release, resolved by the
  * boot itself at launch — so "latest" stays latest on every fresh boot rather
  * than being snapshotted at deploy time.
@@ -140,6 +148,14 @@ export interface DeployConfig {
    * daemon's stored deploy config.
    */
   spinloopVersion: string;
+  /**
+   * The EC2 instance type the environment's instances launch as. Optional;
+   * absent/undefined means launch as the control plane's default type. A
+   * property of the deployment — stored here and read back on the next fresh
+   * launch, so a re-wake of a stopped instance keeps the type it launched
+   * with (EC2 cannot resize an existing instance).
+   */
+  instanceType?: string;
 }
 
 /**
@@ -181,6 +197,7 @@ export function parseDeployConfig(raw: string | undefined): DeployConfig {
     throw new Error('deploy-config.serveArgs must be an array of strings');
   }
   const quant = typeof obj.quant === 'string' ? obj.quant : '';
+  const instanceType = parseInstanceType(obj.instanceType);
   return {
     runner: obj.runner,
     modelId,
@@ -193,7 +210,35 @@ export function parseDeployConfig(raw: string | undefined): DeployConfig {
     serveArgs: serveArgs as string[],
     companions: parseCompanions(obj.companions),
     spinloopVersion: parseSpinloopVersion(obj.spinloopVersion),
+    instanceType,
   };
+}
+
+/**
+ * Validate the optional EC2 instance type. Absent (or empty/whitespace) means
+ * the control plane's default, returned as undefined so an untyped config
+ * round-trips unchanged; present means a non-empty string shaped like
+ * `family.size`, else a thrown error naming the value.
+ */
+function parseInstanceType(raw: unknown): string | undefined {
+  if (raw === undefined || raw === null) {
+    return undefined;
+  }
+  if (typeof raw !== 'string') {
+    throw new Error(`deploy-config.instanceType must be a string, got ${JSON.stringify(raw)}`);
+  }
+  const value = raw.trim();
+  if (value === '') {
+    return undefined;
+  }
+  if (!INSTANCE_TYPE.test(value)) {
+    throw new Error(
+      `deploy-config.instanceType must be an EC2 instance type (a family and size separated by a dot, e.g. g6e.xlarge), got ${JSON.stringify(
+        raw,
+      )}`,
+    );
+  }
+  return value;
 }
 
 /**

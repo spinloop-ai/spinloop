@@ -545,12 +545,17 @@ async function launchAcrossAzs(
     };
   }
   const userData = buildInferenceUserData(env, deployConfig);
+  // The instance type this environment launches as: the deploy config's own
+  // type when it names one, else the control plane's default (the env var).
+  // A re-wake of a stopped instance never reaches this path — it keeps the
+  // type the box was launched with; only a fresh launch reads the config here.
+  const instanceType = deployConfig.instanceType ?? INSTANCE_TYPE;
   const tried: string[] = [];
   for (const subnetId of SUBNET_IDS) {
     try {
       const instanceId = await runInstance({
         imageId: ami.imageId,
-        instanceType: INSTANCE_TYPE,
+        instanceType,
         subnetId,
         securityGroupId,
         instanceProfileArn: INSTANCE_PROFILE_ARN,
@@ -600,7 +605,7 @@ async function launchAcrossAzs(
       503,
       {
         state: 'no-capacity',
-        message: `no g6e capacity in any of ${tried.length} availability zone(s); retry shortly`,
+        message: `no ${instanceType} capacity in any of ${tried.length} availability zone(s); retry shortly`,
         retry_after_seconds: 120,
       },
       { 'retry-after': '120' },
