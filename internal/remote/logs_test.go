@@ -288,6 +288,7 @@ func TestFetchLogsExplainsAccessDenied(t *testing.T) {
 }
 
 func TestFetchLogsExplainsExpiredCredentials(t *testing.T) {
+	stubAWSEnv(t)
 	api := &fakeLogs{errs: map[string]error{BootLogGroup(): errors.New("ExpiredToken: the token has expired")}}
 
 	_, err := fetchLogs(context.Background(), api, LogQuery{Environment: "prod", Source: LogSourceBoot}, "us-east-1")
@@ -296,6 +297,26 @@ func TestFetchLogsExplainsExpiredCredentials(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), refreshCredsHint) {
 		t.Errorf("error = %q, want the refresh hint", err)
+	}
+}
+
+// A log read rejected because the stored control-plane key expired must point
+// at the store command, not at ambient credentials that play no part.
+func TestFetchLogsExplainsExpiredStoredCredentials(t *testing.T) {
+	const region = "us-east-1"
+	noExplicitAmbient(t)
+	storeCredForTest(t, testCred(region))
+	api := &fakeLogs{errs: map[string]error{BootLogGroup(): errors.New("ExpiredToken: the token has expired")}}
+
+	_, err := fetchLogs(context.Background(), api, LogQuery{Environment: "prod", Source: LogSourceBoot}, region)
+	if err == nil {
+		t.Fatal("expected the expiry to be reported")
+	}
+	if !strings.Contains(err.Error(), storedCredsHint) {
+		t.Errorf("error = %q, want the stored-key refresh hint", err)
+	}
+	if strings.Contains(err.Error(), refreshCredsHint) {
+		t.Errorf("the ambient hint must not appear for a stored-key rejection: %v", err)
 	}
 }
 
