@@ -121,10 +121,6 @@ default is `https://huggingface.co`.
 
 ## Notes
 
-- `-o` here names the **output file**. On [`add`](add.md) and
-  [`apply`](apply.md) the same shorthand is the max **output tokens** — a
-  different flag on a different command, and the reason this one spells out
-  `--output-file` in its help.
 - An existing `--output-file` is not overwritten unless `--force` is given, so
   a hand-edited Spinloop cannot be lost to a mistyped command.
 - `--apply` configures the harness by the same path `spinloop apply` uses, so
