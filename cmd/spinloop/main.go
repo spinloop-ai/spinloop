@@ -547,13 +547,20 @@ func aliasCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "alias",
 		Short: "register a Spinloop under a short name",
-		Long: `registers a Spinloop under a short name, which then stands in wherever an
-Spinloop path goes (apply, unapply, serve, harness). The name defaults to the
-Spinloop's own ALIAS; --name/-n picks another, --force/-F re-points a name
-already registered, and --list/-l shows them all. A path on disk always wins
-over a name, so registering one changes nothing that works. Set SPINLOOP_ALIAS
-to a registered name and every command given no Spinloop uses it, before
-./Spinloop is tried; an argument still wins.`,
+		Long: `registers a Spinloop under a short name, which then stands in wherever a
+Spinloop path goes. The path may be a local file or directory, or an http(s)
+URL: a URL is fetched and parsed when the alias is registered, so a broken one
+is caught now, and is stored as-is. The name defaults to the Spinloop's own
+ALIAS; --name/-n picks another, --force/-F re-points a name already
+registered, and --list/-l shows them all. A path on disk always wins over a
+name, so registering one changes nothing that works. Set SPINLOOP_ALIAS to a
+registered name and every command given no Spinloop uses it, before ./Spinloop
+is tried; an argument still wins.`,
+		Example: `  # register the Spinloop in this directory under its own ALIAS
+  spinloop alias
+
+  # register a Spinloop that is fetched from a URL
+  spinloop alias -n team-default https://example.com/team/Spinloop`,
 		Args:          cobra.ArbitraryArgs,
 		SilenceErrors: true,
 		SilenceUsage:  true,
