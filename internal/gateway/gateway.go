@@ -4,8 +4,8 @@
 // for — so a machine running an agent needs nothing but a URL and one token.
 //
 // It is a foreground process, the way `spinloop serve` is: it holds the fleet
-// file it serves, and a machine that hosts agents points its Spinloop's FLEET
-// at the address it prints.
+// file it serves, and a machine that hosts agents names the address it prints
+// in that file's gateway section.
 
 package gateway
 
@@ -32,8 +32,8 @@ import (
 )
 
 // DefaultListen is where the gateway answers when --listen is not given: a
-// fixed port on every interface, so a Spinloop's FLEET can name one address
-// without knowing the machine it lands on.
+// fixed port on every interface, so a fleet file's gateway section can name
+// one address without knowing the machine it lands on.
 const DefaultListen = ":4000"
 
 // LoopbackListen is where `--loopback` binds the gateway: the default port on

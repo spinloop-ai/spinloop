@@ -150,5 +150,5 @@ Two details that are easy to get wrong, and matter:
 
 - [`examples/fleet-docker/`](../fleet-docker/) — a plain fleet, no gateway
 - [`docs/commands/gateway.md`](../../docs/commands/gateway.md)
-- [`docs/spinloop-file.md`](../../docs/spinloop-file.md) — the endpoint form of `FLEET`
+- [`docs/commands/fleet.md`](../../docs/commands/fleet.md#the-gateway-section) — the `gateway` section
 - [HTTP Control API](../../docs/http-api.md)

@@ -63,15 +63,13 @@ real network:
   would be unreachable, and routing says so rather than handing you an address
   that refuses connections.
 
-[`Spinloop`](Spinloop) is `examples/llamacpp/gemma4`'s with one line added:
-
-```dockerfile
-FLEET ./fleet.yaml
-```
-
-and one line deliberately absent — there is no `BASEURL`. The address is
-whichever node gets chosen; pinning one turns routing off, and spinloop says so
-rather than choosing a node it would then ignore.
+[`Spinloop`](Spinloop) is `examples/llamacpp/gemma4`'s, beside a
+[`fleet.yaml`](fleet.yaml). The fleet file is what turns the launch into a
+routed one: a valueless `-O` wears the default `./Spinloop`, which — being
+unnamed — takes the `fleet.yaml` in the working directory. One line is
+deliberately absent — there is no `BASEURL`. The address is whichever node gets
+chosen; pinning one turns routing off, and spinloop says so rather than choosing
+a node it would then ignore.
 
 [`preset.ini`](preset.ini) is unchanged from the non-fleet example. It matters
 more here than it looks: when routing wakes a node it sends the preset's flags
@@ -128,10 +126,10 @@ Using local at http://127.0.0.1:8080/v1 — woken to serve gemma-4-12b-it
 The wait is the model loading — minutes for a cold 12B, then seconds forever
 after, because the engine stays up between sessions.
 
-**`-O` is not optional.** A bare `spinloop harness` launches unconfigured: it applies
-no Spinloop, so there is no `FLEET` to act on and nothing routes. Wear the Spinloop
-(`-O` for `./Spinloop`, a path, or a [registered alias](../../docs/commands/alias.md))
-and routing follows from it.
+**`-O` is not optional.** A bare `spinloop harness` launches unconfigured: it
+applies no Spinloop, so there is no model to route and no fleet is picked up.
+Wear the Spinloop (`-O` for `./Spinloop`, a path, or a
+[registered alias](../../docs/commands/alias.md)) and routing follows from it.
 
 ## Prerequisites
 

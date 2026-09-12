@@ -77,15 +77,13 @@ func fleetFileIn(t *testing.T, dir, body string) string {
 	return path
 }
 
-// routedSpinloop writes a Spinloop naming a fleet, and returns its directory.
-func routedSpinloop(t *testing.T, model, fleetPath string) string {
+// routedSpinloop writes a plain Spinloop and returns its directory. The fleet
+// it routes through is a launch concern, not a Spinloop field: the tests name
+// it with the --fleet flag or a routeOptions fleetPath.
+func routedSpinloop(t *testing.T, model string) string {
 	t.Helper()
 	dir := t.TempDir()
-	body := "PROVIDER llamacpp\nMODEL " + model + "\n"
-	if fleetPath != "" {
-		body += "FLEET " + fleetPath + "\n"
-	}
-	mustWrite(t, filepath.Join(dir, "Spinloop"), body)
+	mustWrite(t, filepath.Join(dir, "Spinloop"), "PROVIDER llamacpp\nMODEL "+model+"\n")
 	return dir
 }
 
@@ -93,21 +91,19 @@ func TestRouteChoosesARunningNode(t *testing.T) {
 	node := newRoutableNode(t, "qwen3-27b", true, 300)
 	dir := t.TempDir()
 	fleetPath := fleetFileIn(t, dir, "nodes:\n"+node.entry("gpu-box"))
-	spinloopDir := routedSpinloop(t, "qwen3-27b", fleetPath)
+	spinloopDir := routedSpinloop(t, "qwen3-27b")
 
 	sel, path, err := readSpinloop("test", spinloopDir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var choice *struct{}
-	_ = choice
 	stderr := captureStderr(t, func() {
-		c, err := routeThroughFleet(sel, path, routeOptions{})
+		c, err := routeThroughFleet(sel, path, routeOptions{fleetPath: fleetPath})
 		if err != nil {
 			t.Fatalf("routing failed: %v", err)
 		}
 		if c == nil {
-			t.Fatal("a Spinloop naming a FLEET should route")
+			t.Fatal("a launch naming a fleet should route")
 		}
 		want := "http://127.0.0.1:" + strconv.Itoa(node.enginePort) + "/v1"
 		if c.BaseURL != want {
@@ -125,26 +121,35 @@ func TestRouteChoosesARunningNode(t *testing.T) {
 	}
 }
 
-// A Spinloop naming no FLEET, with no --fleet, contacts nothing.
+// No fleet by flag and no fleet.yaml in the working directory: the launch
+// routes nowhere and contacts nothing.
 func TestNoFleetDoesNotRoute(t *testing.T) {
-	spinloopDir := routedSpinloop(t, "qwen3-27b", "")
+	spinloopDir := routedSpinloop(t, "qwen3-27b")
 	sel, path, err := readSpinloop("test", spinloopDir)
 	if err != nil {
 		t.Fatal(err)
 	}
+	// An empty working directory holds no fleet.yaml, so an unnamed Spinloop
+	// has no fleet to find.
+	t.Chdir(t.TempDir())
 	choice, err := routeThroughFleet(sel, path, routeOptions{})
 	if err != nil || choice != nil {
 		t.Errorf("choice = %+v, err = %v; want no routing at all", choice, err)
 	}
 }
 
-// The flag overrides the Spinloop's own FLEET.
-func TestFleetFlagOverridesTheInstruction(t *testing.T) {
-	node := newRoutableNode(t, "qwen3-27b", true, 10)
-	dir := t.TempDir()
-	flagFleet := fleetFileIn(t, dir, "nodes:\n"+node.entry("from-flag"))
-	spinloopDir := routedSpinloop(t, "qwen3-27b", filepath.Join(dir, "nonexistent.yaml"))
+// The --fleet flag beats the fleet.yaml in the working directory: when both
+// are present the flag's file is the one read.
+func TestFleetFlagBeatsTheCwdFleet(t *testing.T) {
+	flagNode := newRoutableNode(t, "qwen3-27b", true, 10)
+	cwdNode := newRoutableNode(t, "qwen3-27b", true, 10)
+	flagDir := t.TempDir()
+	flagFleet := fleetFileIn(t, flagDir, "nodes:\n"+flagNode.entry("from-flag"))
+	cwdDir := t.TempDir()
+	fleetFileIn(t, cwdDir, "nodes:\n"+cwdNode.entry("from-cwd"))
+	t.Chdir(cwdDir)
 
+	spinloopDir := routedSpinloop(t, "qwen3-27b")
 	sel, path, err := readSpinloop("test", spinloopDir)
 	if err != nil {
 		t.Fatal(err)
@@ -160,16 +165,13 @@ func TestFleetFlagOverridesTheInstruction(t *testing.T) {
 	})
 }
 
-// The short form is the flag: -f names the fleet a launch routes through,
-// overriding the Spinloop's own FLEET.
+// The short form is the flag: -f names the fleet a launch routes through.
 func TestHarnessFleetFlagShortForm(t *testing.T) {
 	isolateConfig(t)
 	node := newRoutableNode(t, "qwen3-27b", true, 10)
 	dir := t.TempDir()
 	flagFleet := fleetFileIn(t, dir, "nodes:\n"+node.entry("from-flag"))
-	// The Spinloop names a fleet that does not exist, so a launch that
-	// succeeds has parsed -f as the fleet file.
-	spinloopDir := routedSpinloop(t, "qwen3-27b", filepath.Join(dir, "nonexistent.yaml"))
+	spinloopDir := routedSpinloop(t, "qwen3-27b")
 
 	argsFile := filepath.Join(t.TempDir(), "args")
 	stubHarnessBinary(t, "opencode", argsFile)
@@ -188,31 +190,29 @@ func TestHarnessFleetFlagShortForm(t *testing.T) {
 	}
 }
 
-// A pinned BASEURL is the explicit answer, so nothing is selected.
+// A pinned BASEURL is the explicit answer, so nothing is selected even though a
+// fleet is in force.
 func TestPinnedBaseURLSkipsRouting(t *testing.T) {
 	node := newRoutableNode(t, "qwen3-27b", true, 10)
 	dir := t.TempDir()
 	fleetPath := fleetFileIn(t, dir, "nodes:\n"+node.entry("gpu-box"))
 	spinloopDir := t.TempDir()
 	mustWrite(t, filepath.Join(spinloopDir, "Spinloop"),
-		"PROVIDER llamacpp\nMODEL qwen3-27b\nBASEURL http://pinned:9999/v1\nFLEET "+fleetPath+"\n")
+		"PROVIDER llamacpp\nMODEL qwen3-27b\nBASEURL http://pinned:9999/v1\n")
 
 	sel, path, err := readSpinloop("test", spinloopDir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var choice any
 	stderr := captureStderr(t, func() {
-		c, err := routeThroughFleet(sel, path, routeOptions{})
+		c, err := routeThroughFleet(sel, path, routeOptions{fleetPath: fleetPath})
 		if err != nil {
 			t.Fatal(err)
 		}
-		choice = c
 		if c != nil {
 			t.Errorf("a pinned BASEURL should not be routed, got %+v", c)
 		}
 	})
-	_ = choice
 	if !strings.Contains(stderr, "Not routing") || !strings.Contains(stderr, "pinned") {
 		t.Errorf("spinloop should say it is not routing, got:\n%s", stderr)
 	}
@@ -223,14 +223,14 @@ func TestNoWakeFailsWithTheNodeTable(t *testing.T) {
 	node := newRoutableNode(t, "", false, 0)
 	dir := t.TempDir()
 	fleetPath := fleetFileIn(t, dir, "nodes:\n"+node.entry("idle-box"))
-	spinloopDir := routedSpinloop(t, "qwen3-27b", fleetPath)
+	spinloopDir := routedSpinloop(t, "qwen3-27b")
 
 	sel, path, err := readSpinloop("test", spinloopDir)
 	if err != nil {
 		t.Fatal(err)
 	}
 	captureStderr(t, func() {
-		_, err := routeThroughFleet(sel, path, routeOptions{noWake: true})
+		_, err := routeThroughFleet(sel, path, routeOptions{fleetPath: fleetPath, noWake: true})
 		if err == nil {
 			t.Fatal("--no-wake with nothing serving should fail")
 		}
@@ -245,17 +245,13 @@ func TestNoWakeFailsWithTheNodeTable(t *testing.T) {
 	}
 }
 
-// routedSpinloopWith writes a routed Spinloop carrying extra instructions, for the
+// routedSpinloopWith writes a Spinloop carrying extra instructions, for the
 // cases where what the Spinloop says about the *engine* decides whether a wake
 // can happen at all.
-func routedSpinloopWith(t *testing.T, model, fleetPath, extra string) string {
+func routedSpinloopWith(t *testing.T, model, extra string) string {
 	t.Helper()
 	dir := t.TempDir()
-	body := "PROVIDER llamacpp\nMODEL " + model + "\n" + extra
-	if fleetPath != "" {
-		body += "FLEET " + fleetPath + "\n"
-	}
-	mustWrite(t, filepath.Join(dir, "Spinloop"), body)
+	mustWrite(t, filepath.Join(dir, "Spinloop"), "PROVIDER llamacpp\nMODEL "+model+"\n"+extra)
 	return dir
 }
 
@@ -266,14 +262,14 @@ func TestWakeRefusesAnUnusableParallel(t *testing.T) {
 	node := newRoutableNode(t, "", false, 0)
 	dir := t.TempDir()
 	fleetPath := fleetFileIn(t, dir, "nodes:\n"+node.entry("idle-box"))
-	spinloopDir := routedSpinloopWith(t, "qwen3-27b", fleetPath, "PARALLEL 0\n")
+	spinloopDir := routedSpinloopWith(t, "qwen3-27b", "PARALLEL 0\n")
 
 	sel, path, err := readSpinloop("test", spinloopDir)
 	if err != nil {
 		t.Fatal(err)
 	}
 	captureStderr(t, func() {
-		_, err := routeThroughFleet(sel, path, routeOptions{})
+		_, err := routeThroughFleet(sel, path, routeOptions{fleetPath: fleetPath})
 		if err == nil {
 			t.Fatal("a wake with an unusable PARALLEL should fail")
 		}
@@ -297,14 +293,14 @@ func TestRoutingToARunningNodeToleratesAnUnusableParallel(t *testing.T) {
 	node := newRoutableNode(t, "qwen3-27b", true, 300)
 	dir := t.TempDir()
 	fleetPath := fleetFileIn(t, dir, "nodes:\n"+node.entry("gpu-box"))
-	spinloopDir := routedSpinloopWith(t, "qwen3-27b", fleetPath, "PARALLEL 0\n")
+	spinloopDir := routedSpinloopWith(t, "qwen3-27b", "PARALLEL 0\n")
 
 	sel, path, err := readSpinloop("test", spinloopDir)
 	if err != nil {
 		t.Fatal(err)
 	}
 	captureStderr(t, func() {
-		c, err := routeThroughFleet(sel, path, routeOptions{})
+		c, err := routeThroughFleet(sel, path, routeOptions{fleetPath: fleetPath})
 		if err != nil {
 			t.Fatalf("a node already serving the model should still be chosen: %v", err)
 		}
@@ -312,70 +308,6 @@ func TestRoutingToARunningNodeToleratesAnUnusableParallel(t *testing.T) {
 			t.Fatalf("expected to route to gpu-box, got %+v", c)
 		}
 	})
-}
-
-// A FLEET naming a URL is the gateway shape: the endpoint has already done the
-// choosing, so no fleet file is read, no node is contacted, and the node-
-// steering flags are inert. A value with no path gets the OpenAI-compatible
-// prefix.
-func TestFleetURLYieldsTheEndpoint(t *testing.T) {
-	spinloopDir := routedSpinloop(t, "qwen3-27b", "http://gateway.internal:4000")
-	sel, path, err := readSpinloop("test", spinloopDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	captureStderr(t, func() {
-		c, err := routeThroughFleet(sel, path, routeOptions{node: "nobody", prefer: "sideways", noWake: true})
-		if err != nil {
-			t.Fatalf("an endpoint FLEET should not consult any node: %v", err)
-		}
-		if !c.Gateway {
-			t.Fatalf("the choice should mark itself as an endpoint, got %+v", c)
-		}
-		if c.BaseURL != "http://gateway.internal:4000/v1" {
-			t.Errorf("an endpoint without a path gets the prefix, got %s", c.BaseURL)
-		}
-	})
-}
-
-func TestFleetURLWithAPathIsUsedAsGiven(t *testing.T) {
-	spinloopDir := routedSpinloop(t, "qwen3-27b", "http://gateway.internal:4000/proxy/v1")
-	sel, path, err := readSpinloop("test", spinloopDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	captureStderr(t, func() {
-		c, err := routeThroughFleet(sel, path, routeOptions{})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !c.Gateway || c.BaseURL != "http://gateway.internal:4000/proxy/v1" {
-			t.Errorf("an endpoint carrying a path is used as given, got %+v", c)
-		}
-	})
-}
-
-// A pinned BASEURL wins over an endpoint FLEET, as it wins over a fleet file.
-func TestPinnedBaseURLBeatsAnEndpointFleet(t *testing.T) {
-	spinloopDir := t.TempDir()
-	mustWrite(t, filepath.Join(spinloopDir, "Spinloop"),
-		"PROVIDER llamacpp\nMODEL qwen3-27b\nBASEURL http://pinned:9999/v1\nFLEET http://gateway.internal:4000\n")
-	sel, path, err := readSpinloop("test", spinloopDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	stderr := captureStderr(t, func() {
-		c, err := routeThroughFleet(sel, path, routeOptions{})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if c != nil {
-			t.Errorf("a pinned BASEURL is not routed, got %+v", c)
-		}
-	})
-	if !strings.Contains(stderr, "Not routing") {
-		t.Errorf("spinloop should say it is not routing, got:\n%s", stderr)
-	}
 }
 
 // gatewayFleetFile writes a fleet file naming a gateway whose nodes point at a
@@ -387,18 +319,18 @@ func gatewayFleetFile(t *testing.T, section string) string {
 		"nodes:\n  - name: dead\n    host: 127.0.0.1\n    port: 1\n"+section)
 }
 
-// A fleet file naming a gateway routes at it the way an endpoint FLEET does:
-// no node is consulted — the dead node below would fail a route that tried.
+// A fleet file naming a gateway routes at it: no node is consulted — the dead
+// node below would fail a route that tried.
 func TestRouteToFileNamingAGateway(t *testing.T) {
 	fleetPath := gatewayFleetFile(t,
 		"gateway:\n  url: http://gw.internal:4000\n  tokenEnv: GW_TOKEN\n")
-	spinloopDir := routedSpinloop(t, "qwen3-27b", fleetPath)
+	spinloopDir := routedSpinloop(t, "qwen3-27b")
 	sel, path, err := readSpinloop("test", spinloopDir)
 	if err != nil {
 		t.Fatal(err)
 	}
 	stderr := captureStderr(t, func() {
-		c, err := routeThroughFleet(sel, path, routeOptions{node: "nobody", prefer: "sideways", noWake: true})
+		c, err := routeThroughFleet(sel, path, routeOptions{fleetPath: fleetPath, node: "nobody", prefer: "sideways", noWake: true})
 		if err != nil {
 			t.Fatalf("a file naming a gateway should not consult any node: %v", err)
 		}
@@ -418,17 +350,17 @@ func TestRouteToFileNamingAGateway(t *testing.T) {
 	}
 }
 
-// A section url carrying a path is used as given, like an endpoint's.
+// A section url carrying a path is used as given.
 func TestRouteToFileNamingAGatewayWithAPath(t *testing.T) {
 	fleetPath := gatewayFleetFile(t,
 		"gateway:\n  url: http://gw.internal:4000/proxy/v1\n")
-	spinloopDir := routedSpinloop(t, "qwen3-27b", fleetPath)
+	spinloopDir := routedSpinloop(t, "qwen3-27b")
 	sel, path, err := readSpinloop("test", spinloopDir)
 	if err != nil {
 		t.Fatal(err)
 	}
 	captureStderr(t, func() {
-		c, err := routeThroughFleet(sel, path, routeOptions{})
+		c, err := routeThroughFleet(sel, path, routeOptions{fleetPath: fleetPath})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -438,18 +370,18 @@ func TestRouteToFileNamingAGatewayWithAPath(t *testing.T) {
 	})
 }
 
-// A pinned BASEURL wins over a gateway section, as it wins over an endpoint.
+// A pinned BASEURL wins over a gateway section, as it wins over a node fleet.
 func TestPinnedBaseURLBeatsAGatewaySection(t *testing.T) {
 	fleetPath := gatewayFleetFile(t, "gateway:\n  url: http://gw.internal:4000\n")
 	spinloopDir := t.TempDir()
 	mustWrite(t, filepath.Join(spinloopDir, "Spinloop"),
-		"PROVIDER llamacpp\nMODEL qwen3-27b\nBASEURL http://pinned:9999/v1\nFLEET "+fleetPath+"\n")
+		"PROVIDER llamacpp\nMODEL qwen3-27b\nBASEURL http://pinned:9999/v1\n")
 	sel, path, err := readSpinloop("test", spinloopDir)
 	if err != nil {
 		t.Fatal(err)
 	}
 	stderr := captureStderr(t, func() {
-		c, err := routeThroughFleet(sel, path, routeOptions{})
+		c, err := routeThroughFleet(sel, path, routeOptions{fleetPath: fleetPath})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -477,68 +409,9 @@ func stubHarnessBinaryWithEnv(t *testing.T, argsFile, envFile string) {
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 }
 
-// A FLEET naming an endpoint points the agent at it: the address gets the
-// OpenAI-compatible prefix, and the token is resolved from the client's
-// environment the way a key is resolved elsewhere.
-func TestLaunchWithEndpointFleetPointsTheAgentAtTheGateway(t *testing.T) {
-	isolateConfig(t)
-	t.Setenv("OPENAI_API_KEY", "gw-token")
-	t.Setenv("OPENAI_BASE_URL", "")
-	argsFile := filepath.Join(t.TempDir(), "args")
-	envFile := filepath.Join(t.TempDir(), "env")
-	stubHarnessBinaryWithEnv(t, argsFile, envFile)
-
-	spinloopDir := routedSpinloop(t, "qwen3-27b", "http://gateway.internal:4000")
-	captureStdout(t, func() {
-		if err := cmdHarness([]string{"--spinloop=" + spinloopDir, "--", "run"}); err != nil {
-			t.Fatalf("cmdHarness: %v", err)
-		}
-	})
-	if _, err := os.ReadFile(argsFile); err != nil {
-		t.Fatalf("harness was not launched: %v", err)
-	}
-	data, err := os.ReadFile(envFile)
-	if err != nil {
-		t.Fatal(err)
-	}
-	out := string(data)
-	if !strings.Contains(out, "BASE=http://gateway.internal:4000/v1") {
-		t.Errorf("the agent's base URL should be the endpoint with the prefix, got:\n%s", out)
-	}
-	if !strings.Contains(out, "KEY=gw-token") {
-		t.Errorf("the agent should carry the gateway's token as its key, got:\n%s", out)
-	}
-}
-
-// A FLEET naming an endpoint with no token anywhere fails before the agent
-// launches and before the harness config is written, naming the variable.
-func TestLaunchWithEndpointFleetFailsWithoutAToken(t *testing.T) {
-	home := isolateConfig(t)
-	t.Setenv("OPENAI_API_KEY", "")
-	argsFile := filepath.Join(t.TempDir(), "args")
-	stubHarnessBinary(t, "opencode", argsFile)
-
-	spinloopDir := routedSpinloop(t, "qwen3-27b", "http://gateway.internal:4000")
-	captureStdout(t, func() {
-		err := cmdHarness([]string{"--spinloop=" + spinloopDir, "--", "run"})
-		if err == nil {
-			t.Fatal("a launch that cannot authenticate the endpoint should fail")
-		}
-		if !strings.Contains(err.Error(), "OPENAI_API_KEY") {
-			t.Errorf("the failure should name the variable to set, got:\n%v", err)
-		}
-	})
-	if _, err := os.ReadFile(argsFile); err == nil {
-		t.Error("the agent launched without a token to reach the endpoint")
-	}
-	if _, err := os.Stat(filepath.Join(home, ".config", "opencode", "opencode.json")); err == nil {
-		t.Error("the harness config was written for a launch that could not authenticate")
-	}
-}
-
 // A fleet file naming a gateway points the agent at it: the address is the
 // applied provider's base URL, and the token is resolved under the variable
-// the section names, not the endpoint's default.
+// the section names, not the default.
 func TestLaunchWithAGatewaySectionPointsTheAgentAtTheGateway(t *testing.T) {
 	home := isolateConfig(t)
 	t.Setenv("GATEWAY_TOKEN", "gw-token")
@@ -550,9 +423,9 @@ func TestLaunchWithAGatewaySectionPointsTheAgentAtTheGateway(t *testing.T) {
 
 	fleetPath := gatewayFleetFile(t,
 		"gateway:\n  url: http://gw.internal:4000\n  tokenEnv: GATEWAY_TOKEN\n")
-	spinloopDir := routedSpinloop(t, "qwen3-27b", fleetPath)
+	spinloopDir := routedSpinloop(t, "qwen3-27b")
 	captureStdout(t, func() {
-		if err := cmdHarness([]string{"--spinloop=" + spinloopDir, "--", "run"}); err != nil {
+		if err := cmdHarness([]string{"--spinloop=" + spinloopDir, "-f", fleetPath, "--", "run"}); err != nil {
 			t.Fatalf("cmdHarness: %v", err)
 		}
 	})
@@ -579,9 +452,7 @@ func TestLaunchWithAGatewaySectionPointsTheAgentAtTheGateway(t *testing.T) {
 	}
 }
 
-// A section naming no tokenEnv resolves under the endpoint FLEET's variable,
-// so moving a launch from an endpoint to a section changes nothing the client
-// has to export.
+// A section naming no tokenEnv resolves under the default variable.
 func TestLaunchWithAGatewaySectionDefaultsToOpenAIKey(t *testing.T) {
 	isolateConfig(t)
 	t.Setenv("OPENAI_API_KEY", "gw-token")
@@ -591,9 +462,9 @@ func TestLaunchWithAGatewaySectionDefaultsToOpenAIKey(t *testing.T) {
 	stubHarnessBinaryWithEnv(t, argsFile, envFile)
 
 	fleetPath := gatewayFleetFile(t, "gateway:\n  url: http://gw.internal:4000\n")
-	spinloopDir := routedSpinloop(t, "qwen3-27b", fleetPath)
+	spinloopDir := routedSpinloop(t, "qwen3-27b")
 	captureStdout(t, func() {
-		if err := cmdHarness([]string{"--spinloop=" + spinloopDir, "--", "run"}); err != nil {
+		if err := cmdHarness([]string{"--spinloop=" + spinloopDir, "-f", fleetPath, "--", "run"}); err != nil {
 			t.Fatalf("cmdHarness: %v", err)
 		}
 	})
@@ -618,9 +489,9 @@ func TestLaunchWithAGatewaySectionFailsNamingItsVariable(t *testing.T) {
 
 	fleetPath := gatewayFleetFile(t,
 		"gateway:\n  url: http://gw.internal:4000\n  tokenEnv: GATEWAY_TOKEN\n")
-	spinloopDir := routedSpinloop(t, "qwen3-27b", fleetPath)
+	spinloopDir := routedSpinloop(t, "qwen3-27b")
 	captureStdout(t, func() {
-		err := cmdHarness([]string{"--spinloop=" + spinloopDir, "--", "run"})
+		err := cmdHarness([]string{"--spinloop=" + spinloopDir, "-f", fleetPath, "--", "run"})
 		if err == nil {
 			t.Fatal("a launch that cannot authenticate the gateway should fail")
 		}
@@ -650,10 +521,10 @@ func TestLaunchWithAGatewaySectionTokenFromDotEnv(t *testing.T) {
 
 	fleetPath := gatewayFleetFile(t,
 		"gateway:\n  url: http://gw.internal:4000\n  tokenEnv: GATEWAY_TOKEN\n")
-	spinloopDir := routedSpinloop(t, "qwen3-27b", fleetPath)
+	spinloopDir := routedSpinloop(t, "qwen3-27b")
 	mustWrite(t, filepath.Join(spinloopDir, ".env"), "GATEWAY_TOKEN=dotenv-token\n")
 	captureStdout(t, func() {
-		if err := cmdHarness([]string{"--spinloop=" + spinloopDir, "--", "run"}); err != nil {
+		if err := cmdHarness([]string{"--spinloop=" + spinloopDir, "-f", fleetPath, "--", "run"}); err != nil {
 			t.Fatalf("cmdHarness: %v", err)
 		}
 	})
@@ -676,14 +547,14 @@ func TestWakeOffRefusesNamingTheNode(t *testing.T) {
 	node := newRoutableNode(t, "", false, 0)
 	dir := t.TempDir()
 	fleetPath := fleetFileIn(t, dir, "wake: off\nnodes:\n"+node.entry("idle-box"))
-	spinloopDir := routedSpinloop(t, "qwen3-27b", fleetPath)
+	spinloopDir := routedSpinloop(t, "qwen3-27b")
 
 	sel, path, err := readSpinloop("test", spinloopDir)
 	if err != nil {
 		t.Fatal(err)
 	}
 	captureStderr(t, func() {
-		_, err := routeThroughFleet(sel, path, routeOptions{})
+		_, err := routeThroughFleet(sel, path, routeOptions{fleetPath: fleetPath})
 		if err == nil {
 			t.Fatal("wake: off with nothing serving should fail")
 		}
@@ -702,14 +573,14 @@ func TestUnknownPreferenceIsRefused(t *testing.T) {
 	node := newRoutableNode(t, "qwen3-27b", true, 10)
 	dir := t.TempDir()
 	fleetPath := fleetFileIn(t, dir, "nodes:\n"+node.entry("gpu-box"))
-	spinloopDir := routedSpinloop(t, "qwen3-27b", fleetPath)
+	spinloopDir := routedSpinloop(t, "qwen3-27b")
 
 	sel, path, err := readSpinloop("test", spinloopDir)
 	if err != nil {
 		t.Fatal(err)
 	}
 	captureStderr(t, func() {
-		if _, err := routeThroughFleet(sel, path, routeOptions{prefer: "sideways"}); err == nil {
+		if _, err := routeThroughFleet(sel, path, routeOptions{fleetPath: fleetPath, prefer: "sideways"}); err == nil {
 			t.Fatal("an unknown preference should fail")
 		} else if !strings.Contains(err.Error(), "idle") || !strings.Contains(err.Error(), "active") {
 			t.Errorf("error should name both values, got: %v", err)
@@ -723,7 +594,7 @@ func TestRoutedLaunchEnvironment(t *testing.T) {
 	node := newRoutableNode(t, "qwen3-27b", true, 10)
 	dir := t.TempDir()
 	fleetPath := fleetFileIn(t, dir, "nodes:\n"+node.entry("gpu-box"))
-	spinloopDir := routedSpinloop(t, "qwen3-27b", fleetPath)
+	spinloopDir := routedSpinloop(t, "qwen3-27b")
 
 	sel, path, err := readSpinloop("test", spinloopDir)
 	if err != nil {
@@ -731,7 +602,7 @@ func TestRoutedLaunchEnvironment(t *testing.T) {
 	}
 	var baseURL string
 	captureStderr(t, func() {
-		c, err := routeThroughFleet(sel, path, routeOptions{})
+		c, err := routeThroughFleet(sel, path, routeOptions{fleetPath: fleetPath})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -758,7 +629,7 @@ func TestFailedRouteLeavesTheConfigUntouched(t *testing.T) {
 	node := newRoutableNode(t, "", false, 0)
 	dir := t.TempDir()
 	fleetPath := fleetFileIn(t, dir, "nodes:\n"+node.entry("idle-box"))
-	spinloopDir := routedSpinloop(t, "qwen3-27b", fleetPath)
+	spinloopDir := routedSpinloop(t, "qwen3-27b")
 
 	h, _ := harness.Lookup("opencode")
 	var err error
@@ -766,7 +637,7 @@ func TestFailedRouteLeavesTheConfigUntouched(t *testing.T) {
 		captureStdout(t, func() {
 			_, _, _, _, err = applyBeforeLaunch(
 				spinloopPathFlag{set: true, path: spinloopDir}, "", h, nil,
-				routeOptions{noWake: true})
+				routeOptions{noWake: true, fleetPath: fleetPath})
 		})
 	})
 	if err == nil {
@@ -784,7 +655,7 @@ func TestRoutedApplyWritesTheChosenBaseURL(t *testing.T) {
 	node := newRoutableNode(t, "qwen3-27b", true, 10)
 	dir := t.TempDir()
 	fleetPath := fleetFileIn(t, dir, "nodes:\n"+node.entry("gpu-box"))
-	spinloopDir := routedSpinloop(t, "qwen3-27b", fleetPath)
+	spinloopDir := routedSpinloop(t, "qwen3-27b")
 
 	h, _ := harness.Lookup("opencode")
 	var sel spinloop.Selection
@@ -792,7 +663,8 @@ func TestRoutedApplyWritesTheChosenBaseURL(t *testing.T) {
 	captureStderr(t, func() {
 		captureStdout(t, func() {
 			sel, _, _, _, err = applyBeforeLaunch(
-				spinloopPathFlag{set: true, path: spinloopDir}, "", h, nil, routeOptions{})
+				spinloopPathFlag{set: true, path: spinloopDir}, "", h, nil,
+				routeOptions{fleetPath: fleetPath})
 		})
 	})
 	if err != nil {
@@ -809,10 +681,10 @@ func TestCmdFleetRouteExplainsTheChoice(t *testing.T) {
 	node := newRoutableNode(t, "qwen3-27b", true, 42)
 	dir := t.TempDir()
 	fleetPath := fleetFileIn(t, dir, "prefer: active\nnodes:\n"+node.entry("gpu-box"))
-	spinloopDir := routedSpinloop(t, "qwen3-27b", fleetPath)
+	spinloopDir := routedSpinloop(t, "qwen3-27b")
 
 	out := captureStdout(t, func() {
-		if err := cmdFleetRoute([]string{filepath.Join(spinloopDir, "Spinloop")}); err != nil {
+		if err := cmdFleetRoute([]string{"-f", fleetPath, filepath.Join(spinloopDir, "Spinloop")}); err != nil {
 			t.Fatal(err)
 		}
 	})
@@ -823,35 +695,14 @@ func TestCmdFleetRouteExplainsTheChoice(t *testing.T) {
 	}
 }
 
-// A FLEET naming an endpoint has already chosen: the route says where a launch
-// would point the agent, and queries nothing.
-func TestCmdFleetRouteAgainstAnEndpoint(t *testing.T) {
-	spinloopDir := routedSpinloop(t, "qwen3-27b", "http://gw.internal:4000")
-
-	out := captureStdout(t, func() {
-		if err := cmdFleetRoute([]string{filepath.Join(spinloopDir, "Spinloop")}); err != nil {
-			t.Fatal(err)
-		}
-	})
-	for _, want := range []string{
-		"gw.internal:4000 (an endpoint, not a fleet file)",
-		"would point the agent at http://gw.internal:4000/v1",
-		"nothing is started",
-	} {
-		if !strings.Contains(out, want) {
-			t.Errorf("output should mention %q, got:\n%s", want, out)
-		}
-	}
-}
-
-// A fleet file naming a gateway is answered the way an endpoint is: the
+// A fleet file naming a gateway is answered without querying a node: the
 // address is named, and the dead node below proves none is queried.
 func TestCmdFleetRouteAgainstAFileNamingAGateway(t *testing.T) {
 	fleetPath := gatewayFleetFile(t, "gateway:\n  url: http://gw.internal:4000\n")
-	spinloopDir := routedSpinloop(t, "qwen3-27b", fleetPath)
+	spinloopDir := routedSpinloop(t, "qwen3-27b")
 
 	out := captureStdout(t, func() {
-		if err := cmdFleetRoute([]string{filepath.Join(spinloopDir, "Spinloop")}); err != nil {
+		if err := cmdFleetRoute([]string{"-f", fleetPath, filepath.Join(spinloopDir, "Spinloop")}); err != nil {
 			t.Fatal(err)
 		}
 	})
@@ -874,12 +725,12 @@ func TestCmdFleetRoutePreferenceFlagBeatsTheFile(t *testing.T) {
 	dir := t.TempDir()
 	fleetPath := fleetFileIn(t, dir,
 		"prefer: idle\nnodes:\n"+recent.entry("recent")+stale.entry("stale"))
-	spinloopDir := routedSpinloop(t, "qwen3-27b", fleetPath)
+	spinloopDir := routedSpinloop(t, "qwen3-27b")
 	spinloopFile := filepath.Join(spinloopDir, "Spinloop")
 
 	// The file says idle, so the long-idle node wins.
 	out := captureStdout(t, func() {
-		if err := cmdFleetRoute([]string{spinloopFile}); err != nil {
+		if err := cmdFleetRoute([]string{"-f", fleetPath, spinloopFile}); err != nil {
 			t.Fatal(err)
 		}
 	})
@@ -889,7 +740,7 @@ func TestCmdFleetRoutePreferenceFlagBeatsTheFile(t *testing.T) {
 
 	// The flag overrides it, and says so.
 	out = captureStdout(t, func() {
-		if err := cmdFleetRoute([]string{"--prefer", "active", spinloopFile}); err != nil {
+		if err := cmdFleetRoute([]string{"-f", fleetPath, "--prefer", "active", spinloopFile}); err != nil {
 			t.Fatal(err)
 		}
 	})
@@ -913,10 +764,10 @@ func TestCmdFleetRouteStartsNothing(t *testing.T) {
 	node := newRoutableNode(t, "", false, 0)
 	dir := t.TempDir()
 	fleetPath := fleetFileIn(t, dir, "nodes:\n"+node.entry("idle-box"))
-	spinloopDir := routedSpinloop(t, "qwen3-27b", fleetPath)
+	spinloopDir := routedSpinloop(t, "qwen3-27b")
 
 	out := captureStdout(t, func() {
-		if err := cmdFleetRoute([]string{filepath.Join(spinloopDir, "Spinloop")}); err != nil {
+		if err := cmdFleetRoute([]string{"-f", fleetPath, filepath.Join(spinloopDir, "Spinloop")}); err != nil {
 			t.Fatal(err)
 		}
 	})
@@ -941,10 +792,10 @@ func TestCmdFleetRouteWakeOffRefusal(t *testing.T) {
 	node := newRoutableNode(t, "", false, 0)
 	dir := t.TempDir()
 	fleetPath := fleetFileIn(t, dir, "wake: off\nnodes:\n"+node.entry("idle-box"))
-	spinloopDir := routedSpinloop(t, "qwen3-27b", fleetPath)
+	spinloopDir := routedSpinloop(t, "qwen3-27b")
 
 	out := captureStdout(t, func() {
-		if err := cmdFleetRoute([]string{filepath.Join(spinloopDir, "Spinloop")}); err != nil {
+		if err := cmdFleetRoute([]string{"-f", fleetPath, filepath.Join(spinloopDir, "Spinloop")}); err != nil {
 			t.Fatal(err)
 		}
 	})
@@ -958,9 +809,10 @@ func TestCmdFleetRouteWakeOffRefusal(t *testing.T) {
 	}
 }
 
-// A Spinloop naming no fleet, with no --fleet, has nothing to report.
+// A named Spinloop, with no --fleet, has nothing to route through: the failure
+// names the flag that supplies the fleet.
 func TestCmdFleetRouteNeedsAFleet(t *testing.T) {
-	spinloopDir := routedSpinloop(t, "qwen3-27b", "")
+	spinloopDir := routedSpinloop(t, "qwen3-27b")
 	err := cmdFleetRoute([]string{filepath.Join(spinloopDir, "Spinloop")})
 	if err == nil {
 		t.Fatal("expected a failure")
@@ -970,29 +822,171 @@ func TestCmdFleetRouteNeedsAFleet(t *testing.T) {
 	}
 }
 
-// A relative FLEET is resolved against the Spinloop that names it, as PRESET and
-// REMOTE are — otherwise the same Spinloop routes from one directory and not
-// another.
-func TestRelativeFleetResolvesAgainstTheSpinloop(t *testing.T) {
+// Discovery: a fleet.yaml in the working directory is the fleet for a Spinloop
+// the user did not name. A named Spinloop — a flag value, a positional, or the
+// alias SPINLOOP_ALIAS names — travels to its fleet only by flag, so a
+// fleet.yaml beside the working directory is not picked up for it.
+
+// An explicitly named Spinloop does not pick up the working directory's
+// fleet.yaml.
+func TestNamedSpinloopDoesNotPickUpCwdFleet(t *testing.T) {
 	node := newRoutableNode(t, "qwen3-27b", true, 10)
 	dir := t.TempDir()
 	fleetFileIn(t, dir, "nodes:\n"+node.entry("gpu-box"))
-	mustWrite(t, filepath.Join(dir, "Spinloop"),
-		"PROVIDER llamacpp\nMODEL qwen3-27b\nFLEET fleet.yaml\n")
+	t.Chdir(dir)
 
-	// Run from somewhere else entirely: the Spinloop still finds its fleet.
-	t.Chdir(t.TempDir())
-	sel, path, err := readSpinloop("test", filepath.Join(dir, "Spinloop"))
+	spinloopDir := t.TempDir()
+	mustWrite(t, filepath.Join(spinloopDir, "Spinloop"), "PROVIDER llamacpp\nMODEL qwen3-27b\n")
+	sel, path, err := readSpinloop("test", filepath.Join(spinloopDir, "Spinloop"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	choice, err := routeThroughFleet(sel, path, routeOptions{spinloopNamed: true})
+	if err != nil || choice != nil {
+		t.Errorf("choice = %+v, err = %v; a named Spinloop should not pick up the working directory's fleet", choice, err)
+	}
+}
+
+// The other side of the same rule: a Spinloop the user did not name finds the
+// working directory's fleet.yaml.
+func TestUnnamedSpinloopPicksUpCwdFleet(t *testing.T) {
+	node := newRoutableNode(t, "qwen3-27b", true, 10)
+	dir := t.TempDir()
+	fleetFileIn(t, dir, "nodes:\n"+node.entry("gpu-box"))
+	t.Chdir(dir)
+
+	spinloopDir := t.TempDir()
+	mustWrite(t, filepath.Join(spinloopDir, "Spinloop"), "PROVIDER llamacpp\nMODEL qwen3-27b\n")
+	sel, path, err := readSpinloop("test", filepath.Join(spinloopDir, "Spinloop"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	captureStderr(t, func() {
-		c, err := routeThroughFleet(sel, path, routeOptions{})
+		c, err := routeThroughFleet(sel, path, routeOptions{spinloopNamed: false})
 		if err != nil {
-			t.Fatalf("a relative FLEET should resolve beside its Spinloop: %v", err)
+			t.Fatalf("an unnamed Spinloop should find the working directory's fleet: %v", err)
 		}
-		if c.Node.Name != "gpu-box" {
-			t.Errorf("chose %q", c.Node.Name)
+		if c == nil || c.Node.Name != "gpu-box" {
+			t.Fatalf("expected the working directory's fleet, got %+v", c)
 		}
 	})
+}
+
+// --fleet routes a Spinloop the user named, where the working directory would
+// otherwise give no fleet at all.
+func TestFleetFlagRoutesANamedSpinloop(t *testing.T) {
+	node := newRoutableNode(t, "qwen3-27b", true, 10)
+	dir := t.TempDir()
+	flagFleet := fleetFileIn(t, dir, "nodes:\n"+node.entry("from-flag"))
+	t.Chdir(t.TempDir()) // an empty working directory: no fleet.yaml to fall back on
+
+	spinloopDir := t.TempDir()
+	mustWrite(t, filepath.Join(spinloopDir, "Spinloop"), "PROVIDER llamacpp\nMODEL qwen3-27b\n")
+	sel, path, err := readSpinloop("test", filepath.Join(spinloopDir, "Spinloop"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	captureStderr(t, func() {
+		c, err := routeThroughFleet(sel, path, routeOptions{spinloopNamed: true, fleetPath: flagFleet})
+		if err != nil {
+			t.Fatalf("routing failed: %v", err)
+		}
+		if c == nil || c.Node.Name != "from-flag" {
+			t.Fatalf("--fleet should route a named Spinloop, got %+v", c)
+		}
+	})
+}
+
+// The alias SPINLOOP_ALIAS names is a Spinloop the user named: a fleet.yaml in
+// the working directory is not picked up for it, even though no path was typed.
+func TestAliasNamedSpinloopDoesNotPickUpCwdFleet(t *testing.T) {
+	isolateConfig(t)
+	t.Setenv("OPENAI_BASE_URL", "")
+	node := newRoutableNode(t, "qwen3-27b", true, 10)
+	registerSpinloop(t, "PROVIDER llamacpp\nMODEL qwen3-27b\nALIAS q3\n")
+
+	dir := t.TempDir()
+	fleetFileIn(t, dir, "nodes:\n"+node.entry("gpu-box"))
+	t.Chdir(dir) // the fleet.yaml, but no Spinloop: the alias supplies the Spinloop
+	t.Setenv("SPINLOOP_ALIAS", "q3")
+
+	argsFile := filepath.Join(t.TempDir(), "args")
+	stubHarnessBinary(t, "opencode", argsFile)
+	stderr := captureStderr(t, func() {
+		captureStdout(t, func() {
+			if err := cmdHarness([]string{"-O", "--", "run"}); err != nil {
+				t.Fatalf("cmdHarness: %v", err)
+			}
+		})
+	})
+	if _, err := os.ReadFile(argsFile); err != nil {
+		t.Fatalf("harness was not launched: %v", err)
+	}
+	if strings.Contains(stderr, "Routing through") {
+		t.Errorf("a Spinloop named by SPINLOOP_ALIAS should not pick up the working directory's fleet, got:\n%s", stderr)
+	}
+}
+
+// The valueless --spinloop wears the default Spinloop and is not named: a
+// launch run from a directory holding both a Spinloop and a fleet.yaml routes
+// through that fleet.
+func TestValuelessSpinloopFlagRoutesThroughCwdFleet(t *testing.T) {
+	home := isolateConfig(t)
+	t.Setenv("OPENAI_BASE_URL", "")
+	node := newRoutableNode(t, "qwen3-27b", true, 10)
+	dir := t.TempDir()
+	fleetFileIn(t, dir, "nodes:\n"+node.entry("gpu-box"))
+	mustWrite(t, filepath.Join(dir, "Spinloop"), "PROVIDER llamacpp\nMODEL qwen3-27b\n")
+	t.Chdir(dir)
+
+	argsFile := filepath.Join(t.TempDir(), "args")
+	envFile := filepath.Join(t.TempDir(), "env")
+	stubHarnessBinaryWithEnv(t, argsFile, envFile)
+	stderr := captureStderr(t, func() {
+		captureStdout(t, func() {
+			if err := cmdHarness([]string{"-O", "--", "run"}); err != nil {
+				t.Fatalf("cmdHarness -O: %v", err)
+			}
+		})
+	})
+	if !strings.Contains(stderr, "gpu-box") {
+		t.Errorf("the valueless --spinloop should route through the working directory's fleet, got:\n%s", stderr)
+	}
+	data, err := os.ReadFile(envFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "BASE=http://127.0.0.1:" + strconv.Itoa(node.enginePort) + "/v1"
+	if !strings.Contains(string(data), want) {
+		t.Errorf("the agent should point at the chosen node, got:\n%s", data)
+	}
+	_ = home
+}
+
+// A bare `spinloop harness` wears no Spinloop at all, so it routes nowhere even
+// from a directory holding both a Spinloop and a fleet.yaml.
+func TestBareHarnessWearsNothingAndRoutesNothing(t *testing.T) {
+	isolateConfig(t)
+	t.Setenv("OPENAI_BASE_URL", "")
+	node := newRoutableNode(t, "qwen3-27b", true, 10)
+	dir := t.TempDir()
+	fleetFileIn(t, dir, "nodes:\n"+node.entry("gpu-box"))
+	mustWrite(t, filepath.Join(dir, "Spinloop"), "PROVIDER llamacpp\nMODEL qwen3-27b\n")
+	t.Chdir(dir)
+
+	argsFile := filepath.Join(t.TempDir(), "args")
+	stubHarnessBinary(t, "opencode", argsFile)
+	stderr := captureStderr(t, func() {
+		captureStdout(t, func() {
+			if err := cmdHarness([]string{"--", "run"}); err != nil {
+				t.Fatalf("cmdHarness: %v", err)
+			}
+		})
+	})
+	if _, err := os.ReadFile(argsFile); err != nil {
+		t.Fatalf("harness was not launched: %v", err)
+	}
+	if strings.Contains(stderr, "Routing through") {
+		t.Errorf("a bare harness wears nothing and routes nowhere, got:\n%s", stderr)
+	}
 }

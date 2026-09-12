@@ -122,51 +122,44 @@ machine.
 
 ## Running the model on another machine you own
 
-`FLEET` names a [fleet file](commands/fleet.md#fleetyaml) — the machines on your
-network running `spinloop daemon` — and lets `spinloop harness` pick one for you:
+A [fleet file](commands/fleet.md#fleetyaml) names the machines on your network
+running `spinloop daemon`, and `spinloop harness` can pick one for you. Which
+fleet file a launch routes through is a launch concern, not a Spinloop field:
+
+- `spinloop harness --fleet <path>` names it explicitly.
+- Without the flag, a Spinloop you did not name — the default `./Spinloop`,
+  worn by a valueless `--spinloop` — takes the `fleet.yaml` in the working
+  directory. A Spinloop you did name — a path, a `--spinloop` value, or the
+  alias `SPINLOOP_ALIAS` names — routes only by flag.
 
 ```dockerfile
 # Spinloop
 PROVIDER llamacpp
 MODEL    qwen3-27b
-FLEET    ./fleet.yaml
 ```
 
-Launching against it queries the fleet, picks a node already serving that model,
+Launching against a fleet queries it, picks a node already serving that model,
 and points the agent at that node's engine. When nothing is serving it, spinloop
 starts one and waits for it to load — so the machine you sat down at needs
-nothing but a path to the fleet file. `spinloop harness --fleet=<path>` overrides
-the instruction, `--node <name>` pins one machine, and `--no-wake` refuses to
-start anything.
+nothing but the fleet file. `--node <name>` pins one machine, and `--no-wake`
+refuses to start anything.
 
-`FLEET` and `REMOTE` are mutually exclusive: each is a different answer to where
-the model is served from, and a Spinloop stating both fails to parse rather than
-picking one. As with `REMOTE`, note the missing `BASEURL` — the address is
-whichever node gets chosen. Writing one pins the address and turns routing off,
-and spinloop says so rather than choosing a node and discarding it.
+A fleet file may name a [gateway](commands/gateway.md) instead of nodes: a
+single endpoint that has already done the choosing. A launch through such a file
+is pointed at the gateway's address — with the OpenAI-compatible `/v1` prefix
+added when it carries no path — and the agent it launches authenticates with the
+gateway's token, resolved the way a key is resolved elsewhere: an `ENV`
+instruction, then the process environment, then the `.env` beside the Spinloop.
+A variable already set wins. Set nowhere, the launch fails before it writes
+anything, naming the variable the section names — `OPENAI_API_KEY` where the
+section names none.
 
-A `FLEET` may also name a URL rather than a file: a single endpoint that has
-already done the choosing, the shape
-[`spinloop gateway`](commands/gateway.md) serves:
-
-```dockerfile
-PROVIDER llamacpp
-MODEL    qwen3-27b
-FLEET    http://gateway.internal:4000
-```
-
-Naming one reads no fleet file and contacts no node. The launch is pointed at
-the address as given — with the OpenAI-compatible `/v1` prefix added when it
-carries no path, and a value that already carries one used as given — and the
-agent it launches authenticates with the endpoint's token, resolved the way a
-key is resolved elsewhere: an `ENV` instruction, then the process environment,
-then the `.env` beside the Spinloop. A variable already set wins, as on the
-remote path. Set nowhere, the launch fails before it writes anything, naming
-`OPENAI_API_KEY`.
+Note the missing `BASEURL` — the address is whichever node gets chosen. Writing
+one pins the address and turns routing off, and spinloop says so rather than
+choosing a node and discarding it.
 
 See [`spinloop fleet route`](commands/fleet.md#which-node-would-i-get) to check
-which node you would get before launching anything — a route against an
-endpoint just names it, without querying a node or starting one.
+which node you would get before launching anything.
 
 ## Syntax
 
@@ -183,7 +176,6 @@ One instruction per line: a keyword followed by a single value.
 | `BASEURL`  | no                               | `--base-url`   | `BASEURL https://gateway/v1`   |
 | `PRESET`   | no                               | `spinloop serve` | `PRESET ./preset.ini`          |
 | `REMOTE`   | no                               | `spinloop remote` | `REMOTE ./remote.json`        |
-| `FLEET`    | no                               | `spinloop harness`, `spinloop fleet` | `FLEET ./fleet.yaml` |
 | `ENV`      | no (repeatable)                  | `spinloop remote`, `spinloop harness` | `ENV AWS_PROFILE=prod` |
 
 Rules:

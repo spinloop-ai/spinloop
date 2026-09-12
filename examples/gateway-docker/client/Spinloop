@@ -1,7 +1,7 @@
 # What an agent's machine wears to use this stack: a model, and nothing about
 # where it is served — the fleet file's gateway section says that. `spinloop
-# fleet harness` with this Spinloop beside that fleet file points the agent at
-# the gateway; the Spinloop stays valid whatever address the gateway moves to.
+# fleet harness` run from the directory holding the fleet file points the agent
+# at the gateway; the Spinloop stays valid whatever address the gateway moves to.
 #
 # The agent holds exactly one credential — the gateway's token, as
 # GATEWAY_TOKEN (from the environment, or a .env beside the fleet file). The

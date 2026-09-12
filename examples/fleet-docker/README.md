@@ -68,10 +68,10 @@ path — `docker compose exec studio ps ax` shows `--api-key-file`, not the key.
 
 ```sh
 # Which node would a harness launch pick? (Changes nothing.)
-spinloop fleet route ./client/Spinloop
+spinloop fleet route ./client/Spinloop --fleet ./fleet.yaml
 
 # Actually launch an agent against the fleet, waking a node if none is serving.
-spinloop harness ./client/Spinloop
+spinloop harness ./client/Spinloop --fleet ./fleet.yaml
 
 # A node that goes away: the row degrades, the rest keep reporting, exit 0.
 docker compose stop gpu-box
@@ -107,7 +107,7 @@ cannot quietly stop working.
 | `Dockerfile` | Builds spinloop from this working tree, adds the Imposter engine and the shim. |
 | `shim/llama-server` | Stands in for the engine binary. Execs the Imposter engine **directly**, so the daemon supervises it as its own child. |
 | `engine/` | What the fake engine serves: `/health`, and a `/metrics` spinloop can parse. |
-| `client/Spinloop` | What a *client* wears to use the fleet: a model, and a `FLEET`. The nodes hold no Spinloop at all. |
+| `client/Spinloop` | What a *client* wears to use the fleet: a model. The fleet file is named at launch with `--fleet`. The nodes hold no Spinloop at all. |
 
 Two details that are easy to get wrong, and matter:
 

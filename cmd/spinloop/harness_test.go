@@ -1127,9 +1127,10 @@ func TestHarness_LucinateInjectsKeyAtLaunch(t *testing.T) {
 	}
 }
 
-// A routed launch gives lucinate the fleet's key, not the provider's: the
-// endpoint's token is the one the agent will authenticate with.
-func TestHarness_LucinateCarriesTheFleetKeyAtLaunch(t *testing.T) {
+// A launch routed at a fleet's gateway gives lucinate the gateway's key, not
+// the provider's: the gateway's token is the one the agent will authenticate
+// with.
+func TestHarness_LucinateCarriesTheGatewayKeyAtLaunch(t *testing.T) {
 	isolateConfig(t)
 	t.Setenv("SPINLOOP_HARNESS", "lucinate")
 	t.Setenv("OPENAI_API_KEY", "gw-token")
@@ -1144,12 +1145,13 @@ func TestHarness_LucinateCarriesTheFleetKeyAtLaunch(t *testing.T) {
 	}
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 
+	fleetPath := gatewayFleetFile(t, "gateway:\n  url: http://gw.internal:4000\n")
 	spinloopDir := t.TempDir()
 	mustWrite(t, filepath.Join(spinloopDir, "Spinloop"),
-		"PROVIDER openrouter\nMODEL deepseek/deepseek-v4-flash\nFLEET http://gw.internal:4000\n")
+		"PROVIDER openrouter\nMODEL deepseek/deepseek-v4-flash\n")
 
 	captureStdout(t, func() {
-		if err := cmdHarness([]string{"--spinloop=" + spinloopDir}); err != nil {
+		if err := cmdHarness([]string{"--spinloop=" + spinloopDir, "-f", fleetPath}); err != nil {
 			t.Fatalf("cmdHarness --spinloop: %v", err)
 		}
 	})
@@ -1159,10 +1161,10 @@ func TestHarness_LucinateCarriesTheFleetKeyAtLaunch(t *testing.T) {
 		t.Fatalf("lucinate was not launched: %v", err)
 	}
 	if !strings.Contains(string(got), "LUCINATE_OPENAI_API_KEY=gw-token") {
-		t.Errorf("the fleet's key should reach lucinate in preference to the provider's:\n%s", got)
+		t.Errorf("the gateway's key should reach lucinate in preference to the provider's:\n%s", got)
 	}
 	if !strings.Contains(string(got), "OPENAI_BASE_URL=http://gw.internal:4000/v1") {
-		t.Errorf("the endpoint's address should reach lucinate:\n%s", got)
+		t.Errorf("the gateway's address should reach lucinate:\n%s", got)
 	}
 }
 

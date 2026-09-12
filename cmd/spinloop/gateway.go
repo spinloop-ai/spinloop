@@ -39,9 +39,11 @@ asks for, holding the request until the engine answers. It needs the
 same environment a machine running spinloop fleet start would: the
 tokens the fleet file names, set here or in the .env beside it.
 
-A Spinloop points an agent at it with a FLEET that names its address:
+A fleet file points an agent at it with a gateway section that names its
+address:
 
-    FLEET http://gateway.internal:4000
+    gateway:
+      url: http://gateway.internal:4000
 
 The agent then needs only the gateway's token, as OPENAI_API_KEY.`,
 		Args:          cobra.NoArgs,
@@ -124,8 +126,8 @@ func gatewayListenAddr(listen string, listenExplicit, loopback bool) (string, er
 
 // newGatewayServer resolves the fleet file and the gateway's token, checks the
 // file's token references the way a startup must, opens the listener, and
-// prints the address a Spinloop names in its FLEET. Everything that can fail
-// without serving fails here, before a listener exists.
+// prints the address a fleet file's gateway section names. Everything that can
+// fail without serving fails here, before a listener exists.
 func newGatewayServer(fleetPath, listen, apiToken, apiTokenFile string) (*http.Server, net.Listener, error) {
 	cfg, err := fleet.Resolve(fleetPath)
 	if err != nil {
@@ -181,12 +183,12 @@ func newGatewayServer(fleetPath, listen, apiToken, apiTokenFile string) (*http.S
 	}
 
 	fmt.Printf("Gateway for %s is listening on %s\n", cfg.Path, ln.Addr().String())
-	fmt.Printf("Name %s in a Spinloop's FLEET\n\n", fleetURL(ln.Addr().String()))
+	fmt.Printf("Name %s in the fleet file's gateway section\n\n", fleetURL(ln.Addr().String()))
 	return &http.Server{Handler: h}, ln, nil
 }
 
-// fleetURL turns the address the gateway listens on into the value a Spinloop
-// names in its FLEET: an http URL the agent's machine can reach. The host it
+// fleetURL turns the address the gateway listens on into the URL a fleet file's
+// gateway section names: an http URL the agent's machine can reach. The host it
 // can know is the one it was told to bind; for a wildcard bind the host is
 // whatever this machine is called from the other side, which only the operator
 // knows.

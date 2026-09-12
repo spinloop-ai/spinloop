@@ -363,6 +363,14 @@ func readSpinloop(usage, path string) (spinloop.Selection, string, error) {
 // Spinloop path but was given none.
 const spinloopAliasEnv = "SPINLOOP_ALIAS"
 
+// spinloopAliasInForce reports whether SPINLOOP_ALIAS will decide the Spinloop
+// a valueless --spinloop wears. The variable is the user's own naming of a
+// Spinloop, so for routing it counts as one named explicitly: a fleet.yaml in
+// the working directory is not picked up for it.
+func spinloopAliasInForce() bool {
+	return cliViper.GetString("alias") != ""
+}
+
 // spinloopFromEnv resolves SPINLOOP_ALIAS, returning the name it holds alongside
 // the Spinloop it points at, or two empty strings when it is unset or empty.
 //
@@ -1214,16 +1222,16 @@ func applyRoutedSpinloop(sel spinloop.Selection, path string, providers string, 
 		resolve = fleetLaunchResolver(resolve, choice.APIKey)
 	}
 	if choice != nil && choice.Gateway {
-		// A FLEET naming an endpoint — or a fleet file naming a gateway —
-		// authenticates with a token the client holds itself, resolved the way
-		// a key is resolved elsewhere: an ENV instruction, else the process
-		// environment, else the .env beside the Spinloop. The variable is the
-		// one the section names, or the endpoint's default where the section
-		// names none. Set nowhere, the launch cannot authenticate, and a
-		// gateway that refuses every request is not one to point an agent at.
+		// A fleet file naming a gateway authenticates with a token the client
+		// holds itself, resolved the way a key is resolved elsewhere: an ENV
+		// instruction, else the process environment, else the .env beside the
+		// Spinloop. The variable is the one the section names, or the
+		// default where the section names none. Set nowhere, the launch cannot
+		// authenticate, and a gateway that refuses every request is not one to
+		// point an agent at.
 		env := choice.GatewayTokenEnv
 		if env == "" {
-			env = remoteAPIKeyEnv
+			env = fleet.DefaultGatewayTokenEnv
 		}
 		key := localKeyUnder(sel, localResolve, env)
 		if key == "" {
@@ -1313,7 +1321,7 @@ func localKeyUnder(sel spinloop.Selection, resolve func(string) string, name str
 }
 
 // localKey resolves under the remote API key's variable — the one a REMOTE
-// endpoint and a FLEET endpoint authenticate under.
+// endpoint authenticates under.
 func localKey(sel spinloop.Selection, resolve func(string) string) string {
 	return localKeyUnder(sel, resolve, remoteAPIKeyEnv)
 }

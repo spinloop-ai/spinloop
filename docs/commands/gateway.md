@@ -18,11 +18,11 @@ the fleet file it serves, and a signal shuts it down cleanly. On startup it
 resolves the fleet file and its own token, and checks the token references the
 file names — a `tokenEnv` or `engineTokenEnv` variable set nowhere fails here,
 naming the node, rather than surfacing later as a per-request authentication
-failure. It prints the address a Spinloop names in its `FLEET`:
+failure. It prints the address to name in the fleet file's `gateway` section:
 
 ```
 Gateway for fleet.yaml is listening on [::]:4000
-Name http://<this-machine>:4000 in a Spinloop's FLEET
+Name http://<this-machine>:4000 in the fleet file's gateway section
 ```
 
 The host it can know is the one it was told to bind; for a wildcard bind the
@@ -32,28 +32,17 @@ side.
 
 ## Pointing an agent at it
 
-A Spinloop names the gateway's address in its `FLEET` — a URL, not a file:
-
-```dockerfile
-PROVIDER llamacpp
-MODEL    qwen3-27b
-FLEET    http://gateway.internal:4000
-```
-
-The launch reads no fleet file and contacts no node — the endpoint has already
-done the choosing — and the agent it launches authenticates with the
-gateway's token, as `OPENAI_API_KEY`, resolved the way a key is resolved
+A [`gateway` section](fleet.md#gateway) in the fleet file names the address and
+the variable holding the token. A launch routed through that file — `spinloop
+harness -f` or `spinloop fleet harness` — is pointed at the gateway rather than
+a node: the section's address is the agent's base URL (with the OpenAI-
+compatible `/v1` prefix added when it carries no path), and the agent
+authenticates with the gateway's token, resolved the way a key is resolved
 elsewhere: an `ENV` instruction, then the process environment, then the `.env`
-beside the Spinloop. An agent pointed at the gateway holds exactly that one
-credential; the node tokens and engine keys live with the gateway, which
-presents them to the nodes and the engines. See
-[The `Spinloop` file](../spinloop-file.md#running-the-model-on-another-machine-you-own).
-
-The same pointing can live in the fleet file instead of the Spinloop: a
-[`gateway` section](fleet.md#gateway) beside its `nodes` names the address and
-the variable holding the token, and `spinloop fleet harness` — the fleet-level
-form of a launch — reads it. A Spinloop beside that file then needs only the
-model, and the address travels with the file when the gateway moves:
+beside the Spinloop. `OPENAI_API_KEY` stands in where the section names no
+variable. An agent pointed at the gateway holds exactly that one credential;
+the node tokens and engine keys live with the gateway, which presents them to
+the nodes and the engines:
 
 ```yaml
 # fleet.yaml
@@ -65,6 +54,10 @@ gateway:
 ```sh
 spinloop fleet harness -O=./Spinloop   # from the fleet file's directory
 ```
+
+A Spinloop beside that file then needs only the model, and the address travels
+with the file when the gateway moves. See
+[The `Spinloop` file](../spinloop-file.md#running-the-model-on-another-machine-you-own).
 
 ## What it answers
 
@@ -160,7 +153,5 @@ on a shared machine wants, and the reason the token is not optional there.
   drives
 - [`spinloop daemon`](serve.md#the-control-api---api-and-spinloop-daemon) — what
   each node runs
-- [`examples/gateway-docker/`](../../examples/gateway-docker/) — a gateway and
-  its fleet in containers, with the test suite that asserts all of this
-- [The `Spinloop` file](../spinloop-file.md) — the `FLEET` that points an agent
-  here
+ - [`examples/gateway-docker/`](../../examples/gateway-docker/) — a gateway and
+   its fleet in containers, with the test suite that asserts all of this

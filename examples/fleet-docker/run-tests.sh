@@ -258,23 +258,27 @@ restart_node() {
 }
 
 #######################################
-# Wait until the engine's token counters reach the fleet view. A node reads
-# `running` as soon as the engine process is alive, which is earlier than the
-# counters exist: the engine needs a moment to answer at all, and the daemon
-# reports the reading its background sampler took rather than scraping when
-# asked. The sampler retries about once a second until the first reading
-# lands, so the counters trail the state by a second or two and a state check
-# returns inside that window.
+# Wait until a complete reading reaches the fleet view: the engine's token
+# counters and the host's figures. A node reads `running` as soon as the engine
+# process is alive, which is earlier than either exists: the engine needs a
+# moment to answer at all, and the daemon reports the reading its background
+# sampler took rather than scraping when asked. The sampler records the two in
+# one tick, but the token scrape runs before the slow `vmstat` host read, so a
+# just-woken node can report counters before its first host reading lands.
+# Waiting for both means the assertions read a complete reading, not the
+# counters half a tick early.
 # Arguments:
 #   Timeout in seconds.
 # Returns:
-#   0 once the counters appear, 1 on timeout.
+#   0 once a complete reading appears, 1 on timeout.
 #######################################
-wait_for_tokens() {
+wait_for_metrics() {
   local timeout="$1"
   local deadline=$((SECONDS + timeout))
+  local out
   while (( SECONDS < deadline )); do
-    if [[ "$(fleet metrics)" == *"prompt tokens"* ]]; then
+    out="$(fleet metrics)"
+    if [[ "${out}" == *"prompt tokens"* && "${out}" == *"RAM"* ]]; then
       return 0
     fi
     sleep 1
@@ -446,7 +450,7 @@ STUB
   local launch
   launch="$(PATH="${sandbox}/bin:${PATH}" HOME="${sandbox}/home" \
     XDG_CONFIG_HOME="${sandbox}/home/.config" \
-    "${SPINLOOP_BIN}" harness -O="${spinloop_file}" -H opencode 2>&1 || true)"
+    "${SPINLOOP_BIN}" harness -O="${spinloop_file}" --fleet "${HERE}/fleet.yaml" -H opencode 2>&1 || true)"
   assert_contains "a routed launch wakes the node" "${launch}" "Waking studio"
   assert_contains "the agent is pointed at the published engine port" "${launch}" "18080"
   assert_contains "the agent is given the key the client set" \
@@ -511,7 +515,7 @@ test_metrics() {
   # Running is the process, not a sample; let the counters land before reading
   # them. A timeout is not fatal here — the assertions below say what was
   # missing, which is more use than an abort.
-  wait_for_tokens 30 || true
+  wait_for_metrics 30 || true
 
   local out
   out="$(fleet metrics)"

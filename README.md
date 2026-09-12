@@ -111,9 +111,9 @@ spinloop harness     # launch the agent, now running it
 ```
 
 opencode, Pi and lucinate are all supported, chosen when you launch rather than
-written into the file. A `Spinloop` naming a `FLEET` routes the launch to a node
-that already has the model — or can load it — so the machine you are sitting at
-needs no addresses of its own.
+written into the file. A launch routed through a [fleet file](docs/commands/fleet.md)
+goes to a node that already has the model — or can load it — so the machine you
+are sitting at needs no addresses of its own.
 
 Not serving it yourself? The same commands point an agent at a hosted model:
 `spinloop add -p openrouter -m deepseek/deepseek-v4-flash`, then
@@ -366,9 +366,8 @@ MODEL    deepseek/deepseek-v4-pro   # the provider-native model ref
 ALIAS    deepseek                   # optional; friendly name for the model
 CONTEXT  128k                       # optional; context window
 OUTPUT   32k                        # optional; max output tokens
-PARALLEL 2                          # optional; concurrent slots when serving
-BASEURL  https://gateway/v1         # optional; API base URL override
-FLEET    ./fleet.yaml               # optional; route the launch to a node
+ PARALLEL 2                          # optional; concurrent slots when serving
+ BASEURL  https://gateway/v1         # optional; API base URL override
 ```
 
 ```sh
@@ -382,11 +381,11 @@ spinloop export > Spinloop    # capture your current setup as a Spinloop
 
 A `Spinloop` describes one provider selection and applies exactly like the
 equivalent `add`. The full keyword set is `PROVIDER`, `MODEL`, `ALIAS`,
-`CONTEXT`, `OUTPUT`, `PARALLEL`, `BASEURL`, `PRESET`, `REMOTE`, `FLEET` and
-`ENV` — `FLEET` and `REMOTE` are mutually exclusive, being two different answers
-to where the model runs. Full syntax is in [`docs/spinloop-file.md`](docs/spinloop-file.md),
-and ready-to-use examples live under [`examples/`](examples/), including
-[fetching one from a URL](examples/remote-spinloop/).
+`CONTEXT`, `OUTPUT`, `PARALLEL`, `BASEURL`, `PRESET`, `REMOTE` and `ENV`.
+Routing a launch through a fleet is a launch concern, not a Spinloop field — see
+the [fleet file](docs/commands/fleet.md). Full syntax is in
+[`docs/spinloop-file.md`](docs/spinloop-file.md), and ready-to-use examples live
+under [`examples/`](examples/), including [fetching one from a URL](examples/remote-spinloop/).
 
 ## Aliases
 
@@ -566,14 +565,16 @@ thing for: which machine is doing nothing?
 
 #### Launching against the fleet
 
-A fleet is also where `spinloop harness` sends the agent. A Spinloop naming a
-`FLEET` picks a node and launches against its engine, so the machine you are
-sitting at needs no addresses of its own:
+A fleet is also where `spinloop harness` sends the agent: a launch routed
+through a fleet file picks a node and launches against its engine, so the
+machine you are sitting at needs no addresses of its own. The fleet file comes
+from `--fleet`, or from the `./fleet.yaml` in the working directory when the
+Spinloop is not named:
 
 ```sh
-spinloop harness my-spinloop        # picks a node, launches the agent against it
-spinloop harness --fleet f.yaml     # overrides the Spinloop's FLEET
-spinloop fleet route my-spinloop    # which node would I get? (launches nothing)
+spinloop harness -O -f f.yaml       # valueless -O wears ./Spinloop; routes through f.yaml
+spinloop harness --fleet f.yaml     # name the fleet file explicitly
+spinloop fleet route -f f.yaml      # which node would I get? (launches nothing)
 ```
 
 The agent comes up talking to the node it picked — its address arrives as

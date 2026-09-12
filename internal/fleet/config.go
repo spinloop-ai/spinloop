@@ -187,9 +187,7 @@ type EngineOverride struct {
 }
 
 // DefaultGatewayTokenEnv is the variable a gateway's token is resolved under
-// when the section names none: the same variable an endpoint FLEET resolves
-// under, so a file that moves a launch from an endpoint to a section changes
-// nothing the client has to export.
+// when the section names none — the standard OpenAI-compatible key variable.
 const DefaultGatewayTokenEnv = "OPENAI_API_KEY"
 
 // GatewayConfig is the fleet file's gateway section: the address the fleet is
@@ -284,12 +282,11 @@ func (c *Config) validate() error {
 		if c.Gateway.URL == "" {
 			return fmt.Errorf("the gateway section names no url: name the gateway's address under `url:`")
 		}
-		// The section's url is an endpoint value wearing a section: it is
-		// dialed over HTTP, so it carries a scheme the way FLEET's endpoint
-		// values do.
+		// The section's url is an address spinloop dials over HTTP, so it
+		// carries a scheme: a bare host names nothing it could reach.
 		if !strings.Contains(c.Gateway.URL, "://") {
 			return fmt.Errorf(
-				"the gateway section's url %q has no scheme: give the gateway's full address, the way an endpoint value does",
+				"the gateway section's url %q has no scheme: give the gateway's full address, including http:// or https://",
 				c.Gateway.URL)
 		}
 	}

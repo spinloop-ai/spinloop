@@ -178,6 +178,12 @@ exits. Honours -H/--harness and SPINLOOP_HARNESS.`,
 				}
 			}
 
+			// A named Spinloop — the flag's value, a leading positional, or the
+			// alias SPINLOOP_ALIAS names — travels to its fleet only by flag, so
+			// a fleet.yaml in the working directory is not picked up for it. A
+			// valueless --spinloop wears the default Spinloop and is not named.
+			route.spinloopNamed = spinloopPath.path != "" || spinloopAliasInForce()
+
 			// A .env beside the applied Spinloop is where its keys live, so the
 			// launched agent is given the same ones. Without a Spinloop there is
 			// no such file and only the environment (plus any provider key
@@ -210,7 +216,7 @@ exits. Honours -H/--harness and SPINLOOP_HARNESS.`,
 	// path readSpinloop resolves as SPINLOOP_ALIAS > ./Spinloop.
 	fs.Lookup("spinloop").NoOptDefVal = "true"
 	fs.StringVar(&providers, "providers", "", "path to a providers.yaml override")
-	fs.StringVarP(&route.fleetPath, "fleet", "f", "", "route through this fleet file (overrides the Spinloop's FLEET)")
+	fs.StringVarP(&route.fleetPath, "fleet", "f", "", "route through this fleet file (default: ./fleet.yaml, when the Spinloop is not named)")
 	fs.StringVar(&route.node, "node", "", "pin the launch to this fleet node")
 	fs.StringVar(&route.prefer, "prefer", "", "rank fleet nodes by `idle` or `active` (overrides the fleet file)")
 	fs.BoolVar(&route.noWake, "no-wake", false, "fail rather than starting an engine on an idle fleet node")
