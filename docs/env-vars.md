@@ -45,7 +45,12 @@ naming one) rather than environment variables alone.
 | --- | --- |
 | `XDG_CONFIG_HOME` | Base for spinloop's config dir (`$XDG_CONFIG_HOME/spinloop`) when `SPINLOOP_CONFIG_DIR` is unset. |
 | `AWS_REGION` | AWS region for the remote control calls when the remote config names none. |
-| `HF_TOKEN` | Hugging Face token, used only to seed gated model weights during `spinloop remote deploy`. |
+| `HF_TOKEN` | Hugging Face token. Read by `spinloop hf` (sent as a bearer for gated or private repos) and used to seed gated model weights during `spinloop remote deploy`. Precedence in `hf`: `HF_TOKEN` > `HUGGING_FACE_HUB_TOKEN` > the token file. |
+| `HUGGING_FACE_HUB_TOKEN` | Hugging Face token, the second of the two `spinloop hf` reads, after `HF_TOKEN`. |
+| `HF_HOME` | Base of the Hugging Face home: its `token` file (third in `hf`'s token order) and, when `HF_HUB_CACHE` is unset, the hub cache lives at `$HF_HOME/hub`. |
+| `HF_HUB_CACHE` | The Hugging Face hub cache `spinloop hf` checks for a copy already on disk, before the hub. Default `$HF_HOME/hub`, else `~/.cache/huggingface/hub`. |
+| `HF_ENDPOINT` | The hub host `spinloop hf` reads repo metadata from. Default `https://huggingface.co`. |
+| `LLAMA_CACHE` | llama.cpp's cache `spinloop hf` also checks for a copy already on disk — a model `llama-server` downloaded lives here, not in the hub cache. Default the platform's user cache directory (`~/.cache/llama.cpp` on Linux, `~/Library/Caches/llama.cpp` on macOS). |
 | `OPENAI_API_KEY` | The key spinloop resolves for OpenAI-compatible, oMLX and MTPLX providers (from the environment or the adjacent `.env`). |
 
 Each provider in the catalogue also names its own key variable (and sometimes a

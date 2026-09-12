@@ -242,6 +242,12 @@ spinloop add -p llamacpp -m my-model --context 200000
 # Cap the max output tokens too (defaults to a quarter of the context)
 spinloop add -p llamacpp -m my-model -c 128k -o 32k
 
+# A model straight off its Hugging Face page — the provider, quantisation,
+# context window and alias are inferred, and a copy already in a local cache
+# is used if there is one
+spinloop hf unsloth/Qwen3.6-35B-A3B-GGUF -o ./Spinloop
+spinloop hf unsloth/Qwen3.6-35B-A3B-GGUF:Q8_0 --apply
+
 # Take a provider back out
 spinloop remove -p ollama
 
@@ -285,6 +291,11 @@ spinloop fleet <status|metrics|logs|dashboard|route|start|stop>
 spinloop up   [node… | path]               # start what the directory holds: every node of a
                                            #   fleet.yaml, else the Spinloop's server
 spinloop export [--provider <name>]        # print the current config as a Spinloop
+spinloop hf   <ref> [-q <quant>] [-c <size>] [-a <name>] [-o <file>] [--no-cache] [--apply]
+                                         # write the Spinloop for a Hugging Face model:
+                                         #   ref is org/model or a page URL, with an optional
+                                         #   :quant or @revision; -o is the output file here,
+                                         #   not max output tokens
 spinloop init-providers [path]             # write the built-in catalogue out to edit
 spinloop harness [<spinloop>] [-H <name>] [--spinloop[=<path>]] [args...]
                                          # launch the harness (a leading Spinloop or alias is
