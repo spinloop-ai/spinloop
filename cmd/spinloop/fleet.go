@@ -674,7 +674,13 @@ func deployOneNode(cfg *fleet.Config, name string, opts deployOpts) fleetDeployR
 	if err != nil {
 		return fleetDeployResult{node: name, outcome: deployRowFailed, detail: err.Error()}
 	}
-	outcome, err := runDeploy(spinloopPath, env, dc, opts)
+	// The node's own instance type is per-node. opts is shared across the
+	// concurrent deploy, so one node's machine must not leak to another —
+	// copy it for this call and set the node's type (a node naming none
+	// leaves it empty, i.e. the control plane's default).
+	nodeOpts := opts
+	nodeOpts.instanceType = entry.InstanceType
+	outcome, err := runDeploy(spinloopPath, env, dc, nodeOpts)
 	if err != nil {
 		var guarded *errDeployGuarded
 		if errors.As(err, &guarded) {

@@ -328,6 +328,57 @@ func TestCmdFleetDeployDryRunTouchesNothing(t *testing.T) {
 	}
 }
 
+// A node's instance-type is per-node: `fleet deploy` threads each targeted
+// node's own value into its deploy, so one node's machine never leaks to a
+// sibling's plan — a node naming a type shows it, one naming none shows the
+// control plane's default.
+func TestCmdFleetDeployInstanceTypePerNode(t *testing.T) {
+	isolateConfig(t)
+	dir := writeFleetFile(t, `
+nodes:
+  - name: typed
+    kind: remote
+    file: ./typed.Spinloop
+    instance-type: g6e.2xlarge
+  - name: untyped
+    kind: remote
+    file: ./untyped.Spinloop
+`)
+	writeSpinloop := func(name, env string) {
+		t.Helper()
+		body := fmt.Sprintf("PROVIDER llamacpp\nMODEL org/m:Q4\nCONTEXT 8192\nREMOTE %s\n", env)
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeSpinloop("typed.Spinloop", "typed")
+	writeSpinloop("untyped.Spinloop", "untyped")
+
+	deployDiscoverFn = func(context.Context, aws.Config, string) (remote.ControlPlane, error) {
+		return remote.ControlPlane{}, fmt.Errorf("must not be called")
+	}
+	t.Cleanup(func() { deployDiscoverFn = remote.DiscoverControlPlane })
+
+	// --dry-run touches nothing, so no deploy seams need stubbing.
+	outTyped := captureStdout(t, func() {
+		if err := cmdFleet([]string{"deploy", "typed", "--dry-run"}); err != nil {
+			t.Errorf("deploy typed --dry-run: %v", err)
+		}
+	})
+	if !strings.Contains(outTyped, "instance:  g6e.2xlarge") {
+		t.Errorf("typed node's plan should name its instance type, got:\n%s", outTyped)
+	}
+
+	outUntyped := captureStdout(t, func() {
+		if err := cmdFleet([]string{"deploy", "untyped", "--dry-run"}); err != nil {
+			t.Errorf("deploy untyped --dry-run: %v", err)
+		}
+	})
+	if !strings.Contains(outUntyped, "instance:  the control plane's default") {
+		t.Errorf("untyped node's plan should state the default machine, got:\n%s", outUntyped)
+	}
+}
+
 // mustEnvConfigPath resolves where a deployed environment would be
 // registered, under the isolated config dir this test's HOME points at.
 func mustEnvConfigPath(t *testing.T, env string) string {

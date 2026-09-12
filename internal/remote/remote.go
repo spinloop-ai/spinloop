@@ -18,6 +18,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -261,6 +262,28 @@ type DeployConfig struct {
 	// Empty means the boot installs the latest published release. Omitted
 	// when empty, so an unpinned deploy sends exactly what it always did.
 	SpinloopVersion string `json:"spinloopVersion,omitempty"`
+	// InstanceType is the EC2 instance type the environment's instances launch
+	// as. Empty means launch as the control plane's default type. It is a
+	// property of the deployment, stored in the deploy config and read back on
+	// the next fresh launch — a re-wake of a stopped instance keeps the type it
+	// was launched with. Omitted when empty, so an untyped deploy sends exactly
+	// what it always did.
+	InstanceType string `json:"instanceType,omitempty"`
+}
+
+// instanceTypePattern is the shape of an EC2 instance type: a lowercase family
+// and size separated by a single dot. The family may be hyphenated, as in
+// u7i-6tb and mac2-m2; the size is lowercase alphanumerics (xlarge, 112xlarge,
+// metal). Deliberately permissive to every current EC2 family while rejecting
+// obvious junk before it reaches a RunInstances call.
+var instanceTypePattern = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*\.[a-z0-9]+$`)
+
+// IsInstanceType reports whether value is shaped like an EC2 instance type.
+// It is the guard a deploy (flag or fleet file) runs before sending a type the
+// control plane would otherwise reject at launch; a name that fails it is
+// reported by its caller, which has the value to name.
+func IsInstanceType(value string) bool {
+	return instanceTypePattern.MatchString(value)
 }
 
 // Deploy creates (or updates) cfg.Environment on the control plane and sets

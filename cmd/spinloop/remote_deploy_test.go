@@ -617,6 +617,91 @@ func TestRemoteDeploy_SpinloopVersion(t *testing.T) {
 	})
 }
 
+// An instance type is recorded on the environment: it reaches the signed body
+// so the deploy Lambda persists it, and the plan names the machine the
+// environment will launch as — a promise when named, the default otherwise.
+func TestRemoteDeploy_InstanceType(t *testing.T) {
+	t.Run("the type reaches the deploy body and the plan", func(t *testing.T) {
+		isolateConfig(t)
+		stubAWSEnv(t)
+
+		var got remote.DeployConfig
+		var gotRaw []byte
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			gotRaw, _ = io.ReadAll(r.Body)
+			_ = json.Unmarshal(gotRaw, &got)
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"deployed":true,"environment":"testenv","base_url":"http://198.51.100.9:8000/v1"}`))
+		}))
+		defer server.Close()
+		stubDeploySeams(t, server.URL, "undeployed")
+		writeDeployEnvSpinloop(t, "testenv")
+
+		out := captureStdout(t, func() {
+			if err := cmdRemoteDeploy([]string{"--instance-type", "g6e.2xlarge"}); err != nil {
+				t.Errorf("cmdRemoteDeploy: %v", err)
+			}
+		})
+
+		if got.InstanceType != "g6e.2xlarge" {
+			t.Errorf("posted instanceType = %q, want g6e.2xlarge", got.InstanceType)
+		}
+		if !strings.Contains(string(gotRaw), `"instanceType":"g6e.2xlarge"`) {
+			t.Errorf("instanceType did not reach the body: %s", gotRaw)
+		}
+		if !strings.Contains(out, "instance:  g6e.2xlarge") {
+			t.Errorf("plan should name the type, got:\n%s", out)
+		}
+	})
+
+	t.Run("an untyped deploy omits the field entirely", func(t *testing.T) {
+		isolateConfig(t)
+		stubAWSEnv(t)
+
+		var gotRaw []byte
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			gotRaw, _ = io.ReadAll(r.Body)
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"deployed":true,"environment":"testenv","base_url":"http://198.51.100.9:8000/v1"}`))
+		}))
+		defer server.Close()
+		stubDeploySeams(t, server.URL, "undeployed")
+		writeDeployEnvSpinloop(t, "testenv")
+
+		if err := cmdRemoteDeploy(nil); err != nil {
+			t.Errorf("cmdRemoteDeploy: %v", err)
+		}
+		// Absent, not null and not empty: an untyped deploy sends exactly what
+		// a control plane predating the field expects.
+		if strings.Contains(string(gotRaw), "instanceType") {
+			t.Errorf("instanceType should be omitted when untyped: %s", gotRaw)
+		}
+	})
+
+	t.Run("a dry run names the default machine when untyped", func(t *testing.T) {
+		isolateConfig(t)
+		writeDeployEnvSpinloop(t, "testenv")
+		out := captureStdout(t, func() {
+			if err := cmdRemoteDeploy([]string{"--dry-run"}); err != nil {
+				t.Errorf("cmdRemoteDeploy --dry-run: %v", err)
+			}
+		})
+		if !strings.Contains(out, "instance:  the control plane's default") {
+			t.Errorf("--dry-run should state the default machine, got:\n%s", out)
+		}
+	})
+
+	t.Run("a value outside the shape is refused before anything is sent", func(t *testing.T) {
+		isolateConfig(t)
+		stubDeploySeams(t, "https://unused", "undeployed")
+		writeDeployEnvSpinloop(t, "testenv")
+		err := cmdRemoteDeploy([]string{"--instance-type", "g6exlarge"})
+		if err == nil || !strings.Contains(err.Error(), "--instance-type") {
+			t.Errorf("want a --instance-type validation error, got %v", err)
+		}
+	})
+}
+
 // A supplied key is resolved from the environment the Spinloop's local
 // environment populated, reaches the signed body as a request-scoped field,
 // and the report says what happened to it — the action, never the value.

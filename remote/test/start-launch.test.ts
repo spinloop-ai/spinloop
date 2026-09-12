@@ -170,3 +170,69 @@ describe('fresh launch', () => {
     expect(body).toContain('"modelId": "/opt/llm/model/model.gguf"');
   });
 });
+
+describe('instance type', () => {
+  // A fresh launch reads the type from the deploy config; a re-wake never
+  // reaches this path, so only these tests exercise the choice.
+  it('launches as the deploy config type when it names one', async () => {
+    readDeployConfig.mockResolvedValue({
+      runner: 'llamacpp',
+      modelId: 'org/model',
+      quant: 'Q4_K_M',
+      weightsPrefix: 'llamacpp/org/model/Q4_K_M',
+      contextSize: 32768,
+      servedModelName: 'friendly',
+      serveArgs: [],
+      companions: {},
+      spinloopVersion: 'latest',
+      instanceType: 'g6e.2xlarge',
+    });
+    findLatestAmi.mockResolvedValue({ imageId: 'ami-test1', rootVolumeSizeGb: 80 });
+
+    const result = await handler(wakeEvent, context);
+    expect(structured(result).statusCode).toBe(200);
+
+    expect(runInstance).toHaveBeenCalledWith(
+      expect.objectContaining({ instanceType: 'g6e.2xlarge' }),
+    );
+  });
+
+  it('launches as the env-var default when the config names none', async () => {
+    // The beforeEach config carries no instanceType, so the control plane's
+    // default (LAMBDA_ENV.INSTANCE_TYPE) is what the launch uses.
+    findLatestAmi.mockResolvedValue({ imageId: 'ami-test1', rootVolumeSizeGb: 80 });
+
+    const result = await handler(wakeEvent, context);
+    expect(structured(result).statusCode).toBe(200);
+
+    expect(runInstance).toHaveBeenCalledWith(
+      expect.objectContaining({ instanceType: 'g6e.xlarge' }),
+    );
+  });
+
+  it('names the type it was trying when no AZ has capacity', async () => {
+    readDeployConfig.mockResolvedValue({
+      runner: 'llamacpp',
+      modelId: 'org/model',
+      quant: 'Q4_K_M',
+      weightsPrefix: 'llamacpp/org/model/Q4_K_M',
+      contextSize: 32768,
+      servedModelName: 'friendly',
+      serveArgs: [],
+      companions: {},
+      spinloopVersion: 'latest',
+      instanceType: 'g6e.2xlarge',
+    });
+    findLatestAmi.mockResolvedValue({ imageId: 'ami-test1', rootVolumeSizeGb: 80 });
+    runInstance.mockRejectedValue(
+      Object.assign(new Error('no capacity'), { name: 'InsufficientInstanceCapacity' }),
+    );
+
+    const result = await handler(wakeEvent, context);
+    const reply = JSON.parse(structured(result).body);
+    expect(structured(result).statusCode).toBe(503);
+    expect(reply.state).toBe('no-capacity');
+    // The reply names the machine it was trying to launch, not a hard-coded one.
+    expect(reply.message).toContain('g6e.2xlarge');
+  });
+});

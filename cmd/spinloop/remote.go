@@ -1434,6 +1434,7 @@ func remoteDeployCmd() *cobra.Command {
 		allowedCidr     string
 		region          string
 		spinloopVersion string
+		instanceType    string
 		apiKeyEnv       string
 	)
 	c := &cobra.Command{
@@ -1443,14 +1444,17 @@ func remoteDeployCmd() *cobra.Command {
 address, API key and allowed CIDR — and says what it serves (PROVIDER picks
 the engine, just as it does for serve). --spinloop-version pins the spinloop
 release a fresh boot of the environment installs; without it, a boot
-installs the latest published release.`,
+installs the latest published release. --instance-type names the EC2 instance
+type the environment's instances launch as; without it, they launch as the
+control plane's default. The type is recorded on the environment and applies
+from its next fresh launch.`,
 		Args:              cobra.ArbitraryArgs,
 		SilenceErrors:     true,
 		SilenceUsage:      true,
 		ValidArgsFunction: aliasSlot,
 		RunE: func(c *cobra.Command, args []string) error {
 			resolve(c)
-			return runRemoteDeploy(args, dryRun, overwrite, reseed, allowedCidr, region, spinloopVersion, apiKeyEnv)
+			return runRemoteDeploy(args, dryRun, overwrite, reseed, allowedCidr, region, spinloopVersion, instanceType, apiKeyEnv)
 		},
 	}
 	fs := c.Flags()
@@ -1460,12 +1464,13 @@ installs the latest published release.`,
 	fs.StringVar(&allowedCidr, "allowed-cidr", "", "who may reach this environment's instance (default: your public IP as a /32, on first deploy)")
 	fs.StringVar(&region, "region", "", "AWS region of the control plane (default: AWS_REGION or us-east-1)")
 	fs.StringVar(&spinloopVersion, "spinloop-version", "", "spinloop release the environment's instances install at boot (default: latest)")
+	fs.StringVar(&instanceType, "instance-type", "", "EC2 instance type the environment's instances launch as (e.g. g6e.xlarge; default: the control plane's default type)")
 	fs.StringVar(&apiKeyEnv, "api-key-env", "", "the environment variable holding the API key to store for this environment (a variable name, never the key itself)")
 	return c
 }
 
 // runRemoteDeploy is the body of `spinloop remote deploy`.
-func runRemoteDeploy(args []string, dryRun, overwrite, reseed bool, allowedCidr, region, spinloopVersion, apiKeyEnv string) error {
+func runRemoteDeploy(args []string, dryRun, overwrite, reseed bool, allowedCidr, region, spinloopVersion, instanceType, apiKeyEnv string) error {
 	_, spinloopPath, dc, env, err := deriveDeployTarget("spinloop remote deploy <file>", spinloopArg(args))
 	if err != nil {
 		return err
@@ -1477,6 +1482,7 @@ func runRemoteDeploy(args []string, dryRun, overwrite, reseed bool, allowedCidr,
 		allowedCidr:     allowedCidr,
 		region:          region,
 		spinloopVersion: spinloopVersion,
+		instanceType:    instanceType,
 		apiKeyEnv:       apiKeyEnv,
 	})
 	if err != nil {
@@ -1537,6 +1543,11 @@ type deployOpts struct {
 	allowedCidr     string
 	region          string
 	spinloopVersion string
+	// instanceType names the EC2 instance type the environment's instances
+	// launch as. Empty means launch as the control plane's default. It is
+	// recorded on the environment at deploy time and read back on the next
+	// fresh launch.
+	instanceType string
 	// apiKeyEnv names the environment variable holding an externally
 	// supplied key to store as the environment's engine key, never a
 	// literal on the command line. Empty means the control plane manages
@@ -1592,6 +1603,18 @@ func runDeploy(spinloopPath, env string, dc remote.DeployConfig, opts deployOpts
 		}
 		dc.SpinloopVersion = pin
 	}
+	// The EC2 instance type the environment's instances launch as: empty (or
+	// whitespace) means the control plane's own default, a name means exactly
+	// that machine. Checked here, so a typo is named now rather than as a
+	// RunInstances failure inside a deploy nobody is watching.
+	if name := strings.TrimSpace(opts.instanceType); name != "" {
+		if !remote.IsInstanceType(name) {
+			return deployOutcome{}, fmt.Errorf(
+				"--instance-type must be an EC2 instance type (a family and size separated by a dot, e.g. g6e.xlarge), got %q",
+				opts.instanceType)
+		}
+		dc.InstanceType = name
+	}
 	// A supplied key arrives the way every other secret does: as a reference
 	// to an environment variable, never a literal on the command line. By
 	// this point deriveDeployTarget has already applied the Spinloop's local
@@ -1642,6 +1665,13 @@ func runDeploy(spinloopPath, env string, dc remote.DeployConfig, opts deployOpts
 		spinloopVer = "latest"
 	}
 	fmt.Fprintf(&buf, "  spinloop:  %s\n", spinloopVer)
+	// A machine is worth stating too: a name is a promise, the default a
+	// statement — so the plan always says what the environment launches as.
+	instanceType := dc.InstanceType
+	if instanceType == "" {
+		instanceType = "the control plane's default"
+	}
+	fmt.Fprintf(&buf, "  instance:  %s\n", instanceType)
 	// A key is worth stating too — it rotates — but the value is never
 	// printed, in the dry run or the report.
 	if opts.apiKeyEnv != "" {

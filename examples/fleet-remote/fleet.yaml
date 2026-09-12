@@ -24,6 +24,7 @@
 nodes:
   - name: qwen
     kind: remote
+    instance-type: g6e.2xlarge   # EC2 type this environment launches as (default: the control plane's)
 
   - name: llama
     kind: remote
