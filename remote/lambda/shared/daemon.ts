@@ -80,6 +80,11 @@ export interface DaemonStatus {
   state: string;
   runner?: string;
   model?: string;
+  /**
+   * The name the engine answers to beside the model id — the served name the
+   * deploy named it. Absent when the deploy gave the engine no other name.
+   */
+  servedName?: string;
   uptimeSeconds?: number;
   logPath?: string;
   lastActiveAt?: string;

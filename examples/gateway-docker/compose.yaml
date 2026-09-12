@@ -1,0 +1,63 @@
+# Two fleet nodes and two gateways in front of them: one that wakes a node
+# when nothing is serving, one that refuses to, so the two wake policies are
+# visible side by side.
+#
+#   cp .env.example .env
+#   docker compose up -d --build
+#   ./run-tests.sh        # or curl the gateway yourself — see README.md
+name: spinloop-gateway-example
+
+services:
+  node-a:
+    build:
+      context: ../..
+      dockerfile: examples/gateway-docker/Dockerfile
+    image: spinloop-gateway-node:example
+    environment:
+      SPINLOOP_API_TOKEN: ${NODE_A_TOKEN:?set NODE_A_TOKEN (copy .env.example to .env)}
+    ports:
+      - "14242:4242"
+      # The engine, published for direct curls from the host. The gateways
+      # need no published port: inside the compose network they reach the
+      # engine where the node's Spinloop binds it, 8080.
+      - "18080:8080"
+
+  node-b:
+    image: spinloop-gateway-node:example
+    depends_on: [node-a]
+    environment:
+      SPINLOOP_API_TOKEN: ${NODE_B_TOKEN:?set NODE_B_TOKEN (copy .env.example to .env)}
+    ports:
+      - "14243:4242"
+      - "18081:8080"
+
+  gateway:
+    image: spinloop-gateway-node:example
+    depends_on: [node-a, node-b]
+    command: ["spinloop", "gateway", "--fleet", "/opt/gw/fleet.yaml", "--listen", "0.0.0.0:4000"]
+    environment:
+      # The gateway's own token, resolved the way a daemon's is — from the
+      # environment here. Callers present it; the node tokens and engine keys
+      # the fleet file names are resolved from the same environment, at
+      # startup and at every wake.
+      SPINLOOP_API_TOKEN: ${GATEWAY_TOKEN:?set GATEWAY_TOKEN (copy .env.example to .env)}
+      NODE_A_TOKEN: ${NODE_A_TOKEN:?}
+      NODE_B_TOKEN: ${NODE_B_TOKEN:?}
+      NODE_A_ENGINE_KEY: ${NODE_A_ENGINE_KEY:?}
+      NODE_B_ENGINE_KEY: ${NODE_B_ENGINE_KEY:?}
+    ports:
+      - "4000:4000"
+
+  # The wake: off policy over the same two nodes, on its own port.
+  gateway-cold:
+    image: spinloop-gateway-node:example
+    depends_on: [node-a, node-b]
+    command: ["spinloop", "gateway", "--fleet", "/opt/gw/fleet-cold.yaml", "--listen", "0.0.0.0:4001"]
+    environment:
+      SPINLOOP_API_TOKEN: ${GATEWAY_TOKEN:?set GATEWAY_TOKEN (copy .env.example to .env)}
+      NODE_A_TOKEN: ${NODE_A_TOKEN:?}
+      NODE_B_TOKEN: ${NODE_B_TOKEN:?}
+      NODE_A_ENGINE_KEY: ${NODE_A_ENGINE_KEY:?}
+      NODE_B_ENGINE_KEY: ${NODE_B_ENGINE_KEY:?}
+    ports:
+      - "4001:4001"

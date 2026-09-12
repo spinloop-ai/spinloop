@@ -163,17 +163,20 @@ async function status(env: string): Promise<LambdaFunctionURLResult> {
     });
   }
   // Concurrently, not in sequence: status is what you type repeatedly while
-  // waiting for a box, and this branch should cost the slower of the two SSM
-  // calls rather than their sum.
-  const [healthy, activity] = await Promise.all([
+  // waiting for a box, and this branch should cost the slowest of these calls
+  // rather than their sum. The model facts come from the deploy config — the
+  // same source the stats reply reads — and the activity from the daemon.
+  const [healthy, activity, deploy] = await Promise.all([
     checkHealth(instance.instanceId),
     readDaemonActivity(instance.instanceId),
+    readDeployFacts(env),
   ]);
   const result: Record<string, unknown> = {
     state: 'running',
     environment: env,
     healthy,
     base_url: baseUrl,
+    ...deploy,
     ...activity,
   };
   if (instance.retainUntil) {
@@ -183,12 +186,12 @@ async function status(env: string): Promise<LambdaFunctionURLResult> {
 }
 
 /**
- * Ask the instance's daemon when its engine last did work. Every failure —
- * SSM error, unreachable daemon, unparseable reply, an engine that has done
- * nothing yet — yields an empty object, so the caller spreads nothing and the
- * report is exactly what it would have been. This must never be able to turn
- * a working status into a failing one, which is why it is kept out of the
- * `healthy` expression.
+ * Ask the instance's daemon when its engine last did work. Every failure — an
+ * SSM error, an unreachable daemon, an unparseable reply, an engine that has
+ * not done any work yet — yields an empty object, so the caller spreads
+ * nothing and the report is exactly what it would have been without this. It
+ * is kept out of the `healthy` expression so it can never turn a working
+ * status into a failing one.
  */
 async function readDaemonActivity(
   instanceId: string,
@@ -296,6 +299,40 @@ async function seedingGate(
     );
   }
   return seedingReply(seedId, `seeding the weights — ${follow}`);
+}
+
+/**
+ * Read the environment's stored deploy config and keep the facts that name
+ * what it is serving: the runner, the model id, and the served name where the
+ * deploy gave one. This is the same source the stats reply — and so the remote
+ * status view — reads, so the fleet and remote views name a model identically.
+ * The daemon's own model is the on-disk weights path, which a router cannot
+ * match a request against, so the path is never reported here. A failed read
+ * yields an empty object, so an environment whose config cannot be read still
+ * reports its state and activity without a made-up model.
+ */
+async function readDeployFacts(env: string): Promise<{
+  runner?: string;
+  modelId?: string;
+  servedName?: string;
+}> {
+  try {
+    const cfg = await readDeployConfig(deployConfigParam(env));
+    const facts: { runner?: string; modelId?: string; servedName?: string } = {};
+    if (cfg.runner) {
+      facts.runner = cfg.runner;
+    }
+    if (cfg.modelId) {
+      facts.modelId = cfg.modelId;
+    }
+    if (cfg.servedModelName) {
+      facts.servedName = cfg.servedModelName;
+    }
+    return facts;
+  } catch (err) {
+    console.log(JSON.stringify({ phase: 'deploy-facts', error: errorName(err) }));
+    return {};
+  }
 }
 
 /** POST — launch the environment's instance if needed and block until serving. */

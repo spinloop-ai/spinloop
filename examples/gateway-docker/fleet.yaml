@@ -1,0 +1,36 @@
+# The operator's view of this stack, from your machine: the two nodes over the
+# ports compose publishes.
+#
+# The gateways are not nodes in it — they serve the fleet files baked into
+# the image — and the client's Spinloop names the gateway's published address,
+# not this file. This is how you watch and drive the fleet itself: status,
+# start, stop, metrics, logs.
+#
+# The engine: blocks here are not optional: each engine binds 8080 inside its
+# container and is published on 18080/18081 outside, which the daemons cannot
+# know. (The gateways' own fleet files need no override — inside the compose
+# network the engine is where it binds.)
+#
+# The nodes' Spinloop source is node/Spinloop, which is also why
+# `spinloop fleet start` works from here: it resolves what to run on a node
+# and pushes that.
+prefer: idle
+
+nodes:
+  - name: node-a
+    host: 127.0.0.1
+    port: 14242
+    tokenEnv: NODE_A_TOKEN
+    engineTokenEnv: NODE_A_ENGINE_KEY
+    file: ./node/Spinloop
+    engine:
+      port: 18080
+
+  - name: node-b
+    host: 127.0.0.1
+    port: 14243
+    tokenEnv: NODE_B_TOKEN
+    engineTokenEnv: NODE_B_ENGINE_KEY
+    file: ./node/Spinloop
+    engine:
+      port: 18081

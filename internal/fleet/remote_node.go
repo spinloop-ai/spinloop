@@ -3,6 +3,8 @@ package fleet
 import (
 	"context"
 	"fmt"
+	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -157,15 +159,36 @@ func (n *remoteNode) Logs(ctx context.Context, offset int64, limit int) (daemon.
 }
 
 // statusFromRemote maps the control plane's status reply onto the node's status.
-// It carries only what a control-plane reply can honestly be mapped across: the
-// state and its last-active record. The version is not in this reply — the stats
-// reply carries it — so it is empty here, and runner/model are likewise absent.
+// It carries what a status reply can honestly be mapped across: the state, what
+// the engine is serving (runner, model, served name) and its last-active record.
+// The version is not in this reply — the stats reply carries it — so it is empty
+// here. The serving fields are empty when the daemon reports none: an engine that
+// is not running one, or a daemon the control plane could not reach.
+//
+// A running environment's reply also names where its engine answers — the
+// instance's published address, which a daemon on the instance cannot know for
+// itself but the control plane can. It is carried as the engine's host, so
+// routing resolves a remote node's address the way it resolves any node's.
+// Absent (a stopped or undeployed environment reports none) means no engine
+// address, exactly as the parts would be.
 func statusFromRemote(resp remote.Response) daemon.StatusResponse {
-	return daemon.StatusResponse{
+	s := daemon.StatusResponse{
 		State:        resp.State,
+		Runner:       resp.Runner,
+		Model:        resp.ModelID,
+		ServedName:   resp.ServedName,
 		LastActiveAt: resp.LastActiveAt,
 		IdleSeconds:  resp.IdleSeconds,
 	}
+	if u, err := url.Parse(resp.BaseURL); resp.BaseURL != "" && err == nil && u.Host != "" {
+		port, _ := strconv.Atoi(u.Port())
+		s.Engine = &daemon.EngineEndpoint{
+			Host: u.Hostname(),
+			Port: port,
+			Path: u.Path,
+		}
+	}
+	return s
 }
 
 // statsFromRemote maps the stats Lambda's reply onto the shared stats shape. The

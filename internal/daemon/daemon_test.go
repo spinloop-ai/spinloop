@@ -339,12 +339,18 @@ while true; do sleep 0.05; done`)
 	}
 
 	// A start carrying its config pushes and starts in one call.
-	dc := `{"runner":"llamacpp","modelId":"org/model","serveArgs":[]}`
+	dc := `{"runner":"llamacpp","modelId":"org/model","serveArgs":[],"servedModelName":"org/model-alias"}`
 	if resp, body := do("POST", "/v1/start", "sekrit", dc); resp.StatusCode != 200 || body["state"] != "running" {
 		t.Fatalf("start with body = %d %v", resp.StatusCode, body)
 	}
 	if stored, _ := d.StoredConfig(); stored == nil || stored.ModelID != "org/model" {
 		t.Fatalf("start body not persisted: %+v", stored)
+	}
+	// The served name crosses the wire beside the model id: an aliased engine
+	// is addressed by either, and a caller may know only one of them.
+	if resp, body := do("GET", "/v1/status", "sekrit", ""); resp.StatusCode != 200 ||
+		body["model"] != "org/model" || body["servedName"] != "org/model-alias" {
+		t.Fatalf("status after aliased start = %d %v", resp.StatusCode, body)
 	}
 
 	// A start body while running is a 409 that stores nothing.
@@ -407,8 +413,8 @@ while true; do sleep 0.05; done`)
 		t.Fatal(err)
 	}
 	waitForState(t, crash.Sup, StateCrashed)
-	if got := crash.Status(); got.State != "crashed" {
-		t.Fatalf("status after crash = %+v", got)
+	if got := crash.Status(); got.State != "crashed" || got.ServedName != "" {
+		t.Fatalf("status after crash = %+v, want no served name without an alias", got)
 	}
 }
 

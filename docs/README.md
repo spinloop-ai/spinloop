@@ -34,8 +34,9 @@ Four words carry the whole tool:
 - [The HTTP control API](http-api.md) — driving a supervised engine over
   HTTP, and the [OpenAPI contract](openapi.yaml) for writing a client
 - [Running a fleet](commands/fleet.md) — one spinloop watching every machine you
-  run, with a [containerised fleet](../examples/fleet-docker/) you can bring up
-  on a laptop
+  run, with a [containerised fleet](../examples/fleet-docker/) and a
+  [containerised gateway](../examples/gateway-docker/) you can bring up on a
+  laptop
 - [Environment variables](env-vars.md) — every variable spinloop reads
 - [Runnable examples](../examples/) — ready-to-apply Spinloops with walkthroughs
 - [Deploying your own cloud GPU endpoint](../remote/) — the AWS project behind
@@ -62,6 +63,7 @@ Four words carry the whole tool:
 | [`spinloop up`](commands/up.md) | Start the engine this directory holds: the fleet, or the `Spinloop`'s server |
 | [`spinloop daemon`](commands/serve.md#the-control-api---api-and-spinloop-daemon) | Supervise an engine over the [control API](http-api.md) |
 | [`spinloop fleet`](commands/fleet.md) | Observe and drive the engines on every machine you run |
+| [`spinloop gateway`](commands/gateway.md) | Serve the fleet under one OpenAI-compatible endpoint |
 | [`spinloop remote`](commands/remote.md) | Run the model on a cloud GPU that stops when you do |
 | [`spinloop export`](commands/export.md) | Capture the current setup as a `Spinloop` |
 | [`spinloop hf`](commands/hf.md) | Write a `Spinloop` for a Hugging Face model, from its page reference |

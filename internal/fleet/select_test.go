@@ -299,6 +299,22 @@ func TestEngineBaseURL(t *testing.T) {
 			status: reported,
 			want:   "https://engine.example:8080/v1",
 		},
+		{
+			name: "a reported engine host is used in place of the fleet file's",
+			node: NodeConfig{Name: "env", Kind: "remote"},
+			status: daemon.StatusResponse{
+				Engine: &daemon.EngineEndpoint{Host: "1.2.3.4", Port: 8000, Path: "/v1"},
+			},
+			want: "http://1.2.3.4:8000/v1",
+		},
+		{
+			name: "an override still beats a reported engine host",
+			node: NodeConfig{Name: "env", Kind: "remote", Engine: &EngineOverride{Host: "proxy"}},
+			status: daemon.StatusResponse{
+				Engine: &daemon.EngineEndpoint{Host: "1.2.3.4", Port: 8000, Path: "/v1"},
+			},
+			want: "http://proxy:8000/v1",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -465,5 +481,87 @@ func TestWokenNodeIsRecognisedOnASecondLaunch(t *testing.T) {
 	other := []NodeResult{runningNode("local", "someone/else", 5)}
 	if _, err := cfg.choose(other, want); err == nil {
 		t.Error("an unrelated model should not match")
+	}
+}
+
+// notReadyNode is a node whose engine process is up but has not answered its
+// health check — llama.cpp fetching or loading weights, which is minutes on a
+// large model and the whole time its port refuses connections.
+func notReadyNode(name, model string) NodeResult {
+	r := runningNode(name, model, -1)
+	r.Status.Ready = daemon.ReadyNo
+	return r
+}
+
+func TestNotReadyNodeIsNotSelected(t *testing.T) {
+	cfg := testConfig(t, "loading", "up")
+	results := []NodeResult{
+		notReadyNode("loading", "qwen"),
+		runningNode("up", "qwen", 10),
+	}
+	got, err := cfg.choose(results, Want{Model: "qwen"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Node.Name != "up" {
+		t.Errorf("chose %q, want the node whose engine has answered", got.Node.Name)
+	}
+}
+
+// The only node running the model has not answered yet: routing there would
+// fail the request, so nothing is serving it.
+func TestNotReadyIsTheSameAsNothingServing(t *testing.T) {
+	cfg := testConfig(t, "loading")
+	results := []NodeResult{notReadyNode("loading", "qwen")}
+	_, err := cfg.choose(results, Want{Model: "qwen"})
+	var none *ErrNoneServing
+	if !errors.As(err, &none) {
+		t.Fatalf("err = %v, want ErrNoneServing", err)
+	}
+	if !strings.Contains(none.Error(), "not ready") {
+		t.Errorf("the fleet state should mark the node not ready, got:\n%s", none.Error())
+	}
+}
+
+// A readiness reading that never landed — an older daemon, or a runner with no
+// known health check — is unknown, not false, so it must not exclude a node.
+func TestUnknownReadinessStillSelects(t *testing.T) {
+	cfg := testConfig(t, "old")
+	results := []NodeResult{runningNode("old", "qwen", 10)}
+	if results[0].Status.Ready != "" {
+		t.Fatal("this fixture should report no readiness reading")
+	}
+	if _, err := cfg.choose(results, Want{Model: "qwen"}); err != nil {
+		t.Errorf("a node reporting no readiness should still be selected: %v", err)
+	}
+}
+
+func TestPinnedNodeStillStartingSaysSo(t *testing.T) {
+	cfg := testConfig(t, "gpu")
+	results := []NodeResult{notReadyNode("gpu", "qwen")}
+	_, err := cfg.choose(results, Want{Model: "qwen", Node: "gpu"})
+	if err == nil {
+		t.Fatal("expected a failure")
+	}
+	for _, want := range []string{"gpu", "qwen", "has not answered"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("message should mention %q, got: %v", want, err)
+		}
+	}
+}
+
+// Loading is what lets a caller tell "nothing is serving this" from "something
+// is about to", so it names the still-starting nodes and nothing else.
+func TestLoadingNamesTheStartingNodes(t *testing.T) {
+	cfg := testConfig(t, "loading", "up", "idle", "other")
+	results := []NodeResult{
+		notReadyNode("loading", "qwen"),
+		runningNode("up", "qwen", 10),
+		idleNode("idle"),
+		notReadyNode("other", "different-model"),
+	}
+	got := cfg.Loading(results, Want{Model: "qwen"})
+	if len(got) != 1 || got[0].Name != "loading" {
+		t.Fatalf("Loading() = %v, want just the node starting qwen", got)
 	}
 }

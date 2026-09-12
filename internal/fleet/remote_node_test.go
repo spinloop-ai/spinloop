@@ -279,7 +279,8 @@ func TestRemoteNodeStartWithIsRefused(t *testing.T) {
 func TestRemoteNodeStatusOverTheControlPlane(t *testing.T) {
 	stubAWSCreds(t)
 	srv := remoteControlServer(t,
-		`{"state":"running","healthy":true,"lastActiveAt":"2026-01-02T00:00:00Z","idleSeconds":30}`, http.StatusOK)
+		`{"state":"running","healthy":true,"runner":"llamacpp","modelId":"org/m","servedName":"m",`+
+			`"base_url":"http://1.2.3.4:8000/v1","lastActiveAt":"2026-01-02T00:00:00Z","idleSeconds":30}`, http.StatusOK)
 	node, err := NewRemoteNode("env", remote.Config{StartURL: srv.URL, StopURL: srv.URL, Region: "us-east-1"})
 	if err != nil {
 		t.Fatal(err)
@@ -287,6 +288,16 @@ func TestRemoteNodeStatusOverTheControlPlane(t *testing.T) {
 	r := StatusCall(context.Background(), node)
 	if !r.OK() || r.Status.State != "running" || r.Status.IdleSeconds != 30 {
 		t.Errorf("status result = %+v", r)
+	}
+	// What the engine is serving rides the status, so a router can match a
+	// request to this node: the model id and the served name beside it.
+	if r.Status.Runner != "llamacpp" || r.Status.Model != "org/m" || r.Status.ServedName != "m" {
+		t.Errorf("serving facts not mapped: %+v", r.Status)
+	}
+	// And where the engine answers: the control plane's published address, so
+	// the router can reach the node rather than only name it.
+	if r.Status.Engine == nil || r.Status.Engine.Host != "1.2.3.4" || r.Status.Engine.Port != 8000 {
+		t.Errorf("engine address not mapped: %+v", r.Status.Engine)
 	}
 	if r.Name != "env" {
 		t.Errorf("name = %q", r.Name)
@@ -361,6 +372,46 @@ func TestKeeperIsRemoteOnly(t *testing.T) {
 	dn := &daemonNode{name: "dev", client: &Client{BaseURL: "http://127.0.0.1:1", Token: "t"}}
 	if _, ok := any(dn).(Keeper); ok {
 		t.Error("a local daemon node should not implement Keeper")
+	}
+}
+
+// statusFromRemote carries the serving facts when the daemon reports them, and
+// leaves them empty when it does not — a running-but-unreachable daemon, or an
+// engine that is not running a model, must not be invented into serving one.
+func TestStatusFromRemoteServingFacts(t *testing.T) {
+	with := statusFromRemote(remote.Response{
+		State:      "running",
+		Runner:     "llamacpp",
+		ModelID:    "org/m",
+		ServedName: "m",
+	})
+	if with.Runner != "llamacpp" || with.Model != "org/m" || with.ServedName != "m" {
+		t.Errorf("serving facts should map across, got %+v", with)
+	}
+	without := statusFromRemote(remote.Response{State: "running"})
+	if without.Runner != "" || without.Model != "" || without.ServedName != "" {
+		t.Errorf("an absent serving fact must stay empty, got %+v", without)
+	}
+}
+
+// statusFromRemote carries a running environment's engine address — the
+// control plane's published base url — as the engine's host, so routing can
+// reach it the way it reaches any node. A stopped or undeployed environment
+// reports none, so its status carries no engine address.
+func TestStatusFromRemoteCarriesTheEngineAddress(t *testing.T) {
+	got := statusFromRemote(remote.Response{
+		State:   "running",
+		BaseURL: "http://1.2.3.4:8000/v1",
+	})
+	if got.Engine == nil {
+		t.Fatal("a running environment's engine address was not carried")
+	}
+	if got.Engine.Host != "1.2.3.4" || got.Engine.Port != 8000 || got.Engine.Path != "/v1" {
+		t.Errorf("engine endpoint = %+v, want host 1.2.3.4 port 8000 path /v1", got.Engine)
+	}
+	// No base url — a stopped or undeployed environment — means no address.
+	if got := statusFromRemote(remote.Response{State: "stopped"}); got.Engine != nil {
+		t.Errorf("a stopped environment should carry no engine address: %+v", got.Engine)
 	}
 }
 

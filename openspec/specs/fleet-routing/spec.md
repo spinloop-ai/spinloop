@@ -5,7 +5,9 @@ Connecting a harness launch to the fleet: choosing which node serves the agent
 spinloop is about to launch, waking that node when nothing is serving yet, and
 turning the choice into the base URL and key the launched agent authenticates
 with — so a machine that can reach the fleet needs no addresses of its own.
+
 ## Requirements
+
 ### Requirement: A fleet-routed launch
 
 `spinloop harness` SHALL route through a fleet when the Spinloop it wears names one
@@ -82,6 +84,16 @@ node whose state is `running` and whose served model matches the Spinloop's
 `MODEL` (or its `ALIAS`, against the name the node reports serving). A Spinloop
 that names no model SHALL match any running node.
 
+A node whose state is `running` but whose daemon reports the engine not ready is
+not running what is wanted: the state turns running when the engine's process
+exists, which is before the weights are fetched and loaded, and during that
+window nothing is listening on the engine's port. Such a node SHALL NOT be
+selected, and a failure that names it SHALL mark it not ready, so a refusal does
+not read as if the node were serving the model it was asked for. A node whose
+daemon reports no readiness at all — an older build, or a runner with no
+health-check convention — SHALL NOT be disqualified: the absence of a reading is
+not evidence of not-readiness.
+
 Matching nodes SHALL be ranked by the activity preference in force (see
 "Preferring an idle or an active node"). Ties SHALL be broken by fleet-file
 order, so the same fleet in the same state chooses the same node.
@@ -93,7 +105,11 @@ row rather than a failure in `spinloop fleet status`.
 `--node <name>` SHALL pin the selection to one node, skipping the search. An
 unknown name SHALL fail naming the known nodes, and a pinned node that cannot be
 reached SHALL fail rather than falling back to another node — a pin is an
-instruction, not a preference.
+instruction, not a preference. A pinned node that is running the wanted model
+but has not answered yet SHALL fail saying it is still starting it — it may be
+fetching or loading weights — and naming the command for the node's log, rather
+than saying that nothing serves the model or restarting the node: this node is
+about to serve it.
 
 A running engine SHALL NEVER be stopped or restarted to make room, including a
 pinned one: another person may be using it. A node running a different model is
@@ -122,6 +138,27 @@ therefore not a candidate, and pinning one SHALL fail saying what it is serving.
 
 - **WHEN** the user pins a node whose daemon is unreachable
 - **THEN** the command fails naming that node, and no other node is selected
+
+#### Scenario: A not-ready engine is not a match
+
+- **WHEN** the only node running the wanted model reports its engine not ready,
+  and no other node is running it
+- **THEN** the selection reports that nothing is serving the model, and the
+  failure names the node marked not ready
+
+#### Scenario: A missing readiness reading still routes
+
+- **WHEN** a node is running the wanted model and its daemon reports no
+  readiness at all
+- **THEN** the node is chosen, as if its engine had answered
+
+#### Scenario: A pinned node that is still starting names its state
+
+- **WHEN** the user pins a node whose engine is running the wanted model but has
+  not answered yet
+- **THEN** the command fails saying the node is still starting the model, that
+  it may be fetching or loading weights, and names the command for the node's
+  log, without restarting the node
 
 #### Scenario: A busy node is left alone
 
@@ -223,8 +260,11 @@ tried, and the refusals SHALL be reported when none succeeds.
 
 Two clients may wake the same node at once. A start refused because an engine is
 already running SHALL NOT fail the launch: the node's state SHALL be re-read,
-and a node now serving what was wanted SHALL be used. Losing that race is
-another route to the same place, not an error.
+and a node now serving what was wanted SHALL be used — and the launch SHALL
+wait for that node's engine to answer before launching the agent, exactly as it
+waits for a node it woken itself: the node that won the race may still be
+loading weights, and the wait is bounded by the same timeout. Losing that race
+is another route to the same place, not an error.
 
 The wait SHALL be bounded by a timeout and SHALL report what it is waiting for,
 because a cold node loads weights before it answers. Exceeding the timeout SHALL
@@ -255,6 +295,13 @@ command that would start one.
 - **THEN** the wake carries that path as the model to load, rather than
   refusing it as a local file
 
+#### Scenario: A Spinloop that pins a bind wakes a node bound to it
+
+- **WHEN** the Spinloop names a `BASEURL` and a node is woken for it
+- **THEN** the engine the node starts binds to the address the `BASEURL` names,
+  exactly as `spinloop serve` would bind it, and the node reports that engine
+  as reachable rather than on the engine's own default
+
 #### Scenario: A started engine that is not yet loaded is waited for
 
 - **WHEN** a woken node reports `running` while its engine is still loading
@@ -277,7 +324,8 @@ command that would start one.
 
 - **WHEN** a start is refused because another client woke the same node first,
   and that node is now serving the wanted model
-- **THEN** the launch uses that node rather than failing
+- **THEN** the launch uses that node rather than failing, waiting for its
+  engine to answer first if it is still loading
 
 #### Scenario: A node that never comes up
 
@@ -435,4 +483,3 @@ authenticate is worse than a message that says so.
 - **WHEN** `OPENAI_API_KEY` is already set in the user's environment and a
   fleet-routed launch runs
 - **THEN** the existing value reaches the agent unchanged
-

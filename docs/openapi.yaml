@@ -298,6 +298,12 @@ components:
         model:
           type: string
           description: What it is serving, when known.
+        servedName:
+          type: string
+          description: |
+            The name the engine answers to — the served name its deploy config
+            or Spinloop set — reported beside `model` when set. An aliased
+            engine answers to both, and a caller may know either.
         uptimeSeconds:
           type: integer
           description: How long the engine has been running. Zero unless running.
@@ -344,9 +350,17 @@ components:
         purpose: the daemon knows its engine binds `127.0.0.1:8080`, which is
         useless to anyone else, and it cannot know the name a client reaches
         this host by — a LAN name, a tailscale name, a published container
-        port. The caller composes these against the host it already has.
+        port. The caller composes these against the host it already has. A node
+        that does know that name — a remote environment, whose control plane
+        publishes the instance's address — reports it in `host`.
       required: [port]
       properties:
+        host:
+          type: string
+          description: |
+            The name or address a client reaches the engine by, when the node
+            knows it. A daemon leaves it absent; a remote environment's status
+            fills it with the instance's published address.
         port:
           type: integer
           description: |

@@ -204,21 +204,28 @@ type Response struct {
 	Environment       string `json:"environment"`
 	Message           string `json:"message"`
 	RetryAfterSeconds int    `json:"retry_after_seconds"`
-	// Status-specific fields: the on-instance daemon's activity record,
-	// relayed by the status branch of the start Lambda. camelCase to match the
-	// daemon's own names, since these are copied through untouched — this
-	// struct is already mixed (see modelId, contextSize below). Absent when
-	// the instance is not running, when its daemon could not be reached, or
-	// when no engine has yet done any work.
+	// The on-instance daemon's activity record, relayed by the status branch of
+	// the start Lambda: when the engine last did work, and how long ago.
+	// camelCase to match the daemon's own names — this struct is already mixed
+	// (see modelId, contextSize below). Absent when the instance is not
+	// running, when its daemon could not be reached, or when no engine has yet
+	// done any work.
 	LastActiveAt string `json:"lastActiveAt"`
 	IdleSeconds  int    `json:"idleSeconds"`
-	// Deploy-specific fields.
+	// Deploy-specific fields. Runner, ModelID and ServedName are also relayed
+	// by the status reply, which reads them from the environment's deploy
+	// config — the same source the stats reply reads.
 	Deployed bool `json:"deployed"`
 	Seeding  bool `json:"seeding"`
 	// SeedID identifies the seed a deploy started, so it can be followed with
 	// `spinloop remote seed status`. The instance id it replaces was an
 	// implementation detail that changes if the seed is relaunched.
-	SeedID        string `json:"seedId"`
+	SeedID string `json:"seedId"`
+	// ServedName is the name the engine answers to beside the model id — the
+	// served name the deploy gave it — relayed by the status reply from the
+	// environment's deploy config, so a caller may know the engine by either
+	// name.
+	ServedName    string `json:"servedName"`
 	Runner        string `json:"runner"`
 	ModelID       string `json:"modelId"`
 	ContextSize   int    `json:"contextSize"`

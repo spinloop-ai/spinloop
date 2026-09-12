@@ -67,11 +67,12 @@ type Daemon struct {
 	ready  readiness
 	hist   systemHistory
 
-	mu       sync.Mutex
-	runner   string
-	model    string
-	scrape   metrics.ScrapeTarget
-	endpoint *EngineEndpoint
+	mu         sync.Mutex
+	runner     string
+	model      string
+	servedName string
+	scrape     metrics.ScrapeTarget
+	endpoint   *EngineEndpoint
 }
 
 // log reads the daemon's logger, defaulting to discarding.
@@ -114,17 +115,19 @@ func (d *Daemon) engineEndpoint() *EngineEndpoint {
 	return d.endpoint
 }
 
-// SetServed records what the daemon is serving, for status and metrics.
-func (d *Daemon) SetServed(runner, model string) {
+// SetServed records what the daemon is serving, for status and metrics. The
+// served name is the name the engine answers to — an alias when one is set —
+// and is empty when the engine answers only to the model.
+func (d *Daemon) SetServed(runner, model, servedName string) {
 	d.mu.Lock()
-	d.runner, d.model = runner, model
+	d.runner, d.model, d.servedName = runner, model, servedName
 	d.mu.Unlock()
 }
 
-func (d *Daemon) served() (string, string) {
+func (d *Daemon) served() (string, string, string) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	return d.runner, d.model
+	return d.runner, d.model, d.servedName
 }
 
 // configPath is the stored deploy config's location in the state directory.
@@ -168,7 +171,7 @@ func (d *Daemon) Push(dc remote.DeployConfig) error {
 	if err := os.WriteFile(d.configPath(), append(data, '\n'), 0o600); err != nil {
 		return err
 	}
-	d.SetServed(dc.Runner, dc.ModelID)
+	d.SetServed(dc.Runner, dc.ModelID, dc.ServedModelName)
 	return nil
 }
 
@@ -248,9 +251,9 @@ func (d *Daemon) StartEngine() error {
 		argv = append(argv, keyArgs...)
 	}
 	if dc != nil {
-		d.SetServed(dc.Runner, dc.ModelID)
+		d.SetServed(dc.Runner, dc.ModelID, dc.ServedModelName)
 	}
-	runner, model := d.served()
+	runner, model, _ := d.served()
 	d.log().Info("starting engine",
 		slog.String("source", source),
 		slog.String("runner", runner),
@@ -275,9 +278,13 @@ func (d *Daemon) StartEngine() error {
 
 // StatusResponse is the control API's status reply.
 type StatusResponse struct {
-	State         string `json:"state"`
-	Runner        string `json:"runner,omitempty"`
-	Model         string `json:"model,omitempty"`
+	State  string `json:"state"`
+	Runner string `json:"runner,omitempty"`
+	Model  string `json:"model,omitempty"`
+	// ServedName is the name the running engine answers to — the served name
+	// its deploy config or Spinloop set — reported beside the model id when
+	// set: an aliased engine answers to both, and a caller may know either.
+	ServedName    string `json:"servedName,omitempty"`
 	UptimeSeconds int    `json:"uptimeSeconds,omitempty"`
 	LogPath       string `json:"logPath,omitempty"`
 	// LastActiveAt is when the engine last did any work, RFC 3339. Empty
@@ -310,8 +317,15 @@ type StatusResponse struct {
 // binds 127.0.0.1:8080, which is useless to anyone else, and it cannot know
 // the name a client reaches this host by — a LAN name, a tailscale name, a
 // published container port. The caller composes these against the host it
-// already has.
+// already has. A node that does know that name — a remote environment, whose
+// control plane publishes the instance's address — reports it in Host, and the
+// caller uses it in place of the host it would otherwise supply.
 type EngineEndpoint struct {
+	// Host is the name or address a client reaches the engine by, when the
+	// node knows it. A daemon leaves it empty — it cannot know a client-facing
+	// name — but a remote environment's status fills it with the instance's
+	// published address, which is all a caller needs.
+	Host string `json:"host,omitempty"`
 	// Port is the port the engine listens on — the engine's, never the
 	// control API's.
 	Port int `json:"port"`
@@ -333,11 +347,12 @@ type EngineEndpoint struct {
 // engine's log lives, and how long the engine has been idle.
 func (d *Daemon) Status() StatusResponse {
 	state, _, uptime := d.Sup.Status()
-	runner, model := d.served()
+	runner, model, servedName := d.served()
 	resp := StatusResponse{
 		State:         string(state),
 		Runner:        runner,
 		Model:         model,
+		ServedName:    servedName,
 		UptimeSeconds: uptime,
 		LogPath:       d.Sup.LogPath,
 		Version:       d.Version,
@@ -362,8 +377,17 @@ func (d *Daemon) Status() StatusResponse {
 	return resp
 }
 
+// ReadyYes and ReadyNo are the two values StatusResponse.Ready and
+// metrics.Stats.Ready take when a readiness reading applies. An empty Ready is
+// neither of them: no reading has landed, so readiness is unknown rather than
+// false, and a caller that gates on ReadyNo passes an unknown through.
+const (
+	ReadyYes = "ready"
+	ReadyNo  = "not-ready"
+)
+
 // readinessField renders the shared readiness record as the string
-// /v1/status and /v1/metrics both report: "ready", "not-ready", or "" when
+// /v1/status and /v1/metrics both report: ReadyYes, ReadyNo, or "" when
 // no reading has landed — before the first check, or for a runner with no
 // known health-check convention. Callers gate this on the engine running;
 // it does not check that itself, since both callers already have.
@@ -373,9 +397,9 @@ func (d *Daemon) readinessField() string {
 		return ""
 	}
 	if ready {
-		return "ready"
+		return ReadyYes
 	}
-	return "not-ready"
+	return ReadyNo
 }
 
 // activity renders the activity record as the pair both /v1/status and
@@ -400,7 +424,7 @@ func (d *Daemon) activity() (lastActiveAt string, idleSeconds int) {
 // Errors; an absent source is simply omitted, per the engine-metrics spec.
 func (d *Daemon) Metrics(ctx context.Context) metrics.Stats {
 	state, _, uptime := d.Sup.Status()
-	runner, model := d.served()
+	runner, model, _ := d.served()
 	stats := metrics.Stats{
 		State:         string(state),
 		Runner:        runner,

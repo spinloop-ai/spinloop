@@ -1366,6 +1366,77 @@ ctx-size = 4096
 	}
 }
 
+// The Spinloop's own BASEURL travels where the preset's bind does: a woken
+// node with no preset must not land on the engine's default bind, which for
+// llama.cpp is loopback — reachable from nobody but the node itself.
+func TestNodeDeployConfigCarriesTheSpinloopBind(t *testing.T) {
+	spinloopPath := writeDeploySpinloop(t,
+		"PROVIDER llamacpp\nMODEL org/model:Q4_K_M\nCONTEXT 4096\nBASEURL http://0.0.0.0:8080/v1\n", "")
+	sel, _, err := readSpinloop("test", spinloopPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	node, err := deployConfigForNode(sel, spinloopPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	args := strings.Join(node.ServeArgs, " ")
+	for _, want := range []string{"--host 0.0.0.0", "--port 8080"} {
+		if !strings.Contains(args, want) {
+			t.Errorf("a node's serve args should carry the Spinloop's bind %q, got: %s", want, args)
+		}
+	}
+
+	// The cloud assigns its own bind, so the Spinloop's is not carried there.
+	cloud, err := deployConfigFor(sel, spinloopPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cloudArgs := strings.Join(cloud.ServeArgs, " ")
+	for _, unwanted := range []string{"--host", "--port"} {
+		if strings.Contains(cloudArgs, unwanted) {
+			t.Errorf("the cloud sets its own bind, so %q should not be carried, got: %s", unwanted, cloudArgs)
+		}
+	}
+}
+
+// Where the Spinloop states a bind and the preset states one too, the
+// Spinloop's wins — the same precedence a local serve gives its own BASEURL
+// over the preset — and the engine is told once, not twice.
+func TestNodeDeployConfigBindBeatsThePreset(t *testing.T) {
+	spinloopPath := writeDeploySpinloop(t,
+		"PROVIDER llamacpp\nALIAS qwen\nPRESET ./preset.ini\nBASEURL http://0.0.0.0:8080/v1\n",
+		`[*]
+host = 127.0.0.1
+port = 9090
+
+[qwen]
+hf       = org/model:Q4_K_M
+ctx-size = 4096
+`)
+	sel, _, err := readSpinloop("test", spinloopPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	node, err := deployConfigForNode(sel, spinloopPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	args := strings.Join(node.ServeArgs, " ")
+	for _, want := range []string{"--host 0.0.0.0", "--port 8080"} {
+		if !strings.Contains(args, want) {
+			t.Errorf("the Spinloop's bind should win, got: %s", args)
+		}
+	}
+	for _, unwanted := range []string{"127.0.0.1", "9090"} {
+		if strings.Contains(args, unwanted) {
+			t.Errorf("the preset's bind should be overridden, got: %s", args)
+		}
+	}
+}
+
 // mtplxNodePreset is an MTPLX-vocabulary preset: long-form keys, the model under
 // `model`, the window under `context-window`, the cap under
 // `max-active-requests`, a served name under `model-id`, and a scheduling mode

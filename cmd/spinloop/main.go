@@ -1199,6 +1199,21 @@ func applyBeforeLaunch(f spinloopPathFlag, providers string, h harness.Harness, 
 	if choice != nil && choice.APIKey != "" {
 		resolve = fleetLaunchResolver(resolve, choice.APIKey)
 	}
+	if choice != nil && choice.Gateway {
+		// A FLEET naming an endpoint authenticates with a token the client
+		// holds itself, resolved the way a key is resolved elsewhere: an ENV
+		// instruction, else the process environment, else the .env beside the
+		// Spinloop. Set nowhere, the launch cannot authenticate, and an
+		// endpoint that refuses every request is not one to point an agent at.
+		key := localKey(sel, localResolve)
+		if key == "" {
+			return spinloop.Selection{}, "", nil, nil, fmt.Errorf(
+				"no token to reach the FLEET endpoint %s: export %s, or set it in the .env beside %s",
+				choice.BaseURL, remoteAPIKeyEnv, path)
+		}
+		choice.APIKey = key
+		resolve = fleetLaunchResolver(resolve, key)
+	}
 	if err := applySelection(sel, h, path, resolve); err != nil {
 		return spinloop.Selection{}, "", nil, nil, err
 	}

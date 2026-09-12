@@ -48,16 +48,33 @@ func (w Want) prefer() Prefer {
 	return w.Prefer
 }
 
-// matches reports whether a node serving `serving` is serving what is wanted.
-// A launch that names no model wants any running engine.
-func (w Want) matches(serving string) bool {
+// matches reports whether a node reporting any of the given served names is
+// serving what is wanted. A launch that names no model wants any running
+// engine.
+func (w Want) matches(serving ...string) bool {
 	if w.Model == "" && w.Alias == "" && w.ModelID == "" {
 		return true
 	}
-	if serving == "" {
-		return false
+	for _, s := range serving {
+		if s != "" && (s == w.Model || s == w.Alias || s == w.ModelID) {
+			return true
+		}
 	}
-	return serving == w.Model || serving == w.Alias || serving == w.ModelID
+	return false
+}
+
+// servingNames is every name a node reports itself serving: the model id, and
+// the served name it was started under when it reports one. An aliased engine
+// answers to both, so either matching is a match.
+func servingNames(s daemon.StatusResponse) []string {
+	var names []string
+	if s.Model != "" {
+		names = append(names, s.Model)
+	}
+	if s.ServedName != "" && s.ServedName != s.Model {
+		names = append(names, s.ServedName)
+	}
+	return names
 }
 
 // wanted names the model for a message, preferring the Spinloop's own MODEL.
@@ -101,6 +118,10 @@ type Choice struct {
 	Reason string
 	// Woken records that this node was started to satisfy the launch.
 	Woken bool
+	// Gateway records that FLEET named an endpoint rather than a fleet file:
+	// the endpoint has already done the choosing, Node is empty, and BaseURL
+	// is the endpoint's address rather than a node's engine.
+	Gateway bool
 }
 
 // candidate pairs a node's file entry with what it answered, keeping the
@@ -127,15 +148,55 @@ func (c *Config) candidates(results []NodeResult) []candidate {
 // running keeps the nodes that answered and are serving what is wanted. A node
 // that did not answer is skipped rather than fatal, exactly as it is a row
 // rather than a failure in `spinloop fleet status`.
+//
+// A node reporting ReadyNo is skipped too: the state reaches running when the
+// engine process exists, which is before llama.cpp has fetched and loaded
+// weights, and during that window nothing is listening on the engine's port.
+// Selecting it would hand the caller an address that refuses connections.
 func running(cands []candidate, w Want) []candidate {
 	var out []candidate
 	for _, c := range cands {
 		if !c.result.OK() || c.result.Status.State != string(daemon.StateRunning) {
 			continue
 		}
-		if w.matches(c.result.Status.Model) {
+		if c.result.Status.Ready == daemon.ReadyNo {
+			continue
+		}
+		if w.matches(servingNames(c.result.Status)...) {
 			out = append(out, c)
 		}
+	}
+	return out
+}
+
+// loading keeps the nodes that are running what is wanted but whose engines
+// have not answered yet — the ones running() skips on readiness. They are the
+// nodes worth waiting for: the weights are already being loaded, so they reach
+// serving sooner than anything a wake would start from cold.
+func loading(cands []candidate, w Want) []candidate {
+	var out []candidate
+	for _, c := range cands {
+		if !c.result.OK() || c.result.Status.State != string(daemon.StateRunning) {
+			continue
+		}
+		if c.result.Status.Ready != daemon.ReadyNo {
+			continue
+		}
+		if w.matches(servingNames(c.result.Status)...) {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// Loading names the nodes running the wanted model whose engines have not
+// answered yet, in fleet-file order. A caller holding an ErrNoneServing uses it
+// to tell "nothing is serving this" from "something is about to".
+func (c *Config) Loading(results []NodeResult, w Want) []NodeConfig {
+	cands := loading(c.candidates(results), w)
+	out := make([]NodeConfig, 0, len(cands))
+	for _, cand := range cands {
+		out = append(out, cand.entry)
 	}
 	return out
 }
@@ -184,7 +245,15 @@ func (c *Config) Select(ctx context.Context, w Want) (*Choice, error) {
 		}
 	}
 	results := scope.FanOut(ctx, StatusCall)
-	return scope.choose(results, w)
+	return scope.Choose(results, w)
+}
+
+// Choose applies the ranking to a fan-out's results the caller already holds,
+// and resolves the winner's endpoint. It is Select without the query, for a
+// caller that keeps its own reading of the fleet and reuses it across calls —
+// the gateway does, because a burst of requests must not pay a fan-out each.
+func (c *Config) Choose(results []NodeResult, w Want) (*Choice, error) {
+	return c.choose(results, w)
 }
 
 // ErrNoneServing reports that no node is serving what was wanted. It carries
@@ -220,6 +289,11 @@ func describe(r NodeResult) string {
 	if r.Status.Model != "" {
 		s += "  " + r.Status.Model
 	}
+	// Without this a node skipped on readiness reads as running the model the
+	// request asked for, which makes the refusal look wrong.
+	if r.Status.Ready == daemon.ReadyNo {
+		s += "  (not ready)"
+	}
 	return s
 }
 
@@ -233,10 +307,19 @@ func (c *Config) choose(results []NodeResult, w Want) (*Choice, error) {
 		if !only.result.OK() {
 			return nil, fmt.Errorf("node %q: %s", only.entry.Name, describe(only.result))
 		}
-		if only.result.Status.State == string(daemon.StateRunning) && !w.matches(only.result.Status.Model) {
+		if only.result.Status.State == string(daemon.StateRunning) && !w.matches(servingNames(only.result.Status)...) {
 			return nil, fmt.Errorf(
 				"node %q is serving %s, not %s: it will not be restarted — pick another node, or stop it yourself",
 				only.entry.Name, only.result.Status.Model, w.wanted())
+		}
+		// Pinned to a node whose engine is up as a process but has not
+		// answered yet: naming the state is more use than reporting that
+		// nothing serves the model, since this node is about to.
+		if only.result.Status.State == string(daemon.StateRunning) && only.result.Status.Ready == daemon.ReadyNo {
+			return nil, fmt.Errorf(
+				"node %q is still starting %s: its engine is running but has not answered yet "+
+					"(it may be fetching or loading weights) — check its log with `spinloop fleet logs %s`",
+				only.entry.Name, w.wanted(), only.entry.Name)
 		}
 	}
 	matching := running(cands, w)
@@ -302,6 +385,12 @@ func (c *Config) EngineBaseURL(n NodeConfig, status daemon.StatusResponse) (stri
 	host, port, path := n.Host, 0, ""
 	if ep := status.Engine; ep != nil {
 		port, path = ep.Port, ep.Path
+		// A node that reports its engine's host — a remote environment, whose
+		// control plane knows the instance's published address — is reached
+		// there, in place of the host the fleet file supplies.
+		if ep.Host != "" {
+			host = ep.Host
+		}
 	}
 	if o := n.Engine; o != nil {
 		if o.Host != "" {

@@ -3,6 +3,7 @@ package fleet
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -29,6 +30,11 @@ type fakeNode struct {
 	startStatus int
 	// engineDelay is how long after starting before the engine listens.
 	engineDelay time.Duration
+	// ready, when set, is what /v1/status reports for `ready`.
+	ready bool
+	// noEngine keeps the engine's listener down even after an accepted start:
+	// readiness can only come from the daemon's own reading.
+	noEngine bool
 	// started records whether a start was accepted.
 	started bool
 	// pushed is the deploy config the start carried.
@@ -62,6 +68,9 @@ func newFakeNode(t *testing.T, state, model string) *fakeNode {
 		resp := daemon.StatusResponse{State: f.state, Model: f.model}
 		if f.state == string(daemon.StateRunning) {
 			resp.Engine = &daemon.EngineEndpoint{Port: f.enginePort}
+			if f.ready {
+				resp.Ready = "ready"
+			}
 		}
 		json.NewEncoder(w).Encode(resp)
 	})
@@ -87,11 +96,13 @@ func newFakeNode(t *testing.T, state, model string) *fakeNode {
 		if dc.ModelID != "" {
 			f.model = dc.ModelID
 		}
-		delay := f.engineDelay
-		go func() {
-			time.Sleep(delay)
-			f.listenAsEngine()
-		}()
+		if !f.noEngine {
+			delay := f.engineDelay
+			go func() {
+				time.Sleep(delay)
+				f.listenAsEngine()
+			}()
+		}
 		json.NewEncoder(w).Encode(daemon.StatusResponse{State: f.state, Model: f.model})
 	})
 	f.srv = httptest.NewServer(mux)
@@ -153,7 +164,7 @@ func TestWakeStartsAnIdleNode(t *testing.T) {
 	cfg := fleetOf(t, []string{"box"}, node)
 	dc := remote.DeployConfig{Runner: "llamacpp", ModelID: "qwen3-27b"}
 
-	choice, err := cfg.Wake(context.Background(), Want{Model: "qwen3-27b"}, dc, statusOf(t, cfg), nil)
+	choice, err := cfg.Wake(context.Background(), Want{Model: "qwen3-27b"}, ConstantConfig(dc, nil), statusOf(t, cfg), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -179,7 +190,7 @@ func TestWakeSkipsANodeThatRefusesTheConfig(t *testing.T) {
 	cfg := fleetOf(t, []string{"wrong-box", "right-box"}, refuses, accepts)
 
 	choice, err := cfg.Wake(context.Background(), Want{Model: "m"},
-		remote.DeployConfig{Runner: "llamacpp", ModelID: "m"}, statusOf(t, cfg), nil)
+		ConstantConfig(remote.DeployConfig{Runner: "llamacpp", ModelID: "m"}, nil), statusOf(t, cfg), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -197,7 +208,7 @@ func TestWakeReportsEveryRefusal(t *testing.T) {
 	cfg := fleetOf(t, []string{"a", "b"}, a, b)
 
 	_, err := cfg.Wake(context.Background(), Want{Model: "m"},
-		remote.DeployConfig{Runner: "vllm", ModelID: "m"}, statusOf(t, cfg), nil)
+		ConstantConfig(remote.DeployConfig{Runner: "vllm", ModelID: "m"}, nil), statusOf(t, cfg), nil)
 	if err == nil {
 		t.Fatal("expected a failure when every node refuses")
 	}
@@ -220,7 +231,7 @@ func TestWakeWaitsForTheEngineToAnswer(t *testing.T) {
 
 	start := time.Now()
 	choice, err := cfg.Wake(context.Background(), Want{Model: "m"},
-		remote.DeployConfig{Runner: "llamacpp", ModelID: "m"}, statusOf(t, cfg), log)
+		ConstantConfig(remote.DeployConfig{Runner: "llamacpp", ModelID: "m"}, nil), statusOf(t, cfg), log)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -245,7 +256,7 @@ func TestWakeTimesOutWithoutStopping(t *testing.T) {
 	cfg := fleetOf(t, []string{"stuck"}, node)
 
 	_, err := cfg.Wake(context.Background(), Want{Model: "m"},
-		remote.DeployConfig{Runner: "llamacpp", ModelID: "m"}, statusOf(t, cfg), nil)
+		ConstantConfig(remote.DeployConfig{Runner: "llamacpp", ModelID: "m"}, nil), statusOf(t, cfg), nil)
 	if err == nil {
 		t.Fatal("expected a timeout")
 	}
@@ -279,7 +290,7 @@ func TestWakeLosingTheRaceUsesTheNode(t *testing.T) {
 		Status:  daemon.StatusResponse{State: string(daemon.StateIdle)},
 	}}
 	choice, err := cfg.Wake(context.Background(), Want{Model: "qwen3-27b"},
-		remote.DeployConfig{Runner: "llamacpp", ModelID: "qwen3-27b"}, stale, nil)
+		ConstantConfig(remote.DeployConfig{Runner: "llamacpp", ModelID: "qwen3-27b"}, nil), stale, nil)
 	if err != nil {
 		t.Fatalf("losing the race should not fail the launch: %v", err)
 	}
@@ -295,7 +306,7 @@ func TestWakeNeverDisplacesARunningEngine(t *testing.T) {
 	cfg := fleetOf(t, []string{"busy"}, busy)
 
 	_, err := cfg.Wake(context.Background(), Want{Model: "mine"},
-		remote.DeployConfig{Runner: "llamacpp", ModelID: "mine"}, statusOf(t, cfg), nil)
+		ConstantConfig(remote.DeployConfig{Runner: "llamacpp", ModelID: "mine"}, nil), statusOf(t, cfg), nil)
 	if err == nil {
 		t.Fatal("expected a failure rather than a restart")
 	}
@@ -318,7 +329,7 @@ func TestWakePrefersANodeThatAlreadyHasTheModel(t *testing.T) {
 	cfg := fleetOf(t, []string{"cold", "warm"}, cold, warm)
 
 	choice, err := cfg.Wake(context.Background(), Want{Model: "qwen3-27b"},
-		remote.DeployConfig{Runner: "llamacpp", ModelID: "qwen3-27b"}, statusOf(t, cfg), nil)
+		ConstantConfig(remote.DeployConfig{Runner: "llamacpp", ModelID: "qwen3-27b"}, nil), statusOf(t, cfg), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -343,7 +354,7 @@ func TestWakeGatesTheEngineWithTheClientsKey(t *testing.T) {
 	cfg.Nodes[0].EngineTokenEnv = "BOX_ENGINE_KEY"
 
 	choice, err := cfg.Wake(context.Background(), Want{Model: "m"},
-		remote.DeployConfig{Runner: "llamacpp", ModelID: "m"}, statusOf(t, cfg), nil)
+		ConstantConfig(remote.DeployConfig{Runner: "llamacpp", ModelID: "m"}, nil), statusOf(t, cfg), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -365,7 +376,7 @@ func TestWakeWithoutAKeyIsUngated(t *testing.T) {
 	cfg := fleetOf(t, []string{"box"}, node)
 
 	choice, err := cfg.Wake(context.Background(), Want{Model: "m"},
-		remote.DeployConfig{Runner: "llamacpp", ModelID: "m"}, statusOf(t, cfg), nil)
+		ConstantConfig(remote.DeployConfig{Runner: "llamacpp", ModelID: "m"}, nil), statusOf(t, cfg), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -393,6 +404,94 @@ func TestRemoteRefusesToBeWoken(t *testing.T) {
 	}
 }
 
+// engineUpAfter makes the "engine" of a node started by someone else come
+// listening after d: the node already reports running, so the engine's delay
+// is not the start's.
+func (f *fakeNode) engineUpAfter(d time.Duration) {
+	go func() {
+		time.Sleep(d)
+		f.listenAsEngine()
+	}()
+}
+
+// The per-candidate resolver lets different nodes be started with different
+// configs — the gateway shape, where each node's own Spinloop source decides
+// what it would run.
+func TestWakeTakesPerCandidateConfigs(t *testing.T) {
+	shortWake(t)
+	a := newFakeNode(t, string(daemon.StateIdle), "")
+	b := newFakeNode(t, string(daemon.StateIdle), "")
+	cfg := fleetOf(t, []string{"a", "b"}, a, b)
+
+	cfgFor := func(entry NodeConfig) (remote.DeployConfig, error) {
+		if entry.Name == "a" {
+			return remote.DeployConfig{}, fmt.Errorf("node %q names no Spinloop source", entry.Name)
+		}
+		return remote.DeployConfig{Runner: "llamacpp", ModelID: "m"}, nil
+	}
+	choice, err := cfg.Wake(context.Background(), Want{Model: "m"}, cfgFor, statusOf(t, cfg), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if choice.Node.Name != "b" {
+		t.Errorf("chose %q, want the node whose source resolved", choice.Node.Name)
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.pushed == nil || b.pushed.ModelID != "m" {
+		t.Errorf("the node's own config did not reach it: %+v", b.pushed)
+	}
+}
+
+// A node woken by someone else is not taken on state alone: its engine may
+// still be loading, so the same readiness wait applies to a node we did not
+// start ourselves.
+func TestWakeWaitsForARacedNodeToAnswer(t *testing.T) {
+	shortWake(t)
+	node := newFakeNode(t, string(daemon.StateRunning), "qwen3-27b")
+	node.startErr = "an engine is already running"
+	node.startStatus = http.StatusConflict
+	node.engineUpAfter(150 * time.Millisecond)
+	cfg := fleetOf(t, []string{"contested"}, node)
+
+	stale := []NodeResult{{
+		Name:    "contested",
+		Outcome: OutcomeOK,
+		Status:  daemon.StatusResponse{State: string(daemon.StateIdle)},
+	}}
+	start := time.Now()
+	choice, err := cfg.Wake(context.Background(), Want{Model: "qwen3-27b"},
+		ConstantConfig(remote.DeployConfig{Runner: "llamacpp", ModelID: "qwen3-27b"}, nil), stale, nil)
+	if err != nil {
+		t.Fatalf("losing the race should not fail the launch: %v", err)
+	}
+	if time.Since(start) < 150*time.Millisecond {
+		t.Error("returned before the raced node's engine was listening")
+	}
+	if choice.Node.Name != "contested" {
+		t.Errorf("chose %q", choice.Node.Name)
+	}
+}
+
+// A daemon that reports its own readiness reading is trusted without a probe:
+// it checked from the same machine the engine runs on.
+func TestWakeTrustsTheDaemonReadinessReading(t *testing.T) {
+	shortWake(t)
+	node := newFakeNode(t, string(daemon.StateIdle), "")
+	node.ready = true
+	node.noEngine = true // the probe could never succeed; only the reading could
+	cfg := fleetOf(t, []string{"box"}, node)
+
+	choice, err := cfg.Wake(context.Background(), Want{Model: "m"},
+		ConstantConfig(remote.DeployConfig{Runner: "llamacpp", ModelID: "m"}, nil), statusOf(t, cfg), nil)
+	if err != nil {
+		t.Fatalf("the daemon's own readiness reading should have been enough: %v", err)
+	}
+	if choice.Node.Name != "box" {
+		t.Errorf("chose %q", choice.Node.Name)
+	}
+}
+
 // A variable that resolves to nothing fails before any engine is started.
 func TestWakeFailsOnAnUnresolvableKey(t *testing.T) {
 	shortWake(t)
@@ -401,7 +500,7 @@ func TestWakeFailsOnAnUnresolvableKey(t *testing.T) {
 	cfg.Nodes[0].EngineTokenEnv = "NOWHERE_ENGINE_KEY"
 
 	_, err := cfg.Wake(context.Background(), Want{Model: "m"},
-		remote.DeployConfig{Runner: "llamacpp", ModelID: "m"}, statusOf(t, cfg), nil)
+		ConstantConfig(remote.DeployConfig{Runner: "llamacpp", ModelID: "m"}, nil), statusOf(t, cfg), nil)
 	if err == nil {
 		t.Fatal("expected a failure")
 	}

@@ -625,3 +625,41 @@ func TestPreferRejectsUnknownValue(t *testing.T) {
 		}
 	}
 }
+
+func TestWakeSetting(t *testing.T) {
+	cases := []struct {
+		decl string
+		wake bool
+	}{
+		{"wake: on\n", true},
+		{"wake: off\n", false},
+		{"", true}, // absent: routing wakes, as it always has
+	}
+	for _, c := range cases {
+		name := strings.TrimSpace(c.decl)
+		if name == "" {
+			name = "absent"
+		}
+		t.Run(name, func(t *testing.T) {
+			cfg, err := Load(writeFleet(t, c.decl+"nodes:\n  - name: a\n    host: a.local\n", ""))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := cfg.Wakes(); got != c.wake {
+				t.Errorf("Wakes() = %v, want %v", got, c.wake)
+			}
+		})
+	}
+}
+
+func TestWakeRejectsUnknownValue(t *testing.T) {
+	_, err := Load(writeFleet(t, "wake: sometimes\nnodes:\n  - name: a\n    host: a.local\n", ""))
+	if err == nil {
+		t.Fatal("an unknown wake value should fail to parse")
+	}
+	for _, want := range []string{"on", "off"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error should name %q, got %q", want, err)
+		}
+	}
+}
