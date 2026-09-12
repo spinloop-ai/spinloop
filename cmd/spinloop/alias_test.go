@@ -246,6 +246,30 @@ func TestCmdAlias_List(t *testing.T) {
 	}
 }
 
+// TestAliasHelpTeachesTheURLForm checks that `alias --help` says the target may
+// be a URL and shows how to register one: the form is easy to miss otherwise,
+// and the help is the one place a user is bound to read before trying it.
+func TestAliasHelpTeachesTheURLForm(t *testing.T) {
+	cmd, _, err := newRootCmd().Find([]string{"alias"})
+	if err != nil {
+		t.Fatalf("finding alias: %v", err)
+	}
+	var help strings.Builder
+	cmd.SetOut(&help)
+	cmd.SetErr(&help)
+	if err := cmd.Help(); err != nil {
+		t.Fatal(err)
+	}
+	for _, marker := range []string{
+		"http(s)",
+		"spinloop alias -n team-default https://example.com/team/Spinloop",
+	} {
+		if !strings.Contains(help.String(), marker) {
+			t.Errorf("alias help missing %q:\n%s", marker, help.String())
+		}
+	}
+}
+
 // TestCmdUnalias checks that a name can be dropped, that the Spinloop survives it,
 // and that the argument is validated.
 func TestCmdUnalias(t *testing.T) {
