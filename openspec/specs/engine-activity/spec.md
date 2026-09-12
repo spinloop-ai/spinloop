@@ -126,10 +126,16 @@ host's CPU, memory, and GPU figures — on each tick at its own interval,
 independently of any request to the control API and independently of whether a
 scrape target for the engine's counters is known. Each reading SHALL be
 retained in the history the metrics endpoint reports, for at most the last
-10 minutes. A failed system reading SHALL record no sample for its tick and
-SHALL NOT be reported as an error: the on-request collection keeps its own
-error reporting, and a transient sampling failure is neither data nor a
-condition worth surfacing on every tick.
+10 minutes.
+
+One reading SHALL serve both what is retained and what is reported: the same
+collection feeds the retained history and the current reading the metrics
+endpoint answers with, so a request never takes a second collection. A reading
+that yields no figure at all SHALL contribute no sample to the retained
+history — a failed sample is a non-observation there as in the activity
+record — and SHALL still become the current reading, carrying its errors: with
+no collection taken on the request, the reading is the only place a broken
+source is reported from.
 
 #### Scenario: System readings happen without being asked
 
@@ -147,8 +153,9 @@ condition worth surfacing on every tick.
 
 - **WHEN** a system reading fails on a tick because a host command is missing
   or fails
-- **THEN** no sample is recorded for that tick and no error is reported for
-  it
+- **THEN** no sample is recorded for that tick in the retained history, and
+  the reading the metrics endpoint reports is the failed one, its errors
+  included
 
 #### Scenario: Reading stops with the engine, retention does not end
 

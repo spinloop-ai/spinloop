@@ -66,6 +66,7 @@ type Daemon struct {
 	sample engineSample
 	ready  readiness
 	hist   systemHistory
+	system systemSample
 
 	mu         sync.Mutex
 	runner     string
@@ -272,6 +273,7 @@ func (d *Daemon) StartEngine() error {
 	// against this one, for the same reason its counter baseline is dropped.
 	d.sample.forget()
 	d.ready.forget()
+	d.system.forget()
 	d.hist.clear()
 	return nil
 }
@@ -432,9 +434,13 @@ func (d *Daemon) Metrics(ctx context.Context) metrics.Stats {
 		UptimeSeconds: uptime,
 	}
 	if state == StateRunning {
-		if d.Collector != nil {
-			d.Collector.System(ctx, &stats)
-		}
+		// The host's figures come from the background sampler, never from a
+		// collection taken here. Reading CPU costs a host command — `top -l 1`
+		// on macOS — that takes longer the busier the host is, so collecting
+		// inline made this handler block for seconds on exactly the machine
+		// someone had opened the dashboard to watch, past the fleet client's
+		// timeout, and the node rendered as unreachable.
+		d.system.apply(&stats)
 		// The engine's counters come from the background sampler, never from
 		// a scrape taken here. A busy engine does not answer its own metrics
 		// endpoint — llama.cpp serves it from the queue it serves inference

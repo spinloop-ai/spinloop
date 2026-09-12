@@ -10,6 +10,7 @@ import (
 	"math"
 	"os/exec"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -310,8 +311,10 @@ while true; do sleep 0.05; done`)
 	d.Now = clock.now
 	d.Collector = linuxCollector()
 	// No scrape target is set: the system readings must not depend on one.
-	old := catchUpInterval
-	catchUpInterval = 5 * time.Millisecond
+	// The cadence comes from the tick interval rather than the catch-up,
+	// which without a scrape target does not apply — there are no counters
+	// coming, so there is nothing to catch up to.
+	d.SampleInterval = 5 * time.Millisecond
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
@@ -319,13 +322,9 @@ while true; do sleep 0.05; done`)
 		d.SampleActivity(ctx)
 		close(done)
 	}()
-	// The loop reads the catch-up cadence on every tick while it has no
-	// reading to report — with no scrape target, always — so the sampler
-	// must have exited before the cadence is restored.
 	defer func() {
 		cancel()
 		<-done
-		catchUpInterval = old
 	}()
 
 	if err := d.Push(remote.DeployConfig{Runner: "llamacpp", ModelID: "m"}); err != nil {
@@ -357,5 +356,104 @@ while true; do sleep 0.05; done`)
 	time.Sleep(50 * time.Millisecond)
 	if got := len(d.hist.snapshot()); got != n {
 		t.Errorf("a stopped engine kept accumulating readings: %d -> %d", n, got)
+	}
+}
+
+// The whole point of the sampler: a metrics request runs no host command, so
+// a handler cannot be held up by a slow one. `top -l 1` on a loaded macOS host
+// takes seconds, which is what made a polled node render as unreachable while
+// it was answering fine.
+func TestMetricsRunsNoHostCommands(t *testing.T) {
+	d := testDaemon(t, `trap 'exit 0' TERM
+while true; do sleep 0.05; done`)
+	var during int32
+	base := linuxCollector()
+	inner := base.Run
+	base.Run = func(ctx context.Context, name string, args ...string) (string, error) {
+		atomic.AddInt32(&during, 1)
+		return inner(ctx, name, args...)
+	}
+	d.Collector = base
+	if err := d.Push(remote.DeployConfig{Runner: "llamacpp", ModelID: "m"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.StartEngine(); err != nil {
+		t.Fatal(err)
+	}
+	defer d.Sup.Stop()
+	waitForState(t, d.Sup, StateRunning)
+
+	d.systemSampleOnce(context.Background())
+	sampled := atomic.LoadInt32(&during)
+	if sampled == 0 {
+		t.Fatal("the sampler ran no host commands; it is what collects them")
+	}
+	for i := 0; i < 5; i++ {
+		if stats := d.Metrics(context.Background()); stats.Memory == nil {
+			t.Fatalf("request %d reported no memory figure from the last sample", i)
+		}
+	}
+	if got := atomic.LoadInt32(&during); got != sampled {
+		t.Errorf("metrics requests ran %d host commands, want none", got-sampled)
+	}
+}
+
+// A collection failure is reported to the caller. The handler no longer
+// collects, so the sample is the only thing that can carry the error — losing
+// it would turn a broken source into figures that are silently absent.
+func TestSampledCollectionErrorsReachMetrics(t *testing.T) {
+	d := testDaemon(t, `trap 'exit 0' TERM
+while true; do sleep 0.05; done`)
+	d.Collector = &metrics.Collector{
+		GOOS: "linux",
+		Run: func(ctx context.Context, name string, args ...string) (string, error) {
+			return "", errors.New("vmstat exploded")
+		},
+	}
+	if err := d.Push(remote.DeployConfig{Runner: "llamacpp", ModelID: "m"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.StartEngine(); err != nil {
+		t.Fatal(err)
+	}
+	defer d.Sup.Stop()
+	waitForState(t, d.Sup, StateRunning)
+
+	d.systemSampleOnce(context.Background())
+	stats := d.Metrics(context.Background())
+	var found bool
+	for _, e := range stats.Errors {
+		if strings.Contains(e, "vmstat exploded") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("the collection failure did not reach the caller: %v", stats.Errors)
+	}
+	// Reported once, from the one collection, not once per reader.
+	if n := len(stats.Errors); n != len(d.Metrics(context.Background()).Errors) {
+		t.Errorf("errors accumulate across requests: %d", n)
+	}
+}
+
+// The catch-up interval is for a reading that is actually coming. An engine
+// whose runner exposes no metrics endpoint yields no counters ever, so the
+// loop must settle at its tick rather than spin — it runs the host commands
+// on every pass.
+func TestNoScrapeTargetLeavesTheCatchUpInterval(t *testing.T) {
+	d := testDaemon(t, `trap 'exit 0' TERM
+while true; do sleep 0.05; done`)
+	if d.awaitingFirstSample() {
+		t.Error("no scrape target: the catch-up interval should not apply")
+	}
+	// An address with no dialect is the readiness-probe-only case: still
+	// nothing to scrape, so still no catching up to do.
+	d.SetScrape(metrics.ScrapeTarget{BaseURL: "http://127.0.0.1:8080"})
+	if d.awaitingFirstSample() {
+		t.Error("an address with no metrics dialect should not hold the catch-up")
+	}
+	d.SetScrape(metrics.ScrapeTarget{BaseURL: "http://127.0.0.1:8080", Engine: "llamacpp"})
+	if !d.awaitingFirstSample() {
+		t.Error("a scrape target with no reading yet should hold the catch-up")
 	}
 }

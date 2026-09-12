@@ -379,6 +379,9 @@ while true; do sleep 0.05; done`)
 	}
 
 	// Metrics while running: state, runner, and the collector's memory stat.
+	// The host figures reach the reply through the background sampler, which
+	// this test drives one tick of by hand rather than running the loop.
+	d.systemSampleOnce(context.Background())
 	if resp, body := do("GET", "/v1/metrics", "sekrit", ""); resp.StatusCode != 200 ||
 		body["state"] != "running" || body["runner"] != "llamacpp" || body["memory"] == nil {
 		t.Fatalf("metrics = %d %v", resp.StatusCode, body)
