@@ -49,10 +49,12 @@ The binary lives under `cmd/`; domain logic is split into `internal/` packages s
 
 - `cmd/spinloop/commands.go` + `main.go` — the Cobra command tree and command bodies: `add`/`remove`/`apply`/`unapply`/`show`/`export`/`harness`/`alias`/`unalias`. (`harness-management`, `alias-registry`)
 - `cmd/spinloop/serve.go` — the `serve` command: engine dispatch (llama.cpp, oMLX) and the Spinloop/preset→flags mappings. (`local-serving`, `inference-runners`)
+- `cmd/spinloop/hf.go` — the `hf` command: one Hugging Face reference in, the Spinloop that serves it out — rendered to stdout or `-o`, narrated to stderr, optionally `--apply`ed. (`huggingface-spinloops`)
 - `cmd/spinloop/complete.go` — tab completion, built on Cobra's `__complete` engine. (`shell-completion`)
 - `internal/config` — spinloop's own config file (`${XDG_CONFIG_HOME:-~/.config}/spinloop/config.json`): default-harness preference and the alias registry. A leaf package — stdlib only, never imports `internal/spinloop`. (`config-location`, `alias-registry`)
 - `internal/spinloop` — the Spinloop file format and the shared `Selection` type. A pure grammar leaf: no I/O. (`spinloop-files`)
 - `internal/spinloopsrc` — resolves and fetches a Spinloop-family reference (path, `PRESET`, path-form `REMOTE`) that may be local or an `http(s)` URL. (`remote-spinloop-sources`)
+- `internal/hf` — a Hugging Face reference (forms in `ParseRef`), the hub's repo metadata behind a bounded-timeout client, the two local caches a model may already sit in, and the provider/quant/context/alias inference a repo becomes a `Selection` through. A leaf package: stdlib plus `internal/contextsize` only, and it never downloads weights. (`huggingface-hub`, `huggingface-spinloops`)
 - `internal/harness` — the harness abstraction: the `Harness` interface, the opencode/Pi/lucinate adapter registry, and runtime resolution via `harness.Resolve`. Start here when adding another harness. (`harness-management`)
 - `internal/catalog` — the embedded provider catalogue (`//go:embed providers.yaml`) and the block builders that turn a selection into an opencode or Pi provider entry. (`provider-catalog`, `provider-selection`)
 - `internal/opencode` — opencode config IO: JSONC read/merge/write via RFC 6902 patches on the hujson AST, preserving comments and sibling config. (`opencode-integration`)

@@ -64,6 +64,7 @@ Four words carry the whole tool:
 | [`spinloop fleet`](commands/fleet.md) | Observe and drive the engines on every machine you run |
 | [`spinloop remote`](commands/remote.md) | Run the model on a cloud GPU that stops when you do |
 | [`spinloop export`](commands/export.md) | Capture the current setup as a `Spinloop` |
+| [`spinloop hf`](commands/hf.md) | Write a `Spinloop` for a Hugging Face model, from its page reference |
 | [`spinloop harness`](commands/harness.md) | Launch the agent, optionally configuring it first |
 | [`spinloop init-providers`](commands/init-providers.md) | Write the catalogue out to customise |
 | [`spinloop completion`](commands/completion.md) | Tab completion for your shell |
