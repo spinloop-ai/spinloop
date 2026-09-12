@@ -22,9 +22,20 @@ instance SHALL be given the environment's own stable address (its Elastic IP)
 so the environment's URL does not change between launches, and the request
 SHALL NOT report success until the model is answering — the caller receives
 one "ready", never a URL that is not yet serving. When no capacity can be
-found anywhere, the response SHALL say so and SHALL be retryable rather than
+found anywhere, the response SHALL say so, SHALL name the instance type it was
+trying to launch, and SHALL be retryable rather than
 fatal. One shared set of lifecycle Lambdas SHALL serve every environment in
 the account, selecting the instance by the environment identifier.
+
+A launch SHALL use the instance type the environment's deploy config names,
+when it names one, and the control plane's default type otherwise. The type is
+a property of the environment's deployment, read from the same stored deploy
+config the start already reads for what to serve, so changing it is a deploy,
+not a start. Because EC2 cannot change the type of an existing instance, a
+stored type takes effect on a fresh launch only: a re-wake of a stopped
+instance SHALL keep the type it was originally launched with, and a changed
+type applies once the instance has been terminated — by an explicit stop or
+the idle sweep — and relaunched.
 
 Before launching or re-waking the instance, a start SHALL check that the
 environment's weights are present in shared storage, judged by the same
@@ -60,7 +71,8 @@ daemon runs.
 #### Scenario: No capacity anywhere
 
 - **WHEN** every configured zone is out of capacity
-- **THEN** the response says so and indicates the caller may retry shortly
+- **THEN** the response says so, names the instance type it was trying, and
+  indicates the caller may retry shortly
 
 #### Scenario: Starting the right environment
 
@@ -79,6 +91,31 @@ daemon runs.
 - **THEN** its root volume is the AMI's gp3 root, at the AMI's own size, with
   provisioned throughput at the volume's ceiling and provisioned IOPS at four
   times that throughput
+
+#### Scenario: A launch uses the environment's stored instance type
+
+- **WHEN** an environment's deploy config names an instance type and a start
+  launches a fresh instance for it
+- **THEN** the instance is launched as that type
+
+#### Scenario: A launch with no stored type uses the control plane default
+
+- **WHEN** an environment's deploy config names no instance type and a start
+  launches a fresh instance for it
+- **THEN** the instance is launched as the control plane's default type
+
+#### Scenario: A re-wake keeps the instance's original type
+
+- **WHEN** an environment's instance is stopped, its deploy config's instance
+  type is changed, and a start re-wakes the stopped instance
+- **THEN** the instance comes back as the type it was originally launched
+  with, because a stopped instance is not resized
+
+#### Scenario: A changed type applies after the instance is terminated
+
+- **WHEN** an environment's deploy config instance type is changed, its
+  instance is terminated, and a later start launches it
+- **THEN** the fresh instance is launched as the new type
 
 #### Scenario: The control plane starts the engine on a fresh boot
 
