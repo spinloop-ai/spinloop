@@ -944,7 +944,7 @@ func runFleetHarness(sp spinloopPathFlag, fleetPath, node, prefer, harnessName s
 		route.fleetPath = fleet.DefaultFile
 	}
 
-	sel, envDir, remoteResp, choice, err := applyRoutedSpinloop(sel, resolvedPath, "", h, route)
+	sel, envDir, remoteResp, choice, err := applyRoutedSpinloop(sel, resolvedPath, "", h, route, false)
 	if err != nil {
 		return err
 	}

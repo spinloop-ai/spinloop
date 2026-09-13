@@ -818,6 +818,24 @@ func TestRunnerFor(t *testing.T) {
 	}
 }
 
+// providerForRunner is runnerFor's reverse, for a launch that auto-configures
+// from a deployed environment's reported runner rather than a Spinloop's
+// PROVIDER. Since runnerFor only ever accepts llamacpp/vllm, no other runner
+// value can ever reach a deploy-config — but the reverse mapping still has to
+// reject one, rather than trust an unrecognised string as a provider name.
+func TestProviderForRunner(t *testing.T) {
+	for _, runner := range []string{"llamacpp", "vllm"} {
+		if got, err := providerForRunner(runner); err != nil || got != runner {
+			t.Errorf("providerForRunner(%q) = %q, %v", runner, got, err)
+		}
+	}
+	for _, runner := range []string{"mtplx", "openrouter", ""} {
+		if _, err := providerForRunner(runner); err == nil {
+			t.Errorf("providerForRunner(%q) should error", runner)
+		}
+	}
+}
+
 // A cold start blocks in one request for minutes, so the command must say what
 // it is doing rather than sit silent — and must say it on stderr, so piping the
 // exports still works.

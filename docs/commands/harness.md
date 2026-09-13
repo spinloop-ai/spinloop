@@ -37,20 +37,59 @@ spinloop harness --spinloop=https://example.com/Spinloop # ...or a URL, fetched 
 Given bare, `--spinloop` defaults to `./Spinloop` like `apply` does; when you name
 a path, attach it to the flag, because anything positional is forwarded to the
 agent (`spinloop harness -O run --model x` passes `run --model x` on). The one
-exception is a *leading* argument that names a Spinloop — a path, a directory
-holding one, or a [registered alias](alias.md) — which is applied rather than
-forwarded:
+exception is an argument that names a Spinloop — a path, a directory holding
+one, or a [registered alias](alias.md) — which is applied rather than
+forwarded. It can sit anywhere among the command's own flags (`--env`, `-H`,
+`--fleet`, ...), in any order; the first argument that is neither one of those
+flags nor a Spinloop name starts the agent's own arguments:
 
 ```sh
-spinloop harness qwen3.6-27b                 # apply the aliased Spinloop, launch
-spinloop harness qwen3.6-27b -- --agent-arg  # ...forwarding --agent-arg
-spinloop harness -- qwen3.6-27b              # leading -- opts out: forward it
+spinloop harness qwen3.6-27b                     # apply the aliased Spinloop, launch
+spinloop harness qwen3.6-27b --env prod          # the alias and --env in either order
+spinloop harness --env prod qwen3.6-27b          # ...parse the same way
+spinloop harness qwen3.6-27b -- --agent-arg      # ...forwarding --agent-arg
+spinloop harness -- qwen3.6-27b                  # leading -- opts out: forward it
 ```
+
+Put `--` before the agent's own arguments if one of them would otherwise be
+mistaken for a Spinloop name.
 
 `SPINLOOP_ALIAS` decides what "the default Spinloop" means, so `spinloop harness -O`
 applies the alias it names. A bare `spinloop harness` still applies nothing: the
 variable chooses which Spinloop, never whether you are configured. See
 [`spinloop alias`](alias.md#naming-one-for-the-whole-shell).
+
+## Launching with no Spinloop at all
+
+`--env <name>` on its own — no leading alias or path, no `--spinloop`/`-O` —
+configures the harness from what is actually deployed to that
+[environment](remote.md), rather than doing nothing with the flag:
+
+```sh
+spinloop harness --env dev-3 --prompt "..."   # configured from dev-3's deployment, then launched
+```
+
+The environment's runner becomes the provider, its served model name becomes
+the model, and its context size (when set) becomes the context window — the
+same result a Spinloop stating the matching `PROVIDER`/`ALIAS`/`CONTEXT` with
+`--env dev-3` would produce, without writing one. This is what makes the
+two-machine flow work: deploy from one machine
+(`spinloop remote deploy <spinloop> --env dev-3`), then on any machine that
+can reach the same environment — one that has its `remote.json` in the
+registry, however it got there — run `spinloop harness --env dev-3` with no
+Spinloop and get the same configuration, live, so a later redeploy is picked
+up automatically rather than requiring anyone to re-copy anything.
+
+Applying a Spinloop alongside `--env` (a leading alias/path, or `-O`) is
+unaffected: the Spinloop's own `PROVIDER`, `ALIAS`, `MODEL` and `CONTEXT` win,
+exactly as a hand-written `BASEURL` already wins over the environment's
+registered address.
+
+A bare `--env` against an environment with nothing deployed — or a control
+plane too old to report what is deployed — fails before launching, naming the
+environment and how to fix it: `spinloop remote deploy <spinloop> --env
+<name>` to deploy something, or `spinloop remote bootstrap` to update the
+control plane.
 
 ## Flags
 
@@ -58,7 +97,7 @@ variable chooses which Spinloop, never whether you are configured. See
 | ---- | ------- |
 | `-H`, `--harness` | Which harness to launch (or set `SPINLOOP_HARNESS`) |
 | `-O`, `--spinloop` | Apply this Spinloop before launching (bare: `./Spinloop`) |
-| `-e`, `--env` | The registered [environment](remote.md) the applied Spinloop points at — mutually exclusive with fleet routing, since each names where the model is served from |
+| `-e`, `--env` | The registered [environment](remote.md) to launch against; with no Spinloop applied, configures the harness from what is deployed there — mutually exclusive with fleet routing, since each names where the model is served from |
 | `--set` | Store the default harness and exit |
 | `--get` | Print the active harness instead of launching |
 | `--providers` | Path to a custom catalogue, for the applied Spinloop |
