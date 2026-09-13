@@ -123,6 +123,12 @@ A launch may not state both `--env` and a fleet (the `--fleet` flag, or the
 `./fleet.yaml` in force when the Spinloop is not named): each names where the
 model is served from, so spinloop fails naming both.
 
+`spinloop harness --env qwen3.6-27b-prod` also works with **no Spinloop at
+all**: the environment already knows what it is serving, so the harness
+configures itself from that — the same result as the Spinloop above, without
+needing a copy of it on the machine doing the launching. See
+[`spinloop harness`](commands/harness.md#launching-with-no-spinloop-at-all).
+
 Because `PROVIDER` names the engine, this is the same file that would run the
 model locally with [`spinloop serve`](commands/serve.md) — pointed at a bigger
 machine.
