@@ -462,21 +462,26 @@ func TestCmdApply_DirectoryWithoutSpinloop(t *testing.T) {
 	}
 }
 
-// TestCmdApply_BaseURLFromRemoteConfig checks that a Spinloop with a REMOTE and
-// no BASEURL takes the endpoint address from the remote config's base_url —
-// the deployment writes that file, so the Spinloop does not have to carry it.
+// TestCmdApply_BaseURLFromRemoteConfig checks that a Spinloop with no BASEURL,
+// applied against a registered environment, takes the endpoint address from the
+// environment's remote.json base_url — the deployment writes that file, so the
+// Spinloop does not have to carry it.
 func TestCmdApply_BaseURLFromRemoteConfig(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
 
-	spinloopDir := t.TempDir()
-	mustWrite(t, filepath.Join(spinloopDir, "remote.json"),
+	envConfig := filepath.Join(dir, "spinloop", "remotes", "dev-1", "remote.json")
+	if err := os.MkdirAll(filepath.Dir(envConfig), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	mustWrite(t, envConfig,
 		`{"start_url":"https://start.example/","stop_url":"https://stop.example/","region":"us-east-1","base_url":"http://198.51.100.7:8000/v1"}`)
+	spinloopDir := t.TempDir()
 	spinloopFile := filepath.Join(spinloopDir, "Spinloop")
-	mustWrite(t, spinloopFile, "PROVIDER llamacpp\nALIAS qwen\nREMOTE remote.json\n")
+	mustWrite(t, spinloopFile, "PROVIDER llamacpp\nALIAS qwen\n")
 
 	out := captureStdout(t, func() {
-		if err := cmdApply([]string{spinloopFile}); err != nil {
+		if err := cmdApply([]string{"--env", "dev-1", spinloopFile}); err != nil {
 			t.Fatalf("cmdApply: %v", err)
 		}
 	})
@@ -485,68 +490,79 @@ func TestCmdApply_BaseURLFromRemoteConfig(t *testing.T) {
 	}
 
 	m := readConfigMap(t, filepath.Join(dir, "opencode", "opencode.json"))
-	llamacpp := m["provider"].(map[string]any)["llamacpp"].(map[string]any)
-	if got := llamacpp["options"].(map[string]any)["baseURL"]; got != "http://198.51.100.7:8000/v1" {
+	dev1 := m["provider"].(map[string]any)["dev-1"].(map[string]any)
+	if got := dev1["options"].(map[string]any)["baseURL"]; got != "http://198.51.100.7:8000/v1" {
 		t.Errorf("baseURL = %v, want the remote config's base_url", got)
 	}
 }
 
 // TestCmdApply_SpinloopBaseURLBeatsRemoteConfig checks the precedence: a BASEURL
-// the user wrote in the Spinloop wins over the generated remote config.
+// the user wrote in the Spinloop wins over the environment's remote.json.
 func TestCmdApply_SpinloopBaseURLBeatsRemoteConfig(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
 
-	spinloopDir := t.TempDir()
-	mustWrite(t, filepath.Join(spinloopDir, "remote.json"),
+	envConfig := filepath.Join(dir, "spinloop", "remotes", "dev-1", "remote.json")
+	if err := os.MkdirAll(filepath.Dir(envConfig), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	mustWrite(t, envConfig,
 		`{"start_url":"https://start.example/","stop_url":"https://stop.example/","region":"us-east-1","base_url":"http://198.51.100.7:8000/v1"}`)
+	spinloopDir := t.TempDir()
 	spinloopFile := filepath.Join(spinloopDir, "Spinloop")
-	mustWrite(t, spinloopFile, "PROVIDER llamacpp\nALIAS qwen\nBASEURL http://127.0.0.1:9090/v1\nREMOTE remote.json\n")
+	mustWrite(t, spinloopFile, "PROVIDER llamacpp\nALIAS qwen\nBASEURL http://127.0.0.1:9090/v1\n")
 
 	captureStdout(t, func() {
-		if err := cmdApply([]string{spinloopFile}); err != nil {
+		if err := cmdApply([]string{"--env", "dev-1", spinloopFile}); err != nil {
 			t.Fatalf("cmdApply: %v", err)
 		}
 	})
 
 	m := readConfigMap(t, filepath.Join(dir, "opencode", "opencode.json"))
-	llamacpp := m["provider"].(map[string]any)["llamacpp"].(map[string]any)
-	if got := llamacpp["options"].(map[string]any)["baseURL"]; got != "http://127.0.0.1:9090/v1" {
+	dev1 := m["provider"].(map[string]any)["dev-1"].(map[string]any)
+	if got := dev1["options"].(map[string]any)["baseURL"]; got != "http://127.0.0.1:9090/v1" {
 		t.Errorf("baseURL = %v, want the Spinloop's own BASEURL", got)
 	}
 }
 
-// TestCmdApply_RemoteConfigAbsent checks that a Spinloop naming a remote config
-// that does not exist yet still applies: the deployment that writes it may not
-// have run, and apply has nothing to do with starting the endpoint.
-func TestCmdApply_RemoteConfigAbsent(t *testing.T) {
+// TestCmdApply_UnregisteredEnvironmentFails checks that --env naming an
+// environment that has never been deployed fails, naming the deploy command that
+// creates it.
+func TestCmdApply_UnregisteredEnvironmentFails(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
 
 	spinloopDir := t.TempDir()
 	spinloopFile := filepath.Join(spinloopDir, "Spinloop")
-	mustWrite(t, spinloopFile, "PROVIDER llamacpp\nALIAS qwen\nREMOTE remote.json\n")
+	mustWrite(t, spinloopFile, "PROVIDER llamacpp\nALIAS qwen\n")
 
-	captureStdout(t, func() {
-		if err := cmdApply([]string{spinloopFile}); err != nil {
-			t.Fatalf("cmdApply: %v", err)
-		}
-	})
+	err := cmdApply([]string{"--env", "dev-1", spinloopFile})
+	if err == nil {
+		t.Fatal("expected an error for an unregistered environment")
+	}
+	if !strings.Contains(err.Error(), "not registered") ||
+		!strings.Contains(err.Error(), "`spinloop remote deploy --env \"dev-1\"`") {
+		t.Errorf("error = %v, want the not-registered error naming the deploy command", err)
+	}
 }
 
-// TestCmdApply_RemoteConfigMalformed checks that applying a Spinloop whose
-// path-form REMOTE names a malformed remote.json fails loudly, rather than
-// silently applying under the wrong provider name.
+// TestCmdApply_RemoteConfigMalformed checks that applying against a registered
+// environment whose remote.json is malformed fails loudly, rather than silently
+// applying under the wrong base URL.
 func TestCmdApply_RemoteConfigMalformed(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
 
+	envConfig := filepath.Join(dir, "spinloop", "remotes", "dev-1", "remote.json")
+	if err := os.MkdirAll(filepath.Dir(envConfig), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	mustWrite(t, envConfig, "{not valid json")
 	spinloopDir := t.TempDir()
-	mustWrite(t, filepath.Join(spinloopDir, "remote.json"), "{not valid json")
 	spinloopFile := filepath.Join(spinloopDir, "Spinloop")
-	mustWrite(t, spinloopFile, "PROVIDER llamacpp\nALIAS qwen\nREMOTE remote.json\n")
+	mustWrite(t, spinloopFile, "PROVIDER llamacpp\nALIAS qwen\n")
 
-	err := cmdApply([]string{spinloopFile})
+	err := cmdApply([]string{"--env", "dev-1", spinloopFile})
 	if err == nil {
 		t.Fatal("expected an error for a malformed remote config")
 	}
@@ -555,26 +571,10 @@ func TestCmdApply_RemoteConfigMalformed(t *testing.T) {
 	}
 }
 
-// TestCmdUnapply_RemoteConfigMalformed checks the same guard on the unapply side,
-// so apply and unapply fail the same way on a broken remote config.
-func TestCmdUnapply_RemoteConfigMalformed(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", dir)
-
-	spinloopDir := t.TempDir()
-	mustWrite(t, filepath.Join(spinloopDir, "remote.json"), "{not valid json")
-	spinloopFile := filepath.Join(spinloopDir, "Spinloop")
-	mustWrite(t, spinloopFile, "PROVIDER llamacpp\nALIAS qwen\nREMOTE remote.json\n")
-
-	if err := cmdUnapply([]string{spinloopFile}); err == nil {
-		t.Fatal("expected an error for a malformed remote config")
-	}
-}
-
-// TestCmdApply_RemoteNameIsProviderName checks that a bare-name REMOTE keys the
-// harness provider on the environment name — configured from the PROVIDER's
-// catalogue entry — with the default model reading as <env>/<model> and the base
-// URL taken from that environment's remote.json.
+// TestCmdApply_RemoteNameIsProviderName checks that --env keys the harness
+// provider on the environment name — configured from the PROVIDER's catalogue
+// entry — with the default model reading as <env>/<model> and the base URL taken
+// from that environment's remote.json.
 func TestCmdApply_RemoteNameIsProviderName(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
@@ -588,10 +588,10 @@ func TestCmdApply_RemoteNameIsProviderName(t *testing.T) {
 
 	spinloopDir := t.TempDir()
 	spinloopFile := filepath.Join(spinloopDir, "Spinloop")
-	mustWrite(t, spinloopFile, "PROVIDER llamacpp\nALIAS qwen\nREMOTE dev-1\n")
+	mustWrite(t, spinloopFile, "PROVIDER llamacpp\nALIAS qwen\n")
 
 	captureStdout(t, func() {
-		if err := cmdApply([]string{spinloopFile}); err != nil {
+		if err := cmdApply([]string{"--env", "dev-1", spinloopFile}); err != nil {
 			t.Fatalf("cmdApply: %v", err)
 		}
 	})
@@ -616,58 +616,6 @@ func TestCmdApply_RemoteNameIsProviderName(t *testing.T) {
 	}
 }
 
-// TestCmdApply_RemotePathEnvironmentIsProviderName checks that a path-form REMOTE
-// takes the provider name from the environment field of the remote.json it names.
-func TestCmdApply_RemotePathEnvironmentIsProviderName(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", dir)
-
-	spinloopDir := t.TempDir()
-	mustWrite(t, filepath.Join(spinloopDir, "remote.json"),
-		`{"start_url":"https://start.example/","stop_url":"https://stop.example/","region":"us-east-1","base_url":"http://198.51.100.7:8000/v1","environment":"dev-1"}`)
-	spinloopFile := filepath.Join(spinloopDir, "Spinloop")
-	mustWrite(t, spinloopFile, "PROVIDER llamacpp\nALIAS qwen\nREMOTE remote.json\n")
-
-	captureStdout(t, func() {
-		if err := cmdApply([]string{spinloopFile}); err != nil {
-			t.Fatalf("cmdApply: %v", err)
-		}
-	})
-
-	prov := readConfigMap(t, filepath.Join(dir, "opencode", "opencode.json"))["provider"].(map[string]any)
-	if _, ok := prov["dev-1"]; !ok {
-		t.Errorf("expected a provider keyed %q, got %v", "dev-1", prov)
-	}
-}
-
-// TestCmdApply_RemotePathWithoutEnvironmentKeepsProvider checks the fallback: a
-// path-form REMOTE whose remote.json records no environment keeps the PROVIDER
-// value as the provider name.
-func TestCmdApply_RemotePathWithoutEnvironmentKeepsProvider(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", dir)
-
-	spinloopDir := t.TempDir()
-	mustWrite(t, filepath.Join(spinloopDir, "remote.json"),
-		`{"start_url":"https://start.example/","stop_url":"https://stop.example/","region":"us-east-1","base_url":"http://198.51.100.7:8000/v1"}`)
-	spinloopFile := filepath.Join(spinloopDir, "Spinloop")
-	mustWrite(t, spinloopFile, "PROVIDER llamacpp\nALIAS qwen\nREMOTE remote.json\n")
-
-	captureStdout(t, func() {
-		if err := cmdApply([]string{spinloopFile}); err != nil {
-			t.Fatalf("cmdApply: %v", err)
-		}
-	})
-
-	prov := readConfigMap(t, filepath.Join(dir, "opencode", "opencode.json"))["provider"].(map[string]any)
-	if _, ok := prov["llamacpp"]; !ok {
-		t.Errorf("expected the provider to stay keyed %q, got %v", "llamacpp", prov)
-	}
-	if got := prov["llamacpp"].(map[string]any)["name"]; got != "llama.cpp" {
-		t.Errorf("display name = %v, want the plain engine name when no environment resolves", got)
-	}
-}
-
 // TestCmdApply_RemoteProviderLabelledPerEnvironment checks that a remote provider
 // gets a display name qualified by its environment, so it reads distinctly from a
 // local engine of the same kind, which keeps the bare engine name.
@@ -684,12 +632,12 @@ func TestCmdApply_RemoteProviderLabelledPerEnvironment(t *testing.T) {
 
 	spinloopDir := t.TempDir()
 	remoteSpinloop := filepath.Join(spinloopDir, "Spinloop")
-	mustWrite(t, remoteSpinloop, "PROVIDER llamacpp\nALIAS qwen\nREMOTE dev-2\n")
+	mustWrite(t, remoteSpinloop, "PROVIDER llamacpp\nALIAS qwen\n")
 	localSpinloop := filepath.Join(spinloopDir, "Local")
 	mustWrite(t, localSpinloop, "PROVIDER llamacpp\nALIAS qwen\nBASEURL http://127.0.0.1:8080/v1\n")
 
 	captureStdout(t, func() {
-		if err := cmdApply([]string{remoteSpinloop}); err != nil {
+		if err := cmdApply([]string{"--env", "dev-2", remoteSpinloop}); err != nil {
 			t.Fatalf("cmdApply remote: %v", err)
 		}
 		if err := cmdApply([]string{localSpinloop}); err != nil {
@@ -745,10 +693,10 @@ func TestCmdApply_RemoteReapplyRefreshesLabel(t *testing.T) {
 
 	spinloopDir := t.TempDir()
 	spinloopFile := filepath.Join(spinloopDir, "Spinloop")
-	mustWrite(t, spinloopFile, "PROVIDER llamacpp\nALIAS qwen\nREMOTE dev-2\n")
+	mustWrite(t, spinloopFile, "PROVIDER llamacpp\nALIAS qwen\n")
 
 	captureStdout(t, func() {
-		if err := cmdApply([]string{spinloopFile}); err != nil {
+		if err := cmdApply([]string{"--env", "dev-2", spinloopFile}); err != nil {
 			t.Fatalf("cmdApply: %v", err)
 		}
 	})
@@ -776,15 +724,15 @@ func TestCmdUnapply_RemoveEnvironmentNamedProvider(t *testing.T) {
 
 	spinloopDir := t.TempDir()
 	spinloopFile := filepath.Join(spinloopDir, "Spinloop")
-	mustWrite(t, spinloopFile, "PROVIDER llamacpp\nALIAS qwen\nREMOTE dev-1\n")
+	mustWrite(t, spinloopFile, "PROVIDER llamacpp\nALIAS qwen\n")
 
 	captureStdout(t, func() {
-		if err := cmdApply([]string{spinloopFile}); err != nil {
+		if err := cmdApply([]string{"--env", "dev-1", spinloopFile}); err != nil {
 			t.Fatalf("cmdApply: %v", err)
 		}
 	})
 	captureStdout(t, func() {
-		if err := cmdUnapply([]string{spinloopFile}); err != nil {
+		if err := cmdUnapply([]string{"--env", "dev-1", spinloopFile}); err != nil {
 			t.Fatalf("cmdUnapply: %v", err)
 		}
 	})

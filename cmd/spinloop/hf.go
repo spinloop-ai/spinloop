@@ -92,7 +92,7 @@ line: applying one defaults the output to a quarter of the context.`,
 				if err != nil {
 					return err
 				}
-				return applySelection(sel, h, "", opencode.EnvResolver(""))
+				return applySelection(sel, h, "", "", opencode.EnvResolver(""))
 			}
 			return nil
 		},

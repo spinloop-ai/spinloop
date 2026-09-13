@@ -20,6 +20,7 @@ opencode. After applying, just run your coding agent — or do both at once with
 
 | Flag | Meaning |
 | ---- | ------- |
+| `-e`, `--env` | The registered [environment](remote.md) the Spinloop points at: names the harness provider and, with no `BASEURL`, supplies the endpoint's address |
 | `-o`, `--output` | Max output tokens — overrides the Spinloop's `OUTPUT` |
 | `-H`, `--harness` | Which harness to configure (or set `SPINLOOP_HARNESS`) |
 | `--providers` | Path to a custom catalogue (a Spinloop never names one) |
@@ -33,10 +34,14 @@ opencode. After applying, just run your coding agent — or do both at once with
   [Fetching a Spinloop from a URL](../spinloop-file.md#fetching-an-spinloop-from-a-url).
 - A Spinloop's `PRESET` line is for [`spinloop serve`](serve.md); `apply` ignores
   it — never fetched, even when it's a URL.
-- A Spinloop with a `REMOTE` line and no `BASEURL` takes the endpoint's address
-  from that [remote config](remote.md)'s `base_url`, which its deployment
-  writes. A `BASEURL` in the Spinloop wins over it, and a remote config that
-  isn't there yet is not an error — apply just leaves the base URL alone.
+- With `--env <name>`, the Spinloop points at a registered
+  [environment](remote.md): the harness provider is keyed on the environment
+  name (so several environments built from the same engine keep their own
+  entries), and a Spinloop with no `BASEURL` takes the endpoint's address from
+  the environment's `remote.json` `base_url`, which its deployment writes. A
+  `BASEURL` in the Spinloop wins over it. An unregistered name fails, naming
+  the `spinloop remote deploy --env <name>` that would create it. Without
+  `--env`, apply reads no remote config at all.
 
 ## See also
 

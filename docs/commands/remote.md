@@ -9,7 +9,7 @@ spinloop remote bootstrap  # once per account: deploy the control plane
 spinloop remote auth       # store or report the credential this machine signs with
 spinloop remote bake       # bake the runner AMI(s) an environment runs from
 spinloop remote deploy     # create an endpoint (environment) and tell it what to serve
-spinloop remote start      # boot it; prints the exports your agent needs (progress on stderr)
+spinloop remote start      # boot it; with --print-env, prints the exports your agent needs
 spinloop remote status     # is it up? is it healthy?
 spinloop remote logs       # what did it say? (readable after it's gone)
 spinloop remote pause      # stop it now; a later start re-wakes it
@@ -77,13 +77,20 @@ picked up automatically once it is available.
 ## The usual flow
 
 ```sh
-eval "$(spinloop remote start)"           # boots it (~10 min from cold) and sets
-                                       # OPENAI_BASE_URL and OPENAI_API_KEY
-spinloop apply                           # point your agent at it
-spinloop harness                         # work
-spinloop remote pause                    # done for now: stopped, re-wakeable with start
-spinloop remote stop                     # done for good: terminate it
+eval "$(spinloop remote start --env qwen3.6-27b --print-env)"   # boots it (~10 min
+                                        # from cold) and sets OPENAI_BASE_URL and
+                                        # OPENAI_API_KEY
+spinloop apply --env qwen3.6-27b         # point your agent at it
+spinloop harness --env qwen3.6-27b       # work
+spinloop remote pause --env qwen3.6-27b  # done for now: stopped, re-wakeable with start
+spinloop remote stop --env qwen3.6-27b   # done for good: terminate it
 ```
+
+Every command that acts on an endpoint — `start`, `status`, `metrics`, `logs`,
+`pause`, `restart`, `keep`, `stop` — selects it with the same `--env <name>`
+flag; with no flag they use the `default` environment. `start` prints its
+progress on stderr, and the export lines for `eval` only with `--print-env`, so
+a plain `start` leaves stdout empty for other uses.
 
 Forgetting `stop` is not a disaster — after a spell with no requests the
 endpoint is **stopped** (no more GPU billing; a start re-wakes it) and then
@@ -111,30 +118,29 @@ for [`spinloop apply`](apply.md): a Spinloop for a remote endpoint can leave out
 `BASEURL` and let apply take the address from here, so the address stays with
 the deployment that owns it. A `BASEURL` in the Spinloop wins if you set one.
 
-Either name it from the Spinloop, so a project carries its own endpoint:
+Name the environment with the `--env` flag:
 
-```dockerfile
-REMOTE ./remote.json                       # a path: resolved next to the Spinloop, like PRESET
-REMOTE https://example.com/team/remote.json  # a URL, fetched instead of read from disk
-REMOTE qwen3.6-27b-prod                    # a bare name: an environment in the registry
+```sh
+spinloop remote status --env qwen3.6-27b-prod
 ```
 
-A relative path resolves against the Spinloop's own URL too, when the Spinloop
-itself was fetched from one — and is fetched only when a command here actually
-needs it, never merely because the Spinloop was read. A bare name (no slash, no
-`.json`) selects a **named environment** from the
+The flag selects a **named environment** from the
 per-user registry at `~/.config/spinloop/remotes/<name>/remote.json`. This keeps
-deployment state per-user and per-instance: two projects name two environments
-without clobbering, and only the name — not the URLs — lives in the committed
-Spinloop. `spinloop remote deploy` registers an environment for you; you can also
-create one by hand.
+deployment state per-user and per-machine: two projects name two environments
+without clobbering, and the Spinloop carries none of the URLs at all.
+`spinloop remote deploy` registers an environment for you; you can also
+create one by hand. A name is a plain identifier — `--env ./remote.json` fails,
+saying an environment name has no path. With no flag, a command uses the
+`default` environment (`~/.config/spinloop/remotes/default/remote.json`), so it
+works from anywhere. An existing `~/.config/spinloop/remote.json` from before
+the registry is still read as the default; move it to
+`remotes/default/remote.json` when convenient.
 
-Given no path, `spinloop remote` reads the Spinloop `SPINLOOP_ALIAS` names, or
-`./Spinloop` when you are standing beside one. With neither — or with one that
-names no `REMOTE` — it uses the `default` environment
-(`~/.config/spinloop/remotes/default/remote.json`), so it works from anywhere.
-An existing `~/.config/spinloop/remote.json` from before the registry is still
-read as the default; move it to `remotes/default/remote.json` when convenient.
+A command may also be given a Spinloop path (or a [registered
+alias](alias.md), or a URL): its `ENV` lines and the `.env` beside it are read
+before the command signs its AWS calls, so credentials, region and
+`SPINLOOP_REMOTE_*` overrides can travel with the Spinloop. The Spinloop does
+not select the environment — that is the flag's job alone.
 
 ## Listing environments
 
@@ -344,17 +350,23 @@ recovered — only what's shipped from then on.
 ## Creating an endpoint: `deploy`
 
 `spinloop remote deploy` creates an **environment** on the bootstrapped control
-plane and tells it what to serve. It reads the Spinloop and its preset:
-`PROVIDER` picks the engine (so the file that runs a model locally under
-[`spinloop serve`](serve.md) deploys the same model remotely), and `REMOTE` names
-the environment — the committed link between the Spinloop and its deployment:
+plane and tells it what to serve. It reads the Spinloop and its preset —
+`PROVIDER` picks the engine, so the file that runs a model locally under
+[`spinloop serve`](serve.md) deploys the same model remotely — and `--env <name>`
+names the environment it creates and registers. The flag is required: a deploy
+without it fails, naming the flag and a name to use. The Spinloop says what the
+environment serves; the name is a machine-local choice, so it stays out of the
+file:
 
 ```dockerfile
 PROVIDER llamacpp        # the engine to run: llamacpp or vllm
 ALIAS    qwen3.6-27b     # the name your agent asks for — and the name served
 CONTEXT  131072
 PRESET   ./preset.ini    # the model and its flags
-REMOTE   qwen3.6-27b     # the environment deploy creates and registers
+```
+
+```sh
+spinloop remote deploy --env qwen3.6-27b
 ```
 
 Deploy discovers the control plane from the bootstrap stack's outputs, then
@@ -390,14 +402,14 @@ weights yet it fetches them (about 15–20 minutes, entirely on its side) and
 says so; wait for that before your first `start`, or the model won't be there.
 
 Switching model, quantisation, or engine is an edit to those two files and one
-`deploy` — no redeployment of the infrastructure. A second Spinloop naming a
-different `REMOTE` gets its own environment, side by side.
+`deploy` — no redeployment of the infrastructure. A second Spinloop deployed
+under a different `--env` name gets its own environment, side by side.
 
 ```sh
-spinloop remote deploy --dry-run       # see what would be sent
-spinloop remote deploy path/to/Spinloop  # deploy a different one
-spinloop remote deploy --overwrite     # redeploy over the existing environment
-spinloop remote deploy --reseed        # re-fetch weights already in S3
+spinloop remote deploy --env qwen3.6-27b --dry-run        # see what would be sent
+spinloop remote deploy --env other-env path/to/Spinloop   # deploy a different file
+spinloop remote deploy --env qwen3.6-27b --overwrite      # redeploy over the existing environment
+spinloop remote deploy --env qwen3.6-27b --reseed         # re-fetch weights already in S3
 ```
 
 Deploy fetches the weights only when they are not in S3 already. `--reseed`
@@ -423,6 +435,8 @@ included) for every `kind: remote` node a fleet file names — or a chosen few
 
 | Flag | Meaning |
 | ---- | ------- |
+| `--env` | The environment the command acts on, by registered name (required by `deploy`; default `default`) |
+| `--print-env` | `start` only: print the export lines (`OPENAI_BASE_URL`/`OPENAI_API_KEY`) to stdout for `eval` |
 | `--timeout` | How long `start` or `restart` waits for the endpoint (default 15m) |
 | `-F`, `--force` | `restart` only: skip the graceful engine stop and take the instance down directly |
 | `--keep` | `start` only: retain the instance until `now + DURATION`, preventing the idle sweep from stopping it |
@@ -441,10 +455,12 @@ included) for every `kind: remote` node a fleet file names — or a chosen few
 - `bootstrap`, `bake`, and `auth` take no Spinloop: the control plane and the
   AMIs are shared by every environment, and the stored credential belongs to
   the machine, not a project.
-- `deploy` always needs a Spinloop — it's the thing being deployed. The others
-  take an optional Spinloop path, a [registered alias](alias.md), or a URL.
-  Given none, they use the alias `SPINLOOP_ALIAS` names, and failing that
-  `./Spinloop`, and failing that your per-user config.
+- `deploy` always needs a Spinloop — it's the thing being deployed — and a
+  required `--env <name>` for the environment it creates. The others take an
+  optional Spinloop path, a [registered alias](alias.md), or a URL, read only
+  for its `ENV` lines and `.env` — never to select the environment. Which
+  environment a command acts on is its `--env` flag, defaulting to the
+  `default` environment.
 - `deploy_url` is optional: a config written before `deploy` existed still
   works for `start`, `stop`, and `status`.
 - Only a self-hosted engine can be deployed (`llamacpp` or `vllm`). A hosted
@@ -454,6 +470,6 @@ included) for every `kind: remote` node a fleet file names — or a chosen few
 
 ## See also
 
-- [The `Spinloop` file](../spinloop-file.md) — including `REMOTE`
+- [The `Spinloop` file](../spinloop-file.md) — what the Spinloop serves
 - [`spinloop serve`](serve.md) — the same Spinloop, run on your own machine
 - [`spinloop apply`](apply.md) — point your agent at the endpoint

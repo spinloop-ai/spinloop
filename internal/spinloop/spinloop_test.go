@@ -164,19 +164,32 @@ func TestFormat_NoParallelOmitsLine(t *testing.T) {
 	}
 }
 
-func TestParse_Remote(t *testing.T) {
-	sel, err := Parse([]byte("PROVIDER openai-compatible\nREMOTE ./remote.json\n"))
-	if err != nil {
-		t.Fatal(err)
+// REMOTE was removed from the grammar: the environment is named with
+// `remote deploy --env <name>` at deploy time and `--env <name>` at the
+// commands that act on it, so a REMOTE line is rejected with a message that
+// names the replacement.
+func TestParse_RemoteRejected(t *testing.T) {
+	_, err := Parse([]byte("PROVIDER openai-compatible\nREMOTE ./remote.json\n"))
+	if err == nil {
+		t.Fatal("a REMOTE line should be rejected")
 	}
-	if sel.Remote != "./remote.json" {
-		t.Errorf("Remote = %q, want ./remote.json", sel.Remote)
+	for _, want := range []string{"line 2", "REMOTE", "removed", "--env"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error should contain %q, got %q", want, err)
+		}
 	}
-	if out := Format(sel); !strings.Contains(out, "REMOTE   ./remote.json") {
-		t.Errorf("Format should emit REMOTE, got:\n%s", out)
+	if _, err := Parse([]byte("PROVIDER x\nremote a\n")); err == nil {
+		t.Error("a lower-case remote line should be rejected too")
 	}
-	if _, err := Parse([]byte("PROVIDER x\nREMOTE a\nREMOTE b\n")); err == nil {
-		t.Error("duplicate REMOTE should error")
+}
+
+func TestParse_RemoteRejectionIsNotTheGenericError(t *testing.T) {
+	_, err := Parse([]byte("PROVIDER x\nREMOTE a\n"))
+	if err == nil {
+		t.Fatal("a REMOTE line should be rejected")
+	}
+	if strings.Contains(err.Error(), "unknown keyword") {
+		t.Errorf("the REMOTE rejection should name the removal, not be the generic unknown-keyword error, got %q", err)
 	}
 }
 

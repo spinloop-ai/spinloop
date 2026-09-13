@@ -65,56 +65,63 @@ spinloop alias -n team-default https://example.com/team/Spinloop
 spinloop apply team-default
 ```
 
-A relative `PRESET` or `REMOTE` in a URL-sourced Spinloop resolves against that
+A relative `PRESET` in a URL-sourced Spinloop resolves against that
 URL rather than a local directory — see [Syntax](#syntax) below — and is
 fetched only when the command that actually needs it runs, never merely
 because the Spinloop itself was read.
 
 ## Running the model on a cloud GPU
 
-For a model too big for your machine, `REMOTE` names the config of a
-scale-to-zero GPU endpoint — one that runs only while you're using it:
+For a model too big for your machine, `spinloop remote` runs it on a
+scale-to-zero GPU endpoint — one that runs only while you're using it. The
+Spinloop says what the endpoint serves:
 
 ```dockerfile
-# Spinloop
+# Spinloop — what the environment serves
 PROVIDER llamacpp        # the engine to run there, as it would run here
 ALIAS    qwen3.6-27b
 CONTEXT  131072
 PRESET   ./preset.ini
-REMOTE   ./remote.json
 ```
 
-`REMOTE` takes a path, a URL, or a bare name. A path (`./remote.json`, or an
-absolute one) is resolved relative to the Spinloop, like `PRESET` — or against
-the Spinloop's own URL when it was fetched from one; `REMOTE` may also be an
-absolute URL of its own. Either way it is fetched only when a `remote`
-subcommand resolves it, or when `apply` falls back to it for the base URL (see
-below) — never merely because the Spinloop was read. A bare name
-(`REMOTE qwen3.6-27b-prod`) selects a named environment from the per-user
-registry at `${XDG_CONFIG_HOME:-~/.config}/spinloop/remotes/<name>/remote.json`,
-so deployment state stays per-user and per-instance while only the name lives in
-the committed Spinloop — this form is always local, never a URL.
-[`spinloop remote`](commands/remote.md) reads whichever it resolves to. With no
-path argument the commands consult `./Spinloop` when it exists and otherwise
-fall back to the `default` environment; an explicit path
-(`spinloop remote status path/to/Spinloop`) requires the Spinloop to carry a `REMOTE`
-instruction.
+The Spinloop says *what*; it no longer says *where*. Where is an
+**environment** — a deployed, registered endpoint — and the environment is named
+with a `--env <name>` flag on the commands that act on it:
+
+```sh
+spinloop remote deploy --env qwen3.6-27b-prod   # from the directory holding the Spinloop
+spinloop apply --env qwen3.6-27b-prod           # point opencode at it
+spinloop harness --env qwen3.6-27b-prod         # work
+spinloop remote stop --env qwen3.6-27b-prod     # done
+```
+
+Each `--env <name>` reads the environment's registered config at
+`${XDG_CONFIG_HOME:-~/.config}/spinloop/remotes/<name>/remote.json` — the file
+[`spinloop remote deploy`](commands/remote.md) writes when it creates the
+environment — so deployment state stays per-user and per-machine while the
+Spinloop itself stays clean enough to commit. A command given no `--env` uses
+the `default` environment, and an unregistered name fails, naming the `deploy
+--env` that would create it. A name is a plain identifier: `--env ./x.json`
+fails, saying so. See [`spinloop remote`](commands/remote.md) for the full
+lifecycle.
 
 Note the missing `BASEURL`: the endpoint's address belongs to the deployment,
-which records it in the named file as `base_url`, and
+which records it in the environment's `remote.json` as `base_url`, and
 [`spinloop apply`](commands/apply.md) reads it from there. Write a `BASEURL` only
 to override that.
 
-Applying a `REMOTE` Spinloop also names the harness provider after the environment
+Applying with `--env` also names the harness provider after the environment
 rather than the engine: the example above is configured under `qwen3.6-27b-prod`,
 with the model reading as `qwen3.6-27b-prod/qwen3.6-27b`. `PROVIDER` still
 supplies the engine's settings; only the name changes, so several environments
 built from the same engine each keep their own entry instead of overwriting one.
-The name is the bare `REMOTE` value, or the `environment` field of the file a
-path-form `REMOTE` names (falling back to `PROVIDER` when that field is absent).
 The provider's display name is qualified by the environment too — `llama.cpp
 (qwen3.6-27b-prod)` rather than a bare `llama.cpp` — so a remote environment reads
 distinctly from a local engine of the same kind in a harness model picker.
+
+A launch may not state both `--env` and a fleet (the `--fleet` flag, or the
+`./fleet.yaml` in force when the Spinloop is not named): each names where the
+model is served from, so spinloop fails naming both.
 
 Because `PROVIDER` names the engine, this is the same file that would run the
 model locally with [`spinloop serve`](commands/serve.md) — pointed at a bigger
@@ -175,7 +182,6 @@ One instruction per line: a keyword followed by a single value.
 | `PARALLEL` | no                               | `spinloop serve`, `spinloop remote deploy` | `PARALLEL 2` |
 | `BASEURL`  | no                               | `--base-url`   | `BASEURL https://gateway/v1`   |
 | `PRESET`   | no                               | `spinloop serve` | `PRESET ./preset.ini`          |
-| `REMOTE`   | no                               | `spinloop remote` | `REMOTE ./remote.json`        |
 | `ENV`      | no (repeatable)                  | `spinloop remote`, `spinloop harness` | `ENV AWS_PROFILE=prod` |
 
 Rules:
@@ -233,6 +239,12 @@ Rules:
   variables. `ENV` applies only on the machine running `spinloop`; it is never sent
   to a deployed instance, and on the harness path it shapes only the launched
   agent, never spinloop's own environment.
+- The `REMOTE` keyword was removed: a `REMOTE` line fails, naming the line and
+  the replacement — `spinloop remote deploy --env <name>` at deploy time and
+  `--env <name>` on `apply`, `unapply`, `harness`, and the `remote`
+  subcommands. Where a `REMOTE` line pointed at a path or a URL, register the
+  environment's config with `spinloop remote deploy --env <name>` instead, and
+  name it from the flags.
 - Keywords are **case-insensitive** — `provider`, `Provider`, and `PROVIDER` are
   all accepted — but **UPPERCASE is canonical** and is what `spinloop export`
   writes.

@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"maps"
@@ -38,9 +37,11 @@ import (
 // idle), status reports instance state and endpoint health, keep sets the
 // retention deadline to prevent the sweep from terminating the instance
 // early, and deploy sets what the instance will serve from the Spinloop itself.
-// Each subcommand takes an optional Spinloop path; see resolveRemoteConfig for
-// how the remote config is found. The group itself does nothing — see
-// groupFallback for what a bare or mistyped invocation gets.
+// Each subcommand acts on one registered environment — the --env flag names
+// it, and without the flag the `default` environment is used; see
+// resolveRemoteConfig. Each also takes an optional Spinloop path, read for
+// its ENV instructions and adjacent .env only. The group itself does nothing
+// — see groupFallback for what a bare or mistyped invocation gets.
 
 // cmdRemote runs the remote subcommands through the tree — the seam the suite
 // calls directly.
@@ -89,56 +90,57 @@ func applySpinloopEnv(sel spinloop.Selection, spinloopPath string) error {
 	return nil
 }
 
-// resolveRemoteConfig loads the remote config, preferring a Spinloop's REMOTE
-// instruction over the per-user file. An explicit [path] argument must name
-// a Spinloop (or a directory holding one) with a REMOTE instruction. With no
-// argument, ./Spinloop is consulted when present; the per-user config
-// (~/.config/spinloop/remote.json) is the fallback, so `spinloop remote` still
-// works outside any project. A relative REMOTE resolves against the Spinloop's
-// own source — a local directory when the Spinloop was read from disk,
-// URL-relative resolution when it was fetched from a URL — the same rule
-// PRESET uses.
-func resolveRemoteConfig(spinloopArg string) (remote.Config, error) {
+// envFlagUsage is the --env flag's help text on every remote subcommand that
+// acts on one environment.
+const envFlagUsage = "the registered environment to act on (defaults to the default environment)"
+
+// resolveRemoteConfig loads the remote config a subcommand acts on. The --env
+// flag names an environment in the per-user registry, read from
+// remotes/<name>/remote.json; a name with no registered configuration fails
+// saying the environment is not registered and how to create it. Without the
+// flag, the per-user config is the fallback — the `default` environment, then
+// the legacy single file, then the SPINLOOP_REMOTE_* overrides alone — so
+// `spinloop remote` still works outside any project.
+//
+// A Spinloop given as an argument (or the ./Spinloop in the working directory,
+// when no argument was given) is read for its ENV instructions and adjacent
+// .env only, applied before any control-plane work: it never selects an
+// environment.
+func resolveRemoteConfig(envName, spinloopArg string) (remote.Config, error) {
 	if spinloopArg != "" {
 		sel, spinloopPath, err := readSpinloop("remote", spinloopArg)
 		if err != nil {
 			return remote.Config{}, err
 		}
-		if sel.Remote == "" {
-			return remote.Config{}, fmt.Errorf("%s has no REMOTE instruction", spinloopPath)
-		}
 		if err := applySpinloopEnv(sel, spinloopPath); err != nil {
 			return remote.Config{}, err
 		}
-		return resolveRemoteConfigForSpinloop(sel.Remote, spinloopPath)
-	}
-	if defaultSpinloopNamed() {
+	} else if defaultSpinloopNamed() {
 		sel, spinloopPath, err := readSpinloop("remote", "")
 		if err != nil {
 			return remote.Config{}, err
 		}
-		if sel.Remote != "" {
-			if err := applySpinloopEnv(sel, spinloopPath); err != nil {
-				return remote.Config{}, err
-			}
-			return resolveRemoteConfigForSpinloop(sel.Remote, spinloopPath)
+		if err := applySpinloopEnv(sel, spinloopPath); err != nil {
+			return remote.Config{}, err
 		}
 	}
-	return remote.LoadDefault(viperGetenv())
-}
-
-// resolveRemotePath turns a Spinloop's REMOTE value into the config to read. A
-// bare name selects an environment from the per-user registry (always local);
-// a path or URL resolves against the Spinloop's own source — spinloopPath, the
-// Spinloop's own file (not its directory), so a relative REMOTE resolves
-// correctly whether the Spinloop came from local disk or a URL. Both the
-// control commands and apply's base-URL lookup go through here, so the two
-// never diverge.
-func resolveRemotePath(remoteValue, spinloopPath string) (string, error) {
-	if remote.IsEnvName(remoteValue) {
-		return remote.EnvConfigPath(remoteValue)
+	if envName != "" {
+		if !remote.IsEnvName(envName) {
+			return remote.Config{}, fmt.Errorf("%q is not an environment name: an environment name is a plain identifier, with no path", envName)
+		}
+		path, err := remote.EnvConfigPath(envName)
+		if err != nil {
+			return remote.Config{}, err
+		}
+		if _, err := os.Stat(path); err != nil {
+			if os.IsNotExist(err) {
+				return remote.Config{}, fmt.Errorf("environment %q is not registered: run `spinloop remote deploy --env %q` to create it", envName, envName)
+			}
+			return remote.Config{}, err
+		}
+		return remote.LoadConfigFile(path, viperGetenv())
 	}
-	return spinloopsrc.Resolve(spinloopPath, remoteValue)
+	return remote.LoadDefault(viperGetenv())
 }
 
 // defaultSpinloopNamed reports whether there is a default Spinloop for readSpinloop
@@ -169,92 +171,6 @@ func defaultSpinloopExists() bool {
 		}
 	}
 	return false
-}
-
-// remoteConfig reads the remote config a Spinloop's REMOTE names — a registry
-// environment or a file/URL, per resolveRemotePath. A config that is absent
-// yields the zero Config rather than an error, since a Spinloop may name a
-// remote config before the deployment that writes it exists; only a real
-// read, fetch, or parse failure is reported.
-func remoteConfig(remoteValue, spinloopPath string) (remote.Config, error) {
-	path, err := resolveRemotePath(remoteValue, spinloopPath)
-	if err != nil {
-		return remote.Config{}, err
-	}
-	if spinloopsrc.IsURL(path) {
-		data, err := spinloopsrc.Fetch(path)
-		if err != nil {
-			if errors.Is(err, spinloopsrc.ErrNotFound) {
-				return remote.Config{}, nil
-			}
-			return remote.Config{}, err
-		}
-		return remote.LoadConfigBytes(data, path, viperGetenv())
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return remote.Config{}, nil
-		}
-		return remote.Config{}, err
-	}
-	var cfg remote.Config
-	if err := json.Unmarshal(data, &cfg); err != nil {
-		return remote.Config{}, fmt.Errorf("parsing %s: %w", path, err)
-	}
-	return cfg, nil
-}
-
-// remoteBaseURL returns the endpoint address recorded in the remote config an
-// Spinloop's REMOTE names. The deployment generates that config, so the address
-// lives there rather than in the hand-written Spinloop — but only as a fallback:
-// a Spinloop that states its own BASEURL never asks. A config that is absent, or
-// that predates base_url, yields "" rather than an error.
-func remoteBaseURL(remoteValue, spinloopPath string) (string, error) {
-	cfg, err := remoteConfig(remoteValue, spinloopPath)
-	if err != nil {
-		return "", err
-	}
-	return cfg.BaseURL, nil
-}
-
-// remoteEnvName returns the harness provider name a Spinloop's REMOTE implies: the
-// bare name when REMOTE is a name, otherwise the environment field of the
-// remote.json it names. It yields "" when there is no REMOTE, or when a
-// path-form REMOTE names a config that is absent or records no environment — in
-// which case the caller keeps the PROVIDER value as the name.
-func remoteEnvName(remoteValue, spinloopPath string) (string, error) {
-	if remoteValue == "" {
-		return "", nil
-	}
-	if remote.IsEnvName(remoteValue) {
-		return remoteValue, nil
-	}
-	cfg, err := remoteConfig(remoteValue, spinloopPath)
-	if err != nil {
-		return "", err
-	}
-	return cfg.Environment, nil
-}
-
-// resolveRemoteConfigForSpinloop resolves the remote config for a Spinloop's
-// REMOTE value, given the Spinloop's own path. Unlike resolveRemoteConfig it
-// does not consult the working directory or the per-user fallback — the REMOTE
-// is already known from the parsed Spinloop, so it goes straight to resolving
-// that path, fetching over HTTP when it resolves to a URL.
-func resolveRemoteConfigForSpinloop(remoteValue, spinloopPath string) (remote.Config, error) {
-	path, err := resolveRemotePath(remoteValue, spinloopPath)
-	if err != nil {
-		return remote.Config{}, err
-	}
-	if spinloopsrc.IsURL(path) {
-		data, err := spinloopsrc.Fetch(path)
-		if err != nil {
-			return remote.Config{}, err
-		}
-		return remote.LoadConfigBytes(data, path, viperGetenv())
-	}
-	return remote.LoadConfigFile(path, viperGetenv())
 }
 
 // spinloopArg returns the optional positional Spinloop path after the flags.
@@ -364,7 +280,8 @@ func printRemoteEnv(resp *remote.Response) {
 }
 
 func remoteEnvCmd() *cobra.Command {
-	return &cobra.Command{
+	var envName string
+	c := &cobra.Command{
 		Use:   "env",
 		Short: "print the running endpoint's env vars",
 		Long: `returns the running endpoint's environment variables without
@@ -375,14 +292,17 @@ starting it.`,
 		ValidArgsFunction: aliasSlot,
 		RunE: func(c *cobra.Command, args []string) error {
 			resolve(c)
-			return runRemoteEnv(args)
+			return runRemoteEnv(envName, args)
 		},
 	}
+	c.Flags().StringVar(&envName, "env", "", envFlagUsage)
+	compRegister(c, "env", compEnvs)
+	return c
 }
 
 // runRemoteEnv is the body of `spinloop remote env`.
-func runRemoteEnv(args []string) error {
-	cfg, err := resolveRemoteConfig(spinloopArg(args))
+func runRemoteEnv(envName string, args []string) error {
+	cfg, err := resolveRemoteConfig(envName, spinloopArg(args))
 	if err != nil {
 		return err
 	}
@@ -397,12 +317,13 @@ func runRemoteEnv(args []string) error {
 func remoteStartCmd() *cobra.Command {
 	var timeout time.Duration
 	const timeoutUsage = "overall time to wait for the endpoint"
+	var envName string
 	var printEnv bool
 	var keepD string
 	c := &cobra.Command{
 		Use:   "start",
 		Short: "boot the instance and print its endpoint",
-		Long: `boots the instance and, with --env/-e, prints the exports your
+		Long: `boots the instance and, with --print-env, prints the exports your
 agent needs.`,
 		Args:              cobra.ArbitraryArgs,
 		SilenceErrors:     true,
@@ -410,19 +331,21 @@ agent needs.`,
 		ValidArgsFunction: aliasSlot,
 		RunE: func(c *cobra.Command, args []string) error {
 			resolve(c)
-			return runRemoteStart(args, timeout, printEnv, keepD)
+			return runRemoteStart(envName, args, timeout, printEnv, keepD)
 		},
 	}
 	fs := c.Flags()
 	fs.DurationVarP(&timeout, "timeout", "t", 15*time.Minute, timeoutUsage)
-	fs.BoolVarP(&printEnv, "env", "e", false, "print export lines to stdout for eval")
+	fs.StringVar(&envName, "env", "", envFlagUsage)
+	compRegister(c, "env", compEnvs)
+	fs.BoolVar(&printEnv, "print-env", false, "print export lines to stdout for eval")
 	fs.StringVar(&keepD, "keep", "", "retain instance until now + DURATION (e.g. 4h, 60m), preventing the idle sweep from stopping it")
 	return c
 }
 
 // runRemoteStart is the body of `spinloop remote start`.
-func runRemoteStart(args []string, timeout time.Duration, printEnv bool, keepD string) error {
-	cfg, err := resolveRemoteConfig(spinloopArg(args))
+func runRemoteStart(envName string, args []string, timeout time.Duration, printEnv bool, keepD string) error {
+	cfg, err := resolveRemoteConfig(envName, spinloopArg(args))
 	if err != nil {
 		return err
 	}
@@ -532,7 +455,8 @@ func runRemoteList() error {
 }
 
 func remoteKeepCmd() *cobra.Command {
-	return &cobra.Command{
+	var envName string
+	c := &cobra.Command{
 		Use:               "keep",
 		Short:             "defer the instance's idle termination",
 		Args:              cobra.ArbitraryArgs,
@@ -541,13 +465,16 @@ func remoteKeepCmd() *cobra.Command {
 		ValidArgsFunction: keepSlot,
 		RunE: func(c *cobra.Command, rest []string) error {
 			resolve(c)
-			return runRemoteKeep(rest)
+			return runRemoteKeep(envName, rest)
 		},
 	}
+	c.Flags().StringVar(&envName, "env", "", envFlagUsage)
+	compRegister(c, "env", compEnvs)
+	return c
 }
 
 // runRemoteKeep is the body of `spinloop remote keep`.
-func runRemoteKeep(rest []string) error {
+func runRemoteKeep(envName string, rest []string) error {
 	if len(rest) == 0 {
 		return fmt.Errorf("usage: spinloop remote keep <duration> [path]")
 	}
@@ -564,7 +491,7 @@ func runRemoteKeep(rest []string) error {
 	if len(rest) > 1 {
 		spinloopPath = rest[1]
 	}
-	cfg, err := resolveRemoteConfig(spinloopPath)
+	cfg, err := resolveRemoteConfig(envName, spinloopPath)
 	if err != nil {
 		return err
 	}
@@ -578,7 +505,8 @@ func runRemoteKeep(rest []string) error {
 }
 
 func remotePauseCmd() *cobra.Command {
-	return &cobra.Command{
+	var envName string
+	c := &cobra.Command{
 		Use:               "pause",
 		Short:             "stop the instance without terminating it",
 		Args:              cobra.ArbitraryArgs,
@@ -587,14 +515,17 @@ func remotePauseCmd() *cobra.Command {
 		ValidArgsFunction: aliasSlot,
 		RunE: func(c *cobra.Command, args []string) error {
 			resolve(c)
-			return runRemotePause(args)
+			return runRemotePause(envName, args)
 		},
 	}
+	c.Flags().StringVar(&envName, "env", "", envFlagUsage)
+	compRegister(c, "env", compEnvs)
+	return c
 }
 
 // runRemotePause is the body of `spinloop remote pause`.
-func runRemotePause(args []string) error {
-	cfg, err := resolveRemoteConfig(spinloopArg(args))
+func runRemotePause(envName string, args []string) error {
+	cfg, err := resolveRemoteConfig(envName, spinloopArg(args))
 	if err != nil {
 		return err
 	}
@@ -614,6 +545,7 @@ func remoteRestartCmd() *cobra.Command {
 	var force bool
 	var timeout time.Duration
 	const timeoutUsage = "overall time to wait for the endpoint"
+	var envName string
 	c := &cobra.Command{
 		Use:   "restart",
 		Short: "stop the instance and bring it back",
@@ -627,12 +559,14 @@ skipped: for when the engine or its daemon will not answer it.`,
 		ValidArgsFunction: aliasSlot,
 		RunE: func(c *cobra.Command, args []string) error {
 			resolve(c)
-			return runRemoteRestart(args, force, timeout)
+			return runRemoteRestart(envName, args, force, timeout)
 		},
 	}
 	fs := c.Flags()
 	fs.BoolVarP(&force, "force", "F", false, "skip the graceful engine stop")
 	fs.DurationVarP(&timeout, "timeout", "t", 15*time.Minute, timeoutUsage)
+	fs.StringVar(&envName, "env", "", envFlagUsage)
+	compRegister(c, "env", compEnvs)
 	return c
 }
 
@@ -640,8 +574,8 @@ skipped: for when the engine or its daemon will not answer it.`,
 // instance in the pause manner — without terminating it, so the boot disk and
 // weights survive and the address does not change — and reuses the wake's own
 // deadline and retry handling to block until the model serves again.
-func runRemoteRestart(args []string, force bool, timeout time.Duration) error {
-	cfg, err := resolveRemoteConfig(spinloopArg(args))
+func runRemoteRestart(envName string, args []string, force bool, timeout time.Duration) error {
+	cfg, err := resolveRemoteConfig(envName, spinloopArg(args))
 	if err != nil {
 		return err
 	}
@@ -682,7 +616,8 @@ func runRemoteRestart(args []string, force bool, timeout time.Duration) error {
 }
 
 func remoteStopCmd() *cobra.Command {
-	return &cobra.Command{
+	var envName string
+	c := &cobra.Command{
 		Use:               "stop",
 		Short:             "shut the instance down",
 		Long:              `shuts the instance down rather than waiting for the idle timer.`,
@@ -692,14 +627,17 @@ func remoteStopCmd() *cobra.Command {
 		ValidArgsFunction: aliasSlot,
 		RunE: func(c *cobra.Command, args []string) error {
 			resolve(c)
-			return runRemoteStop(args)
+			return runRemoteStop(envName, args)
 		},
 	}
+	c.Flags().StringVar(&envName, "env", "", envFlagUsage)
+	compRegister(c, "env", compEnvs)
+	return c
 }
 
 // runRemoteStop is the body of `spinloop remote stop`.
-func runRemoteStop(args []string) error {
-	cfg, err := resolveRemoteConfig(spinloopArg(args))
+func runRemoteStop(envName string, args []string) error {
+	cfg, err := resolveRemoteConfig(envName, spinloopArg(args))
 	if err != nil {
 		return err
 	}
@@ -712,7 +650,8 @@ func runRemoteStop(args []string) error {
 }
 
 func remoteStatusCmd() *cobra.Command {
-	return &cobra.Command{
+	var envName string
+	c := &cobra.Command{
 		Use:               "status",
 		Short:             "report the instance's state",
 		Args:              cobra.ArbitraryArgs,
@@ -721,14 +660,17 @@ func remoteStatusCmd() *cobra.Command {
 		ValidArgsFunction: aliasSlot,
 		RunE: func(c *cobra.Command, args []string) error {
 			resolve(c)
-			return runRemoteStatus(args)
+			return runRemoteStatus(envName, args)
 		},
 	}
+	c.Flags().StringVar(&envName, "env", "", envFlagUsage)
+	compRegister(c, "env", compEnvs)
+	return c
 }
 
 // runRemoteStatus is the body of `spinloop remote status`.
-func runRemoteStatus(args []string) error {
-	cfg, err := resolveRemoteConfig(spinloopArg(args))
+func runRemoteStatus(envName string, args []string) error {
+	cfg, err := resolveRemoteConfig(envName, spinloopArg(args))
 	if err != nil {
 		return err
 	}
@@ -790,6 +732,7 @@ func remoteMetricsCmd() *cobra.Command {
 		withCost bool
 		format   string
 		watch    bool
+		envName  string
 	)
 	c := &cobra.Command{
 		Use:               "metrics",
@@ -800,23 +743,25 @@ func remoteMetricsCmd() *cobra.Command {
 		ValidArgsFunction: aliasSlot,
 		RunE: func(c *cobra.Command, args []string) error {
 			resolve(c)
-			return runRemoteMetrics(args, withCost, format, watch)
+			return runRemoteMetrics(envName, args, withCost, format, watch)
 		},
 	}
 	fs := c.Flags()
 	fs.BoolVar(&withCost, "cost", false, "include cost estimate from AWS Price List API")
 	fs.StringVar(&format, "format", "gauge", "output format: gauge (default), bar, table or json")
 	fs.BoolVarP(&watch, "watch", "w", false, "poll metrics every 60 seconds")
+	fs.StringVar(&envName, "env", "", envFlagUsage)
+	compRegister(c, "env", compEnvs)
 	return c
 }
 
 // runRemoteMetrics is the body of `spinloop remote metrics`.
-func runRemoteMetrics(args []string, withCost bool, format string, watch bool) error {
+func runRemoteMetrics(envName string, args []string, withCost bool, format string, watch bool) error {
 	if err := validateMetricsFormat(format); err != nil {
 		return err
 	}
 
-	cfg, err := resolveRemoteConfig(spinloopArg(args))
+	cfg, err := resolveRemoteConfig(envName, spinloopArg(args))
 	if err != nil {
 		return err
 	}
@@ -1455,11 +1400,12 @@ func remoteDeployCmd() *cobra.Command {
 		spinloopVersion string
 		instanceType    string
 		apiKeyEnv       string
+		envName         string
 	)
 	c := &cobra.Command{
 		Use:   "deploy",
 		Short: "set what the instance serves, from the Spinloop",
-		Long: `creates the environment the Spinloop's REMOTE names — its own
+		Long: `creates the environment named by --env — its own
 address, API key and allowed CIDR — and says what it serves (PROVIDER picks
 the engine, just as it does for serve). --spinloop-version pins the spinloop
 release a fresh boot of the environment installs; without it, a boot
@@ -1473,7 +1419,7 @@ from its next fresh launch.`,
 		ValidArgsFunction: aliasSlot,
 		RunE: func(c *cobra.Command, args []string) error {
 			resolve(c)
-			return runRemoteDeploy(args, dryRun, overwrite, reseed, allowedCidr, region, spinloopVersion, instanceType, apiKeyEnv)
+			return runRemoteDeploy(args, envName, dryRun, overwrite, reseed, allowedCidr, region, spinloopVersion, instanceType, apiKeyEnv)
 		},
 	}
 	fs := c.Flags()
@@ -1485,16 +1431,18 @@ from its next fresh launch.`,
 	fs.StringVar(&spinloopVersion, "spinloop-version", "", "spinloop release the environment's instances install at boot (default: latest)")
 	fs.StringVar(&instanceType, "instance-type", "", "EC2 instance type the environment's instances launch as (e.g. g6e.xlarge; default: the control plane's default type)")
 	fs.StringVar(&apiKeyEnv, "api-key-env", "", "the environment variable holding the API key to store for this environment (a variable name, never the key itself)")
+	fs.StringVar(&envName, "env", "", "the environment deploy creates and registers (required)")
+	compRegister(c, "env", compEnvs)
 	return c
 }
 
 // runRemoteDeploy is the body of `spinloop remote deploy`.
-func runRemoteDeploy(args []string, dryRun, overwrite, reseed bool, allowedCidr, region, spinloopVersion, instanceType, apiKeyEnv string) error {
-	_, spinloopPath, dc, env, err := deriveDeployTarget("spinloop remote deploy <file>", spinloopArg(args))
+func runRemoteDeploy(args []string, envName string, dryRun, overwrite, reseed bool, allowedCidr, region, spinloopVersion, instanceType, apiKeyEnv string) error {
+	_, spinloopPath, dc, err := deriveDeployTarget("spinloop remote deploy <file>", spinloopArg(args), envName)
 	if err != nil {
 		return err
 	}
-	outcome, err := runDeploy(spinloopPath, env, dc, deployOpts{
+	outcome, err := runDeploy(spinloopPath, envName, dc, deployOpts{
 		dryRun:          dryRun,
 		overwrite:       overwrite,
 		reseed:          reseed,
@@ -1512,18 +1460,19 @@ func runRemoteDeploy(args []string, dryRun, overwrite, reseed bool, allowedCidr,
 }
 
 // deriveDeployTarget turns a raw Spinloop argument (a bare alias name, a
-// path, or a URL — whatever readSpinloop accepts) into everything a deploy
-// needs: the Spinloop it read, the deploy config it derives, and the
-// environment name it registers under. usage is readSpinloop's error-message
-// context, so a caller other than `remote deploy` (namely `fleet deploy`)
-// gets a message naming itself rather than a hard-coded command line.
+// path, or a URL — whatever readSpinloop accepts) and the environment name
+// the caller supplies into everything a deploy needs: the Spinloop it read,
+// the deploy config it derives, and the name to register under. usage is
+// readSpinloop's error-message context, so a caller other than `remote deploy`
+// (namely `fleet deploy`, which names the environment with the node's own
+// name) gets a message naming itself rather than a hard-coded command line.
 //
-// This is deliberately the same derivation `remote deploy` has always done —
-// readSpinloop's alias-or-path resolution, the Spinloop's local environment,
-// deployConfigFor, then the REMOTE name — so a node's resolved Spinloop
-// source and a standalone `remote deploy` of the same file can never
-// disagree about what they deploy.
-func deriveDeployTarget(usage, spinloopArg string) (sel spinloop.Selection, spinloopPath string, dc remote.DeployConfig, env string, err error) {
+// The Spinloop says what the environment serves; the name arrives from
+// outside it — the --env flag for `remote deploy`, the node name for `fleet
+// deploy` — so a node's resolved Spinloop source and a standalone `remote
+// deploy` of the same file agree about what they deploy and each names its
+// own environment.
+func deriveDeployTarget(usage, spinloopArg, env string) (sel spinloop.Selection, spinloopPath string, dc remote.DeployConfig, err error) {
 	sel, spinloopPath, err = readSpinloop(usage, spinloopArg)
 	if err != nil {
 		return
@@ -1539,14 +1488,12 @@ func deriveDeployTarget(usage, spinloopArg string) (sel spinloop.Selection, spin
 	if err != nil {
 		return
 	}
-	// The environment name is the Spinloop's REMOTE — the committed link between
-	// the Spinloop and its deployment. One source of truth: deploy registers the
-	// environment under exactly the name the same Spinloop's REMOTE resolves to.
-	env = sel.Remote
-	if env == "" || !remote.IsEnvName(env) {
-		err = fmt.Errorf(
-			"%s must name its environment with `REMOTE <name>` (e.g. REMOTE %s) — deploy creates and registers that environment",
-			spinloopPath, dc.ServedModelName)
+	if env == "" {
+		err = fmt.Errorf("deploy must name the environment it creates: pass --env <name> (e.g. --env %s)", dc.ServedModelName)
+		return
+	}
+	if !remote.IsEnvName(env) {
+		err = fmt.Errorf("%q is not an environment name: an environment name is a plain identifier, with no path", env)
 		return
 	}
 	return

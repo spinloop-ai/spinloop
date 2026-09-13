@@ -13,10 +13,10 @@ import (
 	"github.com/spinloop-ai/spinloop/internal/spinloop"
 )
 
-// remoteSpinloopDir writes a Spinloop whose REMOTE names a registered environment
-// served by envURL, and returns its directory. baseURL is the endpoint address
-// the environment records — a public one, so the apply has a key to warn about
-// when it has none.
+// remoteSpinloopDir registers an environment served by envURL and writes a
+// Spinloop in a fresh directory, returning the directory. baseURL is the
+// endpoint address the environment records — a public one, so the apply has a
+// key to warn about when it has none.
 func remoteSpinloopDir(t *testing.T, name, envURL, baseURL string) string {
 	t.Helper()
 	registerEnv(t, name, remote.Config{
@@ -28,7 +28,7 @@ func remoteSpinloopDir(t *testing.T, name, envURL, baseURL string) string {
 		Environment: name,
 	})
 	dir := t.TempDir()
-	mustWrite(t, filepath.Join(dir, "Spinloop"), "PROVIDER llamacpp\nALIAS q3\nREMOTE "+name+"\n")
+	mustWrite(t, filepath.Join(dir, "Spinloop"), "PROVIDER llamacpp\nALIAS q3\n")
 	return dir
 }
 
@@ -58,7 +58,7 @@ func TestApplyBeforeLaunch_RemoteKeySilencesTheMissingKeyWarning(t *testing.T) {
 	var sel spinloopSelectionResult
 	out := captureStdout(t, func() {
 		sel.selection, sel.envDir, sel.resp, _, sel.err = applyBeforeLaunch(
-			spinloopPathFlag{set: true, path: dir}, "", h, nil, routeOptions{})
+			spinloopPathFlag{set: true, path: dir}, "", h, nil, routeOptions{envName: "dev-1"})
 	})
 	if sel.err != nil {
 		t.Fatalf("applyBeforeLaunch: %v", sel.err)
@@ -117,13 +117,13 @@ func TestApplyBeforeLaunch_FailsWhenNoKeyCanBeHad(t *testing.T) {
 	captureStderr(t, func() {
 		captureStdout(t, func() {
 			res.selection, res.envDir, res.resp, _, res.err = applyBeforeLaunch(
-				spinloopPathFlag{set: true, path: dir}, "", h, nil, routeOptions{})
+				spinloopPathFlag{set: true, path: dir}, "", h, nil, routeOptions{envName: "dev-1"})
 		})
 	})
 	if res.err == nil {
 		t.Fatal("a launch that cannot authenticate should fail")
 	}
-	for _, want := range []string{"could not fetch the API key for dev-1", "spinloop remote start dev-1", "OPENAI_API_KEY"} {
+	for _, want := range []string{"could not fetch the API key for dev-1", "spinloop remote start --env dev-1", "OPENAI_API_KEY"} {
 		if !strings.Contains(res.err.Error(), want) {
 			t.Errorf("error should mention %q, got: %v", want, res.err)
 		}
@@ -151,7 +151,7 @@ func TestApplyBeforeLaunch_CarriesOnWhenTheKeyIsAlreadySet(t *testing.T) {
 	stderr := captureStderr(t, func() {
 		stdout = captureStdout(t, func() {
 			res.selection, res.envDir, res.resp, _, res.err = applyBeforeLaunch(
-				spinloopPathFlag{set: true, path: dir}, "", h, nil, routeOptions{})
+				spinloopPathFlag{set: true, path: dir}, "", h, nil, routeOptions{envName: "dev-1"})
 		})
 	})
 	if res.err != nil {
@@ -179,14 +179,14 @@ func TestApplyBeforeLaunch_CountsAnEnvInstructionAsTheKey(t *testing.T) {
 	defer server.Close()
 	dir := remoteSpinloopDir(t, "dev-1", server.URL, "http://198.51.100.1:8000/v1")
 	mustWrite(t, filepath.Join(dir, "Spinloop"),
-		"PROVIDER llamacpp\nALIAS q3\nREMOTE dev-1\nENV OPENAI_API_KEY=sk-from-spinloop\n")
+		"PROVIDER llamacpp\nALIAS q3\nENV OPENAI_API_KEY=sk-from-spinloop\n")
 
 	h, _ := harness.Lookup("opencode")
 	var res spinloopSelectionResult
 	captureStderr(t, func() {
 		captureStdout(t, func() {
 			res.selection, res.envDir, res.resp, _, res.err = applyBeforeLaunch(
-				spinloopPathFlag{set: true, path: dir}, "", h, nil, routeOptions{})
+				spinloopPathFlag{set: true, path: dir}, "", h, nil, routeOptions{envName: "dev-1"})
 		})
 	})
 	if res.err != nil {
@@ -208,7 +208,7 @@ func TestApplyBeforeLaunch_AnnouncesTheFetch(t *testing.T) {
 	var stdout string
 	stderr := captureStderr(t, func() {
 		stdout = captureStdout(t, func() {
-			if _, _, _, _, err := applyBeforeLaunch(spinloopPathFlag{set: true, path: dir}, "", h, nil, routeOptions{}); err != nil {
+			if _, _, _, _, err := applyBeforeLaunch(spinloopPathFlag{set: true, path: dir}, "", h, nil, routeOptions{envName: "dev-1"}); err != nil {
 				t.Fatalf("applyBeforeLaunch: %v", err)
 			}
 		})
@@ -244,6 +244,30 @@ func TestApplyBeforeLaunch_LocalSpinloopFetchesNothing(t *testing.T) {
 	}
 	if strings.Contains(stderr, "could not fetch") {
 		t.Errorf("nothing was fetched, so nothing should be reported:\n%s", stderr)
+	}
+}
+
+// --env and a fleet are two answers to one question — where the model is
+// served from — so a launch that states both fails, naming both.
+func TestApplyBeforeLaunch_EnvAndFleetConflict(t *testing.T) {
+	isolateConfig(t)
+	stubAWSEnv(t)
+
+	server := envServer(t)
+	defer server.Close()
+	dir := remoteSpinloopDir(t, "dev-1", server.URL, "http://198.51.100.1:8000/v1")
+	fleetDir := writeFleetFile(t, "nodes:\n  - name: gpu-a\n    kind: remote\n")
+
+	h, _ := harness.Lookup("opencode")
+	_, _, _, _, err := applyBeforeLaunch(spinloopPathFlag{set: true, path: dir}, "", h, nil,
+		routeOptions{envName: "dev-1", fleetPath: filepath.Join(fleetDir, "fleet.yaml")})
+	if err == nil {
+		t.Fatal("a launch stating both --env and a fleet should fail")
+	}
+	for _, want := range []string{"--env dev-1", "fleet.yaml", "so state one"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error should mention %q, got %v", want, err)
+		}
 	}
 }
 
@@ -288,7 +312,7 @@ func TestRemoteEnv_StdoutIsEvalSafe(t *testing.T) {
 	var stdout string
 	captureStderr(t, func() {
 		stdout = captureStdout(t, func() {
-			if err := cmdRemoteEnv([]string{"q3"}); err != nil {
+			if err := cmdRemoteEnv([]string{"q3", "--env", "dev-1"}); err != nil {
 				t.Fatalf("cmdRemoteEnv: %v", err)
 			}
 		})

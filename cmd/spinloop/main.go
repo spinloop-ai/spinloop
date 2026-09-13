@@ -122,7 +122,7 @@ alongside a context, defaulting to a quarter of the context).`,
 			if err != nil {
 				return err
 			}
-			return applySelection(s, h, "", opencode.EnvResolver(""))
+			return applySelection(s, h, "", "", opencode.EnvResolver(""))
 		},
 	}
 	fs := c.Flags()
@@ -155,7 +155,7 @@ given.`,
 			if err != nil {
 				return err
 			}
-			return removeSelection(s, h, "")
+			return removeSelection(s, h, "", "")
 		},
 	}
 	fs := c.Flags()
@@ -182,13 +182,15 @@ func envFileDir(spinloopPath string) string {
 // config. It is the shared core of `add` and `apply`: both resolve a selection
 // (from flags or a Spinloop file) and hand it here.
 // spinloopPath is the Spinloop the selection came from — its own path, not a
-// pre-computed directory, so a relative REMOTE resolves correctly whether the
-// Spinloop is local or URL-sourced (see resolveRemotePath); it is empty when no
-// Spinloop is involved (an `spinloop add` from flags). resolve looks up API key
-// variables — normally opencode.EnvResolver of the Spinloop's local directory,
-// but `spinloop harness` widens it with the key it fetched from a remote
-// endpoint, which it is about to put in the launched agent's environment.
-func applySelection(sel spinloop.Selection, h harness.Harness, spinloopPath string, resolve func(string) string) error {
+// pre-computed directory, so a relative PRESET resolves correctly whether the
+// Spinloop is local or URL-sourced; it is empty when no Spinloop is involved
+// (an `spinloop add` from flags). envName is the --env flag's value: the
+// registered environment the selection is applied against, empty for a local
+// apply. resolve looks up API key variables — normally opencode.EnvResolver of
+// the Spinloop's local directory, but `spinloop harness` widens it with the key
+// it fetched from a remote endpoint, which it is about to put in the launched
+// agent's environment.
+func applySelection(sel spinloop.Selection, h harness.Harness, spinloopPath, envName string, resolve func(string) string) error {
 	if sel.Model == "" && sel.Alias == "" {
 		return fmt.Errorf("a provider selection needs a model or an alias")
 	}
@@ -204,39 +206,48 @@ func applySelection(sel spinloop.Selection, h harness.Harness, spinloopPath stri
 
 	// The catalogue provider p is resolved above by the PROVIDER value, which
 	// stays the engine definition. From here on sel.Provider is the harness-facing
-	// name: for a remote endpoint that is the environment name, so the model reads
-	// as <env>/<model> and each environment keeps its own block rather than
+	// name: for an environment that is its name, so the model reads as
+	// <env>/<model> and each environment keeps its own block rather than
 	// several engines-of-the-same-kind overwriting one. The name comes from
-	// removeSelection too, so apply and unapply stay symmetric.
-	if sel.Remote != "" {
-		env, err := remoteEnvName(sel.Remote, spinloopPath)
+	// removeSelection too, so apply and unapply stay symmetric. The flag is an
+	// explicit name, so a missing registration is a mistake to report rather
+	// than a config to wait for.
+	var envCfg *remote.Config
+	if envName != "" {
+		if !remote.IsEnvName(envName) {
+			return fmt.Errorf("%q is not an environment name: an environment name is a plain identifier, with no path", envName)
+		}
+		envPath, err := remote.EnvConfigPath(envName)
 		if err != nil {
 			return err
 		}
-		if env != "" {
-			sel.Provider = env
-			// The provider is now keyed on the environment; label it so it reads
-			// distinctly from a local engine of the same kind in a model picker
-			// (e.g. "llama.cpp (dev-2)" rather than another bare "llama.cpp").
-			sel.DisplayName = catalog.RemoteProviderLabel(p.Name, env)
+		if _, err := os.Stat(envPath); err != nil {
+			if os.IsNotExist(err) {
+				return fmt.Errorf("environment %q is not registered: run `spinloop remote deploy --env %q` to create it", envName, envName)
+			}
+			return err
 		}
+		cfg, err := remote.LoadConfigFile(envPath, viperGetenv())
+		if err != nil {
+			return err
+		}
+		envCfg = &cfg
+		sel.Provider = envName
+		// The provider is now keyed on the environment; label it so it reads
+		// distinctly from a local engine of the same kind in a model picker
+		// (e.g. "llama.cpp (dev-2)" rather than another bare "llama.cpp").
+		sel.DisplayName = catalog.RemoteProviderLabel(p.Name, envName)
 	}
 
-	// A Spinloop for a remote endpoint states no BASEURL: the address belongs to
-	// the deployment, which records it in the remote config REMOTE names. Take
-	// it from there — but only when the Spinloop stated none, so a hand-written
-	// BASEURL still wins.
+	// A Spinloop applied against an environment states no BASEURL: the address
+	// belongs to the deployment, which records it in the environment's
+	// registered remote.json. Take it from there — but only when the Spinloop
+	// stated none, so a hand-written BASEURL still wins.
 	// The harness reports the base URL it wrote, so this needs no announcement
 	// of its own beyond naming where it came from.
-	if sel.BaseURL == "" && sel.Remote != "" {
-		baseURL, err := remoteBaseURL(sel.Remote, spinloopPath)
-		if err != nil {
-			return err
-		}
-		if baseURL != "" {
-			fmt.Printf("Taking the base URL from %s.\n", sel.Remote)
-			sel.BaseURL = baseURL
-		}
+	if sel.BaseURL == "" && envCfg != nil && envCfg.BaseURL != "" {
+		fmt.Printf("Taking the base URL from the %s environment.\n", envName)
+		sel.BaseURL = envCfg.BaseURL
 	}
 
 	var contextSize, outputSize int
@@ -457,12 +468,15 @@ func resolveAlias(arg string) (string, bool, error) {
 // when none is given, so a bare `spinloop apply` works in a directory that
 // holds one.
 func applyCmd() *cobra.Command {
-	var providers, output, harnessName string
+	var providers, output, harnessName, envName string
 	c := &cobra.Command{
 		Use:   "apply",
 		Short: "apply a Spinloop file (defaults to ./Spinloop)",
 		Long: `applies a Spinloop file — a declarative, Dockerfile-style description of
-one provider selection — as if you had run the equivalent add.`,
+one provider selection — as if you had run the equivalent add. With --env,
+applies it against a registered remote environment: the provider is keyed on
+the environment's name and, absent a BASEURL, takes its address from the
+environment's registered remote.json.`,
 		Args:          cobra.ArbitraryArgs,
 		SilenceErrors: true,
 		SilenceUsage:  true,
@@ -485,13 +499,15 @@ one provider selection — as if you had run the equivalent add.`,
 			if output != "" {
 				sel.Output = output
 			}
-			return applySelection(sel, h, spinloopPath, opencode.EnvResolver(envFileDir(spinloopPath)))
+			return applySelection(sel, h, spinloopPath, envName, opencode.EnvResolver(envFileDir(spinloopPath)))
 		},
 	}
 	fs := c.Flags()
 	fs.StringVar(&providers, "providers", "", "path to a providers.yaml override")
 	fs.StringVarP(&output, "output", "o", "", "max output tokens (overrides the Spinloop's OUTPUT)")
 	fs.StringVarP(&harnessName, "harness", "H", "", "which harness to configure")
+	fs.StringVarP(&envName, "env", "e", "", "apply against this registered environment (its name keys the provider; its remote.json supplies the base URL)")
+	compRegister(c, "env", compEnvs)
 	fs.SetInterspersed(false)
 	c.ValidArgsFunction = aliasSlot
 	compRegister(c, "providers", compFiles)
@@ -503,12 +519,13 @@ one provider selection — as if you had run the equivalent add.`,
 // apply, as remove is to add. The path defaults to ./Spinloop when none is given,
 // so a bare `spinloop unapply` works in a directory that holds one.
 func unapplyCmd() *cobra.Command {
-	var providers, harnessName string
+	var providers, harnessName, envName string
 	c := &cobra.Command{
 		Use:   "unapply",
 		Short: "remove what a Spinloop file selects",
 		Long: `removes what a Spinloop file selects, as if you had run the equivalent
-remove. The inverse of apply.`,
+remove. The inverse of apply: --env must name the same environment apply
+applied the Spinloop against, or there is nothing to remove.`,
 		Args:          cobra.ArbitraryArgs,
 		SilenceErrors: true,
 		SilenceUsage:  true,
@@ -527,12 +544,14 @@ remove. The inverse of apply.`,
 				return err
 			}
 			sel.Providers = providers
-			return removeSelection(sel, h, spinloopPath)
+			return removeSelection(sel, h, spinloopPath, envName)
 		},
 	}
 	fs := c.Flags()
 	fs.StringVar(&providers, "providers", "", "path to a providers.yaml override")
 	fs.StringVarP(&harnessName, "harness", "H", "", "which harness to configure")
+	fs.StringVarP(&envName, "env", "e", "", "the registered environment the Spinloop was applied against")
+	compRegister(c, "env", compEnvs)
 	fs.SetInterspersed(false)
 	c.ValidArgsFunction = aliasSlot
 	compRegister(c, "providers", compFiles)
@@ -886,19 +905,17 @@ func exportLimit(sel spinloop.Selection, st harness.ProviderState, values map[st
 // removeSelection removes a single provider selection from the active harness's
 // config. It is the shared core of `remove` and `unapply`: both resolve a
 // selection (from flags or a Spinloop file) and hand it here. It is the inverse
-// of applySelection, so it names the provider the same way — for a remote Spinloop
-// that is the environment name, not the PROVIDER value — to remove exactly what
-// apply wrote. spinloopPath is the Spinloop's own path, needed to read a path-form
-// REMOTE's environment; it is empty for a flag-based remove.
-func removeSelection(sel spinloop.Selection, h harness.Harness, spinloopPath string) error {
-	if sel.Remote != "" {
-		env, err := remoteEnvName(sel.Remote, spinloopPath)
-		if err != nil {
-			return err
+// of applySelection, so it names the provider the same way — for an
+// environment that is its name, not the PROVIDER value — to remove exactly what
+// apply wrote. envName is the --env flag's value, empty when the selection is
+// local; it must match the --env apply wrote the block under, or the removal
+// finds nothing and says so.
+func removeSelection(sel spinloop.Selection, h harness.Harness, spinloopPath, envName string) error {
+	if envName != "" {
+		if !remote.IsEnvName(envName) {
+			return fmt.Errorf("%q is not an environment name: an environment name is a plain identifier, with no path", envName)
 		}
-		if env != "" {
-			sel.Provider = env
-		}
+		sel.Provider = envName
 	}
 
 	// Resolve the model keys to remove. With no model or alias, the whole
@@ -1162,7 +1179,7 @@ func namesAnSpinloopOrAlias(arg string) bool {
 // harness, inspected only to catch a path that was meant for the flag.
 // It returns the applied Spinloop's directory and selection, so the launched
 // agent can be given the same keys the apply resolved, along with the remote
-// endpoint's live environment when the Spinloop names one.
+// endpoint's live environment when --env names an environment.
 //
 // The remote key is fetched before the apply, not after, so the apply resolves
 // against the environment the agent will actually run with. Fetching it
@@ -1196,6 +1213,17 @@ func applyRoutedSpinloop(sel spinloop.Selection, path string, providers string, 
 	// As for apply, --providers overrides the catalogue the selection resolves
 	// against (a Spinloop never names one).
 	sel.Providers = providers
+	// --env and a fleet are two different answers to where the model is served
+	// from — a named environment, or a set of nodes to pick from. A launch that
+	// states both is a mistake, so it fails naming both rather than resolving
+	// one by precedence.
+	if route.envName != "" {
+		if target := route.fleetFile(); target != "" {
+			return spinloop.Selection{}, "", nil, nil, fmt.Errorf(
+				"the launch states both an environment (--env %s) and a fleet (%s): each names where the model is served from, so state one",
+				route.envName, target)
+		}
+	}
 	envDir := envFileDir(path)
 	localResolve := opencode.EnvResolver(envDir)
 	// Routing runs before the apply, and before anything is printed about
@@ -1207,13 +1235,13 @@ func applyRoutedSpinloop(sel spinloop.Selection, path string, providers string, 
 	}
 	if choice != nil {
 		// The chosen node's address is what the apply writes, in the slot a
-		// REMOTE endpoint's address is written to.
+		// remote endpoint's address is written to.
 		sel.BaseURL = choice.BaseURL
 	}
 	fmt.Printf("Applying %s\n\n", path)
 	// Before the apply, so a launch that cannot authenticate stops without
 	// having rewritten the harness config.
-	remoteResp, err := fetchRemoteEnv(sel, path, localResolve)
+	remoteResp, err := fetchRemoteEnv(sel, route.envName, localResolve)
 	if err != nil {
 		return spinloop.Selection{}, "", nil, nil, err
 	}
@@ -1242,7 +1270,7 @@ func applyRoutedSpinloop(sel spinloop.Selection, path string, providers string, 
 		choice.APIKey = key
 		resolve = fleetLaunchResolver(resolve, key)
 	}
-	if err := applySelection(sel, h, path, resolve); err != nil {
+	if err := applySelection(sel, h, path, route.envName, resolve); err != nil {
 		return spinloop.Selection{}, "", nil, nil, err
 	}
 	fmt.Println()
@@ -1269,24 +1297,41 @@ func fleetLaunchResolver(base func(string) string, key string) func(string) stri
 // control plane that never answers delays the launch rather than blocking it.
 const remoteEnvTimeout = 30 * time.Second
 
-// fetchRemoteEnv returns the live base URL and API key of the endpoint an
-// Spinloop's REMOTE names, or nil when it states no REMOTE. The endpoint is
-// started with a key that only the control plane knows, so this is the one
-// place it can come from; `spinloop harness` puts it in the environment of the
-// agent it launches.
+// fetchRemoteEnv returns the live base URL and API key of the endpoint the
+// environment named by --env serves, or nil when the flag is absent. The
+// endpoint is started with a key that only the control plane knows, so this is
+// the one place it can come from; `spinloop harness` puts it in the
+// environment of the agent it launches.
 //
 // Whether a failure is fatal depends on whether the key is needed. With nothing
 // else supplying one, launching is pointless — the endpoint refuses every
 // request — so the command stops and says what to do about it. When the key is
 // already to hand (exported, in the `.env` beside the Spinloop, or set by an ENV
 // instruction) the fetch was only a convenience, so it warns and carries on.
-func fetchRemoteEnv(sel spinloop.Selection, spinloopPath string, resolve func(string) string) (*remote.Response, error) {
-	if sel.Remote == "" {
+//
+// An environment whose configuration is not registered is a different failure:
+// the name points at nothing on this machine, so it is reported as-is rather
+// than downgraded.
+func fetchRemoteEnv(sel spinloop.Selection, envName string, resolve func(string) string) (*remote.Response, error) {
+	if envName == "" {
 		return nil, nil
 	}
+	if !remote.IsEnvName(envName) {
+		return nil, fmt.Errorf("%q is not an environment name: an environment name is a plain identifier, with no path", envName)
+	}
+	envPath, err := remote.EnvConfigPath(envName)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := os.Stat(envPath); err != nil {
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("environment %q is not registered: run `spinloop remote deploy --env %q` to create it", envName, envName)
+		}
+		return nil, err
+	}
 	// The call crosses the network, and a cold control plane is not instant.
-	fmt.Fprintf(os.Stderr, "Fetching the endpoint's environment from %s...\n", sel.Remote)
-	cfg, err := resolveRemoteConfigForSpinloop(sel.Remote, spinloopPath)
+	fmt.Fprintf(os.Stderr, "Fetching the endpoint's environment from %s...\n", envName)
+	cfg, err := remote.LoadConfigFile(envPath, viperGetenv())
 	if err == nil {
 		ctx, cancel := context.WithTimeout(context.Background(), remoteEnvTimeout)
 		defer cancel()
@@ -1298,12 +1343,12 @@ func fetchRemoteEnv(sel spinloop.Selection, spinloopPath string, resolve func(st
 	if localKey(sel, resolve) == "" {
 		return nil, fmt.Errorf(
 			"could not fetch the API key for %s: %w\n"+
-				"Start the endpoint with `spinloop remote start %s` if it is stopped, or export %s yourself",
-			sel.Remote, err, sel.Remote, remoteAPIKeyEnv)
+				"Start the endpoint with `spinloop remote start --env %s` if it is stopped, or export %s yourself",
+			envName, err, envName, remoteAPIKeyEnv)
 	}
 	fmt.Fprintf(os.Stderr,
 		"Warning: could not fetch the API key for %s (%v).\nCarrying on with the %s already set here.\n",
-		sel.Remote, err, remoteAPIKeyEnv)
+		envName, err, remoteAPIKeyEnv)
 	return nil, nil
 }
 

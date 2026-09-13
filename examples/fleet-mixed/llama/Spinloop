@@ -5,4 +5,3 @@ PROVIDER llamacpp
 ALIAS    llama-3-70b
 MODEL    meta-llama/Llama-3.3-70B-Instruct-GGUF:Q4_K_M
 CONTEXT  65536
-REMOTE   llama

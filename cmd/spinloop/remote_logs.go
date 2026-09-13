@@ -35,6 +35,7 @@ func remoteLogsCmd() *cobra.Command {
 		instance string
 		follow   bool
 		format   string
+		envName  string
 	)
 	const followUsage = "keep printing new events as they arrive"
 	c := &cobra.Command{
@@ -46,7 +47,7 @@ func remoteLogsCmd() *cobra.Command {
 		ValidArgsFunction: aliasSlot,
 		RunE: func(c *cobra.Command, args []string) error {
 			resolve(c)
-			return runRemoteLogs(args, source, since, limit, instance, follow, format)
+			return runRemoteLogs(envName, args, source, since, limit, instance, follow, format)
 		},
 	}
 	fs := c.Flags()
@@ -57,16 +58,18 @@ func remoteLogsCmd() *cobra.Command {
 	fs.StringVar(&instance, "instance", "", "restrict output to one instance id")
 	fs.BoolVarP(&follow, "follow", "f", false, followUsage)
 	fs.StringVar(&format, "format", "text", "output format: text (default) or json")
+	fs.StringVar(&envName, "env", "", envFlagUsage)
+	compRegister(c, "env", compEnvs)
 	return c
 }
 
 // runRemoteLogs is the body of `spinloop remote logs`.
-func runRemoteLogs(args []string, source string, since time.Duration, limit int, instance string, follow bool, format string) error {
+func runRemoteLogs(envName string, args []string, source string, since time.Duration, limit int, instance string, follow bool, format string) error {
 	if err := validateLogsFlags(source, format, since, limit); err != nil {
 		return err
 	}
 
-	cfg, err := resolveRemoteConfig(spinloopArg(args))
+	cfg, err := resolveRemoteConfig(envName, spinloopArg(args))
 	if err != nil {
 		return err
 	}

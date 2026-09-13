@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -9,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/spinloop-ai/spinloop/internal/config"
-	"github.com/spinloop-ai/spinloop/internal/remote"
 	"github.com/spinloop-ai/spinloop/internal/spinloop"
 )
 
@@ -807,9 +805,10 @@ func TestEnvAlias_ReachesServe(t *testing.T) {
 
 // TestEnvAlias_ReachesRemote checks the case that first caught this out: a
 // `remote` subcommand with no argument only consults a Spinloop when one is
-// there to consult, and SPINLOOP_ALIAS names one as surely as a ./Spinloop does.
-// Without this the command fell through to the per-user default config and
-// reported the endpoint as unconfigured.
+// there to consult, and SPINLOOP_ALIAS names one as surely as a ./Spinloop does
+// — here for its ENV instructions, which name the control plane. Without this
+// the command fell through to the per-user default config and reported the
+// endpoint as unconfigured.
 func TestEnvAlias_ReachesRemote(t *testing.T) {
 	isolateConfig(t)
 	stubAWSEnv(t)
@@ -818,11 +817,12 @@ func TestEnvAlias_ReachesRemote(t *testing.T) {
 	server := httptest.NewServer(hitRecorder("aliased", hit))
 	defer server.Close()
 
-	// A Spinloop whose REMOTE sits beside it, registered and then left behind.
+	// A Spinloop whose ENV names the control plane, registered and then left
+	// behind.
 	dir := t.TempDir()
-	mustWrite(t, filepath.Join(dir, spinloop.DefaultFile), "PROVIDER openai-compatible\nALIAS q3\nREMOTE ./remote.json\n")
-	cfg, _ := json.Marshal(remote.Config{StartURL: server.URL, StopURL: server.URL, Region: "eu-west-1"})
-	mustWrite(t, filepath.Join(dir, "remote.json"), string(cfg))
+	mustWrite(t, filepath.Join(dir, spinloop.DefaultFile),
+		"PROVIDER openai-compatible\nALIAS q3\nENV SPINLOOP_REMOTE_START_URL="+server.URL+"\nENV SPINLOOP_REMOTE_STOP_URL="+server.URL+"\nENV SPINLOOP_REMOTE_REGION=eu-west-1\n")
+	unsetEnvOnCleanup(t, "SPINLOOP_REMOTE_START_URL", "SPINLOOP_REMOTE_STOP_URL", "SPINLOOP_REMOTE_REGION")
 	captureStdout(t, func() {
 		if err := cmdAlias([]string{dir}); err != nil {
 			t.Fatalf("cmdAlias: %v", err)
@@ -841,7 +841,7 @@ func TestEnvAlias_ReachesRemote(t *testing.T) {
 			t.Errorf("stop reached the %q server, want the aliased Spinloop's", name)
 		}
 	default:
-		t.Error("no server was reached — the variable's REMOTE was not used")
+		t.Error("no server was reached — the variable's Spinloop was not read")
 	}
 }
 

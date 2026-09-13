@@ -58,6 +58,7 @@ variable chooses which Spinloop, never whether you are configured. See
 | ---- | ------- |
 | `-H`, `--harness` | Which harness to launch (or set `SPINLOOP_HARNESS`) |
 | `-O`, `--spinloop` | Apply this Spinloop before launching (bare: `./Spinloop`) |
+| `-e`, `--env` | The registered [environment](remote.md) the applied Spinloop points at — mutually exclusive with fleet routing, since each names where the model is served from |
 | `--set` | Store the default harness and exit |
 | `--get` | Print the active harness instead of launching |
 | `--providers` | Path to a custom catalogue, for the applied Spinloop |
@@ -85,9 +86,9 @@ spinloop harness --prefer active -f fleet.yaml
 
 spinloop queries the fleet, prefers a node already serving the Spinloop's model,
 and points the launched agent at that node's engine — the same injection that
-carries a [`REMOTE`](remote.md) endpoint's address and key, with a selection
-step in front. It reports which node it chose, and why, before the agent
-starts.
+carries a [remote environment](remote.md)'s endpoint address and key, with a
+selection step in front. It reports which node it chose, and why, before the
+agent starts.
 
 When nothing is serving that model, spinloop picks a node that is not running,
 tells it what to serve, starts it, and waits for its engine to answer. A node

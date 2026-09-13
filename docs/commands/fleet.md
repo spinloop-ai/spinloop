@@ -144,8 +144,8 @@ nodes:
 key. When it is absent, resolution tries, in order:
 
 1. `name` registered as a `spinloop alias` (`spinloop alias add qwen
-   ./envs/qwen.Spinloop`) — the same lookup a bare `spinloop remote deploy
-   qwen` already performs;
+   ./envs/qwen.Spinloop`) — the same lookup `spinloop remote deploy`
+   performs for a Spinloop argument;
 2. a subdirectory named after the node, beside the fleet file — `qwen/Spinloop`
    next to `fleet.yaml` for a node named `qwen`, no fields needed on either
    side.
@@ -617,7 +617,8 @@ or a matching subdirectory added, or `fleet start` fails for that node. A
 
 `fleet deploy` creates the AWS environment for one or more `kind: remote`
 nodes — the step that otherwise has to happen outside the fleet file
-entirely, one `spinloop remote deploy <file>` at a time:
+entirely, one `spinloop remote deploy --env <name>` at a time, run from the
+directory holding each node's Spinloop:
 
 ```sh
 spinloop fleet deploy qwen           # one node
@@ -628,7 +629,8 @@ spinloop fleet deploy --all          # every kind: remote node in the file
 Each node deploys from its own resolved [Spinloop
 source](#a-nodes-spinloop-source), reusing the exact derivation, consent, and
 registration `spinloop remote deploy` uses for the same file — the two can
-never disagree about what a given Spinloop deploys. A `kind: daemon` node
+never disagree about what a given Spinloop deploys — and the environment each
+node creates is named after the node itself. A `kind: daemon` node
 named explicitly fails the command, explaining that `deploy` provisions cloud
 environments and that node is not one; `--all` only ever selects `kind:
 remote` nodes, so a daemon node is never swept in by it. As with
