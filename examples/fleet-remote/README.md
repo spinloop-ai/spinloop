@@ -10,9 +10,10 @@ never an account, so it is safe to keep under version control.
 
 ### 1. Have some environments
 
-An environment is created and registered when you deploy into it: a `Spinloop`
-that says `REMOTE <name>`, run through `spinloop remote deploy`, writes that
-environment's control URLs to `~/.config/spinloop/remotes/<name>/remote.json`.
+An environment is created and registered when you deploy into it: `spinloop
+remote deploy --env <name>`, run in a directory whose `Spinloop` describes what
+the environment serves, writes that environment's control URLs to
+`~/.config/spinloop/remotes/<name>/remote.json`.
 Deploying needs the shared control plane once before it — see [`spinloop
 remote`](../../docs/commands/remote.md). List what you already have:
 

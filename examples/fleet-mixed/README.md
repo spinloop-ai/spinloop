@@ -41,7 +41,8 @@ spinloop fleet deploy --all    # create both environments from this file
 ```
 
 Creating the environments this way is the same as running `spinloop remote
-deploy` once per `Spinloop` that says `REMOTE <name>` — see [`spinloop
+deploy --env <name>` once per node in this file, from the directory holding
+that node's `Spinloop` — see [`spinloop
 remote`](../../docs/commands/remote.md) — just one command for both.
 
 ### 3. Observe the whole fleet

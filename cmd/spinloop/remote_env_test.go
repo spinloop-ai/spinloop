@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -112,11 +111,10 @@ func TestRemoteStop_RespectsDotEnv(t *testing.T) {
 	defer fromDotEnv.Close()
 
 	t.Chdir(t.TempDir())
-	if err := os.WriteFile("Spinloop", []byte("PROVIDER openai-compatible\nREMOTE remote.json\n"), 0o600); err != nil {
+	if err := os.WriteFile("Spinloop", []byte("PROVIDER openai-compatible\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cfg, _ := json.Marshal(remote.Config{StartURL: fromConfig.URL, StopURL: fromConfig.URL, Region: "eu-west-1"})
-	if err := os.WriteFile("remote.json", cfg, 0o600); err != nil {
+	if err := remote.SaveEnvironment("testenv", remote.Config{StartURL: fromConfig.URL, StopURL: fromConfig.URL, Region: "eu-west-1"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(".env", []byte("SPINLOOP_REMOTE_STOP_URL="+fromDotEnv.URL+"\n"), 0o600); err != nil {
@@ -125,7 +123,7 @@ func TestRemoteStop_RespectsDotEnv(t *testing.T) {
 	unsetEnvOnCleanup(t, "SPINLOOP_REMOTE_STOP_URL")
 
 	// An explicit Spinloop path, exercising resolveRemoteConfig's explicit-arg branch.
-	if err := cmdRemoteStop([]string{"Spinloop"}); err != nil {
+	if err := cmdRemoteStop([]string{"Spinloop", "--env", "testenv"}); err != nil {
 		t.Fatalf("cmdRemoteStop: %v", err)
 	}
 	select {
@@ -151,14 +149,13 @@ func TestRemoteStop_EnvKeywordOverridesDotEnv(t *testing.T) {
 	defer fromEnvKw.Close()
 
 	t.Chdir(t.TempDir())
-	spinloopBody := "PROVIDER openai-compatible\nREMOTE remote.json\n" +
+	spinloopBody := "PROVIDER openai-compatible\n" +
 		"ENV SPINLOOP_REMOTE_STOP_URL=" + fromEnvKw.URL + "\n"
 	if err := os.WriteFile("Spinloop", []byte(spinloopBody), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	// remote.json still supplies the required StartURL; StopURL is overridden.
-	cfg, _ := json.Marshal(remote.Config{StartURL: fromDotEnv.URL, StopURL: fromDotEnv.URL, Region: "eu-west-1"})
-	if err := os.WriteFile("remote.json", cfg, 0o600); err != nil {
+	// The environment still supplies the required StartURL; StopURL is overridden.
+	if err := remote.SaveEnvironment("testenv", remote.Config{StartURL: fromDotEnv.URL, StopURL: fromDotEnv.URL, Region: "eu-west-1"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(".env", []byte("SPINLOOP_REMOTE_STOP_URL="+fromDotEnv.URL+"\n"), 0o600); err != nil {
@@ -166,7 +163,7 @@ func TestRemoteStop_EnvKeywordOverridesDotEnv(t *testing.T) {
 	}
 	unsetEnvOnCleanup(t, "SPINLOOP_REMOTE_STOP_URL")
 
-	if err := cmdRemoteStop(nil); err != nil {
+	if err := cmdRemoteStop([]string{"--env", "testenv"}); err != nil {
 		t.Fatalf("cmdRemoteStop: %v", err)
 	}
 	select {
@@ -195,7 +192,7 @@ func TestRemoteDeploy_DoesNotForwardEnvToInstance(t *testing.T) {
 	stubDeploySeams(t, server.URL, "undeployed")
 
 	t.Chdir(t.TempDir())
-	spinloopBody := "PROVIDER llamacpp\nALIAS qwen3.6-27b\nCONTEXT 131072\nPRESET ./preset.ini\nREMOTE testenv\n" +
+	spinloopBody := "PROVIDER llamacpp\nALIAS qwen3.6-27b\nCONTEXT 131072\nPRESET ./preset.ini\n" +
 		"ENV SPINLOOP_SECRET_TOKEN=do-not-leak\n"
 	if err := os.WriteFile("Spinloop", []byte(spinloopBody), 0o600); err != nil {
 		t.Fatal(err)
@@ -208,33 +205,12 @@ func TestRemoteDeploy_DoesNotForwardEnvToInstance(t *testing.T) {
 	}
 	unsetEnvOnCleanup(t, "SPINLOOP_SECRET_TOKEN", "SPINLOOP_DOTENV_SECRET")
 
-	if err := cmdRemoteDeploy(nil); err != nil {
+	if err := cmdRemoteDeploy([]string{"--env", "testenv"}); err != nil {
 		t.Fatalf("cmdRemoteDeploy: %v", err)
 	}
 	for _, leak := range []string{"SPINLOOP_SECRET_TOKEN", "do-not-leak", "SPINLOOP_DOTENV_SECRET", "also-no"} {
 		if strings.Contains(string(body), leak) {
 			t.Errorf("deploy payload leaked %q to the instance:\n%s", leak, body)
 		}
-	}
-}
-
-// A Spinloop named explicitly but carrying no REMOTE is an error naming the
-// file, not a silent fall back to the per-user default: naming a path says
-// which endpoint you meant, so guessing a different one would be wrong.
-func TestRemoteStop_NamedSpinloopWithoutREMOTE(t *testing.T) {
-	isolateConfig(t)
-	stubAWSEnv(t)
-
-	t.Chdir(t.TempDir())
-	if err := os.WriteFile("Spinloop", []byte("PROVIDER llamacpp\nMODEL gemma\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	err := cmdRemoteStop([]string{"Spinloop"})
-	if err == nil {
-		t.Fatal("expected an error for a Spinloop with no REMOTE")
-	}
-	if !strings.Contains(err.Error(), "has no REMOTE instruction") {
-		t.Errorf("error = %q, want it to name the missing REMOTE", err)
 	}
 }

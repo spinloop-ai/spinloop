@@ -131,16 +131,18 @@ When `SPINLOOP_ALIAS` decides the Spinloop, the command SHALL say so on stderr,
 naming the variable, the alias and the resolved path.
 
 A command that consults a Spinloop only when there is one to consult — the
-`remote` subcommands, which otherwise use the per-user endpoint config, and
+`remote` subcommands, which otherwise act on the `default` environment, and
 `daemon`, which otherwise starts idle — SHALL count `SPINLOOP_ALIAS` as naming
 one. A set variable SHALL NOT be passed over in favour of that fallback.
 
 #### Scenario: The variable counts as having a Spinloop
 
-- **WHEN** `SPINLOOP_ALIAS` names a Spinloop carrying a `REMOTE` instruction and
-  the user runs `spinloop remote status` in a directory with no `Spinloop`
-- **THEN** that Spinloop's endpoint is used, rather than the per-user default
-  config
+- **WHEN** `SPINLOOP_ALIAS` names a Spinloop whose `ENV` instructions set
+  `AWS_PROFILE` and the user runs `spinloop remote status` in a directory with
+  no `Spinloop`
+- **THEN** that Spinloop's `ENV` instructions are applied to the process
+  environment before the control call, rather than being skipped because no
+  `Spinloop` sits in the working directory
 
 #### Scenario: The variable supplies the Spinloop
 

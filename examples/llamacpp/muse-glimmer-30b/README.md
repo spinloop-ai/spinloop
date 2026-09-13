@@ -405,7 +405,12 @@ wants the quant suffix:
 
 ```dockerfile
 MODEL  meta-models/Muse-Glimmer-30B-GGUF:kquant-dynamic
-REMOTE muse-glimmer-30b
+```
+
+…and register it under a name of your choosing:
+
+```sh
+spinloop remote deploy --env muse-glimmer-30b
 ```
 
 Be precise with that suffix. The seed downloads everything matching
@@ -424,14 +429,14 @@ Adding `MODEL` breaks the local `spinloop serve` path above, since it becomes
 doesn't resolve. Keep separate Spinloops if you want both.
 
 ```sh
-spinloop remote deploy --dry-run
-spinloop remote deploy
-eval "$(spinloop remote start --env)"   # -e/--env is what prints the
-                                       # OPENAI_BASE_URL/OPENAI_API_KEY export
-                                       # lines; without it, start's output is
-                                       # progress text on stderr and there is
-                                       # nothing on stdout for eval to run
-spinloop remote stop
+spinloop remote deploy --env muse-glimmer-30b --dry-run
+spinloop remote deploy --env muse-glimmer-30b
+eval "$(spinloop remote start --env muse-glimmer-30b --print-env)"   # --print-env
+                                        # is what prints the OPENAI_BASE_URL/OPENAI_API_KEY
+                                        # export lines; without it, start's output is
+                                        # progress text on stderr and there is
+                                        # nothing on stdout for eval to run
+spinloop remote stop --env muse-glimmer-30b
 ```
 
 Costs and the idle/max-runtime bounds are in

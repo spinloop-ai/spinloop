@@ -72,18 +72,20 @@ nodes:
   - name: studio
     host: studio.local
 `)
-	write := func(name, env string) {
+	// The node's own name is the registered environment its deploy creates;
+	// the Spinloop carries only the model.
+	write := func(name string) {
 		t.Helper()
-		body := fmt.Sprintf("PROVIDER llamacpp\nMODEL org/m:Q4\nCONTEXT 8192\nREMOTE %s\n", env)
+		body := "PROVIDER llamacpp\nMODEL org/m:Q4\nCONTEXT 8192\n"
 		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
-	write("gpu-a.Spinloop", "gpu-a")
-	write("gpu-b.Spinloop", "gpu-b")
+	write("gpu-a.Spinloop")
+	write("gpu-b.Spinloop")
 
 	aliasedPath := filepath.Join(dir, "aliased.Spinloop")
-	write("aliased.Spinloop", "aliased")
+	write("aliased.Spinloop")
 	if err := config.Update(func(f *config.File) error {
 		f.SetAlias("aliased", aliasedPath)
 		return nil
@@ -94,7 +96,7 @@ nodes:
 	if err := os.Mkdir(filepath.Join(dir, "subdir-env"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	subdirBody := "PROVIDER llamacpp\nMODEL org/m:Q4\nCONTEXT 8192\nREMOTE subdir-env\n"
+	subdirBody := "PROVIDER llamacpp\nMODEL org/m:Q4\nCONTEXT 8192\n"
 	if err := os.WriteFile(filepath.Join(dir, "subdir-env", "Spinloop"), []byte(subdirBody), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -215,8 +217,8 @@ func TestCmdFleetDeployUnresolvedNodeFailsOnlyThatNode(t *testing.T) {
 	}
 }
 
-// A node whose source *resolves* but whose Spinloop is itself undeployable
-// (missing REMOTE, here) must fail only that node — resolveNodeSpinloop
+// A node whose source *resolves* but whose Spinloop fails to parse (it still
+// carries a REMOTE line, here) must fail only that node — resolveNodeSpinloop
 // succeeding is not the same as deriveDeployTarget succeeding, and the two
 // failure sites must not be conflated.
 func TestCmdFleetDeployResolvedButUndeployableSpinloopFailsOnlyThatNode(t *testing.T) {
@@ -225,24 +227,24 @@ func TestCmdFleetDeployResolvedButUndeployableSpinloopFailsOnlyThatNode(t *testi
 	server := fleetDeployServer(t)
 	stubFleetDeploySeams(t, server)
 
-	// gpu-a's own file, minus REMOTE — deriveDeployTarget refuses this, but
+	// gpu-a's own file, with a REMOTE line — readSpinloop rejects it, but
 	// resolveNodeSpinloop has already succeeded by the time it does.
-	noRemote := filepath.Join(dir, "gpu-a.Spinloop")
-	if err := os.WriteFile(noRemote, []byte("PROVIDER llamacpp\nMODEL org/m:Q4\nCONTEXT 8192\n"), 0o600); err != nil {
+	staleRemote := filepath.Join(dir, "gpu-a.Spinloop")
+	if err := os.WriteFile(staleRemote, []byte("PROVIDER llamacpp\nMODEL org/m:Q4\nCONTEXT 8192\nREMOTE gpu-a\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
 	out := captureStdout(t, func() {
 		err := cmdFleet([]string{"deploy", "gpu-a", "gpu-b"})
 		if err == nil {
-			t.Fatal("want a failure because gpu-a's Spinloop names no REMOTE")
+			t.Fatal("want a failure because gpu-a's Spinloop still carries a REMOTE line")
 		}
 		if !strings.Contains(err.Error(), "gpu-a") {
 			t.Errorf("error should name gpu-a, got %v", err)
 		}
 	})
 	if !strings.Contains(out, "REMOTE") {
-		t.Errorf("output should explain the missing REMOTE: %s", out)
+		t.Errorf("output should explain the removed REMOTE instruction: %s", out)
 	}
 	if _, statErr := os.Stat(mustEnvConfigPath(t, "gpu-b")); statErr != nil {
 		t.Errorf("gpu-b should still have deployed despite gpu-a's Spinloop being undeployable: %v", statErr)
@@ -256,10 +258,9 @@ func TestCmdFleetDeployAliasWinsOverSubdirectory(t *testing.T) {
 	stubFleetDeploySeams(t, server)
 
 	// Register an alias under the subdir-env node's own name too, pointing
-	// at a *different* Spinloop (a different REMOTE), and confirm the alias
-	// wins.
+	// at a *different* Spinloop, and confirm the alias wins.
 	altPath := filepath.Join(dir, "alt.Spinloop")
-	if err := os.WriteFile(altPath, []byte("PROVIDER llamacpp\nMODEL org/m:Q4\nCONTEXT 8192\nREMOTE alt-env\n"), 0o600); err != nil {
+	if err := os.WriteFile(altPath, []byte("PROVIDER llamacpp\nMODEL org/other:Q4\nCONTEXT 8192\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := config.Update(func(f *config.File) error {
@@ -269,14 +270,18 @@ func TestCmdFleetDeployAliasWinsOverSubdirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := cmdFleet([]string{"deploy", "subdir-env"}); err != nil {
-		t.Fatalf("deploy subdir-env: %v", err)
+	out := captureStdout(t, func() {
+		if err := cmdFleet([]string{"deploy", "subdir-env"}); err != nil {
+			t.Fatalf("deploy subdir-env: %v", err)
+		}
+	})
+	// The deploy names the Spinloop source it used — the alias's target, not
+	// the subdirectory's file.
+	if !strings.Contains(out, "alt.Spinloop") || !strings.Contains(out, `alias "subdir-env"`) {
+		t.Errorf("the alias's Spinloop should have been used, got:\n%s", out)
 	}
-	if _, statErr := os.Stat(mustEnvConfigPath(t, "alt-env")); statErr != nil {
-		t.Errorf("the alias's environment (alt-env) should have been used: %v", statErr)
-	}
-	if _, statErr := os.Stat(mustEnvConfigPath(t, "subdir-env")); statErr == nil {
-		t.Error("the subdirectory's environment should not have been used once an alias exists")
+	if _, statErr := os.Stat(mustEnvConfigPath(t, "subdir-env")); statErr != nil {
+		t.Errorf("the node-named environment should have been registered: %v", statErr)
 	}
 }
 
@@ -344,15 +349,15 @@ nodes:
     kind: remote
     file: ./untyped.Spinloop
 `)
-	writeSpinloop := func(name, env string) {
+	writeSpinloop := func(name string) {
 		t.Helper()
-		body := fmt.Sprintf("PROVIDER llamacpp\nMODEL org/m:Q4\nCONTEXT 8192\nREMOTE %s\n", env)
+		body := "PROVIDER llamacpp\nMODEL org/m:Q4\nCONTEXT 8192\n"
 		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
-	writeSpinloop("typed.Spinloop", "typed")
-	writeSpinloop("untyped.Spinloop", "untyped")
+	writeSpinloop("typed.Spinloop")
+	writeSpinloop("untyped.Spinloop")
 
 	deployDiscoverFn = func(context.Context, aws.Config, string) (remote.ControlPlane, error) {
 		return remote.ControlPlane{}, fmt.Errorf("must not be called")
