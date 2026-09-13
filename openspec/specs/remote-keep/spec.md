@@ -51,16 +51,16 @@ When the instance's `Retain-Until` tag is set, `spinloop remote status` SHALL re
 - **WHEN** the user runs `spinloop remote status` and the instance has no `Retain-Until` tag
 - **THEN** the output contains no "retain until" line
 
-### Requirement: The keep command resolves the environment like other remote subcommands
+### Requirement: The keep command selects its environment
 
-The `keep` subcommand SHALL resolve which environment's instance to tag using the same configuration discovery as the other `remote` subcommands: an explicit Spinloop path argument, a default Spinloop with a `REMOTE` instruction, or the per-user default environment.
+The `keep` subcommand SHALL select which environment's instance to tag using the same rule as the other `remote` subcommands: the `--env <name>` flag naming a registered environment, or the per-user default environment.
 
-#### Scenario: Keep with explicit Spinloop
+#### Scenario: Keep names the environment with the flag
 
-- **WHEN** the user runs `spinloop remote keep 2h ./Spinloop`
-- **THEN** the environment named by that Spinloop's `REMOTE` instruction has its instance tagged
+- **WHEN** the user runs `spinloop remote keep 2h --env dev-2`
+- **THEN** the `dev-2` environment's instance has its tag set
 
-#### Scenario: Keep with no explicit Spinloop
+#### Scenario: Keep falls back to the default environment
 
-- **WHEN** the user runs `spinloop remote keep 2h` from a directory with a local `Spinloop` that has a `REMOTE` instruction
-- **THEN** that environment's instance is tagged
+- **WHEN** the user runs `spinloop remote keep 2h` with no `--env` flag
+- **THEN** the `default` environment's instance is tagged

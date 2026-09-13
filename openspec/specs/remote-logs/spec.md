@@ -14,10 +14,10 @@ which is when they are wanted most.
 `spinloop remote logs` SHALL print the logs an environment's instances have
 shipped, without the operator needing to know the log group or stream naming,
 open the AWS console, or connect to an instance. It SHALL select which
-environment to read using the same rules as the other remote subcommands — an
-explicit Spinloop path or alias, else `./Spinloop`'s `REMOTE`, else the `default`
-environment — so `spinloop remote logs` and `spinloop remote status` in the same
-directory always speak about the same environment.
+environment to read using the same rules as the other remote subcommands — the
+`--env <name>` flag naming a registered environment, else the `default`
+environment — so `spinloop remote logs` and `spinloop remote status` given the
+same `--env` always speak about the same environment.
 
 #### Scenario: Reading the current environment's logs
 
@@ -28,9 +28,8 @@ directory always speak about the same environment.
 
 #### Scenario: Reading a named environment's logs
 
-- **WHEN** the operator runs `spinloop remote logs <path-or-alias>` naming an
-  Spinloop whose `REMOTE` selects an environment
-- **THEN** that environment's logs are printed rather than the default
+- **WHEN** the operator runs `spinloop remote logs --env dev-2`
+- **THEN** `dev-2`'s logs are printed rather than the default
   environment's
 
 ### Requirement: Logs are readable after the instance is gone

@@ -4,9 +4,9 @@
 
 Define the `spinloop remote metrics` command: reading token usage, resource consumption, and GPU information from a running remote inference instance.
 ## Requirements
-### Requirement: Stats subcommand
+### Requirement: Metrics subcommand
 
-The system SHALL provide a `metrics` subcommand (`spinloop remote metrics`) that reports the current state of a remote inference instance. It SHALL accept the same Spinloop resolution as `start`, `stop`, and `deploy` — an optional positional Spinloop path, defaulting to `./Spinloop` when present — and SHALL require the Spinloop to name a `REMOTE` environment. When the instance is running, the report SHALL include the spinloop version from the daemon, carried by the stats Lambda reply.
+The system SHALL provide a `metrics` subcommand (`spinloop remote metrics`) that reports the current state of a remote inference instance. It SHALL select which environment it reports on using the same rule as the other `remote` subcommands: the `--env <name>` flag naming a registered environment, falling back to the `default` environment when the flag is absent. A Spinloop given as an argument is read only for its `ENV` instructions and adjacent `.env`, never to select the environment. When the instance is running, the report SHALL include the spinloop version from the daemon, carried by the stats Lambda reply.
 
 #### Scenario: Stats with a running instance
 
@@ -18,15 +18,15 @@ The system SHALL provide a `metrics` subcommand (`spinloop remote metrics`) that
 - **WHEN** the user runs `spinloop remote metrics` and the instance is stopped
 - **THEN** the command reports `state: stopped` and no metrics
 
-#### Scenario: Stats resolves the Spinloop
+#### Scenario: Stats names the environment with the flag
 
-- **WHEN** the user runs `spinloop remote metrics` in a directory with a `Spinloop` that has a `REMOTE` instruction
-- **THEN** the command uses that Spinloop's remote environment without an explicit path argument
+- **WHEN** the user runs `spinloop remote metrics --env dev-2`
+- **THEN** the command reports on the `dev-2` environment's instance
 
-#### Scenario: Stats with explicit Spinloop path
+#### Scenario: Stats falls back to the default environment
 
-- **WHEN** the user runs `spinloop remote metrics ./some/Spinloop`
-- **THEN** the command uses that Spinloop's `REMOTE` environment
+- **WHEN** the user runs `spinloop remote metrics` with no `--env` flag
+- **THEN** the command reports on the `default` environment's instance
 
 #### Scenario: Version is shown in stats output
 

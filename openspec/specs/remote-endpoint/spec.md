@@ -207,49 +207,57 @@ is ready, `start` SHALL stop waiting and fail rather than block indefinitely.
 - **WHEN** the user runs `spinloop remote start` without a timeout flag
 - **THEN** the command waits up to fifteen minutes
 
-### Requirement: Remote configuration discovery
+### Requirement: Environment selection for remote commands
 
 The endpoint's control URLs SHALL come from a JSON configuration naming a start
 URL, a stop URL, an optional deploy URL, and a region. That configuration MAY
 also name the endpoint's own base URL; it SHALL be optional, since no control
-call needs it, and a configuration without it SHALL remain valid. A Spinloop's
-`REMOTE` instruction SHALL select that configuration: a bare name selects the
-named environment from the per-user registry (always local; see the Remote
-Environments specification), and a path or URL selects a configuration
-resolved relative to the Spinloop's own source when not itself absolute — a
-local directory join when the Spinloop was read from disk, URL-relative
-resolution when the Spinloop was fetched from a URL — and fetched over HTTP when
-it resolves to a URL. Fetching a remote `REMOTE` configuration SHALL happen
-only at the point a `remote` subcommand, or `spinloop apply`'s base-URL
-fallback, actually resolves it. When no Spinloop names one, the `default`
-environment SHALL be used, so the command works outside any project.
+call needs it, and a configuration without it SHALL remain valid.
+
+A `remote` subcommand SHALL select which environment's configuration it uses
+with its `--env <name>` flag: the value is a registered environment's name, and
+the configuration is read from that environment's `remote.json` in the per-user
+registry (see the Remote Environments specification). A `--env` value that names
+an environment with no registered configuration SHALL fail saying the
+environment is not registered and how to create it. When no `--env` flag is
+given, the `default` environment SHALL be used, so the command works outside
+any project.
+
+The Spinloop a subcommand is given as an argument SHALL NOT select an
+environment; it SHALL be read only for its `ENV` instructions and the `.env`
+file beside it, which the command applies before any AWS or control-plane work
+(see the Remote Local Environment specification).
+
 Environment variables SHALL override individual values, and the region SHALL
 fall back to the standard AWS region variable and then to the region named in
 the URL. A missing or incomplete configuration SHALL fail saying where to put
 it.
 
-#### Scenario: Spinloop names the configuration
+#### Scenario: The flag selects the environment
 
-- **WHEN** a Spinloop sets `REMOTE ./remote.json` and a `remote` subcommand
-  runs with that Spinloop
-- **THEN** the URLs come from that file, resolved beside the Spinloop
-
-#### Scenario: Spinloop names an environment
-
-- **WHEN** a Spinloop sets `REMOTE qwen3.6-27b-prod` and a `remote` subcommand
-  runs with that Spinloop
+- **WHEN** the user runs `spinloop remote status --env qwen3.6-27b-prod`
 - **THEN** the URLs come from that environment's `remote.json` in the registry
 
-#### Scenario: Explicit Spinloop without a REMOTE instruction
+#### Scenario: An unregistered environment is named as such
 
-- **WHEN** a `remote` subcommand is given a Spinloop that has no `REMOTE`
-- **THEN** it fails saying that Spinloop has no `REMOTE` instruction, rather than
-  silently using the default environment
+- **WHEN** a `remote` subcommand runs with `--env missing` and no environment
+  `missing` is registered
+- **THEN** it fails saying the environment is not registered and that
+  `spinloop remote deploy --env missing` creates it
 
-#### Scenario: No Spinloop in play
+#### Scenario: No flag uses the default environment
 
-- **WHEN** a `remote` subcommand runs outside a project
-- **THEN** the `default` environment is used
+- **WHEN** a `remote` subcommand runs with no `--env` flag
+- **THEN** the `default` environment is used, whether or not a `Spinloop` is
+  present in the working directory
+
+#### Scenario: An explicit Spinloop does not select an environment
+
+- **WHEN** a `remote` subcommand is given a Spinloop as its argument and no
+  `--env` flag
+- **THEN** the command uses the `default` environment and applies the
+  Spinloop's `ENV` instructions and adjacent `.env` to the process environment,
+  rather than failing for the Spinloop to name an environment
 
 #### Scenario: Configuration without a base URL
 
@@ -257,34 +265,6 @@ it.
   URL, and a `remote` subcommand runs
 - **THEN** the subcommand works as it always has, since the endpoint reports its
   own address in the replies to `start` and `status`
-
-#### Scenario: A remote configuration fetched over HTTP
-
-- **WHEN** a Spinloop sets `REMOTE https://example.com/team/remote.json`
-- **THEN** a `remote` subcommand fetches that URL for the control
-  configuration
-
-#### Scenario: A REMOTE relative to a URL-sourced Spinloop
-
-- **WHEN** a Spinloop fetched from `https://example.com/team/Spinloop` sets
-  `REMOTE ./remote.json`
-- **THEN** the configuration resolves to
-  `https://example.com/team/remote.json` and is fetched
-
-#### Scenario: A remote REMOTE is fetched only by commands that resolve one
-
-- **WHEN** `spinloop serve` runs against a Spinloop whose `REMOTE` is a URL
-- **THEN** the `REMOTE` URL is never fetched — `serve` has no use for a
-  remote endpoint's control configuration
-
-#### Scenario: Applying names the environment even with an explicit BASEURL
-
-- **WHEN** a Spinloop with a URL-form `REMOTE` and its own `BASEURL`
-  instruction is applied with `spinloop apply`
-- **THEN** the `REMOTE` URL is still fetched once, to name the harness
-  provider after the deployment's environment (the same read a local-path
-  `REMOTE` already triggers) — only the redundant base-URL lookup is skipped,
-  since `BASEURL` already supplies it
 
 ### Requirement: Authenticated control requests
 
