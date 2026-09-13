@@ -51,11 +51,14 @@ today, with no model or alias.
 
 The provider such a launch configures SHALL be named and keyed by the
 gateway, not by the catalogue's shared generic id: its display name SHALL
-read the way a remote environment's does (e.g. "llama.cpp (dev-2)"), built
-from the gateway's `name` where the fleet file's `gateway` section gives one,
-or its address otherwise. This keeps a second gateway from overwriting the
-first's configured block, and lets the harness's own model picker tell them
-apart.
+lead with "Gateway" — not the catalogue engine's own generic label — followed
+by the gateway's `name` where the fleet file's `gateway` section gives one,
+or its address otherwise (e.g. "Gateway (dev-2)" or "Gateway
+(localhost:4000)"), the same "<label> (<qualifier>)" shape a remote
+environment already reads as (e.g. "llama.cpp (dev-2)"). This keeps a second
+gateway from overwriting the first's configured block, and — since the word
+a user actually searches a model picker for is "gateway" — lets them find it
+at all.
 
 #### Scenario: A fleet's gateway is used
 
@@ -118,8 +121,7 @@ apart.
   against a fleet file whose `gateway` section names both a `url` and a
   `name`
 - **THEN** the harness's provider is keyed and displayed using that name,
-  reading the way a remote environment does (e.g. "OpenAI-compatible
-  (remote-llms)")
+  reading the way a remote environment does (e.g. "Gateway (remote-llms)")
 
 #### Scenario: An unnamed gateway is labelled by its address
 
