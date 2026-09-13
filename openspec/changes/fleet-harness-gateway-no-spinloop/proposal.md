@@ -84,12 +84,13 @@ write the result into opencode's config, refreshed on every launch.
 - `cmd/spinloop/fleet.go`: `runFleetHarness` builds a bare provider selection
   instead of failing when no Spinloop is given and the fleet names a gateway.
 - `cmd/spinloop/main.go`: `applySelection`'s model-or-alias requirement
-  becomes conditional, waived only for a selection routed at a gateway; three
-  unrelated call sites (`spinloop add`, `spinloop apply`, `spinloop hf
-  --apply`) are updated to keep requiring a model or alias. A new client call
-  queries the gateway's `GET /v1/models` when a gateway-routed selection names
-  no model, on the same non-fatal-warning terms as the existing remote-key
-  fetch.
+  becomes conditional on a new `gatewayLabel string` parameter, non-empty
+  only for a selection routed at a gateway with no model or alias of its
+  own; three unrelated call sites (`spinloop add`, `spinloop apply`,
+  `spinloop hf --apply`) are updated to keep requiring a model or alias. A
+  new client call queries the gateway's `GET /v1/models` when a
+  gateway-routed selection names no model, on the same non-fatal-warning
+  terms as the existing remote-key fetch.
 - `internal/spinloop/spinloop.go`: `Selection` gains a `DiscoveredModels`
   field, computed at apply time like the existing `DisplayName` field — never
   parsed from a Spinloop file.
@@ -108,8 +109,10 @@ write the result into opencode's config, refreshed on every launch.
   working directory the command happens to run from — the "no token" error
   already claimed the former, but the code fell back to the latter.
 - `internal/fleet/config.go`: `GatewayConfig` gains a `Name` field and a
-  `Label()` method (explicit name, else the address's host); `fleet.Choice`
-  carries the resolved `Label` through to the apply step.
+  `Label()` method (explicit name, else the address's host);
+  `internal/fleet/select.go`'s `Choice` gains a `Label` field, set from
+  `gw.Label()` in `cmd/spinloop/route.go`'s `routeThroughFleet` and carried
+  through to the apply step.
 - `cmd/spinloop/main.go`: a new `gatewayProviderKey`/`slugify` pair turns a
   gateway's label into a provider key (`"gateway-" + slug`, or bare
   `"gateway"` if the label slugs to nothing); `applySelection` renames the

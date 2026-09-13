@@ -654,6 +654,19 @@ func TestFetchGatewayModels_Success(t *testing.T) {
 	}
 }
 
+// TestFetchGatewayModels_Unreachable fails distinctly from an HTTP-level
+// failure when the gateway cannot even be connected to — the realistic "the
+// gateway is down" case this feature's non-fatal handling is built around.
+func TestFetchGatewayModels_Unreachable(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	url := srv.URL
+	srv.Close() // nothing is listening here any more
+
+	if _, err := fetchGatewayModels(context.Background(), url, "sekret"); err == nil {
+		t.Fatal("expected an error when the gateway cannot be reached")
+	}
+}
+
 // TestFetchGatewayModels_NonOK fails on a non-200 response rather than trying
 // to decode it as a model list.
 func TestFetchGatewayModels_NonOK(t *testing.T) {

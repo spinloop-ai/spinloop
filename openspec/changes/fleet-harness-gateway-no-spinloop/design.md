@@ -75,11 +75,14 @@ See proposal.md - Why. Relevant existing pieces:
 ## Decisions
 
 **Waive the model-or-alias guard with a parameter, not a new function.**
-`applySelection` (`cmd/spinloop/main.go`) gains a `modelOptional bool`
+`applySelection` (`cmd/spinloop/main.go`) gains a `gatewayLabel string`
 parameter; the guard becomes `if sel.Model == "" && sel.Alias == "" &&
-!modelOptional`. The one caller that can pass `true` is
-`applyRoutedSpinloop`, and only when `choice != nil && choice.Gateway` — i.e.
-exactly the case routing has already determined needs no model. Alternative
+gatewayLabel == ""`. The one caller that can pass a non-empty value is
+`applyRoutedSpinloop`, and only when `choice != nil && choice.Gateway` and
+the selection names no model or alias — exactly the case routing has already
+determined needs no model. The same signal also drives the provider rename
+described below, since a string carries both "waive the requirement" and
+"here is what to call it" without a second parameter. Alternative
 considered: a separate `applyGatewayOnlySelection` function duplicating
 catalog-load/apply/print logic — rejected because it would duplicate the
 token-resolution and apply steps `applyRoutedSpinloop` already has right.
@@ -163,13 +166,11 @@ block, and neither would read distinctly in a model picker next to the
 existing "llama.cpp (dev-2)"-style remote-environment entries. Fixed by
 mirroring the environment-rename block already in `applySelection`
 (`sel.Provider = envName; sel.DisplayName = catalog.RemoteProviderLabel(p.Name,
-envName)`): a new `gatewayLabel` parameter replaces the `modelOptional` bool
-(its non-emptiness serves the same waiver, since it is only ever set exactly
-when `modelOptional` was), and — when set — renames `sel.Provider` to
-`gatewayProviderKey(gatewayLabel)` and sets `sel.DisplayName` the same way the
-environment case does. `gatewayLabel` comes from `fleet.Choice.Label`, itself
-`GatewayConfig.Label()`: the fleet file's new optional `gateway.name` field,
-or the address's host when the section names none — computed in
+envName)`): when `gatewayLabel` is set (see above), it renames `sel.Provider`
+to `gatewayProviderKey(gatewayLabel)` and sets `sel.DisplayName` the same way
+the environment case does. `gatewayLabel` comes from `fleet.Choice.Label`,
+itself `GatewayConfig.Label()`: the fleet file's new optional `gateway.name`
+field, or the address's host when the section names none — computed in
 `internal/fleet` since `Label()` belongs next to the type it describes, not
 duplicated in `cmd/spinloop`.
 

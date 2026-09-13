@@ -460,6 +460,60 @@ func TestCmdFleetHarnessNoSpinloopUsesGatewayModelsForPi(t *testing.T) {
 	}
 }
 
+// The gateway authenticates fine but its models endpoint fails: the launch
+// still succeeds, with a warning and no models populated — the models query
+// is a convenience for the picker, not something the launch depends on.
+func TestCmdFleetHarnessNoSpinloopModelsFetchFails(t *testing.T) {
+	home := isolateConfig(t)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v1/models", func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "boom", http.StatusInternalServerError)
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	t.Setenv("GATEWAY_TOKEN", "gw-token")
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("OPENAI_BASE_URL", "")
+	argsFile := filepath.Join(t.TempDir(), "args")
+	envFile := filepath.Join(t.TempDir(), "env")
+	stubHarnessBinaryWithEnv(t, argsFile, envFile)
+
+	fleetHarnessDir(t,
+		"nodes:\n  - name: dead\n    host: 127.0.0.1\n    port: 1\ngateway:\n  url: "+srv.URL+"\n  tokenEnv: GATEWAY_TOKEN\n",
+		"")
+	stderr := captureStderr(t, func() {
+		captureStdout(t, func() {
+			if err := cmdFleetHarness(nil); err != nil {
+				t.Fatalf("cmdFleetHarness: %v", err)
+			}
+		})
+	})
+	if !strings.Contains(stderr, "Warning: could not list the gateway's models") {
+		t.Errorf("expected a warning about the failed models fetch, got:\n%s", stderr)
+	}
+	if _, err := os.ReadFile(argsFile); err != nil {
+		t.Fatalf("the harness should still launch despite the fetch failure: %v", err)
+	}
+	config, err := os.ReadFile(filepath.Join(home, ".config", "opencode", "opencode.json"))
+	if err != nil {
+		t.Fatalf("the harness config was not written: %v", err)
+	}
+	var root map[string]any
+	if err := json.Unmarshal(config, &root); err != nil {
+		t.Fatalf("opencode.json not valid JSON: %v", err)
+	}
+	wantKey := gatewayKeyForTest(srv)
+	provider, _ := root["provider"].(map[string]any)
+	entry, ok := provider[wantKey].(map[string]any)
+	if !ok {
+		t.Fatalf("provider %q not found in %v", wantKey, provider)
+	}
+	if models, ok := entry["models"]; ok {
+		t.Errorf("no models should be populated after a failed fetch, got: %v", models)
+	}
+}
+
 // A fleet file's gateway.name overrides the address-derived label: the
 // provider is keyed and displayed under the hand-picked name instead.
 func TestCmdFleetHarnessNoSpinloopUsesGatewayName(t *testing.T) {
