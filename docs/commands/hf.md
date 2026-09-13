@@ -123,12 +123,12 @@ default is `https://huggingface.co`.
 
 - An existing `--output-file` is not overwritten unless `--force` is given, so
   a hand-edited Spinloop cannot be lost to a mistyped command.
-- `--apply` configures the harness by the same path `spinloop apply` uses, so
+- `--apply` configures the harness by the same path `spinloop harness apply` uses, so
   one command goes from a model page to a dressed agent.
 
 ## See also
 
-- [`spinloop apply`](apply.md) — apply a `Spinloop` file you already have
+- [`spinloop harness apply`](harness.md#spinloop-harness-apply) — apply a `Spinloop` file you already have
 - [`spinloop serve`](serve.md) — run the engine the Spinloop names
-- [`spinloop list`](list.md) — the catalogue of providers
+- [`spinloop provider list`](provider.md#spinloop-provider-list) — the catalogue of providers
 - [Environment variables](../env-vars.md) — `HF_TOKEN` and friends

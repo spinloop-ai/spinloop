@@ -12,7 +12,7 @@
 #          land on an engine that is mid-request
 #   active the most recently active wins, consolidating work onto one machine
 #          and leaving the rest free to wake for another model, or sleep
-# `spinloop harness --prefer <value>` overrides this for one launch.
+# `spinloop harness open --prefer <value>` overrides this for one launch.
 prefer: idle
 
 nodes:

@@ -80,8 +80,8 @@ picked up automatically once it is available.
 eval "$(spinloop remote start --env qwen3.6-27b --print-env)"   # boots it (~10 min
                                         # from cold) and sets OPENAI_BASE_URL and
                                         # OPENAI_API_KEY
-spinloop apply --env qwen3.6-27b         # point your agent at it
-spinloop harness --env qwen3.6-27b       # work
+spinloop harness apply --env qwen3.6-27b         # point your agent at it
+spinloop harness open --env qwen3.6-27b  # work
 spinloop remote pause --env qwen3.6-27b  # done for now: stopped, re-wakeable with start
 spinloop remote stop --env qwen3.6-27b   # done for good: terminate it
 ```
@@ -114,7 +114,7 @@ Put them in a JSON file:
 
 `base_url` is the endpoint's own address, and it's optional — `remote` doesn't
 need it, since `start` and `status` report the address themselves. It's there
-for [`spinloop apply`](apply.md): a Spinloop for a remote endpoint can leave out
+for [`spinloop harness apply`](harness.md#spinloop-harness-apply): a Spinloop for a remote endpoint can leave out
 `BASEURL` and let apply take the address from here, so the address stays with
 the deployment that owns it. A `BASEURL` in the Spinloop wins if you set one.
 
@@ -146,10 +146,10 @@ not select the environment — that is the flag's job alone.
 (`export OPENAI_BASE_URL`/`export OPENAI_API_KEY`, safe to `eval`) without
 booting it. It also reports what is deployed to the environment — runner,
 served model, context size — whenever something is: this is what lets
-[`spinloop harness --env <name>`](harness.md#launching-with-no-spinloop-at-all)
+[`spinloop harness open --env <name>`](harness.md#launching-with-no-spinloop-at-all)
 configure the harness from a deployed environment with no Spinloop at all. It
 appears once the control plane has been redeployed with `spinloop remote
-bootstrap`; an older control plane simply omits it, and `spinloop harness
+bootstrap`; an older control plane simply omits it, and `spinloop harness open
 --env` with no Spinloop fails naming that as the fix.
 
 ## Listing environments
@@ -482,4 +482,4 @@ included) for every `kind: remote` node a fleet file names — or a chosen few
 
 - [The `Spinloop` file](../spinloop-file.md) — what the Spinloop serves
 - [`spinloop serve`](serve.md) — the same Spinloop, run on your own machine
-- [`spinloop apply`](apply.md) — point your agent at the endpoint
+- [`spinloop harness apply`](harness.md#spinloop-harness-apply) — point your agent at the endpoint

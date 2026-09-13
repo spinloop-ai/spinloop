@@ -2,7 +2,8 @@
 // by deep-merging provider settings into that harness's config. The supported
 // harnesses are opencode, the Pi coding agent, and lucinate; the harness is
 // chosen at runtime with --harness/-H or SPINLOOP_HARNESS, or a stored default
-// set via `spinloop harness --set`, and defaults to opencode. `spinloop --help`
+// set via `spinloop harness config --set`, and defaults to opencode.
+// `spinloop --help`
 // and each command's own help describe the surface; the commands are built as
 // a Cobra tree (see commands.go), so the help is what the tree says.
 //
@@ -17,7 +18,8 @@
 // either wins over the catalogue's defaults.
 //
 // A Spinloop is a declarative, Dockerfile-style file describing one provider
-// selection, applied with `spinloop apply` and reverted with `spinloop unapply`;
+// selection, applied with `spinloop harness apply` and reverted with `spinloop
+// harness unapply`;
 // see the internal/spinloop package. The harness is deliberately not part of an
 // Spinloop, so the same Spinloop applies to any harness.
 //
@@ -118,7 +120,7 @@ alongside a context, defaulting to a quarter of the context).`,
 		RunE: func(c *cobra.Command, _ []string) error {
 			resolve(c)
 			if s.Provider == "" {
-				return fmt.Errorf("--provider/-p is required (see `spinloop list`)")
+				return fmt.Errorf("--provider/-p is required (see `spinloop provider list`)")
 			}
 			h, _, err := harness.Resolve(harnessName)
 			if err != nil {
@@ -151,7 +153,7 @@ given.`,
 		RunE: func(c *cobra.Command, _ []string) error {
 			resolve(c)
 			if s.Provider == "" {
-				return fmt.Errorf("--provider/-p is required (see `spinloop list`)")
+				return fmt.Errorf("--provider/-p is required (see `spinloop provider list`)")
 			}
 			h, _, err := harness.Resolve(harnessName)
 			if err != nil {
@@ -186,16 +188,16 @@ func envFileDir(spinloopPath string) string {
 // spinloopPath is the Spinloop the selection came from — its own path, not a
 // pre-computed directory, so a relative PRESET resolves correctly whether the
 // Spinloop is local or URL-sourced; it is empty when no Spinloop is involved
-// (an `spinloop add` from flags). envName is the --env flag's value: the
-// registered environment the selection is applied against, empty for a local
-// apply. resolve looks up API key variables — normally opencode.EnvResolver of
-// the Spinloop's local directory, but `spinloop harness` widens it with the key
-// it fetched from a remote endpoint, which it is about to put in the launched
-// agent's environment. gatewayLabel waives the model-or-alias requirement
-// below and renames the provider: non-empty only when the selection is
-// routed at a gateway with no model or alias of its own, since a gateway
-// resolves the model per request and needs no Spinloop to name one — see the
-// rename below for what the label is used for.
+// (an `spinloop harness add` from flags). envName is the --env flag's value:
+// the registered environment the selection is applied against, empty for a
+// local apply. resolve looks up API key variables — normally
+// opencode.EnvResolver of the Spinloop's local directory, but `spinloop
+// harness` widens it with the key it fetched from a remote endpoint, which it
+// is about to put in the launched agent's environment. gatewayLabel waives the
+// model-or-alias requirement below and renames the provider: non-empty only
+// when the selection is routed at a gateway with no model or alias of its own,
+// since a gateway resolves the model per request and needs no Spinloop to name
+// one — see the rename below for what the label is used for.
 func applySelection(sel spinloop.Selection, h harness.Harness, spinloopPath, envName, gatewayLabel string, resolve func(string) string) error {
 	if sel.Model == "" && sel.Alias == "" && gatewayLabel == "" {
 		return fmt.Errorf("a provider selection needs a model or an alias")
@@ -207,7 +209,7 @@ func applySelection(sel spinloop.Selection, h harness.Harness, spinloopPath, env
 	}
 	p, ok := cat.Providers[sel.Provider]
 	if !ok {
-		return fmt.Errorf("unknown provider %q (see `spinloop list`)", sel.Provider)
+		return fmt.Errorf("unknown provider %q (see `spinloop provider list`)", sel.Provider)
 	}
 
 	// The catalogue provider p is resolved above by the PROVIDER value, which
@@ -482,9 +484,9 @@ func resolveAlias(arg string) (string, bool, error) {
 	return path, true, nil
 }
 
-// applyCmd reads a Spinloop file and applies it. The path defaults to ./Spinloop
-// when none is given, so a bare `spinloop apply` works in a directory that
-// holds one.
+// applyCmd reads a Spinloop file and applies it. The path defaults to
+// ./Spinloop when none is given, so a bare `spinloop harness apply` works in a
+// directory that holds one.
 func applyCmd() *cobra.Command {
 	var providers, output, harnessName, envName string
 	c := &cobra.Command{
@@ -508,7 +510,7 @@ environment's registered remote.json.`,
 			if len(args) > 0 {
 				path = args[0]
 			}
-			sel, spinloopPath, err := readSpinloop("spinloop apply <file>", path)
+			sel, spinloopPath, err := readSpinloop("spinloop harness apply <file>", path)
 			if err != nil {
 				return err
 			}
@@ -533,9 +535,10 @@ environment's registered remote.json.`,
 	return c
 }
 
-// unapplyCmd reads a Spinloop file and removes what it selects — the inverse of
-// apply, as remove is to add. The path defaults to ./Spinloop when none is given,
-// so a bare `spinloop unapply` works in a directory that holds one.
+// unapplyCmd reads a Spinloop file and removes what it selects — the inverse
+// of apply, as remove is to add. The path defaults to ./Spinloop when none is
+// given, so a bare `spinloop harness unapply` works in a directory that holds
+// one.
 func unapplyCmd() *cobra.Command {
 	var providers, harnessName, envName string
 	c := &cobra.Command{
@@ -557,7 +560,7 @@ applied the Spinloop against, or there is nothing to remove.`,
 			if len(args) > 0 {
 				path = args[0]
 			}
-			sel, spinloopPath, err := readSpinloop("spinloop unapply <file>", path)
+			sel, spinloopPath, err := readSpinloop("spinloop harness unapply <file>", path)
 			if err != nil {
 				return err
 			}
@@ -577,9 +580,10 @@ applied the Spinloop against, or there is nothing to remove.`,
 	return c
 }
 
-// cmdAlias registers a Spinloop under a short name, so it can be used anywhere a
-// path goes: `spinloop apply <name>`, `spinloop serve <name>`, `spinloop harness
-// <name>`. The name defaults to the Spinloop's own ALIAS instruction.
+// cmdAlias registers a Spinloop under a short name, so it can be used anywhere
+// a path goes: `spinloop harness apply <name>`, `spinloop serve <name>`,
+// `spinloop harness <name>`. The name defaults to the Spinloop's own ALIAS
+// instruction.
 //
 // Note the two senses of "alias", which are related but not the same thing: the
 // ALIAS keyword inside a Spinloop names the model to the harness (and to
@@ -698,9 +702,9 @@ func runAlias(args []string, name string, force, list bool) error {
 		configPath, _ := config.Path()
 		fmt.Printf("Added alias %q for %s (stored in %s).\n\n", name, abs, configPath)
 		fmt.Println("Use it anywhere a Spinloop path goes:")
-		fmt.Printf("  spinloop apply %s\n", name)
+		fmt.Printf("  spinloop harness apply %s\n", name)
 		fmt.Printf("  spinloop serve %s\n", name)
-		fmt.Printf("  spinloop harness %s\n", name)
+		fmt.Printf("  spinloop harness open %s\n", name)
 	}
 	return nil
 }
@@ -751,9 +755,10 @@ func runUnalias(rest []string) error {
 }
 
 // writeAliases renders the alias registry into b: every registered name with
-// the Spinloop it points at, marking any whose file has since gone. It is shared
-// by `spinloop alias --list` and `spinloop show`. header controls the heading and
-// the empty-state line, which `show` leaves out — there it is one section among
+// the Spinloop it points at, marking any whose file has since gone. It is
+// shared by `spinloop alias --list` and `spinloop harness show`. header
+// controls the heading and the empty-state line, which `show` leaves out —
+// there it is one section among
 // several, and an empty registry is not worth a paragraph.
 func writeAliases(b *strings.Builder, header bool) error {
 	f, err := config.Load()
@@ -795,14 +800,15 @@ func writeAliases(b *strings.Builder, header bool) error {
 	return nil
 }
 
-// exportCmd reconstructs a Spinloop from the active harness's config and prints
-// it to stdout, so an existing setup can be captured (spinloop export > Spinloop).
+// exportCmd reconstructs a Spinloop from the active harness's config and
+// prints it to stdout, so an existing setup can be captured (spinloop harness
+// export > Spinloop).
 func exportCmd() *cobra.Command {
 	var provider, providers, harnessName string
 	c := &cobra.Command{
 		Use:           "export",
 		Short:         "print the harness's config as a Spinloop",
-		Long:          `prints the active harness's config as a Spinloop (spinloop export > Spinloop).`,
+		Long:          `prints the active harness's config as a Spinloop (spinloop harness export > Spinloop).`,
 		Args:          cobra.ArbitraryArgs,
 		SilenceErrors: true,
 		SilenceUsage:  true,
@@ -823,7 +829,7 @@ func exportCmd() *cobra.Command {
 	return c
 }
 
-// runExport is the body of `spinloop export`.
+// runExport is the body of `spinloop harness export`.
 func runExport(provider, providers, harnessName string) error {
 	h, _, err := harness.Resolve(harnessName)
 	if err != nil {
@@ -968,9 +974,10 @@ func removeSelection(sel spinloop.Selection, h harness.Harness, spinloopPath, en
 	return nil
 }
 
-// spinloopPathFlag is the harness command's --spinloop/-O flag: the Spinloop to apply
-// before launching, whose value is optional. Given bare it means the default
-// Spinloop, exactly as a bare `spinloop apply` does; --spinloop=<path> names one.
+// spinloopPathFlag is the harness command's --spinloop/-O flag: the Spinloop
+// to apply before launching, whose value is optional. Given bare it means the
+// default Spinloop, exactly as a bare `spinloop harness apply` does;
+// --spinloop=<path> names one.
 // The value has to be attached because everything positional after the flags
 // belongs to the harness.
 type spinloopPathFlag struct {
@@ -994,10 +1001,16 @@ func (f *spinloopPathFlag) Set(v string) error {
 	return nil
 }
 
-// cmdHarness is the seam the suite calls the harness command through, the
+// cmdOpen is the seam the suite calls the launch (harness open) through, the
 // way the tree does: fresh command, the body's parse, the launch.
-func cmdHarness(args []string) error {
-	return execCmd(harnessCmd(), args)
+func cmdOpen(args []string) error {
+	return execCmd(openCmd(), args)
+}
+
+// cmdConfig is the seam the suite calls the harness's config command through:
+// report (--get, the default) or store (--set) the default harness.
+func cmdConfig(args []string) error {
+	return execCmd(configCmd(), args)
 }
 
 // harnessEnv is the environment for the agent spinloop launches: this process's,
@@ -1241,10 +1254,10 @@ func lookupHarnessFlag(fs *pflag.FlagSet, tok string) (flag *pflag.Flag, attache
 // predicate for taking `harness`'s first positional argument as a Spinloop
 // rather than forwarding it to the harness.
 //
-// A config that cannot be read is treated as "no aliases" rather than an error:
-// the argument is then forwarded and the harness still launches. Someone who
-// meant an alias gets the real parse error from `spinloop apply <name>`, where it
-// is actionable.
+// A config that cannot be read is treated as "no aliases" rather than an
+// error: the argument is then forwarded and the harness still launches.
+// Someone who meant an alias gets the real parse error from `spinloop harness
+// apply <name>`, where it is actionable.
 func namesAnSpinloopOrAlias(arg string) bool {
 	if namesAnSpinloop(arg) {
 		return true
@@ -1260,10 +1273,11 @@ func namesAnSpinloopOrAlias(arg string) bool {
 	return ok
 }
 
-// applyBeforeLaunch applies the Spinloop named by --spinloop/-O to the harness that
-// is about to be launched — exactly the work `spinloop apply` does, so one command
-// can dress the harness and then run it. rest is what will be forwarded to the
-// harness, inspected only to catch a path that was meant for the flag.
+// applyBeforeLaunch applies the Spinloop named by --spinloop/-O to the harness
+// that is about to be launched — exactly the work `spinloop harness apply`
+// does, so one command can dress the harness and then run it. rest is what
+// will be forwarded to the harness, inspected only to catch a path that was
+// meant for the flag.
 // It returns the applied Spinloop's directory and selection, so the launched
 // agent can be given the same keys the apply resolved, along with the remote
 // endpoint's live environment when --env names an environment.
@@ -1682,7 +1696,7 @@ configure), and the aliases you have registered.`,
 	return c
 }
 
-// runShow is the body of `spinloop show`.
+// runShow is the body of `spinloop harness show`.
 func runShow(harnessName string) error {
 	h, source, err := harness.Resolve(harnessName)
 	if err != nil {
@@ -1705,7 +1719,7 @@ func runShow(harnessName string) error {
 	}
 
 	if len(states) == 0 {
-		b.WriteString("\nNo providers configured. Add one with `spinloop add`.\n")
+		b.WriteString("\nNo providers configured. Add one with `spinloop harness add`.\n")
 		if err := writeAliases(&b, false); err != nil {
 			return err
 		}
@@ -1779,7 +1793,7 @@ lists what the active harness's config actually has.)`,
 	return c
 }
 
-// runList is the body of `spinloop list`.
+// runList is the body of `spinloop provider list`.
 func runList(args []string, providers string, showModels bool) error {
 	cat, err := catalog.LoadFrom(catalog.ResolveCatalogPath(providers))
 	if err != nil {
@@ -1791,7 +1805,7 @@ func runList(args []string, providers string, showModels bool) error {
 	names := cat.SortedProviderNames()
 	if len(args) > 0 {
 		if _, ok := cat.Providers[args[0]]; !ok {
-			return fmt.Errorf("unknown provider %q (see `spinloop list`)", args[0])
+			return fmt.Errorf("unknown provider %q (see `spinloop provider list`)", args[0])
 		}
 		names = []string{args[0]}
 	}
@@ -1837,19 +1851,21 @@ func runList(args []string, providers string, showModels bool) error {
 	return nil
 }
 
-// defaultProvidersFile is the filename cmdInitProviders writes to when no path
+// defaultProvidersFile is the filename provider init writes to when no path
 // is given. It matches the name the embedded catalogue carries and the one
 // --providers/SPINLOOP_PROVIDERS are typically pointed at.
 const defaultProvidersFile = "providers.yaml"
 
-// initProvidersCmd writes the binary's embedded providers.yaml to the working
+// initProviderCmd writes the binary's embedded providers.yaml to the working
 // directory (or an explicit path) as a starting point for a custom catalogue.
 // It refuses to clobber an existing file unless --force is given, so a stray
-// run can't destroy a catalogue the user has been editing.
-func initProvidersCmd() *cobra.Command {
+// run can't destroy a catalogue the user has been editing. It is `provider
+// init` — the old top-level init-providers, renamed under the group that
+// already says provider.
+func initProviderCmd() *cobra.Command {
 	var force bool
 	c := &cobra.Command{
-		Use:   "init-providers",
+		Use:   "init",
 		Short: "write the built-in providers.yaml out",
 		Long: `writes the binary's built-in providers.yaml to the working directory
 (or [path]) so you can customise the catalogue and point spinloop at it with
@@ -1873,7 +1889,7 @@ func initProvidersCmd() *cobra.Command {
 	return c
 }
 
-// runInitProviders is the body of `spinloop init-providers`.
+// runInitProviders is the body of `spinloop provider init`.
 func runInitProviders(path string, force bool) error {
 	if !force {
 		if _, err := os.Stat(path); err == nil {
@@ -1889,20 +1905,20 @@ func runInitProviders(path string, force bool) error {
 
 	fmt.Printf("Wrote %s\n\n", path)
 	fmt.Printf("Edit it, then point spinloop at it:\n")
-	fmt.Printf("  spinloop list --providers %s\n", path)
-	fmt.Printf("  SPINLOOP_PROVIDERS=%s spinloop list\n", path)
+	fmt.Printf("  spinloop provider list --providers %s\n", path)
+	fmt.Printf("  SPINLOOP_PROVIDERS=%s spinloop provider list\n", path)
 	return nil
 }
 
 // Test seams: the suite calls these the way the tree does — each runs its
 // command through execCmd rather than parsing a private FlagSet.
-func cmdAdd(args []string) error           { return execCmd(addCmd(), args) }
-func cmdRemove(args []string) error        { return execCmd(removeCmd(), args) }
-func cmdList(args []string) error          { return execCmd(listCmd(), args) }
-func cmdShow(args []string) error          { return execCmd(showCmd(), args) }
-func cmdApply(args []string) error         { return execCmd(applyCmd(), args) }
-func cmdUnapply(args []string) error       { return execCmd(unapplyCmd(), args) }
-func cmdAlias(args []string) error         { return execCmd(aliasCmd(), args) }
-func cmdUnalias(args []string) error       { return execCmd(unaliasCmd(), args) }
-func cmdExport(args []string) error        { return execCmd(exportCmd(), args) }
-func cmdInitProviders(args []string) error { return execCmd(initProvidersCmd(), args) }
+func cmdAdd(args []string) error          { return execCmd(addCmd(), args) }
+func cmdRemove(args []string) error       { return execCmd(removeCmd(), args) }
+func cmdList(args []string) error         { return execCmd(listCmd(), args) }
+func cmdShow(args []string) error         { return execCmd(showCmd(), args) }
+func cmdApply(args []string) error        { return execCmd(applyCmd(), args) }
+func cmdUnapply(args []string) error      { return execCmd(unapplyCmd(), args) }
+func cmdAlias(args []string) error        { return execCmd(aliasCmd(), args) }
+func cmdUnalias(args []string) error      { return execCmd(unaliasCmd(), args) }
+func cmdExport(args []string) error       { return execCmd(exportCmd(), args) }
+func cmdInitProvider(args []string) error { return execCmd(initProviderCmd(), args) }

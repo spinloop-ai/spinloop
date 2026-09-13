@@ -19,7 +19,7 @@ when needed. The file SHALL be written with owner-only (`0600`) permissions.
 
 #### Scenario: First write creates the file
 
-- **WHEN** the user runs `spinloop add -H pi` and no `models.json` exists
+- **WHEN** the user runs `spinloop harness add -H pi` and no `models.json` exists
 - **THEN** the file is created with the managed provider entry and owner-only
   permissions
 
@@ -35,7 +35,7 @@ sorted by id so the file is deterministic.
 #### Scenario: Sibling provider and unknown fields survive
 
 - **WHEN** `models.json` holds another provider and extra fields on the managed
-  one, and the user re-runs `spinloop add -H pi`
+  one, and the user re-runs `spinloop harness add -H pi`
 - **THEN** the sibling provider and the extra fields are intact afterwards
 
 #### Scenario: Models unioned by id
@@ -149,7 +149,8 @@ catalogues supplied at run time, which no integrity test can inspect.
 
 Pi has no default-model setting, so applying a selection SHALL NOT record one;
 instead the command SHALL tell the user which model to select with `/model`
-inside Pi. `spinloop export` for Pi SHALL rely on the provider selection alone.
+inside Pi. `spinloop harness export` for Pi SHALL rely on the provider
+selection alone.
 
 #### Scenario: Add tells the user what to pick
 
@@ -164,5 +165,5 @@ written on every model the selection adds, as `contextWindow` and `maxTokens`.
 
 #### Scenario: Limits land on the Pi models
 
-- **WHEN** `spinloop add -H pi -p llamacpp -m my-model -c 128k` is applied
+- **WHEN** `spinloop harness add -H pi -p llamacpp -m my-model -c 128k` is applied
 - **THEN** the written model has `contextWindow` 128000 and `maxTokens` 32000

@@ -106,8 +106,8 @@ above — configured, no instance running, costing nothing until someone presses
 Wherever the model ended up, this part is the same, and it reads the same file:
 
 ```sh
-spinloop apply       # point your agent at that model
-spinloop harness     # launch the agent, now running it
+spinloop harness apply       # point your agent at that model
+spinloop harness open    # launch the agent, now running it
 ```
 
 opencode, Pi and lucinate are all supported, chosen when you launch rather than
@@ -116,13 +116,13 @@ goes to a node that already has the model — or can load it — so the machine 
 are sitting at needs no addresses of its own.
 
 Not serving it yourself? The same commands point an agent at a hosted model:
-`spinloop add -p openrouter -m deepseek/deepseek-v4-flash`, then
-`spinloop harness`.
+`spinloop harness add -p openrouter -m deepseek/deepseek-v4-flash`, then
+`spinloop harness open`.
 
 ## Supported providers
 
 Every provider below is built in — name it with `-p` and `spinloop` fills in the
-base URL, package and key variable for you. Run `spinloop list` to see them with
+base URL, package and key variable for you. Run `spinloop provider list` to see them with
 their models.
 
 | Provider | `-p` name | What it is |
@@ -161,7 +161,7 @@ it configures the agent for you:
 - **One command, any model.** Pick from a built-in catalogue — OpenRouter,
   Bedrock, Ollama, llama.cpp, vLLM, oMLX, MTPLX, or any OpenAI-compatible
   endpoint. No
-  URLs to look up, and `spinloop list --models` fetches the model ids straight from
+  URLs to look up, and `spinloop provider list --models` fetches the model ids straight from
   the provider.
 - **Your config survives.** Settings are merged *into* what you already have.
   Other providers, your theme, even your comments stay exactly where you left them.
@@ -198,13 +198,13 @@ Drop the resulting `spinloop` binary anywhere on your `PATH`.
 See what's in the catalogue:
 
 ```sh
-spinloop list
+spinloop provider list
 ```
 
 Need a model id? Ask the provider itself — no memorising, no guessing:
 
 ```sh
-spinloop list --models openrouter    # the models it currently serves, live
+spinloop provider list --models openrouter    # the models it currently serves, live
 ```
 
 Add a provider and a model:
@@ -213,7 +213,7 @@ Add a provider and a model:
 # OpenRouter needs a key — put it in .env first:
 echo 'DEEPSEEK_API_KEY=sk-or-v1-...' > .env
 
-spinloop add --provider openrouter --model deepseek/deepseek-v4-flash
+spinloop harness add --provider openrouter --model deepseek/deepseek-v4-flash
 ```
 
 Then just run `opencode`. That's it — your agent is pointed at the new model, and
@@ -223,24 +223,24 @@ the rest of your config is untouched.
 
 ```sh
 # A local Ollama model (no key required)
-spinloop add -p ollama -m llama3.2
+spinloop harness add -p ollama -m llama3.2
 
 # Claude on AWS Bedrock (uses your AWS credentials)
-spinloop add -p amazon-bedrock -m anthropic.claude-3-5-sonnet
+spinloop harness add -p amazon-bedrock -m anthropic.claude-3-5-sonnet
 
 # Any OpenAI-compatible endpoint, base URL via flag
 OPENAI_API_KEY=sk-... \
-  spinloop add -p openai-compatible -m my-model --base-url https://my-endpoint/v1
+  spinloop harness add -p openai-compatible -m my-model --base-url https://my-endpoint/v1
 
 # Pin a specific default model
-spinloop add -p openrouter -m deepseek/deepseek-v4-pro
+spinloop harness add -p openrouter -m deepseek/deepseek-v4-pro
 
 # Set the context window — human suffixes or an absolute count, both fine
-spinloop add -p llamacpp -m my-model -c 128k
-spinloop add -p llamacpp -m my-model --context 200000
+spinloop harness add -p llamacpp -m my-model -c 128k
+spinloop harness add -p llamacpp -m my-model --context 200000
 
 # Cap the max output tokens too (defaults to a quarter of the context)
-spinloop add -p llamacpp -m my-model -c 128k -o 32k
+spinloop harness add -p llamacpp -m my-model -c 128k -o 32k
 
 # A model straight off its Hugging Face page — the provider, quantisation,
 # context window and alias are inferred, and a copy already in a local cache
@@ -249,10 +249,10 @@ spinloop hf unsloth/Qwen3.6-35B-A3B-GGUF -o ./Spinloop
 spinloop hf unsloth/Qwen3.6-35B-A3B-GGUF:Q8_0 --apply
 
 # Take a provider back out
-spinloop remove -p ollama
+spinloop harness remove -p ollama
 
 # Or just drop one model
-spinloop remove -p openrouter -m deepseek/deepseek-v4-flash
+spinloop harness remove -p openrouter -m deepseek/deepseek-v4-flash
 ```
 
 On opencode, `add` sets the chosen model as the default and `remove` clears it
@@ -272,12 +272,12 @@ quarter of the context for you. It can't exceed the context window.
 ## Usage
 
 ```sh
-spinloop list   [--models [<provider>]]    # the catalogue; --models fetches live model ids
-spinloop show   [--harness <name>]         # show what the harness has configured
-spinloop add    --provider <name> [--model <id>] [--alias <name>] [--context <size>] [--output <size>] [--base-url <url>]
-spinloop remove --provider <name> [--model <id>] [--alias <name>]
-spinloop apply  [path] [--output <size>]   # apply a Spinloop file or directory (default ./Spinloop)
-spinloop unapply [path]                    # remove what a Spinloop file selects
+spinloop provider list   [--models [<provider>]]    # the catalogue; --models fetches live model ids
+spinloop harness show   [--harness <name>]         # show what the harness has configured
+spinloop harness add    --provider <name> [--model <id>] [--alias <name>] [--context <size>] [--output <size>] [--base-url <url>]
+spinloop harness remove --provider <name> [--model <id>] [--alias <name>]
+spinloop harness apply  [path] [--output <size>]   # apply a Spinloop file or directory (default ./Spinloop)
+spinloop harness unapply [path]                    # remove what a Spinloop file selects
 spinloop alias  [path] [-n <name>] [-l]    # name a Spinloop; -l lists them
 spinloop unalias <name>                    # drop a registered name
 spinloop serve  [path] [--dry-run] [-a]    # run the PROVIDER's inference server, from the PRESET
@@ -290,16 +290,16 @@ spinloop fleet <status|metrics|logs|dashboard|route|start|stop>
                                            #   interactive tiled view)
 spinloop up   [node… | path]               # start what the directory holds: every node of a
                                            #   fleet.yaml, else the Spinloop's server
-spinloop export [--provider <name>]        # print the current config as a Spinloop
+spinloop harness export [--provider <name>]        # print the current config as a Spinloop
 spinloop hf   <ref> [-q <quant>] [-c <size>] [-a <name>] [-o <file>] [--no-cache] [--apply]
                                          # write the Spinloop for a Hugging Face model:
                                          #   ref is org/model or a page URL, with an optional
                                          #   :quant or @revision; -o is the output file here,
                                          #   not max output tokens
-spinloop init-providers [path]             # write the built-in catalogue out to edit
-spinloop harness [<spinloop>] [-H <name>] [--spinloop[=<path>]] [args...]
-                                         # launch the harness (a leading Spinloop or alias is
-                                         #   applied first; --get shows it; --set stores it)
+spinloop provider init [path]             # write the built-in catalogue out to edit
+spinloop harness open [<spinloop>] [-H <name>] [--spinloop[=<path>]] [args...]
+                                          # launch the harness (a leading Spinloop or alias is
+                                          #   applied first)
 spinloop completion <shell>                # tab completion (bash, zsh, powershell)
 spinloop remote <bootstrap|bake|start|pause|stop|restart|status|metrics|logs|deploy|env|ls|keep|seed> [path]
                                          # control the remote GPU inference instance
@@ -339,20 +339,19 @@ and lucinate are also supported. The harness is chosen at runtime — never bake
 into a `Spinloop` file — so the same selection works for any of them.
 
 ```sh
-spinloop add -p ollama -m llama3.2 --harness pi   # this command only
-spinloop harness --set pi    # make Pi the default for future commands
-spinloop harness             # launch the active harness (forwards trailing args)
-spinloop harness -O          # apply ./Spinloop, then launch the harness
-spinloop show                # what the active harness has configured
+spinloop harness add -p ollama -m llama3.2 --harness pi   # this command only
+spinloop harness config --set pi  # make Pi the default for future commands
+spinloop harness open          # launch the active harness (forwards trailing args)
+spinloop harness open -O       # apply ./Spinloop, then launch the harness
+spinloop harness show                # what the active harness has configured
 ```
 
 Precedence: `--harness`/`-H` flag, then `SPINLOOP_HARNESS`, then your stored
-default, then opencode. Not every provider maps to every harness — `spinloop list`
+default, then opencode. Not every provider maps to every harness — `spinloop provider list`
 shows which harnesses each one supports (AWS Bedrock, for instance, is
 opencode-only; lucinate takes the OpenAI-compatible providers). The full story —
 launching, configuring on the way in, inspecting
-any harness — is in [`docs/commands/harness.md`](docs/commands/harness.md) and
-[`docs/commands/show.md`](docs/commands/show.md).
+any harness — is in [`docs/commands/harness.md`](docs/commands/harness.md).
 
 ## Spinloop files
 
@@ -371,12 +370,12 @@ OUTPUT   32k                        # optional; max output tokens
 ```
 
 ```sh
-spinloop apply              # reads ./Spinloop and applies it
-spinloop apply path/to/Spinloop
-spinloop apply path/to/dir  # or a directory that holds a Spinloop
-spinloop apply https://example.com/team/Spinloop   # or a URL, fetched instead of read
-spinloop harness -O         # apply ./Spinloop, then launch the agent running it
-spinloop export > Spinloop    # capture your current setup as a Spinloop
+spinloop harness apply              # reads ./Spinloop and applies it
+spinloop harness apply path/to/Spinloop
+spinloop harness apply path/to/dir  # or a directory that holds a Spinloop
+spinloop harness apply https://example.com/team/Spinloop   # or a URL, fetched instead of read
+spinloop harness open -O    # apply ./Spinloop, then launch the agent running it
+spinloop harness export > Spinloop    # capture your current setup as a Spinloop
 ```
 
 A `Spinloop` describes one provider selection and applies exactly like the
@@ -396,9 +395,9 @@ once with `spinloop alias` and the name works wherever a path does:
 $ spinloop alias
 Added alias "qwen3.6-27b" for /home/me/models/qwen3.6/Spinloop …
 
-$ spinloop apply   qwen3.6-27b      # from anywhere, no path needed
+$ spinloop harness apply   qwen3.6-27b      # from anywhere, no path needed
 $ spinloop serve   qwen3.6-27b
-$ spinloop harness qwen3.6-27b -- --some-agent-arg
+$ spinloop harness open qwen3.6-27b -- --some-agent-arg
 ```
 
 The path can be a URL too — hand out a short name for a published `Spinloop`
@@ -406,20 +405,20 @@ instead of a link:
 
 ```sh
 spinloop alias -n team-default https://example.com/team/Spinloop
-spinloop apply team-default
+spinloop harness apply team-default
 ```
 
 Set `SPINLOOP_ALIAS` and the name is implied for a whole shell:
 
 ```sh
 export SPINLOOP_ALIAS=qwen3.6-27b
-spinloop apply              # the same as `spinloop apply qwen3.6-27b`
+spinloop harness apply              # the same as `spinloop harness apply qwen3.6-27b`
 spinloop serve
 ```
 
 An argument you type still wins, and the variable beats `./Spinloop` — it decides
 *which* Spinloop is the default, never *whether* one is applied, so a bare
-`spinloop harness` still launches unconfigured.
+`spinloop harness open` still launches unconfigured.
 
 The name defaults to the `Spinloop`'s own `ALIAS` (`--name`/`-n` picks another),
 a path on disk always beats a registered name — so adding an alias can never
@@ -565,15 +564,15 @@ thing for: which machine is doing nothing?
 
 #### Launching against the fleet
 
-A fleet is also where `spinloop harness` sends the agent: a launch routed
+A fleet is also where `spinloop harness open` sends the agent: a launch routed
 through a fleet file picks a node and launches against its engine, so the
 machine you are sitting at needs no addresses of its own. The fleet file comes
 from `--fleet`, or from the `./fleet.yaml` in the working directory when the
 Spinloop is not named:
 
 ```sh
-spinloop harness -O -f f.yaml       # valueless -O wears ./Spinloop; routes through f.yaml
-spinloop harness --fleet f.yaml     # name the fleet file explicitly
+spinloop harness open -O -f f.yaml  # valueless -O wears ./Spinloop; routes through f.yaml
+spinloop harness open --fleet f.yaml # name the fleet file explicitly
 spinloop fleet route -f f.yaml      # which node would I get? (launches nothing)
 ```
 
@@ -601,7 +600,7 @@ spinloop fleet status --fleet ./fleet.yaml
 
 Only one machine? A fleet of one is still worth it —
 [`examples/fleet-local/`](examples/fleet-local/) runs a daemon on your own box
-so `spinloop harness` starts the engine when you need it and leaves it up for the
+so `spinloop harness open` starts the engine when you need it and leaves it up for the
 next session, instead of you keeping a terminal open for `llama-server`.
 
 Details in [`docs/commands/fleet.md`](docs/commands/fleet.md); a `fleet.yaml`
@@ -656,17 +655,17 @@ same values:
 ```
 
 `base_url` is the endpoint's own address. You never have to quote it back —
-`start` and `status` print it, and `spinloop apply --env dev-2` can leave
+`start` and `status` print it, and `spinloop harness apply --env dev-2` can leave
 `BASEURL` out of the Spinloop and still point your agent at the endpoint. A
 `BASEURL` in the Spinloop wins if you do set one.
 
 Deployed something and just want to point an agent at it from another
-machine? `spinloop harness --env dev-2` on its own — no Spinloop at all —
+machine? `spinloop harness open --env dev-2` on its own — no Spinloop at all —
 configures the harness straight from what is deployed there:
 
 ```sh
 spinloop remote deploy path/to/Spinloop --env dev-2   # from wherever you deployed it
-spinloop harness --env dev-2 --prompt "..."           # from anywhere with dev-2 registered
+spinloop harness open --env dev-2 --prompt "..."     # from anywhere with dev-2 registered
 ```
 
 Every URL and the region can be overridden with the matching
@@ -694,7 +693,7 @@ only fills a gap. Local providers like Ollama, llama.cpp, oMLX and MTPLX need
 no key;
 Bedrock authenticates through your AWS credentials.
 
-`spinloop harness` carries that same local environment to the agent it launches:
+`spinloop harness open` carries that same local environment to the agent it launches:
 the whole `.env` beside the active Spinloop fills gaps, and the Spinloop's `ENV` lines
 override both your shell and the `.env` — the same precedence the `spinloop remote`
 commands use. These variables shape only the launched agent; `spinloop` never
@@ -705,8 +704,8 @@ provider with `--base-url`/`-u` or the `SPINLOOP_BASE_URL` env var — handy for
 proxies, gateways, or a server on a non-default host:
 
 ```sh
-spinloop add -p openai-compatible -m my-model --base-url https://gateway/v1
-SPINLOOP_BASE_URL=https://gateway/v1 spinloop add -p openai-compatible -m my-model
+spinloop harness add -p openai-compatible -m my-model --base-url https://gateway/v1
+SPINLOOP_BASE_URL=https://gateway/v1 spinloop harness add -p openai-compatible -m my-model
 ```
 
 The flag wins over the env var, and either wins over the catalogue's defaults
@@ -733,13 +732,13 @@ Want one the catalogue doesn't carry? Write the catalogue out, add yours, and
 point `spinloop` at your copy — no rebuild, and it applies straight away:
 
 ```sh
-spinloop init-providers                 # writes ./providers.yaml, commented with the schema
-spinloop list --providers providers.yaml
-SPINLOOP_PROVIDERS=providers.yaml spinloop list
+spinloop provider init                 # writes ./providers.yaml, commented with the schema
+spinloop provider list --providers providers.yaml
+SPINLOOP_PROVIDERS=providers.yaml spinloop provider list
 ```
 
 The flag wins, then the environment variable, then the catalogue built into the
-binary. See [`spinloop init-providers`](docs/commands/init-providers.md) for the
+binary. See [`spinloop provider init`](docs/commands/provider.md#spinloop-provider-init) for the
 file's shape — or, to contribute the provider back so everyone gets it,
 [Development](docs/development.md#adding-a-provider-or-model).
 

@@ -1,7 +1,7 @@
 # Fetching a Spinloop from a URL
 
 Every other example in this directory is meant to be run in place — clone the
-repo, `cd` into it, `spinloop apply`. This one is different: the
+repo, `cd` into it, `spinloop harness apply`. This one is different: the
 [`Spinloop`](Spinloop) and [`preset.ini`](preset.ini) here are meant to be
 published somewhere reachable over HTTP and consumed with a URL, not cloned.
 It's the same Qwen3.6-27B-on-llama.cpp setup as
@@ -32,12 +32,12 @@ directory.
 ## 2. Apply it straight from the URL
 
 ```sh
-spinloop apply http://localhost:8000/Spinloop
+spinloop harness apply http://localhost:8000/Spinloop
 ```
 
 This fetches the Spinloop and applies it exactly as if it were a local file — no
 clone, no local copy. A URL ending in `/` is treated like a directory, so
-`spinloop apply http://localhost:8000/` would fetch the same `Spinloop` too.
+`spinloop harness apply http://localhost:8000/` would fetch the same `Spinloop` too.
 
 ## 3. Give it a short name
 
@@ -47,7 +47,7 @@ it does for a local file:
 
 ```sh
 spinloop alias -n qwen3.6-27b-team http://localhost:8000/Spinloop
-spinloop apply qwen3.6-27b-team
+spinloop harness apply qwen3.6-27b-team
 spinloop serve qwen3.6-27b-team
 ```
 
@@ -56,13 +56,13 @@ works from any directory, on this machine.
 
 ## 4. Only `serve` fetches the preset
 
-`spinloop apply` never reads `PRESET` — a local one or a URL, it's `spinloop
+`spinloop harness apply` never reads `PRESET` — a local one or a URL, it's `spinloop
 serve`'s business alone. Only running `spinloop serve` (or `spinloop remote
 deploy`) fetches `http://localhost:8000/preset.ini`:
 
 ```sh
 spinloop serve qwen3.6-27b-team --dry-run   # fetches preset.ini, prints the command
-spinloop apply qwen3.6-27b-team             # never touches preset.ini
+spinloop harness apply qwen3.6-27b-team             # never touches preset.ini
 ```
 
 Nothing here is fetched until the command that actually needs it runs —

@@ -36,15 +36,14 @@ func isolateConfig(t *testing.T) string {
 	return home
 }
 
-func TestHarness_GetAndSet(t *testing.T) {
+func TestHarnessConfig_GetAndSet(t *testing.T) {
 	isolateConfig(t)
 
-	// Default before any preference is stored. --get reports the active harness
-	// rather than launching it (a bare `harness` execs the agent binary, which
-	// would hang an interactive TUI under test).
+	// Default before any preference is stored. config reports the active
+	// harness rather than launching it.
 	out := captureStdout(t, func() {
-		if err := cmdHarness([]string{"--get"}); err != nil {
-			t.Fatalf("cmdHarness --get: %v", err)
+		if err := cmdConfig([]string{"--get"}); err != nil {
+			t.Fatalf("cmdConfig --get: %v", err)
 		}
 	})
 	if !strings.Contains(out, "Active harness: opencode") || !strings.Contains(out, "Stored preference: none") {
@@ -53,8 +52,8 @@ func TestHarness_GetAndSet(t *testing.T) {
 
 	// Set a preference.
 	out = captureStdout(t, func() {
-		if err := cmdHarness([]string{"--set", "pi"}); err != nil {
-			t.Fatalf("cmdHarness --set: %v", err)
+		if err := cmdConfig([]string{"--set", "pi"}); err != nil {
+			t.Fatalf("cmdConfig --set: %v", err)
 		}
 	})
 	if !strings.Contains(out, `Default harness set to "pi"`) {
@@ -63,8 +62,8 @@ func TestHarness_GetAndSet(t *testing.T) {
 
 	// It is now the active harness.
 	out = captureStdout(t, func() {
-		if err := cmdHarness([]string{"--get"}); err != nil {
-			t.Fatalf("cmdHarness --get: %v", err)
+		if err := cmdConfig([]string{"--get"}); err != nil {
+			t.Fatalf("cmdConfig --get: %v", err)
 		}
 	})
 	if !strings.Contains(out, "Active harness: pi") || !strings.Contains(out, "Stored preference: pi") {
@@ -72,7 +71,7 @@ func TestHarness_GetAndSet(t *testing.T) {
 	}
 
 	// Unknown harness is rejected.
-	if err := cmdHarness([]string{"--set", "bogus"}); err == nil {
+	if err := cmdConfig([]string{"--set", "bogus"}); err == nil {
 		t.Error("expected error setting an unknown harness")
 	}
 }
@@ -102,8 +101,8 @@ func TestHarness_AppliesSpinloopBeforeLaunch(t *testing.T) {
 	mustWrite(t, spinloopPath, "PROVIDER llamacpp\nMODEL gemma\nCONTEXT 128k\n")
 
 	out := captureStdout(t, func() {
-		if err := cmdHarness([]string{"--spinloop=" + spinloopPath, "run", "hello"}); err != nil {
-			t.Fatalf("cmdHarness --spinloop: %v", err)
+		if err := cmdOpen([]string{"--spinloop=" + spinloopPath, "run", "hello"}); err != nil {
+			t.Fatalf("cmdOpen --spinloop: %v", err)
 		}
 	})
 	if !strings.Contains(out, "Applying "+spinloopPath) {
@@ -136,7 +135,7 @@ func TestHarness_SpinloopDefaultsToCurrentDirectory(t *testing.T) {
 	t.Chdir(dir)
 
 	captureStdout(t, func() {
-		if err := cmdHarness([]string{"-O"}); err != nil {
+		if err := cmdOpen([]string{"-O"}); err != nil {
 			t.Fatalf("cmdHarness -O: %v", err)
 		}
 	})
@@ -177,12 +176,12 @@ func TestHarness_SpinloopErrors(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
 
-	err := cmdHarness([]string{"--spinloop"})
+	err := cmdOpen([]string{"--spinloop"})
 	if err == nil || !strings.Contains(err.Error(), "spinloop harness --spinloop=<file>") {
 		t.Errorf("expected a hint naming the flag, got %v", err)
 	}
 
-	if err := cmdHarness([]string{"--spinloop=" + filepath.Join(dir, "nope")}); err == nil {
+	if err := cmdOpen([]string{"--spinloop=" + filepath.Join(dir, "nope")}); err == nil {
 		t.Error("expected an error for a missing Spinloop")
 	}
 
@@ -191,15 +190,15 @@ func TestHarness_SpinloopErrors(t *testing.T) {
 	mustWrite(t, filepath.Join(dir, "Spinloop"), "PROVIDER llamacpp\nMODEL gemma\n")
 	other := filepath.Join(t.TempDir(), "Spinloop")
 	mustWrite(t, other, "PROVIDER llamacpp\nMODEL other\n")
-	err = cmdHarness([]string{"--spinloop", other})
+	err = cmdOpen([]string{"--spinloop", other})
 	if err == nil || !strings.Contains(err.Error(), "--spinloop="+other) {
 		t.Errorf("expected the detached-path hint, got %v", err)
 	}
 }
 
-// TestHarness_GetDoesNotApply checks that --get stays an inspection command:
-// it reports the harness and applies nothing, even alongside --spinloop.
-func TestHarness_GetDoesNotApply(t *testing.T) {
+// TestConfig_DoesNotApply checks that config stays an inspection command: it
+// reports the harness and touches neither the harness config nor a Spinloop.
+func TestConfig_DoesNotApply(t *testing.T) {
 	home := isolateConfig(t)
 
 	dir := t.TempDir()
@@ -207,15 +206,15 @@ func TestHarness_GetDoesNotApply(t *testing.T) {
 	t.Chdir(dir)
 
 	out := captureStdout(t, func() {
-		if err := cmdHarness([]string{"--get", "-O"}); err != nil {
-			t.Fatalf("cmdHarness --get -O: %v", err)
+		if err := cmdConfig([]string{"--get"}); err != nil {
+			t.Fatalf("cmdConfig --get: %v", err)
 		}
 	})
 	if !strings.Contains(out, "Active harness: opencode") {
-		t.Errorf("unexpected --get output:\n%s", out)
+		t.Errorf("unexpected config --get output:\n%s", out)
 	}
 	if _, err := os.Stat(filepath.Join(home, ".config", "opencode", "opencode.json")); !os.IsNotExist(err) {
-		t.Error("--get should not have applied the Spinloop")
+		t.Error("config --get should not have applied the Spinloop")
 	}
 }
 
@@ -226,7 +225,7 @@ func launchedArgs(t *testing.T, args []string) (forwarded, out string) {
 	argsFile := filepath.Join(t.TempDir(), "args")
 	stubHarnessBinary(t, "opencode", argsFile)
 	out = captureStdout(t, func() {
-		if err := cmdHarness(args); err != nil {
+		if err := cmdOpen(args); err != nil {
 			t.Fatalf("cmdHarness %v: %v", args, err)
 		}
 	})
@@ -397,7 +396,7 @@ func TestHarness_DetachedAliasIsCaught(t *testing.T) {
 	mustWrite(t, filepath.Join(dir, "Spinloop"), "PROVIDER llamacpp\nMODEL other\n")
 	t.Chdir(dir)
 
-	err := cmdHarness([]string{"-O", "q3"})
+	err := cmdOpen([]string{"-O", "q3"})
 	if err == nil || !strings.Contains(err.Error(), "--spinloop=q3") {
 		t.Errorf("expected the detached-value hint, got %v", err)
 	}
@@ -616,7 +615,7 @@ func TestCmdAdd_PiHarnessViaEnvAndPreference(t *testing.T) {
 
 	// Via stored preference (env cleared).
 	t.Setenv("SPINLOOP_HARNESS", "")
-	if err := cmdHarness([]string{"--set", "pi"}); err != nil {
+	if err := cmdConfig([]string{"--set", "pi"}); err != nil {
 		t.Fatal(err)
 	}
 	captureStdout(t, func() {
@@ -842,7 +841,7 @@ func TestHarness_LaunchedAgentSeesLocalEnvironment(t *testing.T) {
 	t.Setenv("BAZ", "fromshell")
 
 	captureStdout(t, func() {
-		if err := cmdHarness([]string{filepath.Join(dir, "Spinloop"), "run"}); err != nil {
+		if err := cmdOpen([]string{filepath.Join(dir, "Spinloop"), "run"}); err != nil {
 			t.Fatalf("cmdHarness: %v", err)
 		}
 	})
@@ -878,7 +877,7 @@ func TestHarness_NoSpinloopAppliesNoOverlay(t *testing.T) {
 	t.Chdir(dir)
 
 	captureStdout(t, func() {
-		if err := cmdHarness([]string{"run"}); err != nil {
+		if err := cmdOpen([]string{"run"}); err != nil {
 			t.Fatalf("cmdHarness: %v", err)
 		}
 	})
@@ -1113,7 +1112,7 @@ func TestHarness_LucinateInjectsKeyAtLaunch(t *testing.T) {
 	mustWrite(t, spinloopPath, "PROVIDER openrouter\nMODEL deepseek/deepseek-v4-flash\n")
 
 	captureStdout(t, func() {
-		if err := cmdHarness([]string{"--spinloop=" + spinloopPath}); err != nil {
+		if err := cmdOpen([]string{"--spinloop=" + spinloopPath}); err != nil {
 			t.Fatalf("cmdHarness --spinloop: %v", err)
 		}
 	})
@@ -1151,7 +1150,7 @@ func TestHarness_LucinateCarriesTheGatewayKeyAtLaunch(t *testing.T) {
 		"PROVIDER openrouter\nMODEL deepseek/deepseek-v4-flash\n")
 
 	captureStdout(t, func() {
-		if err := cmdHarness([]string{"--spinloop=" + spinloopDir, "-f", fleetPath}); err != nil {
+		if err := cmdOpen([]string{"--spinloop=" + spinloopDir, "-f", fleetPath}); err != nil {
 			t.Fatalf("cmdHarness --spinloop: %v", err)
 		}
 	})
@@ -1179,7 +1178,7 @@ func TestHarness_NamesTheMissingHarness(t *testing.T) {
 		"PROVIDER openrouter\nMODEL deepseek/deepseek-v4-flash\n")
 
 	captureStdout(t, func() {
-		err := cmdHarness([]string{"-H", "lucinate", "--spinloop=" + spinloopDir})
+		err := cmdOpen([]string{"-H", "lucinate", "--spinloop=" + spinloopDir})
 		if err == nil {
 			t.Fatal("a launch whose harness is not installed should fail")
 		}

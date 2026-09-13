@@ -119,9 +119,9 @@ curl http://127.0.0.1:8080/v1/models
 the [`Spinloop`](Spinloop) in this directory:
 
 ```sh
-spinloop apply examples/llamacpp/gemma4/Spinloop
+spinloop harness apply examples/llamacpp/gemma4/Spinloop
 # or, from this directory:
-spinloop apply
+spinloop harness apply
 ```
 
 The Spinloop is:

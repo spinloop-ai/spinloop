@@ -19,7 +19,7 @@ never left alongside one the user already has, and falling back to creating
 
 #### Scenario: Existing JSONC file is reused
 
-- **WHEN** the user has only `opencode.jsonc` and runs `spinloop add`
+- **WHEN** the user has only `opencode.jsonc` and runs `spinloop harness add`
 - **THEN** that file is updated and no `opencode.json` is created
 
 ### Requirement: In-place JSONC merge
@@ -35,13 +35,13 @@ none exists. Applying the same selection twice SHALL be idempotent.
 #### Scenario: Comments survive
 
 - **WHEN** the config holds comments and an unrelated provider, and the user
-  runs `spinloop add`
+  runs `spinloop harness add`
 - **THEN** after the write the comments and the unrelated provider are intact
 
 #### Scenario: User extras inside the managed block survive
 
 - **WHEN** the user has hand-added a setting inside the managed provider's
-  block and re-runs the same `spinloop add`
+  block and re-runs the same `spinloop harness add`
 - **THEN** the setting is still there afterwards
 
 #### Scenario: Idempotent apply
@@ -102,8 +102,8 @@ the user's providers and endpoints.
 
 #### Scenario: Permissions enforced on existing file
 
-- **WHEN** the config file exists with permissive mode and `spinloop add` writes
-  it
+- **WHEN** the config file exists with permissive mode and `spinloop harness add`
+  writes it
 - **THEN** the file's mode is owner-only afterwards
 
 ### Requirement: State read-back
@@ -111,7 +111,8 @@ the user's providers and endpoints.
 The adapter SHALL read back each configured provider — its model keys
 (sorted), `options.baseURL`, and each model's `limit.context`/`limit.output`
 when set — plus the top-level default model. This state SHALL be sufficient
-for `spinloop show` and `spinloop export` to reconstruct what is configured.
+for `spinloop harness show` and `spinloop harness export` to reconstruct what is
+configured.
 
 #### Scenario: Export sees what add wrote
 

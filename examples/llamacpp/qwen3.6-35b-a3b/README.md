@@ -94,9 +94,9 @@ curl http://127.0.0.1:8080/v1/models
 the [`Spinloop`](Spinloop) in this directory:
 
 ```sh
-spinloop apply examples/llamacpp/qwen3.6-35b-a3b/Spinloop
+spinloop harness apply examples/llamacpp/qwen3.6-35b-a3b/Spinloop
 # or, from this directory:
-spinloop apply
+spinloop harness apply
 ```
 
 The Spinloop is:

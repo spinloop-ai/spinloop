@@ -1,7 +1,7 @@
 # A fleet of one: this machine.
 #
 # Worth doing even with a single node, because it moves the engine's lifecycle
-# out of your way — `spinloop harness` starts llama-server when you need it and
+# out of your way — `spinloop harness open` starts llama-server when you need it and
 # leaves it running for the next session, instead of you keeping a terminal
 # open for it.
 #
@@ -11,7 +11,7 @@
 # there is no `engine:` block to write. Everything in this file is the default.
 #
 # `file` points `spinloop fleet start local` at the same Spinloop `spinloop
-# harness -O` wears — the one Spinloop file describes what this node runs
+# harness open -O` wears — the one Spinloop file describes what this node runs
 # either way, so `fleet start` works from cold, before any launch has told
 # the daemon anything.
 nodes:

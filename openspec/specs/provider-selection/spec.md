@@ -4,9 +4,9 @@
 
 Define how a single provider selection — a provider plus a model and/or alias,
 context/output limits, and base URL — is validated and applied to (or removed
-from) the active harness's config. This is the shared core behind `spinloop
-add`/`spinloop remove` and the Spinloop-file commands `apply`/`unapply`, which route
-through the same logic.
+from) the active harness's config. This is the shared core behind the `harness`
+config commands (`add`, `remove`) and the Spinloop-file commands (`apply`,
+`unapply`), which route through the same logic.
 ## Requirements
 ### Requirement: Context and output limits
 
@@ -145,7 +145,7 @@ URL, next steps).
 
 #### Scenario: Successful add
 
-- **WHEN** `spinloop add -p openrouter -m deepseek/deepseek-v4-pro -c 128k`
+- **WHEN** `spinloop harness add -p openrouter -m deepseek/deepseek-v4-pro -c 128k`
   succeeds
 - **THEN** the output names the config path, the provider, the default model,
   and the 128000/32000 token limits
@@ -158,19 +158,19 @@ MUST exist in the resolved catalogue.
 
 #### Scenario: Missing provider
 
-- **WHEN** the user runs `spinloop add` without `--provider`
-- **THEN** the command fails, pointing at `spinloop list`
+- **WHEN** the user runs `spinloop harness add` without `--provider`
+- **THEN** the command fails, pointing at `spinloop provider list`
 
 #### Scenario: Provider alone is not enough to apply
 
-- **WHEN** the user runs `spinloop add -p openrouter` with no model or alias
+- **WHEN** the user runs `spinloop harness add -p openrouter` with no model or alias
 - **THEN** the command fails explaining a selection needs a model or an alias
 
 #### Scenario: Unknown provider
 
 - **WHEN** the selection names a provider not in the catalogue
 - **THEN** the command fails naming the unknown id and pointing at
-  `spinloop list`
+  `spinloop provider list`
 
 ### Requirement: Selection model key
 
@@ -180,7 +180,7 @@ configured and SHALL become the selection's default model.
 
 #### Scenario: Model becomes the default
 
-- **WHEN** the user runs `spinloop add -p openrouter -m deepseek/deepseek-v4-pro`
+- **WHEN** the user runs `spinloop harness add -p openrouter -m deepseek/deepseek-v4-pro`
 - **THEN** `deepseek/deepseek-v4-pro` is configured and becomes the default
   model
 
@@ -191,19 +191,19 @@ configured and SHALL become the selection's default model.
 
 ### Requirement: Removing a provider or model
 
-`spinloop remove` (and `unapply`) SHALL remove the whole provider when no model or
+`spinloop harness remove` (and `unapply`) SHALL remove the whole provider when no model or
 alias is given, and otherwise SHALL remove exactly the named model — an alias or
 model id each name one key. The command SHALL report how many entries were
 removed, and SHALL report "nothing to remove" (not an error) when none matched.
 
 #### Scenario: Removing a whole provider
 
-- **WHEN** the user runs `spinloop remove -p ollama`
+- **WHEN** the user runs `spinloop harness remove -p ollama`
 - **THEN** the provider block is removed from the harness config
 
 #### Scenario: Removing one model
 
-- **WHEN** the user runs `spinloop remove -p openrouter -m deepseek/deepseek-v4-pro`
+- **WHEN** the user runs `spinloop harness remove -p openrouter -m deepseek/deepseek-v4-pro`
 - **THEN** only that model is removed and the provider's other models survive
 
 #### Scenario: Nothing matched

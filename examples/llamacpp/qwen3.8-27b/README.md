@@ -110,9 +110,9 @@ curl http://127.0.0.1:8080/v1/models
 the [`Spinloop`](Spinloop) in this directory:
 
 ```sh
-spinloop apply examples/llamacpp/qwen3.8-27b/Spinloop
+spinloop harness apply examples/llamacpp/qwen3.8-27b/Spinloop
 # or, from this directory:
-spinloop apply
+spinloop harness apply
 ```
 
 The Spinloop is:
@@ -232,8 +232,8 @@ eval "$(spinloop remote start --env qwen3.8-27b)"   # boots the instance
                                                     # (~10 min cold), exports
                                                     # OPENAI_BASE_URL / OPENAI_API_KEY
 spinloop remote status --env qwen3.8-27b            # is it up, is it healthy
-spinloop apply --env qwen3.8-27b                    # point opencode at the running endpoint
-spinloop harness --env qwen3.8-27b                  # work
+spinloop harness apply --env qwen3.8-27b                    # point opencode at the running endpoint
+spinloop harness open --env qwen3.8-27b             # work
 spinloop remote stop --env qwen3.8-27b              # done — shut it down now rather
                                                     # than waiting for the idle timer
 ```

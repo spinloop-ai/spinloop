@@ -450,7 +450,7 @@ STUB
   local launch
   launch="$(PATH="${sandbox}/bin:${PATH}" HOME="${sandbox}/home" \
     XDG_CONFIG_HOME="${sandbox}/home/.config" \
-    "${SPINLOOP_BIN}" harness -O="${spinloop_file}" --fleet "${HERE}/fleet.yaml" -H opencode 2>&1 || true)"
+    "${SPINLOOP_BIN}" harness open -O="${spinloop_file}" --fleet "${HERE}/fleet.yaml" -H opencode 2>&1 || true)"
   assert_contains "a routed launch wakes the node" "${launch}" "Waking studio"
   assert_contains "the agent is pointed at the published engine port" "${launch}" "18080"
   assert_contains "the agent is given the key the client set" \

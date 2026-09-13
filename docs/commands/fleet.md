@@ -16,7 +16,7 @@ spinloop fleet stop gpu-box    # stop one or more nodes' engines
 spinloop fleet deploy --all    # create every kind: remote node's AWS environment
 ```
 
-A fleet is also where [`spinloop harness`](harness.md#launching-against-your-fleet)
+A fleet is also where [`spinloop harness open`](harness.md#launching-against-your-fleet)
 sends an agent: a launch routed through a fleet file picks a node and launches
 against it, so the machine you are sitting at needs no engine of its own.
 
@@ -187,7 +187,7 @@ nodes: …
   engine and leaving the others free to be woken for another model, or left
   asleep.
 
-`spinloop harness --prefer <value>` and `spinloop fleet route --prefer <value>`
+`spinloop harness open --prefer <value>` and `spinloop fleet route --prefer <value>`
 override the file for one command, which is the cheap way to see what the other
 setting would do before committing to it.
 

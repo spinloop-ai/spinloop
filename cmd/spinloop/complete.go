@@ -249,11 +249,10 @@ func keepSlot(_ *cobra.Command, args []string, _ string) ([]string, cobra.ShellC
 	}
 }
 
-// harnessValueFlags are the harness flags that take a detached value;
+// launchValueFlags are the open flags that take a detached value;
 // --spinloop/-O takes an optional attached value and consumes no word, and
-// --get/--no-wake take none.
-var harnessValueFlags = map[string]bool{
-	"--set":          true,
+// --no-wake takes none.
+var launchValueFlags = map[string]bool{
 	"--harness":      true,
 	"-H":             true,
 	"--providers":    true,
@@ -264,13 +263,13 @@ var harnessValueFlags = map[string]bool{
 	"--wake-timeout": true,
 }
 
-// harnessSlot completes one word of a harness command line. The command runs
+// launchSlot completes one word of an `open` command line. The command runs
 // with Cobra's flag parsing off, so the engine calls this for everything and
 // hands over the words before the cursor unparsed: the Spinloop may be a
 // leading positional or an attached --spinloop/-O value; a detached flag right
 // before the cursor is asking for its own value; beyond the Spinloop every word
 // belongs to the launched harness and spinloop offers nothing.
-func harnessSlot(_ *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+func launchSlot(_ *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 	// --flag=<partial>, the form zsh and PowerShell pass as one word.
 	if eq := strings.IndexByte(toComplete, '='); eq > 0 && toComplete[0] == '-' {
 		switch toComplete[:eq] {
@@ -289,7 +288,7 @@ func harnessSlot(_ *cobra.Command, args []string, toComplete string) ([]string, 
 		if strings.HasPrefix(last, "-") && !strings.Contains(last, "=") {
 			// A detached flag right before the cursor is asking for its value.
 			switch last {
-			case "--set", "--harness", "-H":
+			case "--harness", "-H":
 				return harness.Names(), cobra.ShellCompDirectiveNoFileComp
 			case "--providers", "--fleet", "-f":
 				return nil, cobra.ShellCompDirectiveDefault
@@ -312,7 +311,7 @@ func harnessSlot(_ *cobra.Command, args []string, toComplete string) ([]string, 
 		case strings.HasPrefix(w, "-"):
 			if eq := strings.IndexByte(w, '='); eq > 0 {
 				// An attached value is consumed within the word.
-			} else if harnessValueFlags[w] {
+			} else if launchValueFlags[w] {
 				skip = true
 			}
 		default:

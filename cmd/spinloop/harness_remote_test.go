@@ -132,8 +132,8 @@ func TestHarness_EnvFlagAfterTheAlias(t *testing.T) {
 
 	captureStderr(t, func() {
 		captureStdout(t, func() {
-			if err := cmdHarness([]string{"dev-3", "--env", "dev-1", "--prompt", "hello"}); err != nil {
-				t.Fatalf("cmdHarness: %v", err)
+			if err := cmdOpen([]string{"dev-3", "--env", "dev-1", "--prompt", "hello"}); err != nil {
+				t.Fatalf("cmdOpen: %v", err)
 			}
 		})
 	})

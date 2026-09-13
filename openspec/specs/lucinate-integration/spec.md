@@ -30,8 +30,8 @@ permissions.
 
 #### Scenario: First write creates the store
 
-- **WHEN** the user runs `spinloop add -H lucinate` and no `connections.json`
-  exists
+- **WHEN** the user runs `spinloop harness add -H lucinate` and no
+  `connections.json` exists
 - **THEN** the file is created with the managed connection and owner-only
   permissions
 
@@ -88,7 +88,7 @@ spinloop owns (`type`, `url`, `defaultModel`, `name`) SHALL be overwritten.
 #### Scenario: Sibling connections survive
 
 - **WHEN** the store already holds another connection and the user runs
-  `spinloop add -H lucinate`
+  `spinloop harness add -H lucinate`
 - **THEN** that connection is intact afterwards
 
 #### Scenario: Unknown fields round-trip
@@ -168,8 +168,8 @@ SHALL be untouched. The operation SHALL report how many entries it removed.
 
 #### Scenario: Remove deletes the managed connection
 
-- **WHEN** the user runs `spinloop remove -H lucinate` for a provider previously
-  applied
+- **WHEN** the user runs `spinloop harness remove -H lucinate` for a provider
+  previously applied
 - **THEN** the managed connection is gone and other connections remain
 
 #### Scenario: Removing the default clears the pointer
@@ -179,18 +179,18 @@ SHALL be untouched. The operation SHALL report how many entries it removed.
 
 ### Requirement: Reading state back
 
-The adapter SHALL read the store back for `spinloop show` and `spinloop export`,
-reporting each managed connection as a configured provider: its model key (from
-`defaultModel`) and its base URL (from `url`). Because a lucinate connection has
-no fields for context or output limits, the adapter SHALL report none, and those
-limits SHALL NOT round-trip through `export`. lucinate has no single top-level
-default *model* setting distinct from the connection, so the read-back SHALL
-report no top-level default model.
+The adapter SHALL read the store back for `spinloop harness show` and
+`spinloop harness export`, reporting each managed connection as a configured
+provider: its model key (from `defaultModel`) and its base URL (from `url`).
+Because a lucinate connection has no fields for context or output limits, the
+adapter SHALL report none, and those limits SHALL NOT round-trip through
+`export`. lucinate has no single top-level default *model* setting distinct
+from the connection, so the read-back SHALL report no top-level default model.
 
 #### Scenario: Export reconstructs provider and model
 
-- **WHEN** `spinloop export -H lucinate` runs against a store with a managed
-  connection
+- **WHEN** `spinloop harness export -H lucinate` runs against a store with a
+  managed connection
 - **THEN** the reconstructed Spinloop names that provider, its model, and its base
   URL
 

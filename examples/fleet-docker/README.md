@@ -71,7 +71,7 @@ path — `docker compose exec studio ps ax` shows `--api-key-file`, not the key.
 spinloop fleet route ./client/Spinloop --fleet ./fleet.yaml
 
 # Actually launch an agent against the fleet, waking a node if none is serving.
-spinloop harness ./client/Spinloop --fleet ./fleet.yaml
+spinloop harness open ./client/Spinloop --fleet ./fleet.yaml
 
 # A node that goes away: the row degrades, the rest keep reporting, exit 0.
 docker compose stop gpu-box

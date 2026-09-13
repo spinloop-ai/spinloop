@@ -79,7 +79,7 @@ rather than the command's result, and the same resolution serves
 
 #### Scenario: Alias used from anywhere
 
-- **WHEN** the user runs `spinloop apply qwen3.6-27b` in an unrelated directory
+- **WHEN** the user runs `spinloop harness apply qwen3.6-27b` in an unrelated directory
 - **THEN** the registered Spinloop is applied and the output names the alias and
   the resolved path
 
@@ -104,7 +104,7 @@ rather than the command's result, and the same resolution serves
 #### Scenario: A URL alias is not probed before use
 
 - **WHEN** a registered name points at a URL and the user runs
-  `spinloop apply <name>`
+  `spinloop harness apply <name>`
 - **THEN** resolution proceeds without a preliminary network check; the
   Spinloop is fetched directly, and a failure there (unreachable host, non-2xx
   status) is reported as an ordinary fetch error
@@ -146,15 +146,15 @@ one. A set variable SHALL NOT be passed over in favour of that fallback.
 
 #### Scenario: The variable supplies the Spinloop
 
-- **WHEN** `SPINLOOP_ALIAS=qwen3.6-27b` is set and the user runs `spinloop apply`
-  in a directory with no `Spinloop`
+- **WHEN** `SPINLOOP_ALIAS=qwen3.6-27b` is set and the user runs
+  `spinloop harness apply` in a directory with no `Spinloop`
 - **THEN** the registered Spinloop is applied and a note on stderr names the
   variable, the alias and the resolved path
 
 #### Scenario: An argument wins
 
 - **WHEN** `SPINLOOP_ALIAS=qwen3.6-27b` is set and the user runs
-  `spinloop apply path/to/Spinloop`
+  `spinloop harness apply path/to/Spinloop`
 - **THEN** the argument's Spinloop is applied and the variable is ignored
 
 #### Scenario: The variable is not shadowed by a file
@@ -211,7 +211,7 @@ only re-register what is already registered.
 it points at, marking entries whose local-path target is missing; a
 URL-valued entry SHALL be printed as-is, with no liveness check performed
 (listing SHALL NOT make a network call). The same listing SHALL appear in
-`spinloop show`. `spinloop unalias <name>` SHALL take exactly one registered
+`spinloop harness show`. `spinloop unalias <name>` SHALL take exactly one registered
 name and drop it, leaving the aliased Spinloop untouched, and SHALL fail on an
 unknown name.
 

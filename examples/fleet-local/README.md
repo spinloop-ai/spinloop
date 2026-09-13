@@ -6,7 +6,7 @@ Gemma-4-12B-IT on your own machine, but reached through
 
 ```sh
 spinloop daemon              # once, in this directory (or under launchd/systemd)
-spinloop harness -O          # from this directory: wears ./Spinloop, routes, launches
+spinloop harness open -O     # from this directory: wears ./Spinloop, routes, launches
 ```
 
 That second command finds the node, starts the engine if it isn't running,
@@ -92,7 +92,7 @@ terminal to try it. Then, from this directory:
 ```sh
 spinloop fleet status        # local: idle
 spinloop fleet route         # which node a launch would pick, changing nothing
-spinloop harness -O          # wear ./Spinloop, route, wake if needed, launch
+spinloop harness open -O     # wear ./Spinloop, route, wake if needed, launch
 ```
 
 `fleet.yaml`'s `file: ./Spinloop` means `spinloop fleet start local` works from
@@ -126,7 +126,7 @@ Using local at http://127.0.0.1:8080/v1 — woken to serve gemma-4-12b-it
 The wait is the model loading — minutes for a cold 12B, then seconds forever
 after, because the engine stays up between sessions.
 
-**`-O` is not optional.** A bare `spinloop harness` launches unconfigured: it
+**`-O` is not optional.** A bare `spinloop harness open` launches unconfigured: it
 applies no Spinloop, so there is no model to route and no fleet is picked up.
 Wear the Spinloop (`-O` for `./Spinloop`, a path, or a
 [registered alias](../../docs/commands/alias.md)) and routing follows from it.

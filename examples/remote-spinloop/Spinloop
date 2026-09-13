@@ -1,5 +1,5 @@
 # Served locally by llama.cpp, meant to be published behind a URL and
-# fetched with `spinloop apply`/`spinloop alias` rather than cloned.
+# fetched with `spinloop harness apply`/`spinloop alias` rather than cloned.
 # ALIAS names the model in opencode and selects the preset section below.
 PROVIDER llamacpp
 ALIAS    qwen3.6-27b

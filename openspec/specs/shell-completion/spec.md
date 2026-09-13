@@ -86,7 +86,7 @@ command's arity SHALL offer nothing.
 
 #### Scenario: Providers complete from the catalogue
 
-- **WHEN** the user completes `spinloop add -p <TAB>`
+- **WHEN** the user completes `spinloop harness add -p <TAB>`
 - **THEN** the catalogue's provider names are offered
 
 #### Scenario: Flags not in a static table still complete
@@ -97,7 +97,28 @@ command's arity SHALL offer nothing.
 
 #### Scenario: The model flag has no static candidates but consumes its value
 
-- **WHEN** the user completes `spinloop add -p openrouter -m <TAB>`
+- **WHEN** the user completes `spinloop harness add -p openrouter -m <TAB>`
 - **THEN** no model candidates are offered and no error occurs
 - **AND** a flag typed after `--model <value>` still completes normally
+
+#### Scenario: A group's first slot offers its subcommands
+
+- **WHEN** the user completes `spinloop provider <TAB>`
+- **THEN** `list` and `init` are offered, with no file paths
+
+#### Scenario: The harness group's first slot offers only its subcommands
+
+- **WHEN** the user completes `spinloop harness <TAB>` with no word typed
+- **THEN** its subcommands — including `open` and `config` — are offered, with
+  no Spinloop names, paths, or file paths
+
+#### Scenario: open's first slot completes a Spinloop
+
+- **WHEN** the user completes `spinloop harness open <TAB>`
+- **THEN** registered alias names and paths are offered
+
+#### Scenario: config --set offers harness names
+
+- **WHEN** the user completes `spinloop harness config --set <TAB>`
+- **THEN** the registered harness names are offered, with no file paths
 
