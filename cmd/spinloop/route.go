@@ -90,6 +90,7 @@ func routeThroughFleet(sel spinloop.Selection, spinloopPath string, opts routeOp
 			Gateway:         true,
 			BaseURL:         endpointBaseURL(gw.URL),
 			GatewayTokenEnv: gw.TokenEnv,
+			Label:           gw.Label(),
 			Reason:          "the fleet file names a gateway",
 		}
 		announceChoice(choice)

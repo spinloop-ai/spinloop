@@ -48,6 +48,22 @@ func (opencodeHarness) Apply(p *catalog.Provider, sel spinloop.Selection, contex
 			contextsize.Apply(models, contextWindow, outputTokens)
 		}
 	}
+	// DiscoveredModels is set only when the selection named no model or alias
+	// to route by (a gateway-routed launch with nothing to route by model),
+	// in which case BuildProviderBlock above wrote no models map at all — this
+	// is what gives opencode's picker something to show instead of nothing.
+	if len(sel.DiscoveredModels) > 0 {
+		models, _ := block["models"].(map[string]any)
+		if models == nil {
+			models = map[string]any{}
+		}
+		for _, id := range sel.DiscoveredModels {
+			if _, exists := models[id]; !exists {
+				models[id] = map[string]any{"name": id}
+			}
+		}
+		block["models"] = models
+	}
 
 	configFile, err := opencode.ResolveConfigFile()
 	if err != nil {
@@ -111,6 +127,20 @@ func (piHarness) Apply(p *catalog.Provider, sel spinloop.Selection, contextWindo
 	prov, defaultModel, err := catalog.BuildPiProvider(sel.Provider, p, modelKey(sel), sel.BaseURL, resolve)
 	if err != nil {
 		return Summary{}, err
+	}
+	// DiscoveredModels is set only when the selection named no model or alias
+	// to route by, in which case BuildPiProvider above added no model at all —
+	// this is what gives Pi's own /model picker something to show.
+	if len(sel.DiscoveredModels) > 0 {
+		existing := make(map[string]bool, len(prov.Models))
+		for _, m := range prov.Models {
+			existing[m.ID] = true
+		}
+		for _, id := range sel.DiscoveredModels {
+			if !existing[id] {
+				prov.Models = append(prov.Models, catalog.PiModel{ID: id})
+			}
+		}
 	}
 	if err := pi.Write(sel.Provider, prov, contextWindow, outputTokens); err != nil {
 		return Summary{}, err

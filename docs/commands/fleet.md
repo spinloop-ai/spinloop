@@ -226,6 +226,7 @@ nodes: …
 gateway:
   url: http://gateway.internal:4000   # required, with a scheme
   tokenEnv: GATEWAY_TOKEN             # optional; OPENAI_API_KEY when absent
+  name: remote-llms                   # optional; labels the gateway (see below)
 ```
 
 A launch through such a file is pointed at the section's address — the agent's
@@ -243,6 +244,15 @@ This is how a machine that holds the fleet file points a harness at the fleet:
 beside the file needs only the model, and the address travels with the file.
 `spinloop fleet route` answers a file that names a gateway the same way — the
 address, and that no node is queried and nothing is started.
+
+When a launch through the gateway has no model of its own to route by (see
+[Launching the harness](#launching-the-harness)), it needs a way to label the
+provider it configures — otherwise every gateway a fleet might name would
+collide under the same generic id. `name` supplies that label directly; with
+none given, the section's address's host stands in (e.g. `localhost:4000`).
+Either way opencode and Pi show it the way a remote environment is shown —
+`OpenAI-compatible (remote-llms)` rather than a bare `OpenAI-compatible`, the
+same pattern as `llama.cpp (dev-2)`.
 
 ### Tokens
 
@@ -574,9 +584,25 @@ otherwise by node selection and, where the file's
 [wake policy](#waking) allows, a wake — `--node`, `--prefer`, `--no-wake` and
 `--wake-timeout` steer it as on the launch. A Spinloop that pins a `BASEURL` is
 not routed, and a variable already set in spinloop's environment wins, in each
-case as on the launch. With no Spinloop to route — none passed, none beside the
-fleet file — the command fails saying a launch needs a Spinloop to know which
-model to route.
+case as on the launch.
+
+With no Spinloop to route — none passed, none beside the fleet file — what
+happens next depends on the fleet file. Routing to a node needs a model to
+match one against, so the command fails saying a launch needs a Spinloop to
+know which model to route. A gateway needs no such match — it resolves the
+model per request — so a launch through one needs no Spinloop at all: the
+harness is configured with a generic OpenAI-compatible provider at the
+gateway's address, its model list populated from the gateway's own
+`GET /v1/models`, and no default model — labelled and keyed by the gateway's
+[`name`](#gateway), or its address when the section names none, so a second
+gateway gets its own block rather than overwriting this one (see
+[Gateway](#gateway)). This applies equally to a Spinloop that is given but
+names neither a `MODEL` nor an `ALIAS`. The populated model list is only as
+fresh as the last run of the command — rerun it to pick up a newly-served
+model — and, since not every harness's config format holds more than one
+model per provider, it applies to opencode and Pi; a launch against lucinate
+still gets a working connection to the gateway, just with no model list to
+populate.
 
 ## Starting and stopping
 

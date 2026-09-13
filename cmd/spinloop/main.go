@@ -30,7 +30,9 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
@@ -122,7 +124,7 @@ alongside a context, defaulting to a quarter of the context).`,
 			if err != nil {
 				return err
 			}
-			return applySelection(s, h, "", "", opencode.EnvResolver(""))
+			return applySelection(s, h, "", "", "", opencode.EnvResolver(""))
 		},
 	}
 	fs := c.Flags()
@@ -189,9 +191,13 @@ func envFileDir(spinloopPath string) string {
 // apply. resolve looks up API key variables — normally opencode.EnvResolver of
 // the Spinloop's local directory, but `spinloop harness` widens it with the key
 // it fetched from a remote endpoint, which it is about to put in the launched
-// agent's environment.
-func applySelection(sel spinloop.Selection, h harness.Harness, spinloopPath, envName string, resolve func(string) string) error {
-	if sel.Model == "" && sel.Alias == "" {
+// agent's environment. gatewayLabel waives the model-or-alias requirement
+// below and renames the provider: non-empty only when the selection is
+// routed at a gateway with no model or alias of its own, since a gateway
+// resolves the model per request and needs no Spinloop to name one — see the
+// rename below for what the label is used for.
+func applySelection(sel spinloop.Selection, h harness.Harness, spinloopPath, envName, gatewayLabel string, resolve func(string) string) error {
+	if sel.Model == "" && sel.Alias == "" && gatewayLabel == "" {
 		return fmt.Errorf("a provider selection needs a model or an alias")
 	}
 
@@ -237,6 +243,16 @@ func applySelection(sel spinloop.Selection, h harness.Harness, spinloopPath, env
 		// distinctly from a local engine of the same kind in a model picker
 		// (e.g. "llama.cpp (dev-2)" rather than another bare "llama.cpp").
 		sel.DisplayName = catalog.RemoteProviderLabel(p.Name, envName)
+	} else if gatewayLabel != "" {
+		// A gateway-routed selection with no model of its own carries the
+		// catalogue's shared "openai-compatible" id, which every gateway a
+		// fleet might name would otherwise collide under. Key it by the
+		// gateway instead — mirroring the environment rename above — so a
+		// second gateway gets its own block, and label it the same way a
+		// remote environment is labelled (e.g. "OpenAI-compatible
+		// (localhost:4000)" rather than a bare "OpenAI-compatible").
+		sel.Provider = gatewayProviderKey(gatewayLabel)
+		sel.DisplayName = catalog.RemoteProviderLabel(p.Name, gatewayLabel)
 	}
 
 	// A Spinloop applied against an environment states no BASEURL: the address
@@ -499,7 +515,7 @@ environment's registered remote.json.`,
 			if output != "" {
 				sel.Output = output
 			}
-			return applySelection(sel, h, spinloopPath, envName, opencode.EnvResolver(envFileDir(spinloopPath)))
+			return applySelection(sel, h, spinloopPath, envName, "", opencode.EnvResolver(envFileDir(spinloopPath)))
 		},
 	}
 	fs := c.Flags()
@@ -1225,6 +1241,15 @@ func applyRoutedSpinloop(sel spinloop.Selection, path string, providers string, 
 		}
 	}
 	envDir := envFileDir(path)
+	if path == "" {
+		// No Spinloop at all — the gateway-only case. There is no Spinloop
+		// directory to look beside, so the .env that travels with this
+		// launch is the one beside the fleet file instead, matching what
+		// the messages below say when they name a fallback.
+		if target := route.fleetFile(); target != "" {
+			envDir = filepath.Dir(target)
+		}
+	}
 	localResolve := opencode.EnvResolver(envDir)
 	// Routing runs before the apply, and before anything is printed about
 	// applying, for the reason the remote fetch does: a launch that cannot find
@@ -1238,7 +1263,18 @@ func applyRoutedSpinloop(sel spinloop.Selection, path string, providers string, 
 		// remote endpoint's address is written to.
 		sel.BaseURL = choice.BaseURL
 	}
-	fmt.Printf("Applying %s\n\n", path)
+	// label names what is being applied in the messages below: the Spinloop's
+	// own path normally, or the fleet file when there is no Spinloop at all —
+	// the gateway-only case, where nothing was read from disk to apply.
+	label := path
+	if label == "" {
+		label = route.fleetFile()
+	}
+	if path != "" {
+		fmt.Printf("Applying %s\n\n", path)
+	} else {
+		fmt.Printf("Applying the gateway named in %s\n\n", label)
+	}
 	// Before the apply, so a launch that cannot authenticate stops without
 	// having rewritten the harness config.
 	remoteResp, err := fetchRemoteEnv(sel, route.envName, localResolve)
@@ -1249,6 +1285,11 @@ func applyRoutedSpinloop(sel spinloop.Selection, path string, providers string, 
 	if choice != nil && choice.APIKey != "" {
 		resolve = fleetLaunchResolver(resolve, choice.APIKey)
 	}
+	// gatewayLabel names the gateway to applySelection when the selection has
+	// no model or alias of its own to route by: it waives the requirement
+	// below and renames the provider, since a second gateway must not
+	// overwrite the first's block under the catalogue's shared id.
+	var gatewayLabel string
 	if choice != nil && choice.Gateway {
 		// A fleet file naming a gateway authenticates with a token the client
 		// holds itself, resolved the way a key is resolved elsewhere: an ENV
@@ -1265,16 +1306,107 @@ func applyRoutedSpinloop(sel spinloop.Selection, path string, providers string, 
 		if key == "" {
 			return spinloop.Selection{}, "", nil, nil, fmt.Errorf(
 				"no token to reach the gateway %s: export %s, or set it in the .env beside %s",
-				choice.BaseURL, env, path)
+				choice.BaseURL, env, label)
 		}
 		choice.APIKey = key
 		resolve = fleetLaunchResolver(resolve, key)
+
+		// With nothing to route by model, the gateway resolves the model per
+		// request instead — so the harness has nothing to show unless its
+		// model list is populated from what the gateway can currently reach.
+		// A failure here is a convenience lost, not a launch blocked: the
+		// gateway still routes correctly with an empty list.
+		if sel.Model == "" && sel.Alias == "" {
+			gatewayLabel = choice.Label
+			ctx, cancel := context.WithTimeout(context.Background(), gatewayModelsTimeout)
+			ids, mErr := fetchGatewayModels(ctx, choice.BaseURL, key)
+			cancel()
+			if mErr != nil {
+				fmt.Fprintf(os.Stderr, "Warning: could not list the gateway's models (%v). The harness will show none until it is applied again.\n", mErr)
+			} else {
+				sel.DiscoveredModels = ids
+			}
+		}
 	}
-	if err := applySelection(sel, h, path, route.envName, resolve); err != nil {
+	if err := applySelection(sel, h, path, route.envName, gatewayLabel, resolve); err != nil {
 		return spinloop.Selection{}, "", nil, nil, err
 	}
 	fmt.Println()
 	return sel, envDir, remoteResp, choice, nil
+}
+
+// gatewayModelsTimeout bounds fetchGatewayModels, so a gateway that never
+// answers delays the launch rather than blocking it — the model list is a
+// convenience for the harness's picker, not something routing depends on.
+const gatewayModelsTimeout = 10 * time.Second
+
+// fetchGatewayModels returns the model IDs a gateway's GET /models reports, in
+// the order it reports them. token is sent as a bearer token; empty means the
+// gateway is unauthenticated, which Listen only permits on loopback.
+func fetchGatewayModels(ctx context.Context, baseURL, token string) ([]string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimSuffix(baseURL, "/")+"/models", nil)
+	if err != nil {
+		return nil, err
+	}
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("%s answered %s", baseURL, resp.Status)
+	}
+	var out struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, fmt.Errorf("decoding %s's model list: %w", baseURL, err)
+	}
+	ids := make([]string, 0, len(out.Data))
+	for _, m := range out.Data {
+		if m.ID != "" {
+			ids = append(ids, m.ID)
+		}
+	}
+	return ids, nil
+}
+
+// gatewayProviderKey is the provider key a gateway-routed selection with no
+// model of its own is written under: "gateway-" plus the label slugified, so
+// "localhost:4000" becomes "gateway-localhost-4000" and a hand-picked
+// gateway.name reads almost verbatim. Every gateway a fleet might name gets
+// its own key this way, rather than colliding under the catalogue's shared
+// "openai-compatible" id.
+func gatewayProviderKey(label string) string {
+	if slug := slugify(label); slug != "" {
+		return "gateway-" + slug
+	}
+	return "gateway"
+}
+
+// slugify lowercases s and collapses anything that is not a letter or digit
+// into a single hyphen, trimming one from the end — enough to turn a gateway
+// address or a hand-picked name into a safe provider-key segment.
+func slugify(s string) string {
+	var b strings.Builder
+	lastHyphen := true // suppresses a leading hyphen
+	for _, r := range strings.ToLower(s) {
+		if r >= 'a' && r <= 'z' || r >= '0' && r <= '9' {
+			b.WriteRune(r)
+			lastHyphen = false
+			continue
+		}
+		if !lastHyphen {
+			b.WriteByte('-')
+			lastHyphen = true
+		}
+	}
+	return strings.TrimRight(b.String(), "-")
 }
 
 // fleetLaunchResolver extends a lookup with the engine key of the node a launch

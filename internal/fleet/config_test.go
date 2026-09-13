@@ -745,3 +745,45 @@ func TestLoadRefusesAGatewayURLWithoutAScheme(t *testing.T) {
 		t.Errorf("the refusal should say the url lacks a scheme, got %q", err)
 	}
 }
+
+// TestGatewayConfigLabel covers Label()'s precedence: an explicit name wins,
+// otherwise the address's host, otherwise the raw address when it does not
+// even parse as a URL with a host.
+func TestGatewayConfigLabel(t *testing.T) {
+	cases := []struct {
+		name string
+		gw   GatewayConfig
+		want string
+	}{
+		{"explicit name wins", GatewayConfig{URL: "http://localhost:4000", Name: "remote-llms"}, "remote-llms"},
+		{"falls back to the URL's host", GatewayConfig{URL: "http://localhost:4000"}, "localhost:4000"},
+		{"falls back to the raw value with no host to parse", GatewayConfig{URL: "not-a-url"}, "not-a-url"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := c.gw.Label(); got != c.want {
+				t.Errorf("Label() = %q, want %q", got, c.want)
+			}
+		})
+	}
+}
+
+// TestLoadParsesAGatewayName confirms the optional `name` field round-trips
+// from the fleet file into GatewaySection.
+func TestLoadParsesAGatewayName(t *testing.T) {
+	cfg, err := Load(writeFleet(t,
+		"nodes:\n  - name: a\n    host: a.local\ngateway:\n  url: http://gw.internal:4000\n  name: remote-llms\n", ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	gw, ok := cfg.GatewaySection()
+	if !ok {
+		t.Fatal("the file names a gateway")
+	}
+	if gw.Name != "remote-llms" {
+		t.Errorf("Name = %q, want %q", gw.Name, "remote-llms")
+	}
+	if gw.Label() != "remote-llms" {
+		t.Errorf("Label() = %q, want %q", gw.Label(), "remote-llms")
+	}
+}

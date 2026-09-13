@@ -59,6 +59,15 @@ A Spinloop beside that file then needs only the model, and the address travels
 with the file when the gateway moves. See
 [The `Spinloop` file](../spinloop-file.md#running-the-model-on-another-machine-you-own).
 
+A gateway resolves the model per request, so `spinloop fleet harness` needs no
+Spinloop at all when the fleet file names one: with none given and none
+beside the file, it configures opencode or Pi with a generic OpenAI-compatible
+provider at the gateway's address, its models populated from the gateway's own
+`GET /v1/models`, and no default model — labelled and keyed by the section's
+`name` (or its address when none is given), so it reads distinctly in a model
+picker and a second gateway does not overwrite this one. See
+[Launching the harness](fleet.md#launching-the-harness).
+
 ## What it answers
 
 | Path | Meaning |
