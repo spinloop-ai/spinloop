@@ -177,7 +177,7 @@ func TestHarnessFleetFlagShortForm(t *testing.T) {
 	stubHarnessBinary(t, "opencode", argsFile)
 	stderr := captureStderr(t, func() {
 		captureStdout(t, func() {
-			if err := cmdHarness([]string{"--spinloop=" + spinloopDir, "-f", flagFleet, "--", "run"}); err != nil {
+			if err := cmdOpen([]string{"--spinloop=" + spinloopDir, "-f", flagFleet, "--", "run"}); err != nil {
 				t.Fatalf("cmdHarness -f: %v", err)
 			}
 		})
@@ -425,7 +425,7 @@ func TestLaunchWithAGatewaySectionPointsTheAgentAtTheGateway(t *testing.T) {
 		"gateway:\n  url: http://gw.internal:4000\n  tokenEnv: GATEWAY_TOKEN\n")
 	spinloopDir := routedSpinloop(t, "qwen3-27b")
 	captureStdout(t, func() {
-		if err := cmdHarness([]string{"--spinloop=" + spinloopDir, "-f", fleetPath, "--", "run"}); err != nil {
+		if err := cmdOpen([]string{"--spinloop=" + spinloopDir, "-f", fleetPath, "--", "run"}); err != nil {
 			t.Fatalf("cmdHarness: %v", err)
 		}
 	})
@@ -464,7 +464,7 @@ func TestLaunchWithAGatewaySectionDefaultsToOpenAIKey(t *testing.T) {
 	fleetPath := gatewayFleetFile(t, "gateway:\n  url: http://gw.internal:4000\n")
 	spinloopDir := routedSpinloop(t, "qwen3-27b")
 	captureStdout(t, func() {
-		if err := cmdHarness([]string{"--spinloop=" + spinloopDir, "-f", fleetPath, "--", "run"}); err != nil {
+		if err := cmdOpen([]string{"--spinloop=" + spinloopDir, "-f", fleetPath, "--", "run"}); err != nil {
 			t.Fatalf("cmdHarness: %v", err)
 		}
 	})
@@ -491,7 +491,7 @@ func TestLaunchWithAGatewaySectionFailsNamingItsVariable(t *testing.T) {
 		"gateway:\n  url: http://gw.internal:4000\n  tokenEnv: GATEWAY_TOKEN\n")
 	spinloopDir := routedSpinloop(t, "qwen3-27b")
 	captureStdout(t, func() {
-		err := cmdHarness([]string{"--spinloop=" + spinloopDir, "-f", fleetPath, "--", "run"})
+		err := cmdOpen([]string{"--spinloop=" + spinloopDir, "-f", fleetPath, "--", "run"})
 		if err == nil {
 			t.Fatal("a launch that cannot authenticate the gateway should fail")
 		}
@@ -524,7 +524,7 @@ func TestLaunchWithAGatewaySectionTokenFromDotEnv(t *testing.T) {
 	spinloopDir := routedSpinloop(t, "qwen3-27b")
 	mustWrite(t, filepath.Join(spinloopDir, ".env"), "GATEWAY_TOKEN=dotenv-token\n")
 	captureStdout(t, func() {
-		if err := cmdHarness([]string{"--spinloop=" + spinloopDir, "-f", fleetPath, "--", "run"}); err != nil {
+		if err := cmdOpen([]string{"--spinloop=" + spinloopDir, "-f", fleetPath, "--", "run"}); err != nil {
 			t.Fatalf("cmdHarness: %v", err)
 		}
 	})
@@ -914,7 +914,7 @@ func TestAliasNamedSpinloopDoesNotPickUpCwdFleet(t *testing.T) {
 	stubHarnessBinary(t, "opencode", argsFile)
 	stderr := captureStderr(t, func() {
 		captureStdout(t, func() {
-			if err := cmdHarness([]string{"-O", "--", "run"}); err != nil {
+			if err := cmdOpen([]string{"-O", "--", "run"}); err != nil {
 				t.Fatalf("cmdHarness: %v", err)
 			}
 		})
@@ -944,7 +944,7 @@ func TestValuelessSpinloopFlagRoutesThroughCwdFleet(t *testing.T) {
 	stubHarnessBinaryWithEnv(t, argsFile, envFile)
 	stderr := captureStderr(t, func() {
 		captureStdout(t, func() {
-			if err := cmdHarness([]string{"-O", "--", "run"}); err != nil {
+			if err := cmdOpen([]string{"-O", "--", "run"}); err != nil {
 				t.Fatalf("cmdHarness -O: %v", err)
 			}
 		})
@@ -978,7 +978,7 @@ func TestBareHarnessWearsNothingAndRoutesNothing(t *testing.T) {
 	stubHarnessBinary(t, "opencode", argsFile)
 	stderr := captureStderr(t, func() {
 		captureStdout(t, func() {
-			if err := cmdHarness([]string{"--", "run"}); err != nil {
+			if err := cmdOpen([]string{"--", "run"}); err != nil {
 				t.Fatalf("cmdHarness: %v", err)
 			}
 		})

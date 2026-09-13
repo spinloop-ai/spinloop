@@ -99,9 +99,9 @@ oMLX speaks the OpenAI-compatible API, which is what the `omlx` provider targets
 this directory:
 
 ```sh
-spinloop apply examples/omlx/qwen3.6/Spinloop
+spinloop harness apply examples/omlx/qwen3.6/Spinloop
 # or, from this directory:
-spinloop apply
+spinloop harness apply
 ```
 
 The Spinloop is:
@@ -153,8 +153,8 @@ without a key come back as `API key required`. To use it, set `OPENAI_API_KEY`
 **before** you apply the Spinloop:
 
 ```sh
-OPENAI_API_KEY=your-omlx-key spinloop apply     # writes an {env:OPENAI_API_KEY} reference
-OPENAI_API_KEY=your-omlx-key opencode         # or `spinloop harness`, which forwards it
+OPENAI_API_KEY=your-omlx-key spinloop harness apply     # writes an {env:OPENAI_API_KEY} reference
+OPENAI_API_KEY=your-omlx-key opencode         # or `spinloop harness open`, which forwards it
 ```
 
 The *before* matters: with the key set at apply time, `spinloop` writes an

@@ -13,7 +13,7 @@ brew install spinloop-ai/tap/spinloop
 ## 2. See what's on offer
 
 ```sh
-spinloop list
+spinloop provider list
 ```
 
 That's the catalogue: every provider, the API key it needs (if any), and which
@@ -23,7 +23,7 @@ Need a model id to go with a provider? Add `--models` and `spinloop` asks the
 provider's own endpoint what it currently serves:
 
 ```sh
-spinloop list --models openrouter
+spinloop provider list --models openrouter
 ```
 
 ## 3. Configure your agent
@@ -33,13 +33,13 @@ export it first:
 
 ```sh
 echo 'DEEPSEEK_API_KEY=sk-or-v1-...' > .env
-spinloop add -p openrouter -m deepseek/deepseek-v4-flash
+spinloop harness add -p openrouter -m deepseek/deepseek-v4-flash
 ```
 
 Or go local — no key needed:
 
 ```sh
-spinloop add -p ollama -m llama3.2
+spinloop harness add -p ollama -m llama3.2
 ```
 
 Your agent's existing config survives — `spinloop` merges the provider in,
@@ -48,12 +48,12 @@ touching nothing else.
 ## 4. Launch
 
 ```sh
-spinloop harness
+spinloop harness open
 ```
 
 That launches the agent (opencode by default) running the model you picked.
-Prefer Pi? `spinloop harness --set pi` once, and every command targets it from
-then on.
+Prefer Pi? `spinloop harness config --set pi` once, and every command targets
+it from then on.
 
 ## 5. Make it declarative
 
@@ -69,11 +69,11 @@ MODEL    deepseek/deepseek-v4-pro
 Then:
 
 ```sh
-spinloop apply        # apply it to the agent
-spinloop harness -O   # ...or apply and launch in one go
+spinloop harness apply        # apply it to the agent
+spinloop harness open -O      # ...or apply and launch in one go
 ```
 
-Already set up by hand? Capture it: `spinloop export > Spinloop`.
+Already set up by hand? Capture it: `spinloop harness export > Spinloop`.
 
 ## 6. Serving a local model too?
 
@@ -89,7 +89,7 @@ CONTEXT  32768
 
 ```sh
 spinloop serve    # runs llama-server for it
-spinloop apply    # points the agent at it
+spinloop harness apply    # points the agent at it
 ```
 
 Prefer one word? `spinloop up` starts the server here — and the whole fleet,
@@ -99,8 +99,8 @@ wherever a `fleet.yaml` lives.
 
 ```sh
 spinloop alias              # registers ./Spinloop under its own ALIAS
-spinloop apply qwen3.6      # now the name works anywhere a path does
-spinloop harness qwen3.6
+spinloop harness apply qwen3.6      # now the name works anywhere a path does
+spinloop harness open qwen3.6
 ```
 
 Wearing one all day? `export SPINLOOP_ALIAS=qwen3.6` and every command that names

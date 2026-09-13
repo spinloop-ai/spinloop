@@ -14,9 +14,9 @@ spinloop alias --list          # what is registered, and whether it still exists
 Then, from anywhere:
 
 ```sh
-spinloop apply big
+spinloop harness apply big
 spinloop serve big
-spinloop harness big -- --agent-arg
+spinloop harness open big -- --agent-arg
 ```
 
 ## Registering a URL
@@ -26,7 +26,7 @@ short name for a published Spinloop instead of a link:
 
 ```sh
 spinloop alias -n team-default https://example.com/team/Spinloop
-spinloop apply team-default
+spinloop harness apply team-default
 ```
 
 It is stored and resolved just like a local one — see
@@ -38,7 +38,7 @@ It is stored and resolved just like a local one — see
 
 ```sh
 export SPINLOOP_ALIAS=big
-spinloop apply          # the same as `spinloop apply big`
+spinloop harness apply          # the same as `spinloop harness apply big`
 spinloop serve
 spinloop remote status
 ```
@@ -47,8 +47,8 @@ The order is the argument you typed, then `SPINLOOP_ALIAS`, then `./Spinloop`. T
 details worth knowing:
 
 - It decides **which** Spinloop is the default, never **whether** one is applied.
-  A bare `spinloop harness` still launches without configuring the agent; `spinloop
-  harness -O` asks for the default Spinloop and gets the variable's. And `spinloop
+  A bare `spinloop harness open` still launches without configuring the agent; `spinloop
+  harness open -O` asks for the default Spinloop and gets the variable's. And `spinloop
   alias` ignores it entirely — with no argument that command means "the Spinloop
   in this directory".
 - It holds a registry name, never a path, and a file of the same name in the
@@ -97,4 +97,4 @@ them, and is required when a Spinloop states no `ALIAS` at all.
 ## See also
 
 - [`spinloop unalias`](unalias.md) — drop a name
-- [`spinloop show`](show.md) — lists your aliases alongside the configured state
+- [`spinloop harness show`](harness.md#spinloop-harness-show) — lists your aliases alongside the configured state

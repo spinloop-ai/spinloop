@@ -154,6 +154,13 @@ operator needs to read, and burying it under the command's full help hides it.
 - **THEN** the error says what it points at and gives the command that would
   re-point or remove it
 
+#### Scenario: A moved command names its new home
+
+- **WHEN** the operator runs a command at a spelling that no longer exists
+  because the command moved to a group
+- **THEN** the error names the command's new home, giving the new spelling,
+  rather than a bare unknown-command message
+
 ### Requirement: Help text is a lowercase imperative phrase
 
 A command's one-line description SHALL be a lowercase phrase in the

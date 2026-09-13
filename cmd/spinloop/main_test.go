@@ -572,8 +572,8 @@ func TestCmdInitProviders_EndToEnd(t *testing.T) {
 	path := filepath.Join(dir, "providers.yaml")
 
 	out := captureStdout(t, func() {
-		if err := cmdInitProviders([]string{path}); err != nil {
-			t.Fatalf("cmdInitProviders: %v", err)
+		if err := cmdInitProvider([]string{path}); err != nil {
+			t.Fatalf("cmdInitProvider: %v", err)
 		}
 	})
 	if !strings.Contains(out, "Wrote "+path) {
@@ -603,7 +603,7 @@ func TestCmdInitProviders_NoClobber(t *testing.T) {
 	}
 
 	// Without --force, an existing file is left untouched and the command errors.
-	if err := cmdInitProviders([]string{path}); err == nil {
+	if err := cmdInitProvider([]string{path}); err == nil {
 		t.Error("expected an error when the target file already exists")
 	}
 	got, _ := os.ReadFile(path)
@@ -613,8 +613,8 @@ func TestCmdInitProviders_NoClobber(t *testing.T) {
 
 	// With --force, it is overwritten with the embedded catalogue.
 	captureStdout(t, func() {
-		if err := cmdInitProviders([]string{"--force", path}); err != nil {
-			t.Fatalf("cmdInitProviders --force: %v", err)
+		if err := cmdInitProvider([]string{"--force", path}); err != nil {
+			t.Fatalf("cmdInitProvider --force: %v", err)
 		}
 	})
 	got, _ = os.ReadFile(path)
@@ -724,8 +724,8 @@ func TestCmdInitProviders_DefaultPath(t *testing.T) {
 	defer os.Chdir(old)
 
 	captureStdout(t, func() {
-		if err := cmdInitProviders(nil); err != nil {
-			t.Fatalf("cmdInitProviders: %v", err)
+		if err := cmdInitProvider(nil); err != nil {
+			t.Fatalf("cmdInitProvider: %v", err)
 		}
 	})
 	if _, err := os.Stat(filepath.Join(dir, "providers.yaml")); err != nil {

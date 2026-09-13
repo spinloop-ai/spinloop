@@ -265,7 +265,7 @@ func (p *startProgress) close() {
 // The variables a remote endpoint is addressed by. The instance is started
 // with its API key as --api-key on an OpenAI-compatible server, so these are
 // the names every consumer uses: the export lines below, and the environment
-// `spinloop harness` hands the agent it launches.
+// `spinloop harness open` hands the agent it launches.
 const (
 	remoteBaseURLEnv = "OPENAI_BASE_URL"
 	remoteAPIKeyEnv  = "OPENAI_API_KEY"

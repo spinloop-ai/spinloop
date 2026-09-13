@@ -29,9 +29,9 @@ export AWS_REGION=eu-west-2
 ## 2. Apply the Spinloop
 
 ```sh
-spinloop apply examples/amazon-bedrock/claude-sonnet/Spinloop
+spinloop harness apply examples/amazon-bedrock/claude-sonnet/Spinloop
 # or, from this directory:
-spinloop apply
+spinloop harness apply
 ```
 
 The Spinloop is:

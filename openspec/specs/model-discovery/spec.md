@@ -6,7 +6,7 @@ Define live, per-provider model discovery: fetching the models a provider
 currently serves from its own OpenAI-compatible `/models` endpoint, the
 best-effort and quiet failure behaviour that keeps it from ever breaking a
 command, in-process caching, and how discovered models surface through
-`spinloop list --models` and shell completion.
+`spinloop provider list --models` and shell completion.
 
 ## Requirements
 
@@ -51,7 +51,7 @@ hang a command.
 
 #### Scenario: Offline discovery does not fail the command
 
-- **WHEN** `spinloop list --models <provider>` runs and the provider's endpoint is
+- **WHEN** `spinloop provider list --models <provider>` runs and the provider's endpoint is
   unreachable
 - **THEN** the command still prints the provider's plumbing, reports no models were found,
   and exits successfully
@@ -80,22 +80,24 @@ A cache entry SHALL be keyed by the resolved provider endpoint.
 
 ### Requirement: Surfacing discovered models
 
-`spinloop list --models <provider>` SHALL print the provider's discovered models beneath its
-plumbing. Without `--models`, `spinloop list` SHALL behave as before (plumbing only) and
-SHALL NOT perform any network request. Shell model completion SHALL offer discovered models
-for a provider that supports discovery, scoped to the `--provider` already on the line.
+`spinloop provider list --models <provider>` SHALL print the provider's discovered models
+beneath its plumbing. Without `--models`, `spinloop provider list` SHALL behave as
+before (plumbing only) and SHALL NOT perform any network request. Shell model
+completion SHALL offer discovered models for a provider that supports discovery,
+scoped to the `--provider` already on the line.
 
 #### Scenario: Listing a provider's live models
 
-- **WHEN** the user runs `spinloop list --models openrouter` and discovery succeeds
+- **WHEN** the user runs `spinloop provider list --models openrouter` and discovery succeeds
 - **THEN** the provider's currently-served model ids are printed under its entry
 
 #### Scenario: Plain list makes no network call
 
-- **WHEN** the user runs `spinloop list` with no `--models` flag
+- **WHEN** the user runs `spinloop provider list` with no `--models` flag
 - **THEN** no discovery request is made and only provider plumbing is printed
 
 #### Scenario: Model completion offers discovered ids
 
-- **WHEN** the user completes `spinloop add -p openrouter -m <TAB>` and discovery succeeds
+- **WHEN** the user completes `spinloop harness add -p openrouter -m <TAB>` and
+  discovery succeeds
 - **THEN** the provider's discovered model ids are offered as candidates

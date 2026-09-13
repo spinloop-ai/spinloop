@@ -35,7 +35,7 @@ and the file is commented with its schema. Add yours there and rebuild.
 The catalogue is embedded into the binary at build time, so a `spinloop` you
 built earlier keeps applying the old one however you edit the file; rebuild
 before testing a change. To skip the rebuild while iterating, write the
-catalogue out with [`spinloop init-providers`](commands/init-providers.md) and
+catalogue out with [`spinloop provider init`](commands/provider.md#spinloop-provider-init) and
 read it at run time with `--providers` or `SPINLOOP_PROVIDERS`. The reasoning is
 in [implementation notes](internals.md).
 

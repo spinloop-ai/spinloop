@@ -27,15 +27,15 @@ export GOOGLE_VERTEX_PROJECT=my-gcp-project
 export GOOGLE_VERTEX_LOCATION=us-east5     # optional; defaults to `global`
 ```
 
-If `GOOGLE_VERTEX_PROJECT` is unset, `spinloop apply` fails with a clear error
+If `GOOGLE_VERTEX_PROJECT` is unset, `spinloop harness apply` fails with a clear error
 naming the option and the variable.
 
 ## 2. Apply the Spinloop
 
 ```sh
-spinloop apply examples/google-vertex-anthropic/claude-sonnet/Spinloop
+spinloop harness apply examples/google-vertex-anthropic/claude-sonnet/Spinloop
 # or, from this directory:
-spinloop apply
+spinloop harness apply
 ```
 
 The Spinloop is:

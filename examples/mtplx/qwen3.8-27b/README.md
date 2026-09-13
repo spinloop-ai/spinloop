@@ -80,9 +80,9 @@ targets (default base URL `http://localhost:8000/v1`, overridable with
 `MTPLX_BASE_URL`). Apply the [`Spinloop`](Spinloop) in this directory:
 
 ```sh
-spinloop apply examples/mtplx/qwen3.8-27b/Spinloop
+spinloop harness apply examples/mtplx/qwen3.8-27b/Spinloop
 # or, from this directory:
-spinloop apply
+spinloop harness apply
 ```
 
 The Spinloop is:

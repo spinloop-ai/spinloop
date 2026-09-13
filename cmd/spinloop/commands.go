@@ -30,16 +30,31 @@ func newRootCmd() *cobra.Command {
 deep-merging provider settings into that harness's config. The supported
 harnesses are opencode, Pi and lucinate; the harness is chosen at runtime
 (--harness/-H, SPINLOOP_HARNESS, or a stored default set with spinloop harness
---set), never baked into a Spinloop, so the same Spinloop applies to any of
-them.
+config --set), never baked into a Spinloop, so the same Spinloop applies to any
+of them.
 
-Each command's --help carries its full description; spinloop list shows what a
-harness could be configured with, spinloop show what it has been.`,
+Each command's --help carries its full description; spinloop provider list
+shows what a harness could be configured with, spinloop harness show what it
+has been.`,
 		Version: version,
 		// The version prints as the bare version string, as the version
 		// subcommand does.
 		SilenceErrors: true,
 		SilenceUsage:  true,
+		// Cobra's own check for a word the root does not recognise (its
+		// fallback while a command sets no Args) rejects it with a message
+		// that can only suggest among the root's current children, so it
+		// cannot say where a removed spelling moved. rootArgs replaces
+		// that check, and the RunE shows the help a non-runnable root
+		// used to: execute returns help for a non-runnable command before
+		// it validates args, so the validator is only reached with a
+		// runnable root.
+		Args: rootArgs,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			// Every non-empty first word is an error by the time rootArgs
+			// has spoken, so only the bare invocation gets here.
+			return pflag.ErrHelp
+		},
 	}
 	root.SetVersionTemplate("{{.Version}}\n")
 	// --version comes from the Version field; -v joins it, as both spellings
@@ -55,22 +70,15 @@ harness could be configured with, spinloop show what it has been.`,
 	root.SetErr(io.Discard)
 
 	root.AddCommand(
-		addCmd(),
-		removeCmd(),
-		listCmd(),
-		showCmd(),
-		applyCmd(),
-		unapplyCmd(),
 		aliasCmd(),
 		unaliasCmd(),
 		serveCmd(),
 		upCmd(),
 		daemonCmd(),
 		gatewayCmd(),
-		exportCmd(),
 		hfCmd(),
-		initProvidersCmd(),
 		harnessCmd(),
+		providerCmd(),
 		versionCmd(),
 		completionCmd(),
 	)
@@ -89,38 +97,142 @@ func execCmd(c *cobra.Command, args []string) error {
 	return c.Execute()
 }
 
-// harnessCmd builds the `harness` command. It disables Cobra's flag parsing
-// because the command has to decide, token by token, which arguments are
-// spinloop's own and which belong to the launched harness: a leading positional
-// that names a Spinloop is consumed, a `--` opts out, and everything after the
-// hand-off point forwards byte-for-byte. The flags are registered on the
-// command's own flag set — the body parses that set, and the completion
-// surface reads the same one, so parsing and completion cannot drift apart.
+// movedTopLevelCommands maps each top-level spelling the harness/provider
+// grouping removed to the command that replaced it, so the error for the old
+// spelling can give the new one.
+var movedTopLevelCommands = map[string]string{
+	"add":            "harness add",
+	"remove":         "harness remove",
+	"apply":          "harness apply",
+	"unapply":        "harness unapply",
+	"show":           "harness show",
+	"export":         "harness export",
+	"list":           "provider list",
+	"init-providers": "provider init",
+}
+
+// rootArgs is the root's Args validator. A first word the root does not
+// recognise fails with the error Cobra's fallback used to produce — same
+// message, suggestions included — unless it is one of the spellings the
+// grouping removed, which fails naming the command that replaced it.
+func rootArgs(c *cobra.Command, args []string) error {
+	if len(args) == 0 {
+		return nil
+	}
+	if replacement, moved := movedTopLevelCommands[args[0]]; moved {
+		return fmt.Errorf("%q moved: run spinloop %s", args[0], replacement)
+	}
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "unknown command %q for %q", args[0], c.CommandPath())
+	if !c.DisableSuggestions {
+		if suggestions := c.SuggestionsFor(args[0]); len(suggestions) > 0 {
+			sb.WriteString("\n\nDid you mean this?\n")
+			for _, s := range suggestions {
+				fmt.Fprintf(&sb, "\t%v\n", s)
+			}
+		}
+	}
+	return errors.New(sb.String())
+}
+
+// harnessCmd builds the `harness` command group. The group itself does
+// nothing — see groupFallback; every action is a subcommand: the six that
+// manage the harness's config, `open` the launch, and `config` the active
+// harness's selection.
 func harnessCmd() *cobra.Command {
-	var set, harnessName, providers string
+	c := &cobra.Command{
+		Use:   "harness",
+		Short: "launch the active harness, or manage its config",
+		Long: `launches the active harness through ` + "`open`" + `, or manages the harness
+through its subcommands: add, remove, apply, unapply, show and export work on
+the harness's config, ` + "`config`" + ` reports or stores which harness is the
+default, and ` + "`open`" + ` launches it. The harness is chosen at runtime
+(--harness/-H, SPINLOOP_HARNESS, or a stored default), never baked into a
+Spinloop, so the same selection works for any of them.`,
+		SilenceErrors: true,
+		SilenceUsage:  true,
+		RunE:          groupFallback,
+	}
+	c.AddCommand(addCmd(), removeCmd(), applyCmd(), unapplyCmd(), showCmd(), exportCmd(), configCmd(), openCmd())
+	return c
+}
+
+// configCmd reports or stores which harness is the default. --get (the default
+// when no flag is given) prints the active harness and where that choice came
+// from; --set <name> stores the default and exits.
+func configCmd() *cobra.Command {
+	var set, harnessName string
 	var get bool
+	c := &cobra.Command{
+		Use:   "config",
+		Short: "report or store the default harness",
+		Long: `reports the active harness, or stores the default. With no flag — or
+--get — it prints the active harness and where that choice came from (flag,
+environment, stored preference, or the default). --set <name> stores the
+default harness and exits.`,
+		SilenceErrors: true,
+		SilenceUsage:  true,
+		RunE: func(c *cobra.Command, args []string) error {
+			if set != "" {
+				if err := harness.SavePreference(set); err != nil {
+					return err
+				}
+				prefPath, _ := harness.PreferencePath()
+				fmt.Printf("Default harness set to %q (stored in %s).\n", set, prefPath)
+				return nil
+			}
+			h, source, err := harness.Resolve(harnessName)
+			if err != nil {
+				return err
+			}
+			pref, _ := harness.LoadPreference()
+			fmt.Printf("Active harness: %s (from %s)\n", h.Name(), source)
+			if pref == "" {
+				fmt.Printf("Stored preference: none (defaults to %s)\n", harness.Default)
+			} else {
+				fmt.Printf("Stored preference: %s\n", pref)
+			}
+			fmt.Printf("Available: %s\n", strings.Join(harness.Names(), ", "))
+			return nil
+		},
+	}
+	fs := c.Flags()
+	fs.BoolVar(&get, "get", false, "print the active harness (the default)")
+	fs.StringVar(&set, "set", "", "store this harness as the default and exit")
+	fs.StringVarP(&harnessName, "harness", "H", "", "which harness to report with --get")
+	compRegister(c, "set", compHarnessNames)
+	compRegister(c, "harness", compHarnessNames)
+	return c
+}
+
+// openCmd builds the `open` subcommand — the launch a bare `harness` used to
+// be. It disables Cobra's flag parsing because the command has to decide,
+// token by token, which arguments are spinloop's own and which belong to the
+// launched harness: a leading positional that names a Spinloop is consumed, a
+// `--` opts out, and everything after the hand-off point forwards
+// byte-for-byte. The flags are registered on the command's own flag set — the
+// body parses that set, and the completion surface reads the same one, so
+// parsing and completion cannot drift apart.
+func openCmd() *cobra.Command {
+	var harnessName, providers string
 	var spinloopPath spinloopPathFlag
 	var route routeOptions
 	c := &cobra.Command{
-		Use:   "harness",
-		Short: "launch the active harness, optionally applying a Spinloop first",
+		Use:   "open",
+		Short: "launch the active harness, forwarding trailing args",
 		Long: `launches the active harness, forwarding any trailing args to it. A
-Spinloop — a registered alias or a path — can be named anywhere among
-spinloop's own flags (--env, -H, --spinloop, --fleet, ...), in any order; the
-first argument that is neither one of those flags nor a Spinloop name starts
-the harness's own args, forwarded byte-for-byte from there. Put -- before the
-harness's own args if one of them would otherwise be mistaken for a Spinloop
-name, and a leading -- opts out of Spinloop-naming entirely. --spinloop/-O
-applies a Spinloop first, as if you had run apply before it. --get prints the
-active harness instead of launching it; --set <name> stores the default
-harness and exits. Honours -H/--harness and SPINLOOP_HARNESS.`,
+leading argument that names a Spinloop — a registered alias or a path — is
+applied first and not forwarded; put -- before the harness's own args to keep
+them, and a leading -- opts out of this entirely. --spinloop/-O applies a
+Spinloop first, as if you had run harness apply before it. Honours -H/
+--harness and SPINLOOP_HARNESS.`,
 		Args:               cobra.ArbitraryArgs,
 		DisableFlagParsing: true,
 		SilenceErrors:      true,
 		SilenceUsage:       true,
 		// The engine cannot see past a DisableFlagParsing command, so every
 		// word here — attached flag values included — lands in this slot.
-		ValidArgsFunction: harnessSlot,
+		ValidArgsFunction: launchSlot,
 		RunE: func(c *cobra.Command, args []string) error {
 			resolve(c)
 			// Parsing is spinloop's own (not Cobra's): spinloop's own flags are
@@ -132,35 +244,19 @@ harness and exits. Honours -H/--harness and SPINLOOP_HARNESS.`,
 			if err != nil {
 				return err
 			}
-
-			if set != "" {
-				if err := harness.SavePreference(set); err != nil {
-					return err
-				}
-				prefPath, _ := harness.PreferencePath()
-				fmt.Printf("Default harness set to %q (stored in %s).\n", set, prefPath)
-				return nil
+			// -h/--help is consumed by the flag set, not intercepted: Cobra
+			// registers the help flag before RunE runs, but with flag parsing
+			// off it never checks it, so without this the flag would be set and
+			// the agent launched. A `--` before it leaves it a forwarded
+			// positional, so the harness still gets its own --help.
+			if fs.Changed("help") {
+				return c.Help()
 			}
 
-			h, source, err := harness.Resolve(harnessName)
+			h, _, err := harness.Resolve(harnessName)
 			if err != nil {
 				return err
 			}
-
-			// --get reports the harness rather than running anything, so it
-			// applies nothing either.
-			if get {
-				pref, _ := harness.LoadPreference()
-				fmt.Printf("Active harness: %s (from %s)\n", h.Name(), source)
-				if pref == "" {
-					fmt.Printf("Stored preference: none (defaults to %s)\n", harness.Default)
-				} else {
-					fmt.Printf("Stored preference: %s\n", pref)
-				}
-				fmt.Printf("Available: %s\n", strings.Join(harness.Names(), ", "))
-				return nil
-			}
-
 			// A named Spinloop — the flag's value, a leading positional, or the
 			// alias SPINLOOP_ALIAS names — travels to its fleet only by flag, so
 			// a fleet.yaml in the working directory is not picked up for it. A
@@ -201,8 +297,6 @@ harness and exits. Honours -H/--harness and SPINLOOP_HARNESS.`,
 	}
 	fs := c.Flags()
 	fs.SetInterspersed(false)
-	fs.StringVar(&set, "set", "", "store this harness as the default and exit")
-	fs.BoolVar(&get, "get", false, "print the active harness instead of launching it")
 	fs.StringVarP(&harnessName, "harness", "H", "", "which harness to launch")
 	fs.VarP(&spinloopPath, "spinloop", "O", "apply this Spinloop before launching (bare: ./"+spinloop.DefaultFile+")")
 	// Bare -O arrives as NoOptDefVal; spinloopPathFlag maps it to the empty
@@ -217,6 +311,23 @@ harness and exits. Honours -H/--harness and SPINLOOP_HARNESS.`,
 	fs.BoolVar(&route.noWake, "no-wake", false, "fail rather than starting an engine on an idle fleet node")
 	fs.DurationVar(&route.wakeTimeout, "wake-timeout", 0, "how long to wait for a woken node's engine")
 	return c
+}
+
+// providerCmd builds the provider parent and its subcommands. The parent
+// does nothing itself — see groupFallback.
+func providerCmd() *cobra.Command {
+	provider := &cobra.Command{
+		Use:   "provider",
+		Short: "work with the provider catalogue",
+		Long: `works with the provider catalogue: list shows what a harness could be
+configured with, init writes the built-in catalogue out as a starting point
+for a custom one. Each subcommand's --help says what it does.`,
+		SilenceErrors: true,
+		SilenceUsage:  true,
+		RunE:          groupFallback,
+	}
+	provider.AddCommand(listCmd(), initProviderCmd())
+	return provider
 }
 
 // launchAgent runs the harness as the launch's child: stdio and any trailing

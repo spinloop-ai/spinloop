@@ -98,7 +98,7 @@ local-path reference would be read from disk.
 #### Scenario: Reading a Spinloop does not fetch its PRESET
 
 - **WHEN** a Spinloop naming a `PRESET` (local or remote) is parsed for any
-  purpose, including `spinloop apply`, which never consumes `PRESET`
+  purpose, including `spinloop harness apply`, which never consumes `PRESET`
 - **THEN** the `PRESET` reference is not fetched
 
 #### Scenario: A command fetches only the reference it needs

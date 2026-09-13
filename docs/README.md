@@ -17,7 +17,7 @@ Four words carry the whole tool:
 - **Provider** — what `spinloop` can configure, from a built-in
   catalogue: OpenRouter, AWS Bedrock, Ollama, llama.cpp, vLLM, oMLX and MTPLX
   (both Apple Silicon), or any OpenAI-compatible endpoint. See
-  [`spinloop list`](commands/list.md).
+  [`spinloop provider list`](commands/provider.md).
 - **Spinloop file** — a small, declarative file (like a `Dockerfile`, but for
   your agent's model) that captures one selection so you can commit it and
   apply it anywhere — local or fetched straight from a URL. See
@@ -51,12 +51,6 @@ Four words carry the whole tool:
 
 | Command | What it does |
 | ------- | ------------ |
-| [`spinloop add`](commands/add.md) | Point the agent at a provider and model |
-| [`spinloop remove`](commands/remove.md) | Take a provider or its models back out |
-| [`spinloop list`](commands/list.md) | Show the catalogue of providers you could configure |
-| [`spinloop show`](commands/show.md) | Show what the agent currently has configured |
-| [`spinloop apply`](commands/apply.md) | Apply a `Spinloop` file |
-| [`spinloop unapply`](commands/unapply.md) | Remove what a `Spinloop` file selects |
 | [`spinloop alias`](commands/alias.md) | Name a `Spinloop` so the name works anywhere a path does |
 | [`spinloop unalias`](commands/unalias.md) | Drop a registered name |
 | [`spinloop serve`](commands/serve.md) | Run the inference server for the model a `Spinloop` names |
@@ -65,10 +59,9 @@ Four words carry the whole tool:
 | [`spinloop fleet`](commands/fleet.md) | Observe and drive the engines on every machine you run, and launch your agent against them |
 | [`spinloop gateway`](commands/gateway.md) | Serve the fleet under one OpenAI-compatible endpoint |
 | [`spinloop remote`](commands/remote.md) | Run the model on a cloud GPU that stops when you do |
-| [`spinloop export`](commands/export.md) | Capture the current setup as a `Spinloop` |
 | [`spinloop hf`](commands/hf.md) | Write a `Spinloop` for a Hugging Face model, from its page reference |
-| [`spinloop harness`](commands/harness.md) | Launch the agent, optionally configuring it first |
-| [`spinloop init-providers`](commands/init-providers.md) | Write the catalogue out to customise |
+| [`spinloop harness`](commands/harness.md) | Configure the agent (add, remove, apply, unapply, show, export), launch it (open), and set the default (config) |
+| [`spinloop provider`](commands/provider.md) | Work with the provider catalogue (list, init) |
 | [`spinloop completion`](commands/completion.md) | Tab completion for your shell |
 
 `spinloop version` prints the version, and `spinloop help` the usage summary.
@@ -88,7 +81,7 @@ including the `SPINLOOP_REMOTE_*` overrides:
 | `SPINLOOP_API_TOKEN` | Bearer token for the daemon [control API](http-api.md) |
 | `SPINLOOP_LOG_LEVEL` | How much `spinloop daemon`/`spinloop serve` record — `debug`, `info` (default), `warn`, `error` (`--log-level` beats it) |
 | *(named by `tokenEnv`)* | A [fleet](commands/fleet.md) node's bearer token — `fleet.yaml` names the variable, never the value |
-| `DEEPSEEK_API_KEY`, `OPENAI_API_KEY`, … | Provider API keys — `spinloop list` shows which each provider reads |
+| `DEEPSEEK_API_KEY`, `OPENAI_API_KEY`, … | Provider API keys — `spinloop provider list` shows which each provider reads |
 | `OLLAMA_BASE_URL`, `LLAMACPP_BASE_URL`, `OMLX_BASE_URL`, `VLLM_BASE_URL`, `MTPLX_BASE_URL`, `OPENAI_BASE_URL` | Per-provider endpoint overrides |
 | `AWS_REGION` | Region for AWS Bedrock |
 
@@ -96,8 +89,8 @@ Keys are looked up in a `.env` file **beside the `Spinloop` being applied** firs
 (or in the current directory, for a command that takes no Spinloop), then your
 shell environment — so a project keeps its own key next to the file that needs
 it, the same way `PRESET` travels with a Spinloop. They are **never written into the agent's config** — spinloop writes
-a reference the agent resolves when it runs, and `spinloop harness` passes the
-keys it can resolve to the agent it launches. If you start the agent yourself,
+a reference the agent resolves when it runs, and `spinloop harness open` passes
+the keys it can resolve to the agent it launches. If you start the agent yourself,
 set the variable in your own environment. Local providers on localhost (Ollama,
 llama.cpp) need no key; Bedrock uses your AWS credentials. oMLX and MTPLX need
 one only if you enabled their API-key auth — set `OPENAI_API_KEY` before

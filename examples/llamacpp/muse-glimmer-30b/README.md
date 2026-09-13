@@ -206,7 +206,7 @@ Or let `spinloop` build that from [`preset.ini`](preset.ini):
 spinloop serve --dry-run    # print the command
 spinloop serve              # run it
 curl http://127.0.0.1:8080/v1/models
-spinloop apply              # point opencode at it
+spinloop harness apply              # point opencode at it
 ```
 
 This example is deliberately **text-only**. If you do want image input, drop

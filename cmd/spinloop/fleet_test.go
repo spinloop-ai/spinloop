@@ -698,8 +698,9 @@ func TestFleetFlagShortForm(t *testing.T) {
 			t.Errorf("fleet %s: shorthand = %q, want \"f\"", name, f.Shorthand)
 		}
 	}
-	if f := commandUnder(t, root, "harness").Flags().Lookup("fleet"); f == nil || f.Shorthand != "f" {
-		t.Errorf("harness: --fleet lacks the -f shorthand")
+	// The launch (harness open) is where --fleet and its -f shorthand live.
+	if f := commandUnder(t, commandUnder(t, root, "harness"), "open").Flags().Lookup("fleet"); f == nil || f.Shorthand != "f" {
+		t.Errorf("harness open: --fleet lacks the -f shorthand")
 	}
 	logs := commandUnder(t, fleet, "logs")
 	if f := logs.Flags().Lookup("fleet"); f == nil {

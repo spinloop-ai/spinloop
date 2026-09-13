@@ -123,7 +123,7 @@ func knownProvider(name string) error {
 		return err
 	}
 	if _, ok := cat.Providers[name]; !ok {
-		return fmt.Errorf("unknown provider %q (see `spinloop list`)", name)
+		return fmt.Errorf("unknown provider %q (see `spinloop provider list`)", name)
 	}
 	return nil
 }

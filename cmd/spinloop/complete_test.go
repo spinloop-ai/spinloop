@@ -95,8 +95,15 @@ func TestComplete_CommandNames(t *testing.T) {
 	isolateConfig(t)
 
 	got, directive := complete(t, "")
-	if !hasAll(got, "alias", "unalias", "apply", "unapply", "serve", "harness", "show", "completion") {
+	if !hasAll(got, "alias", "unalias", "serve", "harness", "provider", "completion") {
 		t.Errorf("commands missing from %v", got)
+	}
+	// The spellings the harness/provider grouping removed are not top-level
+	// anymore, so they must not be offered at the first word.
+	for _, name := range []string{"add", "remove", "apply", "unapply", "show", "export", "list", "init-providers"} {
+		if slices.Contains(got, name) {
+			t.Errorf("removed top-level spelling %q is still offered at the first word: %v", name, got)
+		}
 	}
 	for _, name := range got {
 		if name == "__complete" {
@@ -139,6 +146,7 @@ func TestCompletionCoversTree(t *testing.T) {
 			if !slices.Contains(got, sub.Name()) {
 				t.Errorf("subcommand %q of %v is offered nowhere: %v", sub.Name(), path, got)
 			}
+			// Every group's first slot takes no file paths.
 			if directive != directiveNoFile {
 				t.Errorf("%v %s: directive = %q, want %q (subcommands take no paths)", path, sub.Name(), directive, directiveNoFile)
 			}
@@ -228,8 +236,8 @@ func TestComplete_SpinloopCommandsOfferAliasesAndPaths(t *testing.T) {
 	registerSpinloop(t, "PROVIDER llamacpp\nALIAS qwen\n")
 
 	slots := [][]string{
-		{"apply", ""}, {"unapply", ""}, {"serve", ""}, {"alias", ""}, {"harness", ""},
-		{"fleet", "route", ""}, {"remote", "deploy", ""}, {"remote", "start", ""},
+		{"harness", "apply", ""}, {"harness", "unapply", ""}, {"serve", ""}, {"alias", ""},
+		{"harness", "open", ""}, {"fleet", "route", ""}, {"remote", "deploy", ""}, {"remote", "start", ""},
 	}
 	for _, words := range slots {
 		got, directive := complete(t, words...)
@@ -242,13 +250,75 @@ func TestComplete_SpinloopCommandsOfferAliasesAndPaths(t *testing.T) {
 	}
 }
 
-// TestComplete_HarnessStopsAfterTheSpinloop checks that spinloop offers nothing for
-// the arguments that belong to the launched agent.
-func TestComplete_HarnessStopsAfterTheSpinloop(t *testing.T) {
+// TestComplete_ProviderOffersSubcommands checks the new group's first slot:
+// its subcommands, and nothing else — no file paths.
+func TestComplete_ProviderOffersSubcommands(t *testing.T) {
+	isolateConfig(t)
+
+	got, directive := complete(t, "provider", "")
+	if !hasAll(got, "list", "init") {
+		t.Errorf("provider subcommands missing from %v", got)
+	}
+	if directive != directiveNoFile {
+		t.Errorf("directive = %q, want %q (subcommands take no paths)", directive, directiveNoFile)
+	}
+}
+
+// TestComplete_HarnessOffersSubcommands checks the group's first slot: its
+// subcommands, and nothing else — no Spinloop names or file paths, since the
+// launch now lives on `open`.
+func TestComplete_HarnessOffersSubcommands(t *testing.T) {
 	isolateConfig(t)
 	registerSpinloop(t, "PROVIDER llamacpp\nALIAS qwen\n")
 
-	got, directive := complete(t, "harness", "qwen", "")
+	got, directive := complete(t, "harness", "")
+	if !hasAll(got, "add", "remove", "apply", "unapply", "show", "export", "config", "open") {
+		t.Errorf("subcommands missing from %v", got)
+	}
+	if slices.Contains(got, "qwen") {
+		t.Errorf("the alias was offered at the group's first slot, where only subcommands belong: %v", got)
+	}
+	if directive != directiveNoFile {
+		t.Errorf("directive = %q, want %q (subcommands take no paths)", directive, directiveNoFile)
+	}
+}
+
+// TestComplete_HarnessOpenOffersSpinloop checks the launch's own first slot:
+// it completes the Spinloop names and paths a launch accepts.
+func TestComplete_HarnessOpenOffersSpinloop(t *testing.T) {
+	isolateConfig(t)
+	registerSpinloop(t, "PROVIDER llamacpp\nALIAS qwen\n")
+
+	got, directive := complete(t, "harness", "open", "")
+	if !hasAll(got, "qwen") {
+		t.Errorf("aliases missing from %v", got)
+	}
+	if directive != directiveFile {
+		t.Errorf("directive = %q, want %q (the launch slot completes paths)", directive, directiveFile)
+	}
+}
+
+// TestComplete_HarnessAddOffersProviders checks that a moved subcommand
+// completes its own flags under the group.
+func TestComplete_HarnessAddOffersProviders(t *testing.T) {
+	isolateConfig(t)
+
+	got, directive := complete(t, "harness", "add", "-p", "")
+	if !hasAll(got, "llamacpp", "openrouter") {
+		t.Errorf("providers missing from %v", got)
+	}
+	if directive != directiveNoFile {
+		t.Errorf("directive = %q, want %q", directive, directiveNoFile)
+	}
+}
+
+// TestComplete_OpenStopsAfterTheSpinloop checks that spinloop offers nothing
+// for the arguments that belong to the launched agent.
+func TestComplete_OpenStopsAfterTheSpinloop(t *testing.T) {
+	isolateConfig(t)
+	registerSpinloop(t, "PROVIDER llamacpp\nALIAS qwen\n")
+
+	got, directive := complete(t, "harness", "open", "qwen", "")
 	if len(got) != 0 {
 		t.Errorf("candidates offered for the harness's own args: %v", got)
 	}
@@ -257,12 +327,12 @@ func TestComplete_HarnessStopsAfterTheSpinloop(t *testing.T) {
 	}
 
 	// A flag and its value do not count as the Spinloop.
-	if got, _ := complete(t, "harness", "-H", "pi", ""); !hasAll(got, "qwen") {
+	if got, _ := complete(t, "harness", "open", "-H", "pi", ""); !hasAll(got, "qwen") {
 		t.Errorf("a detached flag value was mistaken for the Spinloop: %v", got)
 	}
 
 	// An explicit -- forwards everything, so nothing is offered.
-	if got, _ := complete(t, "harness", "--", ""); len(got) != 0 {
+	if got, _ := complete(t, "harness", "open", "--", ""); len(got) != 0 {
 		t.Errorf("candidates offered after an explicit --: %v", got)
 	}
 }
@@ -294,19 +364,19 @@ func TestComplete_FlagValues(t *testing.T) {
 	isolateConfig(t)
 
 	for _, words := range [][]string{
-		{"harness", "--set", ""},
-		{"harness", "-H", ""},
-		{"apply", "--harness", ""},
+		{"harness", "config", "--set", ""},
+		{"harness", "config", "-H", ""},
+		{"harness", "apply", "--harness", ""},
 	} {
 		if got, _ := complete(t, words...); !hasAll(got, "opencode", "pi") {
 			t.Errorf("%v: harnesses missing from %v", words, got)
 		}
 	}
 
-	if got, _ := complete(t, "add", "--provider", ""); !hasAll(got, "llamacpp", "openrouter") {
+	if got, _ := complete(t, "harness", "add", "--provider", ""); !hasAll(got, "llamacpp", "openrouter") {
 		t.Errorf("providers missing from %v", got)
 	}
-	if _, directive := complete(t, "apply", "--providers", ""); directive != directiveFile {
+	if _, directive := complete(t, "harness", "apply", "--providers", ""); directive != directiveFile {
 		t.Errorf("--providers should complete paths, got %q", directive)
 	}
 	// -f is the short form of the fleet file on harness: it completes paths.
@@ -344,9 +414,9 @@ func TestComplete_EqualsForm(t *testing.T) {
 	isolateConfig(t)
 	registerSpinloop(t, "PROVIDER llamacpp\nALIAS qwen\n")
 
-	// bash splits --spinloop= into words; the harness slot sees the triple and
+	// bash splits --spinloop= into words; the open slot sees the triple and
 	// still completes the value.
-	got, directive := complete(t, "harness", "--spinloop", "=", "")
+	got, directive := complete(t, "harness", "open", "--spinloop", "=", "")
 	if !hasAll(got, "qwen") {
 		t.Errorf("aliases missing from %v", got)
 	}
@@ -355,7 +425,7 @@ func TestComplete_EqualsForm(t *testing.T) {
 	}
 
 	// And the same for a flag whose value is a provider.
-	if got, _ := complete(t, "add", "--provider="); !hasAll(got, "llamacpp") {
+	if got, _ := complete(t, "harness", "add", "--provider="); !hasAll(got, "llamacpp") {
 		t.Errorf("providers missing for --provider=: %v", got)
 	}
 }
@@ -369,7 +439,7 @@ func TestComplete_ModelValues(t *testing.T) {
 
 	// amazon-bedrock has no models endpoint (no base URL), so discovery makes no
 	// network call and offers nothing — the offline, no-candidates path.
-	got, directive := complete(t, "add", "-p", "amazon-bedrock", "-m", "")
+	got, directive := complete(t, "harness", "add", "-p", "amazon-bedrock", "-m", "")
 	if len(got) != 0 {
 		t.Errorf("expected no candidates for a non-discoverable provider, got %v", got)
 	}
@@ -378,7 +448,7 @@ func TestComplete_ModelValues(t *testing.T) {
 	}
 
 	// -m consumes its value: the harness flag after it still completes.
-	if got, _ := complete(t, "add", "-p", "amazon-bedrock", "-m", "some-model", "-H", ""); !hasAll(got, "opencode", "pi") {
+	if got, _ := complete(t, "harness", "add", "-p", "amazon-bedrock", "-m", "some-model", "-H", ""); !hasAll(got, "opencode", "pi") {
 		t.Errorf("a flag after --model did not complete; -m may not be consuming its value: %v", got)
 	}
 }
@@ -396,7 +466,7 @@ func TestComplete_ModelDiscovery(t *testing.T) {
 	provPath := filepath.Join(dir, "providers.yaml")
 	mustWrite(t, provPath, "providers:\n  stub:\n    description: Stub\n    npm: \"@ai-sdk/openai-compatible\"\n    options:\n      baseURL: "+srv.URL+"\n")
 
-	got, directive := complete(t, "add", "--providers", provPath, "-p", "stub", "-m", "")
+	got, directive := complete(t, "harness", "add", "--providers", provPath, "-p", "stub", "-m", "")
 	if !hasAll(got, "disc-a", "disc-b") {
 		t.Errorf("discovered models not offered: %v", got)
 	}
@@ -412,7 +482,7 @@ func TestComplete_AttachedEqualsForm(t *testing.T) {
 	isolateConfig(t)
 	registerSpinloop(t, "PROVIDER llamacpp\nALIAS qwen\n")
 
-	got, directive := complete(t, "harness", "--spinloop=")
+	got, directive := complete(t, "harness", "open", "--spinloop=")
 	if !hasAll(got, "qwen") {
 		t.Errorf("aliases missing from %v", got)
 	}
@@ -421,11 +491,11 @@ func TestComplete_AttachedEqualsForm(t *testing.T) {
 	}
 
 	// A partially-typed value is still the flag's value, not a new flag.
-	if got, _ := complete(t, "harness", "--spinloop=qw"); !hasAll(got, "qwen") {
+	if got, _ := complete(t, "harness", "open", "--spinloop=qw"); !hasAll(got, "qwen") {
 		t.Errorf("aliases missing for a partial attached value: %v", got)
 	}
 	// And the bare attached short form.
-	if got, _ := complete(t, "harness", "-O="); !hasAll(got, "qwen") {
+	if got, _ := complete(t, "harness", "open", "-O="); !hasAll(got, "qwen") {
 		t.Errorf("aliases missing for -O=: %v", got)
 	}
 }
@@ -448,13 +518,14 @@ func TestComplete_NeverErrors(t *testing.T) {
 		{""},
 		{"-"},
 		{"nonsense", ""},
-		{"add", "-p", "amazon-bedrock", "-m", ""},
+		{"harness", "add", "-p", "amazon-bedrock", "-m", ""},
 		{"unalias", ""},
-		{"apply", ""},
-		{"harness", "--spinloop", "=", ""},
+		{"harness", "apply", ""},
+		{"harness", "open", "--spinloop", "=", ""},
 		{"harness", "--nope="},
 		{"alias", "--name", ""},
-		{"add", "-p", "amazon-bedrock", "-m", "x", "--unknown-flag", ""},
+		{"harness", "add", "-p", "amazon-bedrock", "-m", "x", "--unknown-flag", ""},
+		{"add", ""},
 	} {
 		// complete() fails the test on any nonzero exit; the directive line
 		// must still be there.
@@ -468,9 +539,11 @@ func TestComplete_NeverErrors(t *testing.T) {
 	// never a word on the error stream.
 	for _, words := range [][]string{
 		{"unalias", ""},
-		{"apply", ""},
-		{"add", "--providers", "/nope/providers.yaml", "-p", ""},
-		{"harness", "--spinloop", "=", ""},
+		{"harness", "apply", ""},
+		{"harness", "add", "--providers", "/nope/providers.yaml", "-p", ""},
+		{"harness", "open", "--spinloop", "=", ""},
+		{"add", ""},
+		{"init-providers", ""},
 	} {
 		completeQuiet(t, words...)
 	}

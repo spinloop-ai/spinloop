@@ -16,7 +16,7 @@ With no argument, `SPINLOOP_ALIAS` names the Spinloop before `./Spinloop` is tri
 see [`spinloop alias`](alias.md#naming-one-for-the-whole-shell).
 
 It prints the command before running it, and never touches your agent's
-config — pair it with [`spinloop apply`](apply.md) to point the agent at the
+config — pair it with [`spinloop harness apply`](harness.md#spinloop-harness-apply) to point the agent at the
 server.
 
 ## On a terminal, the serve view
@@ -121,7 +121,7 @@ preset is trusted to already account for its own slots. Like `CONTEXT`,
 `max-concurrent-requests` value by the usual override rule.
 
 `PARALLEL` is Spinloop-file-only — like `PRESET`, it has no meaning for a hosted
-provider selection, so there is no `spinloop add --parallel`.
+provider selection, so there is no `spinloop harness add --parallel`.
 
 ## llama.cpp
 
@@ -216,7 +216,7 @@ paths out in full.
 `serve` never passes `--api-key`. It prints the command it runs, and oMLX takes
 its key on the command line, so passing one would put the secret on your screen
 and in the process table. If you want auth on the server, configure it in oMLX;
-`spinloop add`/`apply` still picks up `OPENAI_API_KEY` for the agent's own config.
+`spinloop harness add`/`apply` still picks up `OPENAI_API_KEY` for the agent's own config.
 
 Note that oMLX can require a key even on localhost (it is an admin-panel
 setting). Because the `omlx` provider is `apiKeyOptional`, `spinloop` only writes
@@ -287,7 +287,7 @@ as with every engine.
 prints the command it runs, and a key on the line would be in your screen and
 the process table. A supervised engine (`--api` or the daemon) is gated with a
 key file the daemon writes instead. Because the `mtplx` provider is
-`apiKeyOptional`, `spinloop add`/`apply` only writes the key reference when
+`apiKeyOptional`, `spinloop harness add`/`apply` only writes the key reference when
 `OPENAI_API_KEY` is set at apply time.
 
 ### Finding the binary

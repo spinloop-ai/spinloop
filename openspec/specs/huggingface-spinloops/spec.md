@@ -13,8 +13,8 @@ printing, writing or applying the result.
 
 `spinloop hf <ref>` SHALL read the named Hugging Face model, derive a provider
 selection from it, and render it as a Spinloop on stdout. Rendered output SHALL
-be the same canonical form `spinloop export` produces, so `spinloop hf <ref> >
-Spinloop` yields a file every other command accepts. A missing reference SHALL
+be the same canonical form `spinloop harness export` produces, so
+`spinloop hf <ref> > Spinloop` yields a file every other command accepts. A missing reference SHALL
 fail showing the command's usage.
 
 What was inferred, and from what, SHALL be reported on stderr — the provider
@@ -30,8 +30,8 @@ stays a clean Spinloop while the reasoning is still visible.
 
 #### Scenario: Redirecting produces a usable file
 
-- **WHEN** the printed output is redirected to `./Spinloop` and `spinloop apply` is
-  run
+- **WHEN** the printed output is redirected to `./Spinloop` and
+  `spinloop harness apply` is run
 - **THEN** the harness is configured from it with no editing
 
 #### Scenario: No reference
@@ -197,8 +197,9 @@ By default the Spinloop SHALL be printed to stdout. `--output-file`/`-o` SHALL
 write it to the named path instead, reporting where it went; an existing file
 SHALL NOT be overwritten unless `--force` is given, so a hand-edited Spinloop
 cannot be lost to a mistyped command. `--apply` SHALL additionally configure
-the active harness from the selection, by the same path `spinloop apply` uses and
-honouring `--harness`/`-H`, so one command goes from a model page to a dressed
+the active harness from the selection, by the same path
+`spinloop harness apply` uses and honouring `--harness`/`-H`, so one command
+goes from a model page to a dressed
 agent.
 
 #### Scenario: Writing to a file

@@ -197,7 +197,7 @@ flags.
 
 #### Scenario: A preset is not fetched by commands that do not need it
 
-- **WHEN** `spinloop apply` runs against a Spinloop whose `PRESET` is a URL
+- **WHEN** `spinloop harness apply` runs against a Spinloop whose `PRESET` is a URL
 - **THEN** the preset URL is never fetched, matching how a local `PRESET` is
   already ignored by `apply`
 

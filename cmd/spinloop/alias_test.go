@@ -308,15 +308,15 @@ func TestAlias_PreservesHarnessPreference(t *testing.T) {
 	isolateConfig(t)
 
 	captureStdout(t, func() {
-		if err := cmdHarness([]string{"--set", "pi"}); err != nil {
-			t.Fatalf("cmdHarness --set: %v", err)
+		if err := cmdConfig([]string{"--set", "pi"}); err != nil {
+			t.Fatalf("cmdConfig --set: %v", err)
 		}
 	})
 	registerSpinloop(t, "PROVIDER llamacpp\nALIAS q3\n")
 
 	out := captureStdout(t, func() {
-		if err := cmdHarness([]string{"--get"}); err != nil {
-			t.Fatalf("cmdHarness --get: %v", err)
+		if err := cmdConfig([]string{"--get"}); err != nil {
+			t.Fatalf("cmdConfig --get: %v", err)
 		}
 	})
 	if !strings.Contains(out, "Stored preference: pi") {
@@ -325,8 +325,8 @@ func TestAlias_PreservesHarnessPreference(t *testing.T) {
 
 	// ...and the other way round.
 	captureStdout(t, func() {
-		if err := cmdHarness([]string{"--set", "opencode"}); err != nil {
-			t.Fatalf("cmdHarness --set: %v", err)
+		if err := cmdConfig([]string{"--set", "opencode"}); err != nil {
+			t.Fatalf("cmdConfig --set: %v", err)
 		}
 	})
 	storedAlias(t, "q3")
@@ -730,7 +730,7 @@ func TestEnvAlias_HarnessAppliesOnlyWhenAsked(t *testing.T) {
 	opencodeJSON := filepath.Join(home, ".config", "opencode", "opencode.json")
 
 	captureStdout(t, func() {
-		if err := cmdHarness(nil); err != nil {
+		if err := cmdOpen(nil); err != nil {
 			t.Fatalf("cmdHarness: %v", err)
 		}
 	})
@@ -739,7 +739,7 @@ func TestEnvAlias_HarnessAppliesOnlyWhenAsked(t *testing.T) {
 	}
 
 	captureStdout(t, func() {
-		if err := cmdHarness([]string{"-O"}); err != nil {
+		if err := cmdOpen([]string{"-O"}); err != nil {
 			t.Fatalf("cmdHarness -O: %v", err)
 		}
 	})

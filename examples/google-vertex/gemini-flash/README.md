@@ -22,14 +22,14 @@ export GOOGLE_VERTEX_PROJECT=my-gcp-project
 export GOOGLE_VERTEX_LOCATION=us-central1   # optional; defaults to `global`
 ```
 
-The project is required; `spinloop apply` fails with a clear error if it is unset.
+The project is required; `spinloop harness apply` fails with a clear error if it is unset.
 
 ## 2. Apply the Spinloop
 
 ```sh
-spinloop apply examples/google-vertex/gemini-flash/Spinloop
+spinloop harness apply examples/google-vertex/gemini-flash/Spinloop
 # or, from this directory:
-spinloop apply
+spinloop harness apply
 ```
 
 The Spinloop is:

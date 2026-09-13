@@ -18,27 +18,27 @@ PRESET   ./preset.ini               # optional; engine preset for `spinloop serv
 ```
 
 Applying it is the same as running the equivalent
-[`spinloop add`](commands/add.md), so everything you already have in your coding
+[`spinloop harness add`](commands/harness.md#spinloop-harness-add), so everything you already have in your coding
 agent's config is preserved.
 
 The **harness** (opencode or Pi) is deliberately *not* part of a Spinloop — so
 the same file applies to either. Choose the harness when you apply it, with
 `--harness`/`-H`, the `SPINLOOP_HARNESS` env var, or a stored default
-(`spinloop harness --set`).
+(`spinloop harness config --set`).
 
 ## Using a Spinloop
 
 One file, several commands:
 
-- [`spinloop apply`](commands/apply.md) — apply the selection to your agent
-- [`spinloop unapply`](commands/unapply.md) — take it back out
-- [`spinloop harness -O`](commands/harness.md) — apply it, then launch the agent
+- [`spinloop harness apply`](commands/harness.md#spinloop-harness-apply) — apply the selection to your agent
+- [`spinloop harness unapply`](commands/harness.md#spinloop-harness-unapply) — take it back out
+- [`spinloop harness open -O`](commands/harness.md#spinloop-harness-open) — apply it, then launch the agent
 - [`spinloop serve`](commands/serve.md) — run `llama-server` for the model it
   names
 - [`spinloop up`](commands/up.md) — the one-word start: its server, or the
   fleet's nodes where a `fleet.yaml` is beside it
 - [`spinloop alias`](commands/alias.md) — register it under a short name
-- [`spinloop export`](commands/export.md) — write one from your current setup
+- [`spinloop harness export`](commands/harness.md#spinloop-harness-export) — write one from your current setup
 
 Every command that takes a Spinloop path accepts a directory that holds one and
 takes a [registered alias](commands/alias.md) in place of a path. Given no path
@@ -51,18 +51,18 @@ A Spinloop path can also be an `http://` or `https://` URL, fetched instead of
 read from local disk:
 
 ```sh
-spinloop apply https://example.com/team/Spinloop
+spinloop harness apply https://example.com/team/Spinloop
 ```
 
 A URL ending in `/` is treated like a directory — `Spinloop` is appended, so
-`spinloop apply https://example.com/team/` fetches
+`spinloop harness apply https://example.com/team/` fetches
 `https://example.com/team/Spinloop`. [`spinloop alias`](commands/alias.md) can
 register a URL too, so a team can hand out a short name for a published Spinloop
 instead of a link:
 
 ```sh
 spinloop alias -n team-default https://example.com/team/Spinloop
-spinloop apply team-default
+spinloop harness apply team-default
 ```
 
 A relative `PRESET` in a URL-sourced Spinloop resolves against that
@@ -90,8 +90,8 @@ with a `--env <name>` flag on the commands that act on it:
 
 ```sh
 spinloop remote deploy --env qwen3.6-27b-prod   # from the directory holding the Spinloop
-spinloop apply --env qwen3.6-27b-prod           # point opencode at it
-spinloop harness --env qwen3.6-27b-prod         # work
+spinloop harness apply --env qwen3.6-27b-prod           # point opencode at it
+spinloop harness open --env qwen3.6-27b-prod    # work
 spinloop remote stop --env qwen3.6-27b-prod     # done
 ```
 
@@ -107,7 +107,7 @@ lifecycle.
 
 Note the missing `BASEURL`: the endpoint's address belongs to the deployment,
 which records it in the environment's `remote.json` as `base_url`, and
-[`spinloop apply`](commands/apply.md) reads it from there. Write a `BASEURL` only
+[`spinloop harness apply`](commands/harness.md#spinloop-harness-apply) reads it from there. Write a `BASEURL` only
 to override that.
 
 Applying with `--env` also names the harness provider after the environment
@@ -123,11 +123,11 @@ A launch may not state both `--env` and a fleet (the `--fleet` flag, or the
 `./fleet.yaml` in force when the Spinloop is not named): each names where the
 model is served from, so spinloop fails naming both.
 
-`spinloop harness --env qwen3.6-27b-prod` also works with **no Spinloop at
+`spinloop harness open --env qwen3.6-27b-prod` also works with **no Spinloop at
 all**: the environment already knows what it is serving, so the harness
 configures itself from that — the same result as the Spinloop above, without
 needing a copy of it on the machine doing the launching. See
-[`spinloop harness`](commands/harness.md#launching-with-no-spinloop-at-all).
+[`spinloop harness open`](commands/harness.md#launching-with-no-spinloop-at-all).
 
 Because `PROVIDER` names the engine, this is the same file that would run the
 model locally with [`spinloop serve`](commands/serve.md) — pointed at a bigger
@@ -136,10 +136,11 @@ machine.
 ## Running the model on another machine you own
 
 A [fleet file](commands/fleet.md#fleetyaml) names the machines on your network
-running `spinloop daemon`, and `spinloop harness` can pick one for you. Which
-fleet file a launch routes through is a launch concern, not a Spinloop field:
+running `spinloop daemon`, and `spinloop harness open` can pick one for you.
+Which fleet file a launch routes through is a launch concern, not a Spinloop
+field:
 
-- `spinloop harness --fleet <path>` names it explicitly.
+- `spinloop harness open --fleet <path>` names it explicitly.
 - Without the flag, a Spinloop you did not name — the default `./Spinloop`,
   worn by a valueless `--spinloop` — takes the `fleet.yaml` in the working
   directory. A Spinloop you did name — a path, a `--spinloop` value, or the
@@ -247,7 +248,7 @@ Rules:
   one keyword that **may repeat**. Its value is a single `KEY=VALUE` token (no
   spaces). The `spinloop remote` commands read it — along with a `.env` beside the
   Spinloop — before they sign their AWS calls, so credentials, region and
-  `SPINLOOP_REMOTE_*` overrides can travel with the Spinloop. `spinloop harness` reads
+  `SPINLOOP_REMOTE_*` overrides can travel with the Spinloop. `spinloop harness open` reads
   it too, passing the whole `.env` and the `ENV` lines to the agent it launches.
   Precedence, highest to lowest: an `ENV` line, then a variable already set in
   your shell, then the `.env` — the same rule everywhere spinloop resolves local
@@ -261,13 +262,13 @@ Rules:
   environment's config with `spinloop remote deploy --env <name>` instead, and
   name it from the flags.
 - Keywords are **case-insensitive** — `provider`, `Provider`, and `PROVIDER` are
-  all accepted — but **UPPERCASE is canonical** and is what `spinloop export`
+  all accepted — but **UPPERCASE is canonical** and is what `spinloop harness export`
   writes.
 - **Comments** start with `#`, either on their own line or at the end of a line.
   Blank lines are ignored.
 
-To see the available providers, run `spinloop list`. To find a `MODEL` id for one,
-run `spinloop list --models <provider>`, which asks the provider's own endpoint
+To see the available providers, run `spinloop provider list`. To find a `MODEL` id for one,
+run `spinloop provider list --models <provider>`, which asks the provider's own endpoint
 what it currently serves.
 
 ## Examples
@@ -282,7 +283,7 @@ ALIAS    qwen3.6-35b-a3b
 ```
 
 A single model from OpenRouter (its key comes from your `.env` or
-environment, exactly as with `spinloop add`):
+environment, exactly as with `spinloop harness add`):
 
 ```dockerfile
 PROVIDER openrouter
