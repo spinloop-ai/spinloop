@@ -111,6 +111,9 @@ func TestHarness_EnvFlagAfterTheAlias(t *testing.T) {
 	isolateConfig(t)
 	stubAWSEnv(t)
 	t.Setenv("OPENAI_API_KEY", "")
+	// A base URL the machine's environment carries would otherwise reach
+	// the stub agent and shadow the one the Spinloop names.
+	t.Setenv("OPENAI_BASE_URL", "")
 
 	server := envServer(t)
 	defer server.Close()
