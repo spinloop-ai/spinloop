@@ -382,10 +382,16 @@ func TestComplete_FlagValues(t *testing.T) {
 		{"harness", "config", "--set", ""},
 		{"harness", "config", "-H", ""},
 		{"harness", "apply", "--harness", ""},
+		{"orchestrator", "--harness", ""},
+		{"orchestrator", "-H", ""},
 	} {
 		if got, _ := complete(t, words...); !hasAll(got, "opencode", "pi") {
 			t.Errorf("%v: harnesses missing from %v", words, got)
 		}
+	}
+	// The items file completes paths, the way every file argument does.
+	if _, directive := complete(t, "orchestrator", "--items", ""); directive != directiveFile {
+		t.Errorf("--items should complete paths, got %q", directive)
 	}
 
 	if got, _ := complete(t, "harness", "add", "--provider", ""); !hasAll(got, "llamacpp", "openrouter") {

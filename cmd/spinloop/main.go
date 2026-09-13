@@ -292,7 +292,9 @@ func applySelection(sel spinloop.Selection, h harness.Harness, spinloopPath, env
 		}
 	}
 
-	summary, err := h.Apply(p, sel, contextSize, outputSize, resolve)
+	// A launch wears the selection: the harness's default model becomes the
+	// one it launches into.
+	summary, err := h.Apply(p, sel, contextSize, outputSize, true, resolve)
 	if err != nil {
 		return err
 	}

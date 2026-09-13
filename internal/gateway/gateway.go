@@ -54,7 +54,9 @@ var cacheTTL = 2 * time.Second
 var sourcesTTL = 30 * time.Second
 
 // pathsServed is the surface the gateway answers, for the 404 that names it.
-var pathsServed = []string{"/v1/models", "/v1/chat/completions", "/v1/completions", "/health"}
+var pathsServed = []string{
+	"/v1/models", "/v1/chat/completions", "/v1/completions", "/v1/fleet", "/health",
+}
 
 // Options shapes a handler beyond the fleet it serves.
 type Options struct {
@@ -131,8 +133,72 @@ func loopbackAddr(addr string) bool {
 	return ip != nil && ip.IsLoopback()
 }
 
-// ServeHTTP is the gateway's whole surface: the three paths it serves, a
-// health check that touches no node, and a 404 that names the rest.
+// Topology is what the gateway reports the fleet to be: its nodes, with the
+// tags the file gives them and the serving facts they report, and the
+// file's fleet-level settings. It is how a process that holds no fleet file
+// learns what the fleet is: the gateway's file is the single source of truth,
+// and this is that truth, joined with what the nodes say.
+type Topology struct {
+	// Wake is whether the fleet starts an engine on a node that is not
+	// running one: the file's policy, with its default made visible.
+	Wake bool `json:"wake"`
+	// Prefer is how the fleet ranks several matching nodes, as the file
+	// declares it: absent where the file declares nothing.
+	Prefer string `json:"prefer,omitempty"`
+	// Concurrency is the fleet's declared capacity, as the file declares it:
+	// absent where the file declares no limits.
+	Concurrency *Concurrency `json:"concurrency,omitempty"`
+	// Nodes is the fleet, in the file's order.
+	Nodes []NodeTopology `json:"nodes"`
+}
+
+// Concurrency is the fleet's declared capacity as the topology reports it.
+type Concurrency struct {
+	// Total is the most work items the fleet may have in flight at once;
+	// absent where the file declares no fleet-wide limit.
+	Total *int `json:"total,omitempty"`
+	// Tags bounds the items carrying each tag, keyed the way tags are named
+	// — a key and a value joined by =.
+	Tags map[string]int `json:"tags,omitempty"`
+}
+
+// NodeTopology is one node as the topology reports it: the file's claims
+// about it and the facts it reports, or the failure of reaching it.
+type NodeTopology struct {
+	// Name and Kind are the file's: the node's identity and how the fleet
+	// reaches it.
+	Name string `json:"name"`
+	Kind string `json:"kind"`
+	// Tags is what the file gives the node: its description of what work the
+	// node takes on. Absent where the file gives it none.
+	Tags map[string]string `json:"tags,omitempty"`
+	// State is the node's state — the daemon's, where it answers, and the
+	// way the call to it ended, where it does not: a node that does not
+	// answer is reported, not an error.
+	State string `json:"state"`
+	// Detail is the failure's text where the node did not answer; empty
+	// where it did.
+	Detail string `json:"detail,omitempty"`
+	// Model and ServedName are what the running engine serves: the model id
+	// and the name it answers under where it reports one. Absent where
+	// nothing is running.
+	Model      string `json:"model,omitempty"`
+	ServedName string `json:"servedName,omitempty"`
+	// Ready is whether the running engine has answered its own health
+	// check: "ready" or "not-ready", absent where it does not apply.
+	Ready string `json:"ready,omitempty"`
+	// LastActiveAt is when the engine last did work, RFC 3339, absent until
+	// it has.
+	LastActiveAt string `json:"lastActiveAt,omitempty"`
+	// WakeableModel is the model a request would start a node that is not
+	// running with, from its own source: named where the source describes
+	// one and the fleet wakes, and absent for a running node, a node whose
+	// source describes no model, and a fleet that does not wake.
+	WakeableModel string `json:"wakeableModel,omitempty"`
+}
+
+// ServeHTTP is the gateway's whole surface: the paths it serves, a health
+// check that touches no node, and a 404 that names the rest.
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var handler http.HandlerFunc
 	switch {
@@ -140,6 +206,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		handler = h.handleHealth
 	case r.Method == http.MethodGet && r.URL.Path == "/v1/models":
 		handler = h.handleModels
+	case r.Method == http.MethodGet && r.URL.Path == "/v1/fleet":
+		handler = h.handleTopology
 	case r.Method == http.MethodPost && (r.URL.Path == "/v1/chat/completions" || r.URL.Path == "/v1/completions"):
 		handler = h.handleCompletion
 	default:
@@ -249,6 +317,50 @@ func (h *Handler) wakeableModels() map[string]string {
 	h.wakeable = m
 	h.wakeableAt = h.now()
 	return m
+}
+
+// handleTopology answers with the fleet's topology: the reading the models
+// list and the routing take, joined with the file's claims about each node
+// and its fleet-level settings. A node that does not answer is reported in
+// its place, the way the fleet's own views report it, rather than failing
+// the whole reply.
+func (h *Handler) handleTopology(w http.ResponseWriter, r *http.Request) {
+	results := h.reading(r.Context())
+	wakeable := h.wakeableModels()
+
+	topo := Topology{Wake: h.cfg.Wakes(), Prefer: string(h.cfg.Prefer)}
+	if c := h.cfg.Concurrency; c != nil {
+		topo.Concurrency = &Concurrency{Total: c.Total, Tags: c.Tags}
+	}
+	topo.Nodes = make([]NodeTopology, 0, len(results))
+	for _, res := range results {
+		entry, ok := h.cfg.Node(res.Name)
+		nt := NodeTopology{Name: res.Name}
+		if ok {
+			nt.Kind = entry.Kind
+			nt.Tags = entry.Tags
+		}
+		if !res.OK() {
+			nt.State = string(res.Outcome)
+			nt.Detail = res.Detail()
+		} else {
+			st := res.Status
+			nt.State = st.State
+			nt.Model = st.Model
+			nt.ServedName = st.ServedName
+			nt.Ready = st.Ready
+			nt.LastActiveAt = st.LastActiveAt
+			// A running engine is never displaced to make room, so only a
+			// node that is not running reports what a request would start it
+			// with — and wakeableModels already holds nothing when the fleet
+			// does not wake or no source can be resolved.
+			if st.State != string(daemon.StateRunning) {
+				nt.WakeableModel = wakeable[res.Name]
+			}
+		}
+		topo.Nodes = append(topo.Nodes, nt)
+	}
+	writeJSON(w, http.StatusOK, topo)
 }
 
 // reading returns the fleet's last fan-out, taking one when the last is stale.

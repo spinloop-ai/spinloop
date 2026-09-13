@@ -214,6 +214,46 @@ An explicit `--no-wake` still refuses to start anything, whatever the file
 says; an explicit `spinloop fleet start` does the opposite — it always starts,
 because it was asked.
 
+### Tags
+
+A node's `tags` name the kind of work the node takes on — key/value pairs the
+operator chooses:
+
+```yaml
+nodes:
+  - name: gpu-box
+    host: 198.51.100.7
+    tags:
+      gpu: a100
+      os: linux
+```
+
+They are how an [`spinloop orchestrator`](orchestrator.md) item chooses its
+node: an item names the tags of the nodes it may run on, and it matches a node
+only where every one it names is a tag the node carries. A node with no tags
+takes only items that name none. Routing, waking and the dashboard do not read
+them — tags belong to the orchestrator's matching alone.
+
+### Concurrency
+
+`concurrency` is the pace this fleet works at, for the
+[`spinloop orchestrator`](orchestrator.md): how much work it may take at once.
+The limits are a ceiling the operator sets, not a measurement of the engines'
+load:
+
+```yaml
+concurrency:
+  total: 8          # the most items the fleet may have in flight at once
+  tags:
+    "gpu=a100": 4   # and, per tag, the most in flight on nodes carrying it
+```
+
+An admitted item counts against `total` and against the limit of every tag it
+names, and it frees its counts when it ends. A limit on a tag no node carries
+is a configuration error naming the tag, as is a limit that is not a positive
+integer. A file that declares no `concurrency` has no limit: the orchestrator
+admits as fast as the nodes match.
+
 ### Gateway
 
 `gateway` names the address this fleet is served under by a

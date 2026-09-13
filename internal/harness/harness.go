@@ -59,9 +59,13 @@ type Harness interface {
 	ConfigPath() (string, error)
 	// Apply writes a single provider selection into the harness config.
 	// contextWindow and outputTokens, when > 0, are the resolved limits to set.
+	// When setDefaultModel is set, the harness's default model is made the
+	// selection's — what a launch that wears the selection wants. A caller
+	// that names its model itself (the orchestrator dispatching a one-shot
+	// item) leaves it unset, so the harness's default stays as it was.
 	// resolve looks up an API key variable — see opencode.EnvResolver, which
 	// builds one from the Spinloop's directory.
-	Apply(p *catalog.Provider, sel spinloop.Selection, contextWindow, outputTokens int, resolve func(string) string) (Summary, error)
+	Apply(p *catalog.Provider, sel spinloop.Selection, contextWindow, outputTokens int, setDefaultModel bool, resolve func(string) string) (Summary, error)
 	// Remove removes a provider, or specific model keys within it. With no
 	// modelKeys the whole provider is removed. Returns the number of removals.
 	Remove(providerID string, modelKeys []string) (int, error)

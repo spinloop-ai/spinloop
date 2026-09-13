@@ -76,6 +76,7 @@ picker and a second gateway does not overwrite this one. See
 | `GET /v1/models` | The OpenAI list of what a request can reach: what the running nodes report (the served name when a node reports one, else the model id), and — when [wake](#waking-a-node) is on — what a stopped node's own source describes, the model a request would start it with. Duplicates once. Nothing reachable is an empty list, not an error. |
 | `POST /v1/chat/completions` | Routed to the node serving the request's `model`, the way a launch routes. |
 | `POST /v1/completions` | The same, for the completions endpoint. |
+| `GET /v1/fleet` | The fleet's [topology](#the-fleets-topology) — what a [`spinloop orchestrator`](orchestrator.md) reads to work its backlog. |
 
 A request naming no `model` is refused saying so, and a path the gateway does
 not serve is refused with a `404` naming the ones it does.
@@ -104,6 +105,25 @@ a `kind: remote` node), and an ungated engine is reached with none. The reply
 the engine gives is the reply the caller gets — the gateway never retries
 another node, and an upstream failure reaches the caller as an error naming
 the node.
+
+### The fleet's topology
+
+`GET /v1/fleet` answers with the fleet as it is now: the same cached fan-out
+the model listing reads, joined with the file's claims about each node and its
+fleet-level settings. Each node's entry carries its name, kind,
+[tags](fleet.md#tags), state, what it serves (the served name where a running
+engine reports one, else the model id), whether it has answered its own health
+check, when it last did work — and, for a node that is not running, the model
+a request would start it with, where its own source describes one and the
+file's [wake policy](fleet.md#waking) allows it. The file's `wake` and
+`prefer` settings and its [concurrency](fleet.md#concurrency) limits ride
+along, each absent where the file declares none. A node that does not answer
+is reported in its place — the way the fleet's own views report it — rather
+than failing the whole reply.
+
+It is behind the [gateway's token](#the-gateways-token) like everything else it
+serves, and it is the [`spinloop orchestrator`](orchestrator.md)'s only view
+of the fleet: the orchestrator takes no fleet file of its own.
 
 ### Waking a node
 

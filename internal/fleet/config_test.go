@@ -787,3 +787,188 @@ func TestLoadParsesAGatewayName(t *testing.T) {
 		t.Errorf("Label() = %q, want %q", gw.Label(), "remote-llms")
 	}
 }
+
+func TestSplitTag(t *testing.T) {
+	cases := []struct {
+		tag        string
+		key, value string
+		ok         bool
+	}{
+		{"gpu=a100", "gpu", "a100", true},
+		{"model=qwen3.8-27b", "model", "qwen3.8-27b", true},
+		{"=a100", "", "", false}, // no key
+		{"gpu=", "", "", false},  // no value
+		{"gpu", "", "", false},   // no =
+		{"", "", "", false},
+		{"a=b=c", "a", "b=c", true}, // the first = divides
+	}
+	for _, c := range cases {
+		key, value, ok := SplitTag(c.tag)
+		if ok != c.ok || key != c.key || value != c.value {
+			t.Errorf("SplitTag(%q) = (%q, %q, %v), want (%q, %q, %v)",
+				c.tag, key, value, ok, c.key, c.value, c.ok)
+		}
+	}
+}
+
+func TestNodeTags(t *testing.T) {
+	path := writeFleet(t, `
+nodes:
+  - name: gpu-box
+    host: gpu.local
+    tags:
+      gpu: a100
+      os: linux
+  - name: studio
+    host: studio.local
+`, "")
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	box := cfg.Nodes[0]
+	if len(box.Tags) != 2 || box.Tags["gpu"] != "a100" || box.Tags["os"] != "linux" {
+		t.Errorf("tags = %+v", box.Tags)
+	}
+	if !box.HasTag("gpu=a100") || !box.HasTag("os=linux") {
+		t.Error("a node carries the tags it declares")
+	}
+	if box.HasTag("gpu=h100") || box.HasTag("cpu=arm") || box.HasTag("gpu") {
+		t.Error("a node does not carry tags it does not declare")
+	}
+	// An untagged node carries nothing and matches only untagged work.
+	if has := cfg.Nodes[1].HasTag("gpu=a100"); has {
+		t.Error("an untagged node carries no tags")
+	}
+}
+
+func TestNodeTagsRefuseADuplicateKey(t *testing.T) {
+	_, err := Load(writeFleet(t, `
+nodes:
+  - name: gpu-box
+    host: gpu.local
+    tags:
+      gpu: a100
+      gpu: h100
+`, ""))
+	if err == nil {
+		t.Fatal("a tag key named twice should be refused")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "gpu-box") || !strings.Contains(msg, "gpu") {
+		t.Errorf("the refusal should name the node and the key, got %q", msg)
+	}
+}
+
+func TestNodeTagsRefuseAnEmptySide(t *testing.T) {
+	_, err := Load(writeFleet(t, `
+nodes:
+  - name: gpu-box
+    host: gpu.local
+    tags:
+      gpu: ""
+`, ""))
+	if err == nil {
+		t.Fatal("a tag with an empty value should be refused")
+	}
+	if !strings.Contains(err.Error(), "gpu-box") {
+		t.Errorf("the refusal should name the node, got %q", err)
+	}
+}
+
+func TestConcurrencySection(t *testing.T) {
+	path := writeFleet(t, `
+nodes:
+  - name: a
+    host: a.local
+concurrency:
+  total: 10
+  tags:
+    "gpu=a100": 4
+    "os=linux": 6
+`, "")
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	total, ok := cfg.TotalLimit()
+	if !ok || total != 10 {
+		t.Errorf("TotalLimit = (%d, %v), want (10, true)", total, ok)
+	}
+	if limit, ok := cfg.TagLimit("gpu=a100"); !ok || limit != 4 {
+		t.Errorf("TagLimit(gpu=a100) = (%d, %v), want (4, true)", limit, ok)
+	}
+	if limit, ok := cfg.TagLimit("os=linux"); !ok || limit != 6 {
+		t.Errorf("TagLimit(os=linux) = (%d, %v), want (6, true)", limit, ok)
+	}
+	if _, ok := cfg.TagLimit("gpu=h100"); ok {
+		t.Error("no limit is declared on gpu=h100")
+	}
+}
+
+func TestConcurrencyRefusesANonPositiveTotal(t *testing.T) {
+	for _, total := range []string{"0", "-1"} {
+		_, err := Load(writeFleet(t,
+			"nodes:\n  - name: a\n    host: a.local\nconcurrency:\n  total: "+total+"\n", ""))
+		if err == nil {
+			t.Fatalf("a total of %s should be refused", total)
+		}
+		if !strings.Contains(err.Error(), "total") {
+			t.Errorf("the refusal should name the total, got %q", err)
+		}
+	}
+}
+
+func TestConcurrencyRefusesANonPositiveTagLimit(t *testing.T) {
+	for _, limit := range []string{"0", "-2"} {
+		_, err := Load(writeFleet(t,
+			"nodes:\n  - name: a\n    host: a.local\nconcurrency:\n  tags:\n    \"gpu=a100\": "+limit+"\n", ""))
+		if err == nil {
+			t.Fatalf("a tag limit of %s should be refused", limit)
+		}
+		if !strings.Contains(err.Error(), "gpu=a100") {
+			t.Errorf("the refusal should name the tag, got %q", err)
+		}
+	}
+}
+
+func TestConcurrencyRefusesATagKeyShapedWrong(t *testing.T) {
+	_, err := Load(writeFleet(t,
+		"nodes:\n  - name: a\n    host: a.local\nconcurrency:\n  tags:\n    gpu: 4\n", ""))
+	if err == nil {
+		t.Fatal("a limit keyed without a = should be refused")
+	}
+	if !strings.Contains(err.Error(), "keyed by") {
+		t.Errorf("the refusal should say how a limit is keyed, got %q", err)
+	}
+}
+
+func TestConcurrencyAllowsALimitOnATagNoNodeCarries(t *testing.T) {
+	cfg, err := Load(writeFleet(t, `
+nodes:
+  - name: a
+    host: a.local
+concurrency:
+  tags:
+    "gpu=a100": 4
+`, ""))
+	if err != nil {
+		t.Fatal("a limit on a tag no node carries is accepted")
+	}
+	if limit, ok := cfg.TagLimit("gpu=a100"); !ok || limit != 4 {
+		t.Errorf("TagLimit = (%d, %v), want (4, true)", limit, ok)
+	}
+}
+
+func TestConcurrencyAbsentDeclaresNothing(t *testing.T) {
+	cfg, err := Load(writeFleet(t, "nodes:\n  - name: a\n    host: a.local\n", ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total, ok := cfg.TotalLimit(); ok || total != 0 {
+		t.Errorf("TotalLimit = (%d, %v), want (0, false)", total, ok)
+	}
+	if limit, ok := cfg.TagLimit("gpu=a100"); ok || limit != 0 {
+		t.Errorf("TagLimit = (%d, %v), want (0, false)", limit, ok)
+	}
+}

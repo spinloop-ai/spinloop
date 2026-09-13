@@ -566,6 +566,108 @@ STUB
   rm -rf "${sandbox}"
 }
 
+#######################################
+# Count one state in the orchestrator's state file: 0 before the file exists.
+# Globals:
+#   HERE
+# Arguments:
+#   State (running, done, failed).
+#######################################
+state_count() {
+  local want="$1"
+  grep -o "\"state\":[[:space:]]*\"${want}\"" \
+    "${HERE}/.orch-sandbox/work.yaml.state.json" 2>/dev/null | wc -l | tr -d ' ' || true
+}
+
+#######################################
+# Work a small backlog against the stack's gateway with a stub agent: the
+# items end done, the fleet's declared concurrency holds the in-flight count,
+# a tagged item takes only the node carrying its tag, each agent runs in its
+# item's own directory with the gateway's token as its key, and the signal
+# ends the run cleanly.
+# Globals:
+#   HERE, SPINLOOP_BIN, GATEWAY_TOKEN, GATEWAY_URL
+#######################################
+test_orchestrator_works_the_backlog() {
+  echo "The orchestrator works the backlog at the fleet's pace"
+  local sandbox="${HERE}/.orch-sandbox"
+  rm -rf "${sandbox}"
+  mkdir -p "${sandbox}/bin" "${sandbox}/home" "${sandbox}/work/a" \
+    "${sandbox}/work/b" "${sandbox}/work/c"
+
+  # The agent: record what it was launched with and its key, then take its
+  # time, so two items are in flight at once and a third must wait.
+  cat > "${sandbox}/bin/opencode" <<'STUB'
+#!/usr/bin/env bash
+echo "key=${OPENAI_API_KEY:-<unset>}" > key.txt
+echo "$@" > args.txt
+sleep 3
+STUB
+  chmod +x "${sandbox}/bin/opencode"
+
+  cat > "${sandbox}/work.yaml" <<EOF
+- id: a
+  instructions: do a
+  dir: ${sandbox}/work/a
+  tags:
+    - engine=fake
+- id: b
+  instructions: do b
+  dir: ${sandbox}/work/b
+- id: c
+  instructions: do c
+  dir: ${sandbox}/work/c
+EOF
+
+  local out="${sandbox}/orchestrator.out"
+  (
+    PATH="${sandbox}/bin:${PATH}" \
+      HOME="${sandbox}/home" \
+      XDG_CONFIG_HOME="${sandbox}/home/.config" \
+      OPENAI_API_KEY="${GATEWAY_TOKEN}" \
+      "${SPINLOOP_BIN}" orchestrator \
+        --gateway "${GATEWAY_URL}" \
+        --items "${sandbox}/work.yaml" \
+        --harness opencode \
+        > "${out}" 2>&1
+  ) &
+  local orch_pid=$!
+
+  # Poll the state the orchestrator keeps beside the items file: the in-
+  # flight count must never pass the fleet's declared total, and the run
+  # ends with all three items done.
+  local max_inflight=0 inflight
+  local deadline=$((SECONDS + 90))
+  while (( SECONDS < deadline )); do
+    inflight="$(state_count running)"
+    if (( inflight > max_inflight )); then
+      max_inflight="${inflight}"
+    fi
+    if (( $(state_count done) == 3 )); then
+      break
+    fi
+    sleep 0.2
+  done
+
+  assert_contains "the banner names the file and the backlog" \
+    "$(cat "${out}")" "in the backlog"
+  assert_equals "the items ended done" "$(state_count done)" "3"
+  assert_equals "the fleet's total held the in-flight count" "${max_inflight}" "2"
+  assert_contains "the tagged item took the node carrying its tag" \
+    "$(cat "${sandbox}/work/a/args.txt")" "spinloop-orchestrator-node-a"
+  assert_contains "an untagged item ran too" \
+    "$(cat "${sandbox}/work/b/args.txt")" "spinloop-orchestrator-"
+  assert_contains "the agent was given the gateway's token as its key" \
+    "$(cat "${sandbox}/work/a/key.txt")" "key=${GATEWAY_TOKEN}"
+
+  kill -INT "${orch_pid}" 2>/dev/null || true
+  local rc=0
+  wait "${orch_pid}" || rc=$?
+  assert_equals "the signal ends the run cleanly" "${rc}" "0"
+
+  rm -rf "${sandbox}"
+}
+
 main() {
   if [[ "${1:-}" == "--keep" ]]; then
     keep_stack=1
@@ -613,6 +715,8 @@ main() {
   test_launch_points_agent_at_gateway
   echo
   test_launch_fails_without_token
+  echo
+  test_orchestrator_works_the_backlog
 
   echo
   if (( failures > 0 )); then

@@ -22,6 +22,17 @@ import (
 	"github.com/spinloop-ai/spinloop/internal/remote"
 )
 
+// SplitTag divides a tag named the way tags are named in a limit or an item —
+// a key and a value joined by = — into its parts. A name with no =, or with an
+// empty side, is not a tag.
+func SplitTag(tag string) (key, value string, ok bool) {
+	i := strings.Index(tag, "=")
+	if i <= 0 || i == len(tag)-1 {
+		return "", "", false
+	}
+	return tag[:i], tag[i+1:], true
+}
+
 // DefaultFile is the fleet file consulted when no --fleet is given, resolved
 // from the working directory the way ./Spinloop is.
 const DefaultFile = "fleet.yaml"
@@ -93,6 +104,66 @@ func (c *Config) Wakes() bool {
 	return c.WakePolicy != WakeOff
 }
 
+// Concurrency is the fleet's declared capacity: how much work it may take at
+// once. It sits in the file beside wake and prefer for the same reason — how
+// much work the fleet's machines will take is a property of the fleet, owned
+// by the operator who names them. The limits are a ceiling the operator sets,
+// not a measurement of the engines' load.
+type Concurrency struct {
+	// Total is the most work items the fleet may have in flight at once.
+	// A pointer, so a declared zero — which is refused — is told apart from
+	// a limit the file never named.
+	Total *int `yaml:"total"`
+	// Tags bounds the items carrying each tag, keyed the way tags are named
+	// elsewhere — a key and a value joined by =. A bound on a tag no node
+	// carries is accepted: it simply bounds items that can match nothing.
+	Tags map[string]int `yaml:"tags"`
+}
+
+// TotalLimit returns the fleet-wide limit and whether the file declared one.
+func (c *Config) TotalLimit() (int, bool) {
+	if c.Concurrency == nil || c.Concurrency.Total == nil {
+		return 0, false
+	}
+	return *c.Concurrency.Total, true
+}
+
+// TagLimit returns the limit on the items carrying this tag, named key=value,
+// and whether the file declared one.
+func (c *Config) TagLimit(tag string) (int, bool) {
+	if c.Concurrency == nil {
+		return 0, false
+	}
+	limit, ok := c.Concurrency.Tags[tag]
+	return limit, ok
+}
+
+// validate checks what the concurrency section alone can decide: a limit that
+// is named is a positive integer, and a per-tag limit is keyed the way tags
+// are named. A section that names nothing is accepted and bounds nothing.
+func (c *Concurrency) validate() error {
+	if c.Total != nil {
+		if *c.Total <= 0 {
+			return fmt.Errorf(
+				"the concurrency total is %d: a limit is how many items may be in flight at once, and must be a positive number",
+				*c.Total)
+		}
+	}
+	for tag, limit := range c.Tags {
+		if limit <= 0 {
+			return fmt.Errorf(
+				"the concurrency limit on %q is %d: a limit is how many items may be in flight at once, and must be a positive number",
+				tag, limit)
+		}
+		if _, _, ok := SplitTag(tag); !ok {
+			return fmt.Errorf(
+				"the concurrency limit is keyed by %q: a limit is keyed by a tag, a key and a value joined by =",
+				tag)
+		}
+	}
+	return nil
+}
+
 // Config is a parsed fleet.yaml: the nodes, plus where the file was read from
 // (the directory whose .env supplies token values).
 type Config struct {
@@ -113,6 +184,10 @@ type Config struct {
 	// engine on a node that is not running one. Empty means WakeOn, as
 	// routing has always done when the setting is absent.
 	WakePolicy WakePolicy `yaml:"wake"`
+	// Concurrency is the fleet's declared capacity: how much work it may
+	// take at once. Nil means the file declares no limits, and nothing about
+	// the file's behaviour changes.
+	Concurrency *Concurrency `yaml:"concurrency"`
 	// APIKeyEnv names the environment variable holding the key this fleet's
 	// remote nodes require, shared by every one of them: a remote's engine is
 	// always gated by its key, so a fleet of remotes can name the variable
@@ -176,6 +251,22 @@ type NodeConfig struct {
 	// naming one there is a configuration error. Empty means the node's
 	// environment launches as the control plane's default type.
 	InstanceType string `yaml:"instance-type"`
+	// Tags is the operator's description of what work this node can take on
+	// — capability, hardware, or anything else a dispatcher matches on. A
+	// tag is a claim the file makes about the node: no node reads it, and it
+	// never changes what the node's engine runs. Named key=value where tags
+	// are named in a limit or an item; HasTag matches on that form.
+	Tags map[string]string `yaml:"tags"`
+}
+
+// HasTag reports whether the node carries the tag named key=value. A name
+// that is not shaped like a tag matches nothing.
+func (n NodeConfig) HasTag(tag string) bool {
+	key, value, ok := SplitTag(tag)
+	if !ok {
+		return false
+	}
+	return n.Tags[key] == value
 }
 
 // EngineOverride is a node's declared engine endpoint. Each field is optional
@@ -258,6 +349,9 @@ func Load(path string) (*Config, error) {
 		}
 		return nil, err
 	}
+	if err := tagDuplicates(data); err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
 	var cfg Config
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, fmt.Errorf("parsing %s: %w", path, err)
@@ -279,6 +373,37 @@ func Resolve(flagPath string) (*Config, error) {
 		path = DefaultFile
 	}
 	return Load(path)
+}
+
+// tagDuplicates walks the raw file for a node whose tags name one key twice.
+// The typed parse would refuse the duplicate too, but its error names the key
+// and the lines, not the node; the node is the thing the operator needs to
+// find, so the check runs first, over the raw mapping, where the node's name
+// is to hand.
+func tagDuplicates(data []byte) error {
+	var raw struct {
+		Nodes []struct {
+			Name string    `yaml:"name"`
+			Tags yaml.Node `yaml:"tags"`
+		} `yaml:"nodes"`
+	}
+	if err := yaml.Unmarshal(data, &raw); err != nil {
+		return nil // the typed parse reports what is wrong
+	}
+	for _, n := range raw.Nodes {
+		if n.Tags.Kind != yaml.MappingNode {
+			continue
+		}
+		seen := map[string]bool{}
+		for i := 0; i+1 < len(n.Tags.Content); i += 2 {
+			key := n.Tags.Content[i].Value
+			if seen[key] {
+				return fmt.Errorf("node %q names the tag key %q more than once", n.Name, key)
+			}
+			seen[key] = true
+		}
+	}
+	return nil
 }
 
 // validate checks what the file alone can decide: every node named and
@@ -309,6 +434,11 @@ func (c *Config) validate() error {
 				c.Gateway.URL)
 		}
 	}
+	if c.Concurrency != nil {
+		if err := c.Concurrency.validate(); err != nil {
+			return err
+		}
+	}
 	seen := map[string]bool{}
 	for i := range c.Nodes {
 		n := &c.Nodes[i]
@@ -321,6 +451,13 @@ func (c *Config) validate() error {
 		seen[n.Name] = true
 		if n.Kind == "" {
 			n.Kind = KindDaemon
+		}
+		for key, value := range n.Tags {
+			if key == "" || value == "" {
+				return fmt.Errorf(
+					"node %q has a tag with an empty key or value: a tag is a key and a value, both named",
+					n.Name)
+			}
 		}
 		switch n.Kind {
 		case KindDaemon:
