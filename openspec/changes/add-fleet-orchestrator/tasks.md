@@ -40,3 +40,8 @@
 
 - [x] 7.1 Run `go build ./...`, `go vet ./...`, `gofmt -l .` (clean), and `go test ./... -cover` (>= 80%); verify all four pass
 - [x] 7.2 Walk the spec scenarios of `fleet-orchestrator`, `fleet-config`, and `fleet-gateway` against the tests written here; verify every scenario has a named test or a subtest covering it
+
+## 8. The `--create-item-dirs` flag
+
+- [x] 8.1 Thread the flag from the command into the dispatcher; where set, Launch creates a missing item directory (through `MkdirAll`) before the existence check, and a creation failure fails the item naming it and the cause; verify with unit tests for a created-and-launched item and for a directory it cannot create
+- [x] 8.2 Add the flag to the command's help and the command tests, and the spec's new scenario to the integration test (a missing directory runs with the flag, fails without); verify the full suite passes

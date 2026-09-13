@@ -681,7 +681,7 @@ func TestDispatch_RunsTheAgentOneShotInTheItemsDirectory(t *testing.T) {
 	bin := stubAgent(t)
 
 	h := &fakeHarness{name: "opencode", bin: bin}
-	d := NewDispatcher(h, "http://gateway:4000", "the-token")
+	d := NewDispatcher(h, "http://gateway:4000", "the-token", false)
 	child, err := d.Launch(
 		Item{ID: "a", Instructions: "fix the parser", Dir: work},
 		runningNode("gpu-a", "org/model", nil),
@@ -740,7 +740,7 @@ func TestDispatch_RunsTheAgentOneShotInTheItemsDirectory(t *testing.T) {
 
 func TestDispatch_MissingDirectoryFailsNamingTheItem(t *testing.T) {
 	h := &fakeHarness{name: "opencode", bin: stubAgent(t)}
-	d := NewDispatcher(h, "http://gateway:4000", "the-token")
+	d := NewDispatcher(h, "http://gateway:4000", "the-token", false)
 	_, err := d.Launch(
 		Item{ID: "ghost", Instructions: "do", Dir: "/nonexistent/dir"},
 		runningNode("n", "org/m", nil),
@@ -757,9 +757,66 @@ func TestDispatch_MissingDirectoryFailsNamingTheItem(t *testing.T) {
 	}
 }
 
+func TestDispatch_AMissingDirectoryIsCreatedWhereTheCommandSaysTo(t *testing.T) {
+	work := t.TempDir()
+	missing := filepath.Join(work, "new", "dir")
+	record := filepath.Join(work, "record")
+	t.Setenv("RECORD_FILE", record)
+	t.Setenv("OPENAI_API_KEY", "")
+	bin := stubAgent(t)
+
+	h := &fakeHarness{name: "opencode", bin: bin}
+	d := NewDispatcher(h, "http://gateway:4000", "the-token", true)
+	child, err := d.Launch(
+		Item{ID: "a", Instructions: "do", Dir: missing},
+		runningNode("n", "org/m", nil),
+		filepath.Join(work, "a.log"),
+	)
+	if err != nil {
+		t.Fatalf("the launch should create the missing directory: %v", err)
+	}
+	if err := child.Wait(); err != nil {
+		t.Fatalf("the agent should end cleanly: %v", err)
+	}
+	if fi, err := os.Stat(missing); err != nil || !fi.IsDir() {
+		t.Fatalf("the directory should have been created: %v", err)
+	}
+	rec := readRecord(t, record)
+	canonical := missing
+	if resolved, err := filepath.EvalSymlinks(missing); err == nil {
+		canonical = resolved
+	}
+	if !strings.Contains(rec, "cwd:"+canonical) {
+		t.Errorf("the agent should have worked in the created directory, record:\n%s", rec)
+	}
+}
+
+func TestDispatch_ADirectoryItCannotCreateFailsNamingTheItem(t *testing.T) {
+	work := t.TempDir()
+	takeThePath := filepath.Join(work, "blocked")
+	if err := os.WriteFile(takeThePath, []byte("a file"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	bin := stubAgent(t)
+
+	h := &fakeHarness{name: "opencode", bin: bin}
+	d := NewDispatcher(h, "http://gateway:4000", "the-token", true)
+	_, err := d.Launch(
+		Item{ID: "a", Instructions: "do", Dir: filepath.Join(takeThePath, "dir")},
+		runningNode("n", "org/m", nil),
+		filepath.Join(work, "a.log"),
+	)
+	if err == nil {
+		t.Fatal("a directory it cannot create should fail the launch")
+	}
+	if !strings.Contains(err.Error(), `item "a"`) || !strings.Contains(err.Error(), "creating it") {
+		t.Errorf("the failure should name the item and the cause, got %v", err)
+	}
+}
+
 func TestDispatch_AHarnessWithoutASingleTaskFormFailsNamingIt(t *testing.T) {
 	h := &fakeHarness{name: "lucinate", bin: stubAgent(t)}
-	d := NewDispatcher(h, "http://gateway:4000", "the-token")
+	d := NewDispatcher(h, "http://gateway:4000", "the-token", false)
 	_, err := d.Launch(
 		Item{ID: "a", Instructions: "do", Dir: t.TempDir()},
 		runningNode("n", "org/m", nil),
@@ -775,7 +832,7 @@ func TestDispatch_AHarnessWithoutASingleTaskFormFailsNamingIt(t *testing.T) {
 
 func TestDispatch_ANodeWithNoModelFailsNamingIt(t *testing.T) {
 	h := &fakeHarness{name: "opencode", bin: stubAgent(t)}
-	d := NewDispatcher(h, "http://gateway:4000", "the-token")
+	d := NewDispatcher(h, "http://gateway:4000", "the-token", false)
 	_, err := d.Launch(
 		Item{ID: "a", Instructions: "do", Dir: t.TempDir()},
 		stoppedNode("n", "", nil),
@@ -817,7 +874,7 @@ func loopRun(t *testing.T, cfg Config, cond func(stateFile) bool) error {
 func testConfig(t *testing.T, topo *fakeTopo, h *fakeHarness, rec *launchRecorder, content string) (Config, string) {
 	t.Helper()
 	path := writeItems(t, content)
-	d := NewDispatcher(h, "http://gateway:4000", "the-token")
+	d := NewDispatcher(h, "http://gateway:4000", "the-token", false)
 	d.start = rec.start
 	return Config{
 		Gateway:    "http://gateway:4000",
@@ -1154,7 +1211,7 @@ func TestLoop_ACleanInterruptRequeuesItsItems(t *testing.T) {
 	rec2 := &launchRecorder{factory: func(bin string, args []string, dir, logPath string, env []string) (Child, error) {
 		return newFakeChild(nil, nil), nil
 	}}
-	d2 := NewDispatcher(h, "http://gateway:4000", "the-token")
+	d2 := NewDispatcher(h, "http://gateway:4000", "the-token", false)
 	d2.start = rec2.start
 	cfg2 := Config{
 		Gateway:    cfg.Gateway,
@@ -1188,7 +1245,7 @@ func TestLoop_ARestartDoesNotRerunACrashedItem(t *testing.T) {
 	rec := &launchRecorder{factory: func(bin string, args []string, dir, logPath string, env []string) (Child, error) {
 		return newFakeChild(nil, nil), nil
 	}}
-	d := NewDispatcher(h, "http://gateway:4000", "the-token")
+	d := NewDispatcher(h, "http://gateway:4000", "the-token", false)
 	d.start = rec.start
 	cfg := Config{
 		Gateway:    "http://gateway:4000",

@@ -30,6 +30,7 @@ func TestOrchestratorHelpReadsPerTheCliConventions(t *testing.T) {
 		"--token-env",
 		"OPENAI_API_KEY",
 		"-H, --harness",
+		"--create-item-dirs",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the help should carry %q, got:\n%s", want, out)

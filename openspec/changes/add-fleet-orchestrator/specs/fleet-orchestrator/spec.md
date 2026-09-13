@@ -25,6 +25,10 @@ resolves one: a flag naming the environment variable, defaulting to
 view of the fleet, and a gateway it cannot reach, or will not authenticate
 it to, SHALL stop the command with a message naming the gateway.
 
+The command SHALL take a `--create-item-dirs` flag, defaulting to false:
+where it is set, the orchestrator creates an item's missing directory before
+launching its agent; where it is not, a missing directory fails the item.
+
 #### Scenario: A gateway and an items file drive the command
 
 - **WHEN** the operator runs the command naming a reachable gateway and an
@@ -172,7 +176,10 @@ of the node the item was matched to. The agent's output SHALL be kept, per
 item, beside the items file, so a finished or failed item can be read after
 the fact. The orchestrator SHALL verify the item's directory exists before it
 launches the agent; an item whose directory is missing SHALL be failed,
-naming the item, and the rest of the backlog SHALL go on.
+naming the item, and the rest of the backlog SHALL go on. Where the command
+was given `--create-item-dirs`, the orchestrator SHALL create the missing
+directory instead, and the item SHALL go on to launch; a directory it cannot
+create SHALL fail the item, naming the item and the cause.
 
 #### Scenario: An admitted item runs against the gateway
 
@@ -184,6 +191,12 @@ naming the item, and the rest of the backlog SHALL go on.
 
 - **WHEN** an admitted item's directory does not exist
 - **THEN** the item is failed, naming it, and other items still run
+
+#### Scenario: A missing directory is created where the command says to
+
+- **WHEN** the command is given `--create-item-dirs` and an admitted item's
+  directory does not exist
+- **THEN** the orchestrator creates the directory and the item runs in it
 
 #### Scenario: An item's output is kept
 

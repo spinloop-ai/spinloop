@@ -133,6 +133,11 @@ instructions; the form is a per-harness table in the dispatch layer, and a
 harness without one fails the launch naming the harness). The agent works in
 the item's directory with its output kept per item beside the items file.
 
+The directory check at the top of the launch creates a missing directory
+(through `MkdirAll`) only where the command set its `--create-item-dirs`
+flag — the flag rides into the dispatcher at construction, and a directory it
+cannot create fails the item naming it and the cause.
+
 Pointing the agent at the model follows the launch path's own shape: the
 selection is synthesized from the gateway address and the chosen node's model
 name (served name where the node reports one, else the model id — the same

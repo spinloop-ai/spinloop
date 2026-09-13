@@ -26,6 +26,7 @@ import (
 
 func orchestratorCmd() *cobra.Command {
 	var gatewayAddr, itemsPath, tokenEnv, harnessName, logLevel string
+	var createItemDirs bool
 	c := &cobra.Command{
 		Use:   "orchestrator",
 		Short: "work a backlog of items against the fleet, at the fleet's pace",
@@ -56,7 +57,7 @@ that has ended is not run again on a restart.`,
 		SilenceUsage:  true,
 		RunE: func(c *cobra.Command, args []string) error {
 			resolve(c)
-			return runOrchestratorCommand(gatewayAddr, itemsPath, tokenEnv, harnessName, logLevel)
+			return runOrchestratorCommand(gatewayAddr, itemsPath, tokenEnv, harnessName, logLevel, createItemDirs)
 		},
 	}
 	fs := c.Flags()
@@ -65,6 +66,7 @@ that has ended is not run again on a restart.`,
 	fs.StringVar(&tokenEnv, "token-env", fleet.DefaultGatewayTokenEnv, "the environment variable holding the gateway's bearer token")
 	fs.StringVarP(&harnessName, "harness", "H", "", "which harness to run the agents with")
 	fs.StringVar(&logLevel, "log-level", "", logLevelUsage)
+	fs.BoolVar(&createItemDirs, "create-item-dirs", false, "create an item's working directory if it does not exist")
 	compRegister(c, "items", compFiles)
 	compRegister(c, "harness", compHarnessNames)
 	compRegister(c, "log-level", compLogLevel)
@@ -78,7 +80,7 @@ func cmdOrchestrator(args []string) error { return execCmd(orchestratorCmd(), ar
 // startup owes — the gateway named, its token resolvable, the harness able to
 // run an item, the items file a list of items — and then the loop, held
 // until the signal ends it.
-func runOrchestratorCommand(gatewayAddr, itemsPath, tokenEnv, harnessName, logLevel string) error {
+func runOrchestratorCommand(gatewayAddr, itemsPath, tokenEnv, harnessName, logLevel string, createItemDirs bool) error {
 	if gatewayAddr == "" {
 		return errors.New("--gateway is required: the address of the fleet's gateway")
 	}
@@ -116,7 +118,7 @@ func runOrchestratorCommand(gatewayAddr, itemsPath, tokenEnv, harnessName, logLe
 		Gateway:    gatewayAddr,
 		ItemsPath:  itemsPath,
 		Topologist: orchestrator.NewGatewayTopologist(gatewayAddr, token),
-		Dispatcher: orchestrator.NewDispatcher(h, gatewayAddr, token),
+		Dispatcher: orchestrator.NewDispatcher(h, gatewayAddr, token, createItemDirs),
 		Log:        logger,
 	})
 }

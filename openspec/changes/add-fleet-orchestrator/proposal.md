@@ -15,7 +15,9 @@ built on the tag (#190) and concurrency-rule (#189) primitives it references.
   topology from the gateway, admits items while the fleet's concurrency rules
   allow, runs each admitted item as a one-shot agent whose inference is pointed
   at the gateway, and tracks every item to a finished or failed end. It holds
-  no `fleet.yaml` and no node tokens: the gateway is its only view of the fleet.
+   no `fleet.yaml` and no node tokens: the gateway is its only view of the fleet.
+   A `--create-item-dirs` flag (default false) makes a missing item directory
+   get created instead of failing the item.
 - Work items in v1 come from a file: a list of items, each naming the tags of
   nodes it can run on, the checkout it works in, and the instructions the agent
   is given. A GitHub/Slack item source (issue #152) is a later producer behind

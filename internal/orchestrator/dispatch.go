@@ -67,6 +67,10 @@ type Dispatcher struct {
 	gateway string // the gateway's address
 	token   string // the gateway's token, resolved by the caller
 
+	// createItemDirs makes a missing item directory get created rather than
+	// failing the item.
+	createItemDirs bool
+
 	mu sync.Mutex // serialises the applies into the shared harness config
 
 	// start begins a child process; a test seam standing in for exec.
@@ -74,9 +78,10 @@ type Dispatcher struct {
 }
 
 // NewDispatcher builds a dispatcher for the active harness, pointed at the
-// gateway, holding the token its caller presents.
-func NewDispatcher(h harness.Harness, gateway, token string) *Dispatcher {
-	d := &Dispatcher{h: h, gateway: gateway, token: token}
+// gateway, holding the token its caller presents. Where createItemDirs is
+// set, a missing item directory is created rather than failing the item.
+func NewDispatcher(h harness.Harness, gateway, token string, createItemDirs bool) *Dispatcher {
+	d := &Dispatcher{h: h, gateway: gateway, token: token, createItemDirs: createItemDirs}
 	d.start = startChild
 	return d
 }
@@ -87,7 +92,12 @@ func NewDispatcher(h harness.Harness, gateway, token string) *Dispatcher {
 // retrying it.
 func (d *Dispatcher) Launch(item Item, node Node, logPath string) (Child, error) {
 	if fi, err := os.Stat(item.Dir); err != nil || !fi.IsDir() {
-		return nil, fmt.Errorf("item %q's working directory %s does not exist", item.ID, item.Dir)
+		if !d.createItemDirs {
+			return nil, fmt.Errorf("item %q's working directory %s does not exist", item.ID, item.Dir)
+		}
+		if err := os.MkdirAll(item.Dir, 0o755); err != nil {
+			return nil, fmt.Errorf("item %q's working directory %s: creating it: %v", item.ID, item.Dir, err)
+		}
 	}
 	form, ok := oneShot[d.h.Name()]
 	if !ok {

@@ -126,13 +126,15 @@ func argsAgent(t *testing.T) string {
 }
 
 // liveConfig is a Run config wired to a real gateway and a real stub agent.
-func liveConfig(t *testing.T, gw *httptest.Server, itemsPath, agent string) Config {
+// Where createItemDirs is set, a missing item directory is created rather
+// than failing the item.
+func liveConfig(t *testing.T, gw *httptest.Server, itemsPath, agent string, createItemDirs bool) Config {
 	t.Helper()
 	return Config{
 		Gateway:    gw.URL,
 		ItemsPath:  itemsPath,
 		Topologist: NewGatewayTopologist(gw.URL, integrationToken),
-		Dispatcher: NewDispatcher(&fakeHarness{name: "opencode", bin: agent}, gw.URL, integrationToken),
+		Dispatcher: NewDispatcher(&fakeHarness{name: "opencode", bin: agent}, gw.URL, integrationToken, createItemDirs),
 		Tick:       10 * time.Millisecond,
 	}
 }
@@ -190,7 +192,7 @@ func TestIntegration_TheFleetsLimitsHoldEndToEnd(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			done := make(chan error, 1)
-			go func() { done <- Run(ctx, liveConfig(t, gw, itemsPath, agent)) }()
+			go func() { done <- Run(ctx, liveConfig(t, gw, itemsPath, agent, false)) }()
 
 			waitFor(t, itemsPath, func(sf stateFile) bool {
 				count := 0
@@ -242,7 +244,7 @@ func TestIntegration_ItemsTakeTheNodeTheFleetShapes(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		done := make(chan error, 1)
-		go func() { done <- Run(ctx, liveConfig(t, gw, itemsPath, agent)) }()
+		go func() { done <- Run(ctx, liveConfig(t, gw, itemsPath, agent, false)) }()
 		waitFor(t, itemsPath, func(sf stateFile) bool { return sf.Items["a"].State == StateDone })
 		cancel()
 		if err := <-done; err != nil {
@@ -276,7 +278,7 @@ func TestIntegration_ItemsTakeTheNodeTheFleetShapes(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		done := make(chan error, 1)
-		go func() { done <- Run(ctx, liveConfig(t, gw, itemsPath, agent)) }()
+		go func() { done <- Run(ctx, liveConfig(t, gw, itemsPath, agent, false)) }()
 		waitFor(t, itemsPath, func(sf stateFile) bool { return sf.Items["a"].State == StateDone })
 		cancel()
 		if err := <-done; err != nil {
@@ -311,7 +313,7 @@ func TestIntegration_ItemsTakeTheNodeTheFleetShapes(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			done := make(chan error, 1)
-			go func() { done <- Run(ctx, liveConfig(t, gw, itemsPath, agent)) }()
+			go func() { done <- Run(ctx, liveConfig(t, gw, itemsPath, agent, false)) }()
 			waitFor(t, itemsPath, func(sf stateFile) bool { return sf.Items["a"].State == StateDone })
 			cancel()
 			if err := <-done; err != nil {
@@ -340,7 +342,7 @@ func TestIntegration_ItemsTakeTheNodeTheFleetShapes(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			done := make(chan error, 1)
-			go func() { done <- Run(ctx, liveConfig(t, gw, itemsPath, agent)) }()
+			go func() { done <- Run(ctx, liveConfig(t, gw, itemsPath, agent, false)) }()
 
 			time.Sleep(300 * time.Millisecond)
 			if st := readState(t, itemsPath).Items["a"]; st.State != "" {
@@ -371,7 +373,7 @@ func TestIntegration_ItemsTakeTheNodeTheFleetShapes(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		done := make(chan error, 1)
-		go func() { done <- Run(ctx, liveConfig(t, gw, itemsPath, agent)) }()
+		go func() { done <- Run(ctx, liveConfig(t, gw, itemsPath, agent, false)) }()
 
 		// The node does not answer: the item waits, no launch.
 		time.Sleep(300 * time.Millisecond)
@@ -417,7 +419,7 @@ func TestIntegration_TheLifecycleEndsTheSpecSays(t *testing.T) {
 		ctx1, cancel1 := context.WithCancel(context.Background())
 		defer cancel1()
 		errCh := make(chan error, 1)
-		go func() { errCh <- Run(ctx1, liveConfig(t, gw, itemsPath, agent)) }()
+		go func() { errCh <- Run(ctx1, liveConfig(t, gw, itemsPath, agent, false)) }()
 		waitFor(t, itemsPath, func(sf stateFile) bool { return sf.Items["a"].State == StateRunning })
 		gw.Close()
 		err := <-errCh
@@ -437,7 +439,7 @@ func TestIntegration_TheLifecycleEndsTheSpecSays(t *testing.T) {
 		ctx2, cancel2 := context.WithCancel(context.Background())
 		defer cancel2()
 		done := make(chan error, 1)
-		go func() { done <- Run(ctx2, liveConfig(t, gw2, itemsPath, agent)) }()
+		go func() { done <- Run(ctx2, liveConfig(t, gw2, itemsPath, agent, false)) }()
 
 		// The restarted loop does not re-run it: the record stays failed.
 		time.Sleep(300 * time.Millisecond)
@@ -465,7 +467,7 @@ func TestIntegration_TheLifecycleEndsTheSpecSays(t *testing.T) {
 		t.Setenv("AGENT_SLEEP", "30")
 		ctx1, cancel1 := context.WithCancel(context.Background())
 		errCh := make(chan error, 1)
-		go func() { errCh <- Run(ctx1, liveConfig(t, gw, itemsPath, agent)) }()
+		go func() { errCh <- Run(ctx1, liveConfig(t, gw, itemsPath, agent, false)) }()
 		waitFor(t, itemsPath, func(sf stateFile) bool { return sf.Items["a"].State == StateRunning })
 		cancel1()
 		if err := <-errCh; err != nil {
@@ -480,7 +482,7 @@ func TestIntegration_TheLifecycleEndsTheSpecSays(t *testing.T) {
 		ctx2, cancel2 := context.WithCancel(context.Background())
 		defer cancel2()
 		done := make(chan error, 1)
-		go func() { done <- Run(ctx2, liveConfig(t, gw, itemsPath, agent)) }()
+		go func() { done <- Run(ctx2, liveConfig(t, gw, itemsPath, agent, false)) }()
 		waitFor(t, itemsPath, func(sf stateFile) bool { return sf.Items["a"].State == StateDone })
 		cancel2()
 		if err := <-done; err != nil {
@@ -508,7 +510,7 @@ func TestIntegration_TheLifecycleEndsTheSpecSays(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		done := make(chan error, 1)
-		go func() { done <- Run(ctx, liveConfig(t, gw, itemsPath, agent)) }()
+		go func() { done <- Run(ctx, liveConfig(t, gw, itemsPath, agent, false)) }()
 		waitFor(t, itemsPath, func(sf stateFile) bool {
 			return sf.Items["bad"].State == StateFailed && sf.Items["good"].State == StateDone
 		})
@@ -518,6 +520,37 @@ func TestIntegration_TheLifecycleEndsTheSpecSays(t *testing.T) {
 		}
 		if st := readState(t, itemsPath).Items["bad"]; !strings.Contains(st.Why, "does not exist") {
 			t.Errorf("the failed item should name the missing directory, got %q", st.Why)
+		}
+	})
+
+	t.Run("a missing working directory runs where the command says to", func(t *testing.T) {
+		agent := argsAgent(t)
+		t.Setenv("AGENT_SLEEP", "0.05")
+		n := newFakeNode(t, string(daemon.StateRunning), "org/m")
+		gw := startLiveGateway(t, "nodes:\n"+nodeEntry("n", addrOf(n.srv), map[string]string{"gpu": "a100"})+
+			"concurrency:\n  total: 2\n", nil)
+
+		missing := filepath.Join(t.TempDir(), "not", "there", "yet")
+		itemsPath := writeItems(t, itemsFile(
+			itemSpec{id: "fresh", dir: missing},
+		))
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		done := make(chan error, 1)
+		go func() { done <- Run(ctx, liveConfig(t, gw, itemsPath, agent, true)) }()
+		waitFor(t, itemsPath, func(sf stateFile) bool {
+			return sf.Items["fresh"].State == StateDone
+		})
+		cancel()
+		if err := <-done; err != nil {
+			t.Fatalf("the clean interrupt should end the run without an error, got %v", err)
+		}
+		if fi, err := os.Stat(missing); err != nil || !fi.IsDir() {
+			t.Errorf("the item's directory should have been created: %v", err)
+		}
+		if _, err := os.ReadFile(filepath.Join(missing, "args.txt")); err != nil {
+			t.Errorf("the agent should have worked in the created directory, got %v", err)
 		}
 	})
 }

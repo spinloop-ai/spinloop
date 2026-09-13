@@ -45,7 +45,7 @@ A list of items, in the order they sit in the backlog:
 | -------------- | ---------------------------------------------------------------------- |
 | `id`           | The item's name: unique in the file, and the key of its record in the state beside it |
 | `instructions` | What the item's agent is told to do                                    |
-| `dir`          | The directory the agent works in                                       |
+| `dir`          | The directory the agent works in — created where the orchestrator runs with `--create-item-dirs` |
 | `tags`         | The nodes the item can run on, named as `key=value`. An item that names none matches any node |
 | `priority`     | Higher runs first. A file that states none runs in file order          |
 

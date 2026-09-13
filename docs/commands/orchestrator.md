@@ -44,7 +44,8 @@ directory the agent works in:
 - **`id`** — unique in the file; the state and the per-item log are keyed by it.
 - **`instructions`** — the task the agent is given, whole.
 - **`dir`** — the working directory the agent runs in. A missing directory
-  fails that item and only that item; the rest of the backlog goes on.
+  fails that item and only that item; the rest of the backlog goes on. With
+  `--create-item-dirs`, the orchestrator creates a missing directory instead.
 - **`priority`** — an integer, higher first; items of one rank go in file
   order.
 - **`tags`** — `key=value` pairs naming the [tags](fleet.md#tags) of the nodes
@@ -114,6 +115,7 @@ stopped node is an option only where the fleet file
 | ---- | ------- |
 | `--gateway <address>` | The fleet's gateway — required. The topology, and the agents' inference, both go through it |
 | `--items <path>` | The work items file (default `./work.yaml`) |
+| `--create-item-dirs` | Create an item's working directory if it does not exist (default off) |
 | `--token-env <variable>` | The environment variable holding the gateway's bearer token (default `OPENAI_API_KEY`) |
 | `-H`, `--harness <name>` | Which harness to run the agents with (default the resolved one) |
 | `--log-level` | `debug`, `info`, `warn`, or `error` — overrides `SPINLOOP_LOG_LEVEL` (default `info`) |
