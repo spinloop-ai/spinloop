@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [1.39.0] - 2026-09-13
+### Added
+- feat(harness): auto-configure launches from --env alone
+- feat: let fleet harness launch against a gateway with no Spinloop (#201)
+
 ## [1.38.0] - 2026-09-13
 ### Added
 - feat(hf): write a Spinloop from a Hugging Face reference
