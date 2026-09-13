@@ -67,7 +67,7 @@ func TestRemoteSeed_StartPostsWhatTheSpinloopNames(t *testing.T) {
 	server, got := seedServer(t, 200,
 		`{"seedId":"llamacpp--m","instanceId":"i-1","started":true,"weightsPrefix":"models/llamacpp/m/"}`)
 	stubSeedSeams(t, server.URL, server.URL)
-	writeDeployEnvSpinloop(t, "testenv")
+	writeDeploySpinloopCwd(t)
 
 	out := captureStdout(t, func() {
 		if err := cmdRemoteSeed([]string{"start"}); err != nil {
@@ -94,7 +94,7 @@ func TestRemoteSeed_StartPostsWhatTheSpinloopNames(t *testing.T) {
 func TestRemoteSeed_StartSaysWhenItJoinedRatherThanStarted(t *testing.T) {
 	server, _ := seedServer(t, 200, `{"seedId":"llamacpp--m","started":false,"joined":true}`)
 	stubSeedSeams(t, server.URL, server.URL)
-	writeDeployEnvSpinloop(t, "testenv")
+	writeDeploySpinloopCwd(t)
 
 	out := captureStdout(t, func() {
 		if err := cmdRemoteSeed([]string{"start"}); err != nil {
@@ -110,7 +110,7 @@ func TestRemoteSeed_StartSaysWhenItJoinedRatherThanStarted(t *testing.T) {
 func TestRemoteSeed_StartReportsAlreadySeeded(t *testing.T) {
 	server, _ := seedServer(t, 200, `{"seedId":"llamacpp--m","started":false,"alreadySeeded":true}`)
 	stubSeedSeams(t, server.URL, server.URL)
-	writeDeployEnvSpinloop(t, "testenv")
+	writeDeploySpinloopCwd(t)
 
 	out := captureStdout(t, func() {
 		if err := cmdRemoteSeed([]string{"start"}); err != nil {
@@ -125,7 +125,7 @@ func TestRemoteSeed_StartReportsAlreadySeeded(t *testing.T) {
 func TestRemoteSeed_ForceAndRevisionTravel(t *testing.T) {
 	server, got := seedServer(t, 200, `{"seedId":"llamacpp--m","started":true}`)
 	stubSeedSeams(t, server.URL, server.URL)
-	writeDeployEnvSpinloop(t, "testenv")
+	writeDeploySpinloopCwd(t)
 
 	captureStdout(t, func() {
 		if err := cmdRemoteSeed([]string{"start", "--force", "--revision", "abc123"}); err != nil {
@@ -270,7 +270,7 @@ func TestRemoteSeed_StopReportsWhatItStopped(t *testing.T) {
 func TestRemoteSeed_CapReachedIsNamed(t *testing.T) {
 	server, _ := seedServer(t, 429, `{"error":"3 seeds are already running (cap 3) — wait for one to finish"}`)
 	stubSeedSeams(t, server.URL, server.URL)
-	writeDeployEnvSpinloop(t, "testenv")
+	writeDeploySpinloopCwd(t)
 
 	err := cmdRemoteSeed([]string{"start"})
 	if err == nil || !strings.Contains(err.Error(), "cap 3") {

@@ -95,7 +95,7 @@ including the `SPINLOOP_REMOTE_*` overrides:
 Keys are looked up in a `.env` file **beside the `Spinloop` being applied** first
 (or in the current directory, for a command that takes no Spinloop), then your
 shell environment — so a project keeps its own key next to the file that needs
-it, the same way `PRESET` and `REMOTE` travel with a Spinloop. They are **never written into the agent's config** — spinloop writes
+it, the same way `PRESET` travels with a Spinloop. They are **never written into the agent's config** — spinloop writes
 a reference the agent resolves when it runs, and `spinloop harness` passes the
 keys it can resolve to the agent it launches. If you start the agent yourself,
 set the variable in your own environment. Local providers on localhost (Ollama,

@@ -210,19 +210,12 @@ vCPU quota in the target region. It creates no instance and no Elastic IP.
 
 ### Deploy this Spinloop as an environment
 
-Uncomment the `REMOTE` line in the [`Spinloop`](Spinloop) — it names the
-environment `spinloop remote` creates and registers:
-
-```dockerfile
-REMOTE qwen3.8-27b
-```
-
-Then:
-
 ```sh
-spinloop remote deploy    # from this directory
-spinloop remote deploy --dry-run   # see what would be sent first
+spinloop remote deploy --env qwen3.8-27b    # from this directory
+spinloop remote deploy --env qwen3.8-27b --dry-run   # see what would be sent first
 ```
+
+The `--env` name is the environment `spinloop remote` creates and registers.
 
 `deploy` reads `PROVIDER`, `ALIAS`, `CONTEXT` and `PRESET` from the Spinloop — the
 same values [`spinloop serve`](../../../docs/commands/serve.md) uses locally —
@@ -235,13 +228,14 @@ doesn't have these weights cached yet, deploy fetches them in the background
 ### Start it, use it, stop it
 
 ```sh
-eval "$(spinloop remote start)"   # boots the instance (~10 min cold), exports
-                                 # OPENAI_BASE_URL / OPENAI_API_KEY
-spinloop remote status            # is it up, is it healthy
-spinloop apply                    # point opencode at the running endpoint
-spinloop harness                  # work
-spinloop remote stop              # done — shut it down now rather than waiting
-                                 # for the idle timer
+eval "$(spinloop remote start --env qwen3.8-27b)"   # boots the instance
+                                                    # (~10 min cold), exports
+                                                    # OPENAI_BASE_URL / OPENAI_API_KEY
+spinloop remote status --env qwen3.8-27b            # is it up, is it healthy
+spinloop apply --env qwen3.8-27b                    # point opencode at the running endpoint
+spinloop harness --env qwen3.8-27b                  # work
+spinloop remote stop --env qwen3.8-27b              # done — shut it down now rather
+                                                    # than waiting for the idle timer
 ```
 
 Once deployed, this box has the memory to run past the 32768-token default —

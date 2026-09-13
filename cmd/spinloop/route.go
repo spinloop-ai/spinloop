@@ -22,6 +22,9 @@ import (
 // routeOptions is what the launch flags say about routing. They are inert
 // unless something names a fleet.
 type routeOptions struct {
+	// envName names the registered environment a launch is applied against.
+	// It conflicts with a fleet — each names where the model is served from.
+	envName string
 	// fleetPath is the fleet file to route through when given.
 	fleetPath string
 	// spinloopNamed says the worn Spinloop was named by the user — a
@@ -61,9 +64,9 @@ func (o routeOptions) fleetFile() string {
 // does not route, which is every launch that names no fleet.
 //
 // A Spinloop that pins a BASEURL is not routed: the pinned address is the
-// explicit answer that already wins over a REMOTE, and it wins here the same
-// way. Saying so matters — silently selecting a node whose address is then
-// discarded would be a puzzle rather than a behaviour.
+// explicit answer that already wins over an environment, and it wins here
+// the same way. Saying so matters — silently selecting a node whose address
+// is then discarded would be a puzzle rather than a behaviour.
 func routeThroughFleet(sel spinloop.Selection, spinloopPath string, opts routeOptions) (*fleet.Choice, error) {
 	target := opts.fleetFile()
 	if target == "" {

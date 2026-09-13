@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -10,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/spinloop-ai/spinloop/internal/config"
-	"github.com/spinloop-ai/spinloop/internal/remote"
 )
 
 // opencodeConfigPath returns where isolateConfig's XDG_CONFIG_HOME points the
@@ -277,158 +275,5 @@ func TestCmdApply_DoesNotFetchPresetURL(t *testing.T) {
 	})
 	if got := atomic.LoadInt32(&hits); got != 0 {
 		t.Errorf("spinloop apply made %d request(s) to the PRESET URL, want 0", got)
-	}
-}
-
-// remoteConfigJSON marshals a remote.Config for a static file server.
-func remoteConfigJSON(t *testing.T, cfg remote.Config) string {
-	t.Helper()
-	data, err := json.Marshal(cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return string(data)
-}
-
-// TestRemoteStatus_URLRemote checks that a path-form REMOTE may itself be a
-// URL, fetched by the remote subcommands.
-func TestRemoteStatus_URLRemote(t *testing.T) {
-	isolateConfig(t)
-	stubAWSEnv(t)
-	control := stateServer(t)
-	defer control.Close()
-
-	cfgServer := staticServer(t, map[string]string{
-		"/remote.json": remoteConfigJSON(t, remote.Config{StartURL: control.URL, StopURL: control.URL, Region: "eu-west-1"}),
-	})
-	defer cfgServer.Close()
-
-	dir := t.TempDir()
-	spinloopPath := filepath.Join(dir, "Spinloop")
-	mustWrite(t, spinloopPath, "PROVIDER openai-compatible\nREMOTE "+cfgServer.URL+"/remote.json\n")
-
-	out := captureStdout(t, func() {
-		if err := cmdRemoteStatus([]string{spinloopPath}); err != nil {
-			t.Fatalf("cmdRemoteStatus: %v", err)
-		}
-	})
-	if !strings.Contains(out, "state: running") {
-		t.Errorf("REMOTE URL should resolve the control config, got:\n%s", out)
-	}
-}
-
-// TestRemoteStatus_RemoteRelativeToURLSpinloop checks that a relative REMOTE
-// resolves against a URL-sourced Spinloop's own URL.
-func TestRemoteStatus_RemoteRelativeToURLSpinloop(t *testing.T) {
-	isolateConfig(t)
-	stubAWSEnv(t)
-	control := stateServer(t)
-	defer control.Close()
-
-	server := staticServer(t, map[string]string{
-		"/team/Spinloop": "PROVIDER openai-compatible\nREMOTE ./remote.json\n",
-		"/team/remote.json": remoteConfigJSON(t, remote.Config{
-			StartURL: control.URL, StopURL: control.URL, Region: "eu-west-1",
-		}),
-	})
-	defer server.Close()
-
-	out := captureStdout(t, func() {
-		if err := cmdRemoteStatus([]string{server.URL + "/team/Spinloop"}); err != nil {
-			t.Fatalf("cmdRemoteStatus: %v", err)
-		}
-	})
-	if !strings.Contains(out, "state: running") {
-		t.Errorf("relative REMOTE should resolve against the Spinloop's URL, got:\n%s", out)
-	}
-}
-
-// TestCmdApply_BaseURLFallback_FetchesURLRemote checks that apply's base-URL
-// fallback fetches a URL-form REMOTE when the Spinloop states no BASEURL.
-func TestCmdApply_BaseURLFallback_FetchesURLRemote(t *testing.T) {
-	home := isolateConfig(t)
-	server := staticServer(t, map[string]string{
-		"/remote.json": remoteConfigJSON(t, remote.Config{
-			StartURL: "https://example.com/start", StopURL: "https://example.com/stop",
-			Region: "eu-west-1", BaseURL: "https://endpoint.example.com/v1", Environment: "prod",
-		}),
-	})
-	defer server.Close()
-
-	dir := t.TempDir()
-	spinloopPath := filepath.Join(dir, "Spinloop")
-	mustWrite(t, spinloopPath, "PROVIDER llamacpp\nALIAS q3\nREMOTE "+server.URL+"/remote.json\n")
-
-	out := captureStdout(t, func() {
-		if err := cmdApply([]string{spinloopPath}); err != nil {
-			t.Fatalf("cmdApply: %v", err)
-		}
-	})
-	if !strings.Contains(out, "Taking the base URL from") {
-		t.Errorf("expected the base URL to be taken from the fetched REMOTE config, got:\n%s", out)
-	}
-	m := readConfigMap(t, opencodeConfigPath(home))
-	prod := m["provider"].(map[string]any)["prod"].(map[string]any)
-	if got := prod["options"].(map[string]any)["baseURL"]; got != "https://endpoint.example.com/v1" {
-		t.Errorf("baseURL = %v, want the fetched REMOTE config's base_url", got)
-	}
-}
-
-// TestCmdServe_DoesNotFetchRemoteURL checks that serve never fetches a
-// URL-form REMOTE — it has no use for a remote endpoint's control
-// configuration, matching how a local-path REMOTE is already left alone.
-func TestCmdServe_DoesNotFetchRemoteURL(t *testing.T) {
-	var hits int32
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		atomic.AddInt32(&hits, 1)
-		w.Write([]byte(remoteConfigJSON(t, remote.Config{StartURL: "x", StopURL: "x", Region: "eu-west-1"})))
-	}))
-	defer server.Close()
-
-	dir := t.TempDir()
-	spinloopPath := filepath.Join(dir, "Spinloop")
-	mustWrite(t, spinloopPath, "PROVIDER llamacpp\nALIAS q3\nMODEL unsloth/Qwen:Q4_K_M\nREMOTE "+server.URL+"/remote.json\n")
-
-	captureStdout(t, func() {
-		if err := cmdServe([]string{"--dry-run", spinloopPath}); err != nil {
-			t.Fatalf("cmdServe: %v", err)
-		}
-	})
-	if got := atomic.LoadInt32(&hits); got != 0 {
-		t.Errorf("spinloop serve made %d request(s) to the REMOTE URL, want 0", got)
-	}
-}
-
-// TestCmdApply_FetchesRemoteURL_ForEnvironmentName_EvenWithBaseURL checks
-// that apply still reads a URL-form REMOTE once when the Spinloop already
-// states its own BASEURL — to name the harness provider after the
-// deployment's environment, the same unconditional read a local-path REMOTE
-// already triggers — even though the base-URL fallback itself is skipped.
-func TestCmdApply_FetchesRemoteURL_ForEnvironmentName_EvenWithBaseURL(t *testing.T) {
-	home := isolateConfig(t)
-	var hits int32
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		atomic.AddInt32(&hits, 1)
-		w.Write([]byte(remoteConfigJSON(t, remote.Config{
-			StartURL: "x", StopURL: "x", Region: "eu-west-1", Environment: "prod",
-		})))
-	}))
-	defer server.Close()
-
-	dir := t.TempDir()
-	spinloopPath := filepath.Join(dir, "Spinloop")
-	mustWrite(t, spinloopPath, "PROVIDER llamacpp\nALIAS q3\nBASEURL http://127.0.0.1:9090/v1\nREMOTE "+server.URL+"/remote.json\n")
-
-	captureStdout(t, func() {
-		if err := cmdApply([]string{spinloopPath}); err != nil {
-			t.Fatalf("cmdApply: %v", err)
-		}
-	})
-	if got := atomic.LoadInt32(&hits); got != 1 {
-		t.Errorf("spinloop apply made %d request(s) to the REMOTE URL, want exactly 1 (for the environment name)", got)
-	}
-	m := readConfigMap(t, opencodeConfigPath(home))
-	if _, ok := m["provider"].(map[string]any)["prod"]; !ok {
-		t.Errorf("expected the provider renamed to the fetched environment %q, got %v", "prod", m["provider"])
 	}
 }

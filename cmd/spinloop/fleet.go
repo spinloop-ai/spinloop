@@ -664,16 +664,19 @@ func (r fleetDeployResult) text() string {
 	}
 }
 
-// deployOneNode resolves and deploys a single targeted node. It never
-// returns an error itself — a bad node becomes a fleetDeployResult, so the
-// caller's fan-out can label it without aborting the others.
+// deployOneNode resolves and deploys a single targeted node. The node's own
+// name is the registered environment the deploy creates: a kind: remote node
+// is only driveable by the fleet commands under that name, so there is no
+// override. It never returns an error itself — a bad node becomes a
+// fleetDeployResult, so the caller's fan-out can label it without aborting
+// the others.
 func deployOneNode(cfg *fleet.Config, name string, opts deployOpts) fleetDeployResult {
 	entry, _ := cfg.Node(name)
 	arg, source, err := resolveNodeSpinloop(entry, cfg.Dir)
 	if err != nil {
 		return fleetDeployResult{node: name, outcome: deployRowFailed, detail: err.Error()}
 	}
-	_, spinloopPath, dc, env, err := deriveDeployTarget(fmt.Sprintf("spinloop fleet deploy %s", name), arg)
+	_, spinloopPath, dc, err := deriveDeployTarget(fmt.Sprintf("spinloop fleet deploy %s", name), arg, name)
 	if err != nil {
 		return fleetDeployResult{node: name, outcome: deployRowFailed, detail: err.Error()}
 	}
@@ -683,7 +686,7 @@ func deployOneNode(cfg *fleet.Config, name string, opts deployOpts) fleetDeployR
 	// leaves it empty, i.e. the control plane's default).
 	nodeOpts := opts
 	nodeOpts.instanceType = entry.InstanceType
-	outcome, err := runDeploy(spinloopPath, env, dc, nodeOpts)
+	outcome, err := runDeploy(spinloopPath, name, dc, nodeOpts)
 	if err != nil {
 		var guarded *errDeployGuarded
 		if errors.As(err, &guarded) {

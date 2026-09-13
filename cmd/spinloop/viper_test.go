@@ -104,7 +104,7 @@ func TestViperRemoteEnvPrecedence(t *testing.T) {
 	}
 
 	// Unset variables fall through to the file.
-	cfg, err := resolveRemoteConfig("")
+	cfg, err := resolveRemoteConfig("", "")
 	if err != nil {
 		t.Fatalf("resolveRemoteConfig: %v", err)
 	}
@@ -117,7 +117,7 @@ func TestViperRemoteEnvPrecedence(t *testing.T) {
 	// Each exported variable wins over the file, one at a time.
 	for name, get := range legs {
 		t.Setenv(name, envValue)
-		cfg, err := resolveRemoteConfig("")
+		cfg, err := resolveRemoteConfig("", "")
 		if err != nil {
 			t.Fatalf("%s set: %v", name, err)
 		}

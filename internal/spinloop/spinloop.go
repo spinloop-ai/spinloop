@@ -14,7 +14,6 @@
 //	PARALLEL 2                          # optional; concurrent request slots for `serve`
 //	BASEURL  https://gateway/v1         # optional; API base URL override
 //	PRESET   ./preset.ini               # optional; llama.cpp preset for `serve`
-//	REMOTE   ./remote.json              # optional; remote-instance config for `remote`
 //	ENV      AWS_PROFILE=dev            # optional, repeatable; local env var
 //
 // MODEL is the reference the provider itself understands: an OpenRouter/Bedrock
@@ -51,7 +50,6 @@ type Selection struct {
 	Providers string
 	BaseURL   string
 	Preset    string
-	Remote    string
 	// Parallel is the PARALLEL instruction's value: a count of concurrent
 	// request slots the served engine should run with. It has no meaning for
 	// a hosted-harness selection, only for a served one — see the
@@ -60,9 +58,9 @@ type Selection struct {
 	Parallel string
 	// DisplayName is the harness provider's display name, derived at apply time
 	// rather than parsed from a Spinloop — like BaseURL, it may be filled from the
-	// remote environment. It is set only when a REMOTE renames the provider, to
-	// label it distinctly from a local engine of the same kind; empty otherwise,
-	// leaving the catalogue engine name.
+	// named environment. It is set only when an environment's --env flag renames
+	// the provider, to label it distinctly from a local engine of the same kind;
+	// empty otherwise, leaving the catalogue engine name.
 	DisplayName string
 	// Env holds the Spinloop's ENV instructions in file order. Unlike the other
 	// fields it may carry several entries, since ENV may repeat.
@@ -86,7 +84,6 @@ const (
 	kwParallel = "parallel"
 	kwBaseURL  = "baseurl"
 	kwPreset   = "preset"
-	kwRemote   = "remote"
 	kwEnv      = "env"
 )
 
@@ -95,7 +92,7 @@ const (
 // "" for an unrecognised keyword.
 func canonicalKeyword(kw string) string {
 	switch kw {
-	case kwProvider, kwModel, kwAlias, kwContext, kwOutput, kwParallel, kwPreset, kwRemote, kwEnv:
+	case kwProvider, kwModel, kwAlias, kwContext, kwOutput, kwParallel, kwPreset, kwEnv:
 		return kw
 	case kwBaseURL, "base-url", "base_url", "url":
 		return kwBaseURL
@@ -121,9 +118,15 @@ func Parse(data []byte) (Selection, error) {
 		}
 
 		fields := strings.Fields(text)
-		canon := canonicalKeyword(strings.ToLower(fields[0]))
+		kw := strings.ToLower(fields[0])
+		canon := canonicalKeyword(kw)
 		if canon == "" {
-			return Selection{}, fmt.Errorf("line %d: unknown keyword %q (expected PROVIDER, MODEL, ALIAS, CONTEXT, OUTPUT, PARALLEL, BASEURL, PRESET, REMOTE, or ENV)", line, fields[0])
+			if kw == "remote" {
+				return Selection{}, fmt.Errorf(
+					"line %d: the REMOTE instruction was removed: name the environment with `spinloop remote deploy --env <name>` at deploy time, and pass --env <name> to the commands that act on it (remote subcommands, apply, unapply, harness)",
+					line)
+			}
+			return Selection{}, fmt.Errorf("line %d: unknown keyword %q (expected PROVIDER, MODEL, ALIAS, CONTEXT, OUTPUT, PARALLEL, BASEURL, PRESET, or ENV)", line, fields[0])
 		}
 		switch {
 		case len(fields) < 2:
@@ -167,8 +170,6 @@ func Parse(data []byte) (Selection, error) {
 			sel.BaseURL = value
 		case kwPreset:
 			sel.Preset = value
-		case kwRemote:
-			sel.Remote = value
 		}
 	}
 	if err := scanner.Err(); err != nil {
@@ -214,7 +215,6 @@ func Format(sel Selection) string {
 	line("PARALLEL", sel.Parallel)
 	line("BASEURL", sel.BaseURL)
 	line("PRESET", sel.Preset)
-	line("REMOTE", sel.Remote)
 	for _, e := range sel.Env {
 		line("ENV", e.Key+"="+e.Value)
 	}

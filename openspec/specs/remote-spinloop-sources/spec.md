@@ -3,7 +3,7 @@
 ## Purpose
 
 Define the shared mechanism for resolving and fetching a Spinloop-family
-reference — the Spinloop file itself, a `PRESET`, or a path-form `REMOTE` — that
+reference — the Spinloop file itself or a `PRESET` — that
 may name either a local path or an `http(s)` URL: how a relative reference is
 joined against the reference that named it, the bounds placed on a network
 fetch, and the guarantee that a reference is only ever fetched at the point a
@@ -40,7 +40,7 @@ relative link resolves against a base document (the base's own last path
 segment is dropped, exactly as `net/url`'s reference resolution defines).
 A reference that is already absolute — an absolute local path, or a URL —
 SHALL be used unchanged regardless of what named it, so a local Spinloop MAY
-name a `PRESET` or `REMOTE` that is itself a URL, and a URL-sourced Spinloop MAY
+name a `PRESET` that is itself a URL, and a URL-sourced Spinloop MAY
 name one that is an absolute local path.
 
 #### Scenario: Relative reference under a local base
@@ -91,9 +91,9 @@ SHALL fail naming the URL and the status received.
 ### Requirement: Fetching happens only at the point of use
 
 Resolving or parsing a Spinloop SHALL NOT, by itself, fetch anything a `PRESET`
-or path-form `REMOTE` reference names. Each SHALL be fetched only when a
-command that actually consumes it does so, at the same point in the command's
-existing flow that a local-path reference would be read from disk.
+reference names. It SHALL be fetched only when a command that actually
+consumes it does so, at the same point in the command's existing flow that a
+local-path reference would be read from disk.
 
 #### Scenario: Reading a Spinloop does not fetch its PRESET
 
@@ -103,7 +103,5 @@ existing flow that a local-path reference would be read from disk.
 
 #### Scenario: A command fetches only the reference it needs
 
-- **WHEN** `spinloop serve` runs against a Spinloop whose `PRESET` is a URL and
-  whose `REMOTE` is also a URL
-- **THEN** only the `PRESET` is fetched; the `REMOTE` reference is left
-  untouched
+- **WHEN** `spinloop serve` runs against a Spinloop whose `PRESET` is a URL
+- **THEN** only the `PRESET` is fetched

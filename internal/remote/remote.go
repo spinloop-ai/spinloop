@@ -102,9 +102,9 @@ func LoadConfig(getenv func(string) string) (Config, error) {
 	return finishConfig(cfg, getenv, path)
 }
 
-// LoadConfigFile reads the remote config from an explicit local file —
-// typically one named by a Spinloop's REMOTE instruction — then applies the
-// same environment overrides as LoadConfig. Unlike LoadConfig, the file must
+// LoadConfigFile reads a registered environment's remote.json — the file
+// named by an environment in the per-user registry — then applies the same
+// environment overrides as LoadConfig. Unlike LoadConfig, the file must
 // exist: it was asked for by name.
 func LoadConfigFile(path string, getenv func(string) string) (Config, error) {
 	data, err := os.ReadFile(path)
@@ -116,20 +116,11 @@ func LoadConfigFile(path string, getenv func(string) string) (Config, error) {
 		}
 		return Config{}, err
 	}
-	return LoadConfigBytes(data, path, getenv)
-}
-
-// LoadConfigBytes parses an already-fetched remote config — typically the
-// body of a REMOTE instruction resolved to a URL, which the caller fetches
-// itself (LoadConfigFile only knows how to read local disk) — and applies the
-// same environment overrides and validation as LoadConfigFile. source names
-// the config for error messages.
-func LoadConfigBytes(data []byte, source string, getenv func(string) string) (Config, error) {
 	var cfg Config
 	if err := json.Unmarshal(data, &cfg); err != nil {
-		return Config{}, fmt.Errorf("parsing %s: %w", source, err)
+		return Config{}, fmt.Errorf("parsing %s: %w", path, err)
 	}
-	return finishConfig(cfg, getenv, source)
+	return finishConfig(cfg, getenv, path)
 }
 
 // finishConfig applies env overrides and validates. source names the config

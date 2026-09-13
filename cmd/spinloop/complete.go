@@ -23,6 +23,7 @@ import (
 	"github.com/spinloop-ai/spinloop/internal/discovery"
 	"github.com/spinloop-ai/spinloop/internal/harness"
 	"github.com/spinloop-ai/spinloop/internal/opencode"
+	"github.com/spinloop-ai/spinloop/internal/remote"
 )
 
 // completionShells lists the supported shells in a stable order, for the
@@ -185,6 +186,20 @@ func compFiles(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCom
 // no candidates, no paths.
 func compNoValues(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
 	return nil, cobra.ShellCompDirectiveNoFileComp
+}
+
+// compEnvs offers the registered environment names. An unreadable registry
+// yields no candidates rather than an error, as completion must never fail.
+func compEnvs(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+	envs, err := remote.ListEnvironments()
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	names := make([]string, len(envs))
+	for i, e := range envs {
+		names[i] = e.Name
+	}
+	return names, cobra.ShellCompDirectiveNoFileComp
 }
 
 // Positional slots. The engine hands a command's ValidArgsFunction the

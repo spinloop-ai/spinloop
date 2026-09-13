@@ -50,56 +50,6 @@ func writeRemoteConfig(t *testing.T, serverURL string) {
 	}
 }
 
-// TestRemoteEnvName covers the harness-provider-name contract: a bare REMOTE is
-// its own name, a path form takes the name from its config's environment field,
-// and an empty value or an absent/environment-less config yields "" so the caller
-// keeps the PROVIDER value.
-func TestRemoteEnvName(t *testing.T) {
-	dir := t.TempDir()
-	withEnv := filepath.Join(dir, "with-env.json")
-	if err := os.WriteFile(withEnv, []byte(`{"environment":"dev-1"}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	withoutEnv := filepath.Join(dir, "without-env.json")
-	if err := os.WriteFile(withoutEnv, []byte(`{"base_url":"http://x/v1"}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	cases := []struct {
-		name, value, want string
-	}{
-		{"empty is no name", "", ""},
-		{"bare name is itself", "dev-1", "dev-1"},
-		{"path uses environment field", withEnv, "dev-1"},
-		{"path without environment is no name", withoutEnv, ""},
-		{"absent path is tolerated", filepath.Join(dir, "missing.json"), ""},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			got, err := remoteEnvName(tc.value, dir)
-			if err != nil {
-				t.Fatalf("remoteEnvName(%q): %v", tc.value, err)
-			}
-			if got != tc.want {
-				t.Errorf("remoteEnvName(%q) = %q, want %q", tc.value, got, tc.want)
-			}
-		})
-	}
-}
-
-// TestRemoteEnvName_Malformed checks that a path-form REMOTE naming a malformed
-// config surfaces a parse error rather than silently yielding no name.
-func TestRemoteEnvName_Malformed(t *testing.T) {
-	dir := t.TempDir()
-	bad := filepath.Join(dir, "bad.json")
-	if err := os.WriteFile(bad, []byte("{not json"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := remoteEnvName(bad, dir); err == nil {
-		t.Error("expected a parse error for a malformed remote config")
-	}
-}
-
 func TestRemoteDispatch(t *testing.T) {
 	// Bare remote shows the group's own help — generated from the tree, so
 	// its subcommand list cannot drift — rather than an error.
@@ -136,7 +86,7 @@ func TestRemoteStart_PrintsExports(t *testing.T) {
 	writeRemoteConfig(t, server.URL)
 
 	out := captureStdout(t, func() {
-		if err := cmdRemoteStart([]string{"--env"}); err != nil {
+		if err := cmdRemoteStart([]string{"--print-env"}); err != nil {
 			t.Errorf("cmdRemoteStart: %v", err)
 		}
 	})
@@ -146,7 +96,7 @@ func TestRemoteStart_PrintsExports(t *testing.T) {
 	}
 }
 
-// Start without --env prints nothing to stdout (progress goes to stderr).
+// Start without --print-env prints nothing to stdout (progress goes to stderr).
 func TestRemoteStart_NoExportsWithoutFlag(t *testing.T) {
 	isolateConfig(t)
 	stubAWSEnv(t)
@@ -163,14 +113,14 @@ func TestRemoteStart_NoExportsWithoutFlag(t *testing.T) {
 		}
 	})
 	if strings.Contains(out, "export OPENAI_") {
-		t.Errorf("start without --env should not print exports, got:\n%s", out)
+		t.Errorf("start without --print-env should not print exports, got:\n%s", out)
 	}
 }
 
-// Start with -env after a positional argument still parses the flag.
+// Start with --print-env after a positional argument still parses the flag.
 // Regression test: Go's flag package stops at the first non-flag argument,
-// so `spinloop remote start path -env` would silently ignore -env without
-// sortFlagsBeforeArgs.
+// so `spinloop remote start path --print-env` would silently ignore
+// --print-env without sortFlagsBeforeArgs.
 func TestRemoteStart_FlagAfterPositional(t *testing.T) {
 	isolateConfig(t)
 	stubAWSEnv(t)
@@ -179,28 +129,22 @@ func TestRemoteStart_FlagAfterPositional(t *testing.T) {
 		w.Write([]byte(`{"state":"ready","base_url":"http://198.51.100.1:8000/v1","api_key":"sk-test"}`))
 	}))
 	defer server.Close()
+	registerEnv(t, "testenv", remote.Config{StartURL: server.URL, StopURL: server.URL, EnvURL: server.URL, Region: "eu-west-1"})
 
 	dir := t.TempDir()
-	spinloopFile := "PROVIDER openai-compatible\nREMOTE remote.json\n"
+	spinloopFile := "PROVIDER openai-compatible\n"
 	if err := os.WriteFile(filepath.Join(dir, "Spinloop"), []byte(spinloopFile), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	cfg, err := json.Marshal(remote.Config{StartURL: server.URL, StopURL: server.URL, EnvURL: server.URL, Region: "eu-west-1"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "remote.json"), cfg, 0o600); err != nil {
 		t.Fatal(err)
 	}
 
 	out := captureStdout(t, func() {
-		if err := cmdRemoteStart([]string{dir, "-e"}); err != nil {
+		if err := cmdRemoteStart([]string{dir, "--env", "testenv", "--print-env"}); err != nil {
 			t.Errorf("cmdRemoteStart: %v", err)
 		}
 	})
 	if !strings.Contains(out, "export OPENAI_BASE_URL=http://198.51.100.1:8000/v1") ||
 		!strings.Contains(out, "export OPENAI_API_KEY=sk-test") {
-		t.Errorf("start with -e after positional should print exports, got:\n%s", out)
+		t.Errorf("start with --print-env after positional should print exports, got:\n%s", out)
 	}
 }
 
@@ -548,9 +492,13 @@ func TestRemote_RestartInGeneratedHelp(t *testing.T) {
 	}
 }
 
+// The ./Spinloop in the working directory is still read before any
+// control-plane work — here for its ENV instructions, which name the control
+// plane a command with no other configuration would not find.
 func TestRemote_SpinloopDiscovery(t *testing.T) {
 	isolateConfig(t) // no per-user config exists, so success proves discovery
 	stubAWSEnv(t)
+	unsetEnvOnCleanup(t, "SPINLOOP_REMOTE_START_URL", "SPINLOOP_REMOTE_STOP_URL", "SPINLOOP_REMOTE_REGION")
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"state":"running","healthy":true,"base_url":"http://198.51.100.1:8000/v1"}`))
@@ -559,15 +507,8 @@ func TestRemote_SpinloopDiscovery(t *testing.T) {
 
 	dir := t.TempDir()
 	t.Chdir(dir)
-	spinloopFile := "PROVIDER openai-compatible\nREMOTE remote.json\n"
+	spinloopFile := fmt.Sprintf("PROVIDER openai-compatible\nENV SPINLOOP_REMOTE_START_URL=%s\nENV SPINLOOP_REMOTE_STOP_URL=%s\nENV SPINLOOP_REMOTE_REGION=eu-west-1\n", server.URL, server.URL)
 	if err := os.WriteFile("Spinloop", []byte(spinloopFile), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	cfg, err := json.Marshal(remote.Config{StartURL: server.URL, StopURL: server.URL, Region: "eu-west-1"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile("remote.json", cfg, 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -577,23 +518,27 @@ func TestRemote_SpinloopDiscovery(t *testing.T) {
 		}
 	})
 	if !strings.Contains(out, "state: running") {
-		t.Errorf("status via Spinloop REMOTE should work, got:\n%s", out)
+		t.Errorf("status via the Spinloop's ENV should work, got:\n%s", out)
 	}
 }
 
-func TestRemote_ExplicitSpinloopNeedsRemote(t *testing.T) {
+// An explicit Spinloop no longer names an environment: read for its ENV
+// instructions and the adjacent .env, it falls through to the --env flag and
+// the per-user config, failing on the missing configuration — not on the
+// Spinloop.
+func TestRemote_ExplicitSpinloopDoesNotNameAnEnvironment(t *testing.T) {
 	isolateConfig(t)
 	t.Chdir(t.TempDir())
 	if err := os.WriteFile("Spinloop", []byte("PROVIDER ollama\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	err := cmdRemoteStatus([]string{"Spinloop"})
-	if err == nil || !strings.Contains(err.Error(), "no REMOTE") {
-		t.Errorf("explicit Spinloop without REMOTE should error, got %v", err)
+	if err == nil || !strings.Contains(err.Error(), "remote is not configured") {
+		t.Errorf("want the not-configured error, got %v", err)
 	}
 }
 
-func TestRemote_SpinloopWithoutRemoteFallsBack(t *testing.T) {
+func TestRemote_SpinloopFallsBackToTheUserConfig(t *testing.T) {
 	isolateConfig(t)
 	stubAWSEnv(t)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -613,7 +558,7 @@ func TestRemote_SpinloopWithoutRemoteFallsBack(t *testing.T) {
 		}
 	})
 	if !strings.Contains(out, "state: stopped") {
-		t.Errorf("a Spinloop without REMOTE should fall back to the user config, got:\n%s", out)
+		t.Errorf("a Spinloop with no --env should fall back to the user config, got:\n%s", out)
 	}
 }
 

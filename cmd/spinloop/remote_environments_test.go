@@ -35,7 +35,7 @@ func stateServer(t *testing.T) *httptest.Server {
 	}))
 }
 
-// A bare REMOTE name resolves through the registry.
+// A bare environment name on --env resolves through the registry.
 func TestRemote_EnvNameResolves(t *testing.T) {
 	isolateConfig(t)
 	stubAWSEnv(t)
@@ -44,41 +44,16 @@ func TestRemote_EnvNameResolves(t *testing.T) {
 	registerEnv(t, "prodenv", remote.Config{StartURL: server.URL, StopURL: server.URL, Region: "eu-west-1"})
 
 	t.Chdir(t.TempDir())
-	if err := os.WriteFile("Spinloop", []byte("PROVIDER openai-compatible\nREMOTE prodenv\n"), 0o600); err != nil {
+	if err := os.WriteFile("Spinloop", []byte("PROVIDER openai-compatible\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	out := captureStdout(t, func() {
-		if err := cmdRemoteStatus(nil); err != nil {
-			t.Errorf("status via REMOTE name: %v", err)
+		if err := cmdRemoteStatus([]string{"--env", "prodenv"}); err != nil {
+			t.Errorf("status via --env name: %v", err)
 		}
 	})
 	if !strings.Contains(out, "state: running") {
-		t.Errorf("REMOTE name should resolve via the registry, got:\n%s", out)
-	}
-}
-
-// A path-form REMOTE still resolves beside the Spinloop (back-compat).
-func TestRemote_PathFormStillWorks(t *testing.T) {
-	isolateConfig(t)
-	stubAWSEnv(t)
-	server := stateServer(t)
-	defer server.Close()
-
-	t.Chdir(t.TempDir())
-	if err := os.WriteFile("Spinloop", []byte("PROVIDER openai-compatible\nREMOTE ./remote.json\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	data, _ := json.Marshal(remote.Config{StartURL: server.URL, StopURL: server.URL, Region: "eu-west-1"})
-	if err := os.WriteFile("remote.json", data, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	out := captureStdout(t, func() {
-		if err := cmdRemoteStatus(nil); err != nil {
-			t.Errorf("status via REMOTE path: %v", err)
-		}
-	})
-	if !strings.Contains(out, "state: running") {
-		t.Errorf("REMOTE path should resolve beside the Spinloop, got:\n%s", out)
+		t.Errorf("--env name should resolve via the registry, got:\n%s", out)
 	}
 }
 

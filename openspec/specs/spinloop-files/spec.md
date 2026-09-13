@@ -13,7 +13,7 @@ provider selection — and the commands that consume and produce it:
 A Spinloop SHALL be a flat, line-oriented text file of `KEYWORD value`
 instructions. The keywords are `PROVIDER`, `MODEL`, `ALIAS`, `CONTEXT`,
 `OUTPUT`, `PARALLEL`, `BASEURL` (also accepted as `BASE-URL`, `BASE_URL`, or
-`URL`), `PRESET`, `REMOTE`, and `ENV`. Keywords SHALL match
+`URL`), `PRESET`, and `ENV`. Keywords SHALL match
 case-insensitively, with UPPERCASE as the canonical form. Blank lines, full-line
 `#` comments, and trailing comments introduced by whitespace-then-`#` SHALL be
 ignored. Each instruction SHALL take exactly one value; every instruction SHALL
@@ -54,8 +54,10 @@ the served engine's command is defined by the `local-serving` capability.
 
 #### Scenario: Naming a remote endpoint
 
-- **WHEN** a Spinloop contains `REMOTE ./remote.json`
-- **THEN** it parses, and the value is available to the `remote` command group
+- **WHEN** a Spinloop contains `REMOTE ./remote.json` on any line
+- **THEN** parsing fails on that line, since the `REMOTE` instruction was
+  removed: the environment is now named with `remote deploy --env <name>` at
+  deploy time and `--env <name>` at the commands that act on it
 
 #### Scenario: Declaring local environment variables
 
@@ -81,6 +83,27 @@ the served engine's command is defined by the `local-serving` capability.
 - **THEN** parsing accepts the raw value, exactly as it does for `CONTEXT`, and
   the command that goes on to use it (`serve`, `remote deploy`, a fleet wake)
   fails naming the value, rather than silently treating it as a slot count
+
+### Requirement: REMOTE is a removed keyword
+
+A `REMOTE` instruction SHALL be rejected at parse time with an error that names
+the offending line, says the `REMOTE` instruction was removed, and states the
+replacement: name the environment with `remote deploy --env <name>` at deploy
+time, and pass `--env <name>` to the commands that act on the environment
+(`remote` subcommands, `apply`, `unapply`, `harness`). The error SHALL NOT be
+the generic unknown-keyword message.
+
+#### Scenario: A REMOTE line is rejected with the migration message
+
+- **WHEN** a Spinloop contains `REMOTE ./remote.json` on line 3
+- **THEN** parsing fails citing line 3, saying `REMOTE` was removed, and naming
+  `--env` as the way to name the environment
+
+#### Scenario: The generic error is not used for REMOTE
+
+- **WHEN** a Spinloop contains a `REMOTE` line
+- **THEN** the error names the removal and its replacement rather than merely
+  listing the accepted keywords
 
 ### Requirement: Harness neutrality
 

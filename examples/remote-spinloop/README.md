@@ -69,7 +69,7 @@ Nothing here is fetched until the command that actually needs it runs —
 applying the Spinloop doesn't fetch the preset, and registering the alias
 doesn't either. See [Fetching a Spinloop from a
 URL](../../docs/spinloop-file.md#fetching-an-spinloop-from-a-url) for the full
-picture, including the same rules for `REMOTE`.
+picture.
 
 ## See also
 

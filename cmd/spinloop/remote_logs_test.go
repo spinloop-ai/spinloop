@@ -18,14 +18,14 @@ import (
 var errFetchFailed = errors.New("reading logs failed")
 
 // withRemoteEnvironment isolates the config home, registers one environment and
-// puts a Spinloop naming it in the working directory, so the command resolves the
-// environment through the same path a real setup does.
+// puts a Spinloop in the working directory, so the command resolves the
+// environment (by its --env name) through the same path a real setup does.
 func withRemoteEnvironment(t *testing.T, name string) {
 	t.Helper()
 	isolateConfig(t)
 	t.Chdir(t.TempDir())
 	if err := os.WriteFile("Spinloop",
-		[]byte("PROVIDER llamacpp\nMODEL unsloth/Qwen3.6-27B-GGUF\nREMOTE "+name+"\n"), 0o600); err != nil {
+		[]byte("PROVIDER llamacpp\nMODEL unsloth/Qwen3.6-27B-GGUF\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	path := must1(remote.EnvConfigPath(name))
@@ -135,7 +135,7 @@ func TestRemoteLogsDefaultsToTheEngineSourceAndAnHourWindow(t *testing.T) {
 	})
 	withRemoteEnvironment(t, "prod")
 
-	if err := cmdRemote([]string{"logs"}); err != nil {
+	if err := cmdRemote([]string{"logs", "--env", "prod"}); err != nil {
 		t.Fatal(err)
 	}
 	if got.Source != remote.LogSourceEngine {
@@ -160,7 +160,7 @@ func TestRemoteLogsPassesTheFlagsThrough(t *testing.T) {
 	})
 	withRemoteEnvironment(t, "prod")
 
-	if err := cmdRemote([]string{"logs", "--source", "boot", "--since", "15m",
+	if err := cmdRemote([]string{"logs", "--env", "prod", "--source", "boot", "--since", "15m",
 		"--limit", "5", "--instance", "i-42"}); err != nil {
 		t.Fatal(err)
 	}

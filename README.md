@@ -381,7 +381,7 @@ spinloop export > Spinloop    # capture your current setup as a Spinloop
 
 A `Spinloop` describes one provider selection and applies exactly like the
 equivalent `add`. The full keyword set is `PROVIDER`, `MODEL`, `ALIAS`,
-`CONTEXT`, `OUTPUT`, `PARALLEL`, `BASEURL`, `PRESET`, `REMOTE` and `ENV`.
+`CONTEXT`, `OUTPUT`, `PARALLEL`, `BASEURL`, `PRESET` and `ENV`.
 Routing a launch through a fleet is a launch concern, not a Spinloop field — see
 the [fleet file](docs/commands/fleet.md). Full syntax is in
 [`docs/spinloop-file.md`](docs/spinloop-file.md), and ready-to-use examples live
@@ -618,17 +618,22 @@ Running a model on your own cloud GPU box? [`remote/`](remote/) deploys one.
 while you are using it, and stops itself after a period of idleness.
 
 ```sh
-spinloop remote start     # boot the instance, wait for the model to load,
-                         # then print OPENAI_BASE_URL / OPENAI_API_KEY exports
-spinloop remote status    # instance state, endpoint health, and when it last
-                         # did any work
-spinloop remote metrics   # tokens, GPU, CPU and RAM — plus the same last-active
-spinloop remote logs      # what the engine (or the boot) said, even after it's gone
-spinloop remote pause     # stop now, but keep it re-wakeable
-spinloop remote restart   # fresh engine, same address: stop it, then wake it
-spinloop remote keep 4h   # hold it against the idle sweep for 4 hours
-                         # (start --keep does the same at wake time)
-spinloop remote stop      # terminate now instead of waiting for the idle timer
+spinloop remote start --env dev-2 --print-env   # boot the instance, wait for the
+                          # model to load, then print OPENAI_BASE_URL /
+                          # OPENAI_API_KEY exports for eval
+spinloop remote status --env dev-2              # instance state, endpoint health,
+                          # and when it last did any work
+spinloop remote metrics --env dev-2             # tokens, GPU, CPU and RAM — plus
+                          # the same last-active
+spinloop remote logs --env dev-2                # what the engine (or the boot)
+                          # said, even after it's gone
+spinloop remote pause --env dev-2               # stop now, but keep it re-wakeable
+spinloop remote restart --env dev-2             # fresh engine, same address: stop
+                          # it, then wake it
+spinloop remote keep 4h --env dev-2             # hold it against the idle sweep
+                          # for 4 hours (start --keep does the same at wake time)
+spinloop remote stop --env dev-2                # terminate now instead of waiting
+                          # for the idle timer
 ```
 
 Instances ship their engine and boot output to CloudWatch, so `spinloop remote
@@ -636,23 +641,24 @@ logs` still works once the instance has terminated — including for a start tha
 failed before the engine came up (`--source boot`). See
 [docs/commands/remote.md](docs/commands/remote.md#reading-the-logs).
 
-Configuration lives in a `remote.json`. A project's `Spinloop` file can name
-one with a `REMOTE` instruction — either a path (`REMOTE remote.json`,
-resolved relative to the Spinloop, like `PRESET`, so the pair travel together)
-or the name of a registered environment (`REMOTE dev-2`, whose file sits at
+Configuration lives in a `remote.json` per **environment**, named with the
+`--env` flag on every command above (`--env dev-2` selects the file at
 `remotes/dev-2/remote.json` under spinloop's config directory,
-`${SPINLOOP_CONFIG_DIR:-${XDG_CONFIG_HOME:-~/.config}/spinloop}`). With no
-`REMOTE`, the `default` environment is used. Either way, `spinloop remote deploy` writes the file for you when it registers
-the environment; deploying [`remote/`](remote/) yourself prints the same values:
+`${SPINLOOP_CONFIG_DIR:-${XDG_CONFIG_HOME:-~/.config}/spinloop}`); with no
+`--env`, the `default` environment is used. The Spinloop itself says only what
+the environment serves — the name is a machine-local choice, so it stays out of
+the file. `spinloop remote deploy --env dev-2` writes the file for you when it
+registers the environment; deploying [`remote/`](remote/) yourself prints the
+same values:
 
 ```json
 {"start_url": "https://...lambda-url...on.aws/", "stop_url": "https://...", "region": "eu-west-1", "base_url": "http://198.51.100.7:8000/v1"}
 ```
 
 `base_url` is the endpoint's own address. You never have to quote it back —
-`start` and `status` print it, and a `Spinloop` with a `REMOTE` line can leave
-`BASEURL` out and still point your agent at the endpoint. A `BASEURL` in the
-Spinloop wins if you do set one.
+`start` and `status` print it, and `spinloop apply --env dev-2` can leave
+`BASEURL` out of the Spinloop and still point your agent at the endpoint. A
+`BASEURL` in the Spinloop wins if you do set one.
 
 Every URL and the region can be overridden with the matching
 [`SPINLOOP_REMOTE_*`](docs/env-vars.md) environment variable. The commands

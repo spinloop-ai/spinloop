@@ -489,8 +489,8 @@ does without routing.
 
 Routing SHALL choose one node and give the launched agent that
 node's engine as its OpenAI-compatible endpoint: the chosen base URL SHALL be
-written as the applied provider's base URL, in the same place a `REMOTE`
-endpoint's address is written, and SHALL also be placed in the launched agent's
+written as the applied provider's base URL, in the same place an environment's
+address is written, and SHALL also be placed in the launched agent's
 environment as `OPENAI_BASE_URL`.
 
 A variable already set in spinloop's environment SHALL win, as it does on the
@@ -500,6 +500,12 @@ choice.
 A Spinloop that pins a `BASEURL` SHALL NOT be routed: the pinned address wins
 and spinloop SHALL say it is not routing through the fleet, rather than
 silently selecting a node whose address it then discards.
+
+A launch given `--env <name>` — or its `-e <name>` short form — alongside a
+fleet, whether the directory's `fleet.yaml` or a `--fleet` flag, SHALL fail
+naming both: each is an answer to where the model is served from — one names a
+specific environment, the other a set of nodes to choose between — and a launch
+stating both is a mistake rather than a precedence to resolve.
 
 The chosen node and the reason it was chosen SHALL be reported on stderr before
 the agent launches, so a launch that lands somewhere unexpected says so at the
@@ -567,6 +573,12 @@ time rather than at the first request.
 - **WHEN** `OPENAI_BASE_URL` is already set in the user's environment and a
   fleet-routed launch runs
 - **THEN** the existing value reaches the agent unchanged
+
+#### Scenario: --env and a fleet conflict
+
+- **WHEN** the user runs `spinloop harness --env dev-2` in a directory holding
+  a `fleet.yaml`, or with a `--fleet` flag
+- **THEN** the launch fails naming both the `--env` flag and the fleet
 
 #### Scenario: The choice is announced
 
