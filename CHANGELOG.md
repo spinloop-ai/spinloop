@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [1.38.0] - 2026-09-13
+### Added
+- feat(hf): write a Spinloop from a Hugging Face reference
+- feat(remote): add an instance type to remote deploys and fleet nodes
+- feat: add the fleet gateway, a fleet's OpenAI-compatible front door
+- feat: add the fleet harness command
+- feat: drop the Spinloop's FLEET and route launches by fleet file
+- feat: drop the Spinloop's REMOTE keyword and name environments with --env
+
+### Changed
+- docs(alias): make the URL form discoverable in the alias help
+- docs: archive add-hf-spinloop-command and sync its two specs
+- test(remote): make the expired-credentials log hint test hermetic
+
+### Other
+- perf: serve the daemon's host figures from the sampler
+
 ## [1.37.0] - 2026-09-08
 ### Added
 - feat(daemon): silence successful API request summaries at default level (#183)
