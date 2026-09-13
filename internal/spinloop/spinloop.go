@@ -65,6 +65,12 @@ type Selection struct {
 	// Env holds the Spinloop's ENV instructions in file order. Unlike the other
 	// fields it may carry several entries, since ENV may repeat.
 	Env []EnvVar
+	// DiscoveredModels is set at apply time, like DisplayName, never parsed
+	// from a Spinloop file: the model IDs a gateway reported when the
+	// selection named neither a model nor an alias to route by. A harness
+	// whose config format holds more than one model per provider uses it to
+	// populate its model list instead of leaving one empty.
+	DiscoveredModels []string
 }
 
 // EnvVar is one ENV instruction: an environment variable to set for the local

@@ -127,6 +127,10 @@ type Choice struct {
 	// DefaultGatewayTokenEnv when the section names none. The launch resolves
 	// it through its key chain, as with every other key.
 	GatewayTokenEnv string
+	// Label names a Gateway choice for display: GatewayConfig.Label(), carried
+	// here so a caller with only the Choice — not the section it came from —
+	// can still label a harness it configures with no model of its own.
+	Label string
 }
 
 // candidate pairs a node's file entry with what it answered, keeping the

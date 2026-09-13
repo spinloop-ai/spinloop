@@ -1,6 +1,9 @@
 package main
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -327,5 +330,384 @@ func TestCmdFleetHarnessNoWakeRefuses(t *testing.T) {
 	}
 	if _, err := os.ReadFile(argsFile); err == nil {
 		t.Error("the harness was launched for a route that refused to wake")
+	}
+}
+
+// newModelsGateway serves GET /v1/models in the OpenAI list shape, refusing a
+// request whose bearer token does not match wantToken.
+func newModelsGateway(t *testing.T, wantToken string, ids []string) *httptest.Server {
+	t.Helper()
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v1/models", func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Authorization"); got != "Bearer "+wantToken {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		data := make([]map[string]any, len(ids))
+		for i, id := range ids {
+			data[i] = map[string]any{"id": id, "object": "model"}
+		}
+		json.NewEncoder(w).Encode(map[string]any{"object": "list", "data": data})
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// gatewayKeyForTest is the provider key a gateway-only launch writes its
+// config under for a gateway with no explicit gateway.name: mirrors
+// GatewayConfig.Label() falling back to the address's host.
+func gatewayKeyForTest(gw *httptest.Server) string {
+	return gatewayProviderKey(strings.TrimPrefix(gw.URL, "http://"))
+}
+
+// No Spinloop given, no directory to find one beside, the fleet file names a
+// gateway: the command does not fail. It configures opencode's
+// openai-compatible provider at the gateway's address, its models populated
+// from the gateway's live listing, and no default model.
+func TestCmdFleetHarnessNoSpinloopUsesGatewayModels(t *testing.T) {
+	home := isolateConfig(t)
+	gw := newModelsGateway(t, "gw-token", []string{"m1", "m2"})
+	t.Setenv("GATEWAY_TOKEN", "gw-token")
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("OPENAI_BASE_URL", "")
+	argsFile := filepath.Join(t.TempDir(), "args")
+	envFile := filepath.Join(t.TempDir(), "env")
+	stubHarnessBinaryWithEnv(t, argsFile, envFile)
+
+	fleetHarnessDir(t,
+		"nodes:\n  - name: dead\n    host: 127.0.0.1\n    port: 1\ngateway:\n  url: "+gw.URL+"\n  tokenEnv: GATEWAY_TOKEN\n",
+		"")
+	captureStdout(t, func() {
+		if err := cmdFleetHarness(nil); err != nil {
+			t.Fatalf("cmdFleetHarness: %v", err)
+		}
+	})
+	if _, err := os.ReadFile(argsFile); err != nil {
+		t.Fatalf("the harness was not launched: %v", err)
+	}
+	config, err := os.ReadFile(filepath.Join(home, ".config", "opencode", "opencode.json"))
+	if err != nil {
+		t.Fatalf("the harness config was not written: %v", err)
+	}
+	var root map[string]any
+	if err := json.Unmarshal(config, &root); err != nil {
+		t.Fatalf("opencode.json not valid JSON: %v", err)
+	}
+	if v, ok := root["model"]; ok {
+		t.Errorf("no default model should be set, got: %v", v)
+	}
+	wantKey := gatewayKeyForTest(gw)
+	provider, _ := root["provider"].(map[string]any)
+	entry, ok := provider[wantKey].(map[string]any)
+	if !ok {
+		t.Fatalf("provider %q not found in %v", wantKey, provider)
+	}
+	models, _ := entry["models"].(map[string]any)
+	for _, id := range []string{"m1", "m2"} {
+		if _, ok := models[id]; !ok {
+			t.Errorf("discovered model %q missing from provider.models: %v", id, models)
+		}
+	}
+	opts, _ := entry["options"].(map[string]any)
+	if baseURL, _ := opts["baseURL"].(string); baseURL != gw.URL+"/v1" {
+		t.Errorf("baseURL = %q, want %q", baseURL, gw.URL+"/v1")
+	}
+	host := strings.TrimPrefix(gw.URL, "http://")
+	if name, _ := entry["name"].(string); name != "Gateway ("+host+")" {
+		t.Errorf("name = %q, want it to read like the remote-environment pattern (e.g. %q)", name, "Gateway ("+host+")")
+	}
+}
+
+// The same launch with --harness pi: the discovered models land in Pi's own
+// models.json provider entry instead.
+func TestCmdFleetHarnessNoSpinloopUsesGatewayModelsForPi(t *testing.T) {
+	home := isolateConfig(t)
+	gw := newModelsGateway(t, "gw-token", []string{"m1", "m2"})
+	t.Setenv("GATEWAY_TOKEN", "gw-token")
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("OPENAI_BASE_URL", "")
+	argsFile := filepath.Join(t.TempDir(), "args")
+	stubHarnessBinary(t, "pi", argsFile)
+
+	fleetHarnessDir(t,
+		"nodes:\n  - name: dead\n    host: 127.0.0.1\n    port: 1\ngateway:\n  url: "+gw.URL+"\n  tokenEnv: GATEWAY_TOKEN\n",
+		"")
+	captureStdout(t, func() {
+		if err := cmdFleetHarness([]string{"-H", "pi"}); err != nil {
+			t.Fatalf("cmdFleetHarness -H pi: %v", err)
+		}
+	})
+	root := readPiModels(t, home)
+	providers, _ := root["providers"].(map[string]any)
+	provider, ok := providers[gatewayKeyForTest(gw)].(map[string]any)
+	if !ok {
+		t.Fatalf("provider %q not found in %v", gatewayKeyForTest(gw), providers)
+	}
+	models, _ := provider["models"].([]any)
+	got := map[string]bool{}
+	for _, raw := range models {
+		if m, ok := raw.(map[string]any); ok {
+			if id, _ := m["id"].(string); id != "" {
+				got[id] = true
+			}
+		}
+	}
+	for _, id := range []string{"m1", "m2"} {
+		if !got[id] {
+			t.Errorf("discovered model %q missing from pi's models array: %v", id, models)
+		}
+	}
+}
+
+// The gateway authenticates fine but its models endpoint fails: the launch
+// still succeeds, with a warning and no models populated — the models query
+// is a convenience for the picker, not something the launch depends on.
+func TestCmdFleetHarnessNoSpinloopModelsFetchFails(t *testing.T) {
+	home := isolateConfig(t)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v1/models", func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "boom", http.StatusInternalServerError)
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	t.Setenv("GATEWAY_TOKEN", "gw-token")
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("OPENAI_BASE_URL", "")
+	argsFile := filepath.Join(t.TempDir(), "args")
+	envFile := filepath.Join(t.TempDir(), "env")
+	stubHarnessBinaryWithEnv(t, argsFile, envFile)
+
+	fleetHarnessDir(t,
+		"nodes:\n  - name: dead\n    host: 127.0.0.1\n    port: 1\ngateway:\n  url: "+srv.URL+"\n  tokenEnv: GATEWAY_TOKEN\n",
+		"")
+	stderr := captureStderr(t, func() {
+		captureStdout(t, func() {
+			if err := cmdFleetHarness(nil); err != nil {
+				t.Fatalf("cmdFleetHarness: %v", err)
+			}
+		})
+	})
+	if !strings.Contains(stderr, "Warning: could not list the gateway's models") {
+		t.Errorf("expected a warning about the failed models fetch, got:\n%s", stderr)
+	}
+	if _, err := os.ReadFile(argsFile); err != nil {
+		t.Fatalf("the harness should still launch despite the fetch failure: %v", err)
+	}
+	config, err := os.ReadFile(filepath.Join(home, ".config", "opencode", "opencode.json"))
+	if err != nil {
+		t.Fatalf("the harness config was not written: %v", err)
+	}
+	var root map[string]any
+	if err := json.Unmarshal(config, &root); err != nil {
+		t.Fatalf("opencode.json not valid JSON: %v", err)
+	}
+	wantKey := gatewayKeyForTest(srv)
+	provider, _ := root["provider"].(map[string]any)
+	entry, ok := provider[wantKey].(map[string]any)
+	if !ok {
+		t.Fatalf("provider %q not found in %v", wantKey, provider)
+	}
+	if models, ok := entry["models"]; ok {
+		t.Errorf("no models should be populated after a failed fetch, got: %v", models)
+	}
+}
+
+// A fleet file's gateway.name overrides the address-derived label: the
+// provider is keyed and displayed under the hand-picked name instead.
+func TestCmdFleetHarnessNoSpinloopUsesGatewayName(t *testing.T) {
+	home := isolateConfig(t)
+	gw := newModelsGateway(t, "gw-token", []string{"m1"})
+	t.Setenv("GATEWAY_TOKEN", "gw-token")
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("OPENAI_BASE_URL", "")
+	argsFile := filepath.Join(t.TempDir(), "args")
+	envFile := filepath.Join(t.TempDir(), "env")
+	stubHarnessBinaryWithEnv(t, argsFile, envFile)
+
+	fleetHarnessDir(t,
+		"nodes:\n  - name: dead\n    host: 127.0.0.1\n    port: 1\ngateway:\n  url: "+gw.URL+"\n  tokenEnv: GATEWAY_TOKEN\n  name: remote-llms\n",
+		"")
+	captureStdout(t, func() {
+		if err := cmdFleetHarness(nil); err != nil {
+			t.Fatalf("cmdFleetHarness: %v", err)
+		}
+	})
+	config, err := os.ReadFile(filepath.Join(home, ".config", "opencode", "opencode.json"))
+	if err != nil {
+		t.Fatalf("the harness config was not written: %v", err)
+	}
+	var root map[string]any
+	if err := json.Unmarshal(config, &root); err != nil {
+		t.Fatalf("opencode.json not valid JSON: %v", err)
+	}
+	provider, _ := root["provider"].(map[string]any)
+	entry, ok := provider["gateway-remote-llms"].(map[string]any)
+	if !ok {
+		t.Fatalf("provider %q not found in %v", "gateway-remote-llms", provider)
+	}
+	if name, _ := entry["name"].(string); name != "Gateway (remote-llms)" {
+		t.Errorf("name = %q, want %q", name, "Gateway (remote-llms)")
+	}
+}
+
+// A fleet file naming no gateway still fails needing a Spinloop, even though
+// it resolves fine — only a fleet naming a gateway waives the requirement.
+func TestCmdFleetHarnessNeedsASpinloopWithNodesOnlyFleet(t *testing.T) {
+	isolateConfig(t)
+	argsFile := filepath.Join(t.TempDir(), "args")
+	stubHarnessBinary(t, "opencode", argsFile)
+
+	fleetHarnessDir(t, "nodes:\n  - name: dead\n    host: 127.0.0.1\n    port: 1\n", "")
+	captureStdout(t, func() {
+		err := cmdFleetHarness(nil)
+		if err == nil {
+			t.Fatal("a launch with no Spinloop and no gateway should fail")
+		}
+		if !strings.Contains(err.Error(), "a launch needs a Spinloop to know which model to route") {
+			t.Errorf("the failure should say a launch needs a Spinloop, got:\n%v", err)
+		}
+	})
+	if _, err := os.ReadFile(argsFile); err == nil {
+		t.Error("the harness was launched with no Spinloop and no gateway to route through")
+	}
+}
+
+// No Spinloop, a gateway named, but its token is unset: the command still
+// fails naming the fleet file (not an empty path) rather than launching with
+// no way to authenticate.
+func TestCmdFleetHarnessNoSpinloopGatewayNoToken(t *testing.T) {
+	isolateConfig(t)
+	t.Setenv("GATEWAY_TOKEN", "")
+	argsFile := filepath.Join(t.TempDir(), "args")
+	stubHarnessBinary(t, "opencode", argsFile)
+
+	fleetHarnessDir(t,
+		"nodes:\n  - name: dead\n    host: 127.0.0.1\n    port: 1\ngateway:\n  url: http://gw.internal:4000\n  tokenEnv: GATEWAY_TOKEN\n",
+		"")
+	captureStdout(t, func() {
+		err := cmdFleetHarness(nil)
+		if err == nil {
+			t.Fatal("a gateway with no token set should fail")
+		}
+		if !strings.Contains(err.Error(), "no token to reach the gateway") {
+			t.Errorf("the failure should say there is no token, got:\n%v", err)
+		}
+		if !strings.Contains(err.Error(), "fleet.yaml") {
+			t.Errorf("the failure should name the fleet file, not an empty path, got:\n%v", err)
+		}
+	})
+	if _, err := os.ReadFile(argsFile); err == nil {
+		t.Error("the harness was launched with no token to reach the gateway")
+	}
+}
+
+// No Spinloop at all, and the working directory holds no .env of its own: the
+// gateway's token still resolves from the .env beside the fleet file, not the
+// working directory — matching what the "no token" error already claims, and
+// regardless of where the command was run from.
+func TestCmdFleetHarnessNoSpinloopReadsEnvBesideFleetFile(t *testing.T) {
+	isolateConfig(t)
+	gw := newModelsGateway(t, "gw-token", []string{"m1"})
+	t.Setenv("GATEWAY_TOKEN", "")
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("OPENAI_BASE_URL", "")
+	argsFile := filepath.Join(t.TempDir(), "args")
+	envFile := filepath.Join(t.TempDir(), "env")
+	stubHarnessBinaryWithEnv(t, argsFile, envFile)
+
+	fleetDir := t.TempDir()
+	fleetPath := fleetFileIn(t, fleetDir,
+		"nodes:\n  - name: dead\n    host: 127.0.0.1\n    port: 1\ngateway:\n  url: "+gw.URL+"\n  tokenEnv: GATEWAY_TOKEN\n")
+	mustWrite(t, filepath.Join(fleetDir, ".env"), "GATEWAY_TOKEN=gw-token\n")
+	t.Chdir(t.TempDir())
+
+	captureStdout(t, func() {
+		if err := cmdFleetHarness([]string{"--fleet", fleetPath}); err != nil {
+			t.Fatalf("cmdFleetHarness: %v", err)
+		}
+	})
+	data, err := os.ReadFile(envFile)
+	if err != nil {
+		t.Fatalf("the harness was not launched: %v", err)
+	}
+	if !strings.Contains(string(data), "KEY=gw-token") {
+		t.Errorf("the agent should carry the token from the .env beside the fleet file, got:\n%s", data)
+	}
+}
+
+// A hand-written Spinloop naming only a provider, routed at a gateway, gets
+// its model list populated the same way the no-Spinloop case does.
+func TestCmdFleetHarnessHandwrittenProviderOnlySpinloopGetsModels(t *testing.T) {
+	home := isolateConfig(t)
+	gw := newModelsGateway(t, "gw-token", []string{"m1"})
+	t.Setenv("GATEWAY_TOKEN", "gw-token")
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("OPENAI_BASE_URL", "")
+	argsFile := filepath.Join(t.TempDir(), "args")
+	envFile := filepath.Join(t.TempDir(), "env")
+	stubHarnessBinaryWithEnv(t, argsFile, envFile)
+
+	fleetHarnessDir(t,
+		"nodes:\n  - name: dead\n    host: 127.0.0.1\n    port: 1\ngateway:\n  url: "+gw.URL+"\n  tokenEnv: GATEWAY_TOKEN\n",
+		"PROVIDER "+gatewayProviderID+"\n")
+	captureStdout(t, func() {
+		if err := cmdFleetHarness(nil); err != nil {
+			t.Fatalf("cmdFleetHarness: %v", err)
+		}
+	})
+	config, err := os.ReadFile(filepath.Join(home, ".config", "opencode", "opencode.json"))
+	if err != nil {
+		t.Fatalf("the harness config was not written: %v", err)
+	}
+	var root map[string]any
+	if err := json.Unmarshal(config, &root); err != nil {
+		t.Fatalf("opencode.json not valid JSON: %v", err)
+	}
+	wantKey := gatewayKeyForTest(gw)
+	provider, _ := root["provider"].(map[string]any)
+	entry, ok := provider[wantKey].(map[string]any)
+	if !ok {
+		t.Fatalf("provider %q not found in %v", wantKey, provider)
+	}
+	models, _ := entry["models"].(map[string]any)
+	if _, ok := models["m1"]; !ok {
+		t.Errorf("discovered model missing from provider.models: %v", models)
+	}
+}
+
+// A gateway-only launch with --harness lucinate still succeeds — lucinate's
+// connection holds one model, so the discovered list is not consulted, but
+// the connection itself is written with the gateway's address and no
+// defaultModel key.
+func TestCmdFleetHarnessNoSpinloopLucinateNoModelList(t *testing.T) {
+	home := isolateConfig(t)
+	gw := newModelsGateway(t, "gw-token", []string{"m1"})
+	t.Setenv("GATEWAY_TOKEN", "gw-token")
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("OPENAI_BASE_URL", "")
+	argsFile := filepath.Join(t.TempDir(), "args")
+	stubHarnessBinary(t, "lucinate", argsFile)
+
+	fleetHarnessDir(t,
+		"nodes:\n  - name: dead\n    host: 127.0.0.1\n    port: 1\ngateway:\n  url: "+gw.URL+"\n  tokenEnv: GATEWAY_TOKEN\n",
+		"")
+	captureStdout(t, func() {
+		if err := cmdFleetHarness([]string{"-H", "lucinate"}); err != nil {
+			t.Fatalf("cmdFleetHarness -H lucinate: %v", err)
+		}
+	})
+	root := readLucinateStore(t, home)
+	conn := lucinateConn(t, root, gatewayKeyForTest(gw))
+	if url, _ := conn["url"].(string); url != gw.URL+"/v1" {
+		t.Errorf("url = %q, want %q", url, gw.URL+"/v1")
+	}
+	if v, ok := conn["defaultModel"]; ok {
+		t.Errorf("no defaultModel should be set, got: %v", v)
+	}
+	host := strings.TrimPrefix(gw.URL, "http://")
+	if name, _ := conn["name"].(string); name != "Gateway ("+host+")" {
+		t.Errorf("name = %q, want it to read like the remote-environment pattern (e.g. %q)", name, "Gateway ("+host+")")
 	}
 }

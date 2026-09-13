@@ -850,9 +850,18 @@ func runFleetRoute(path, node, prefer string, args []string) error {
 // cmdFleetRoute runs the command through the tree — the seam the suite calls.
 func cmdFleetRoute(args []string) error { return execCmd(fleetRouteCmd(), args) }
 
+// gatewayProviderID is the catalogue provider a gateway-only launch
+// configures — a generic OpenAI-compatible endpoint — when no Spinloop names
+// one: the gateway resolves the model per request, so nothing here needs to
+// name one either.
+const gatewayProviderID = "openai-compatible"
+
 // fleetHarnessCmd configures the active harness for the fleet file and
 // launches it: the fleet-level form of a launch routed through a fleet, in
-// which the fleet file comes from the command, never from the Spinloop.
+// which the fleet file comes from the command, never from the Spinloop. When
+// the fleet file names a gateway and no Spinloop is given, no Spinloop is
+// required at all: the gateway resolves the model per request, so the
+// harness is pointed at it with no default model set.
 func fleetHarnessCmd() *cobra.Command {
 	var spinloopPath spinloopPathFlag
 	var fleetPath, node, prefer, harnessName string
@@ -866,7 +875,12 @@ the fleet-level form of a launch routed through a fleet. The Spinloop is taken
 the way spinloop harness takes one — a leading alias or path, -O/--spinloop, or
 the Spinloop beside the fleet file — and the fleet file from -f/--fleet,
 defaulting to the fleet.yaml beside it: the fleet comes from the command, never
-from the Spinloop. A Spinloop's pinned BASEURL is not routed, as on the launch.`,
+from the Spinloop. A Spinloop's pinned BASEURL is not routed, as on the launch.
+
+When the fleet file names a gateway and no Spinloop is given (none named, and
+none beside the fleet file), none is required: the gateway resolves the model
+per request, so the harness is configured with the gateway's base URL and
+token, and no default model.`,
 		Args:              cobra.MaximumNArgs(1),
 		SilenceErrors:     true,
 		SilenceUsage:      true,
@@ -895,7 +909,9 @@ from the Spinloop. A Spinloop's pinned BASEURL is not routed, as on the launch.`
 func cmdFleetHarness(args []string) error { return execCmd(fleetHarnessCmd(), args) }
 
 // runFleetHarness is the body of `spinloop fleet harness`: read the Spinloop,
-// route the launch at the fleet's gateway or a chosen node, apply, launch.
+// route the launch at the fleet's gateway or a chosen node, apply, launch. With
+// no Spinloop given and the fleet naming a gateway, it synthesises a bare
+// provider selection instead of failing — see the gatewayProviderID case below.
 func runFleetHarness(sp spinloopPathFlag, fleetPath, node, prefer, harnessName string, noWake bool, wakeTimeout time.Duration, args []string) error {
 	h, _, err := harness.Resolve(harnessName)
 	if err != nil {
@@ -919,15 +935,6 @@ func runFleetHarness(sp spinloopPathFlag, fleetPath, node, prefer, harnessName s
 		// the default Spinloop, resolved as SPINLOOP_ALIAS > ./Spinloop.
 		given = true
 	}
-	sel, resolvedPath, err := readSpinloop("spinloop fleet harness <spinloop>", spinloopArg)
-	if err != nil {
-		if !given {
-			// Nothing was given, so the default file was looked for and not
-			// found: say what a launch cannot do without it.
-			return fmt.Errorf("a launch needs a Spinloop to know which model to route: %v", err)
-		}
-		return err
-	}
 
 	// The fleet file: -f when given, the fleet.yaml beside the command when
 	// not — the fleet comes from the command, never from the Spinloop, and
@@ -942,6 +949,26 @@ func runFleetHarness(sp spinloopPathFlag, fleetPath, node, prefer, harnessName s
 	}
 	if route.fleetPath == "" {
 		route.fleetPath = fleet.DefaultFile
+	}
+
+	sel, resolvedPath, err := readSpinloop("spinloop fleet harness <spinloop>", spinloopArg)
+	if err != nil {
+		if given {
+			return err
+		}
+		// Nothing was given, so the default file was looked for and not
+		// found. That fails a launch that must choose a node — but a fleet
+		// naming a gateway resolves the model per request rather than by
+		// node choice, so a launch through one needs no Spinloop at all.
+		cfg, cfgErr := fleet.Resolve(route.fleetPath)
+		if cfgErr != nil {
+			return fmt.Errorf("a launch needs a Spinloop to know which model to route: %v", err)
+		}
+		if _, ok := cfg.GatewaySection(); !ok {
+			return fmt.Errorf("a launch needs a Spinloop to know which model to route: %v", err)
+		}
+		sel = spinloop.Selection{Provider: gatewayProviderID}
+		resolvedPath = ""
 	}
 
 	sel, envDir, remoteResp, choice, err := applyRoutedSpinloop(sel, resolvedPath, "", h, route, false)

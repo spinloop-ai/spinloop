@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -9,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -618,6 +620,95 @@ func TestCmdInitProviders_NoClobber(t *testing.T) {
 	got, _ = os.ReadFile(path)
 	if !bytes.Equal(got, catalog.EmbeddedYAML()) {
 		t.Error("--force did not overwrite with the embedded catalogue")
+	}
+}
+
+// TestFetchGatewayModels_Success decodes the OpenAI list shape into an ordered
+// slice of IDs, and sends the token as a bearer header.
+func TestFetchGatewayModels_Success(t *testing.T) {
+	var gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		if r.URL.Path != "/models" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		json.NewEncoder(w).Encode(map[string]any{
+			"object": "list",
+			"data": []map[string]any{
+				{"id": "m1", "object": "model"},
+				{"id": "m2", "object": "model"},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	ids, err := fetchGatewayModels(context.Background(), srv.URL, "sekret")
+	if err != nil {
+		t.Fatalf("fetchGatewayModels: %v", err)
+	}
+	if want := []string{"m1", "m2"}; !reflect.DeepEqual(ids, want) {
+		t.Errorf("ids = %v, want %v", ids, want)
+	}
+	if gotAuth != "Bearer sekret" {
+		t.Errorf("Authorization = %q, want %q", gotAuth, "Bearer sekret")
+	}
+}
+
+// TestFetchGatewayModels_Unreachable fails distinctly from an HTTP-level
+// failure when the gateway cannot even be connected to — the realistic "the
+// gateway is down" case this feature's non-fatal handling is built around.
+func TestFetchGatewayModels_Unreachable(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	url := srv.URL
+	srv.Close() // nothing is listening here any more
+
+	if _, err := fetchGatewayModels(context.Background(), url, "sekret"); err == nil {
+		t.Fatal("expected an error when the gateway cannot be reached")
+	}
+}
+
+// TestFetchGatewayModels_NonOK fails on a non-200 response rather than trying
+// to decode it as a model list.
+func TestFetchGatewayModels_NonOK(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "nope", http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+
+	if _, err := fetchGatewayModels(context.Background(), srv.URL, "sekret"); err == nil {
+		t.Fatal("expected an error for a non-200 response")
+	}
+}
+
+// TestFetchGatewayModels_Malformed fails on a body that is not the OpenAI
+// list shape, rather than returning a nonsense model list.
+func TestFetchGatewayModels_Malformed(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("not json"))
+	}))
+	defer srv.Close()
+
+	if _, err := fetchGatewayModels(context.Background(), srv.URL, "sekret"); err == nil {
+		t.Fatal("expected an error for a malformed response")
+	}
+}
+
+// TestGatewayProviderKey covers the slugging used to key a gateway-routed
+// selection's provider block: lowercased, non-alphanumerics collapsed to a
+// single hyphen, and a sensible fallback when the label slugs to nothing.
+func TestGatewayProviderKey(t *testing.T) {
+	cases := []struct{ label, want string }{
+		{"localhost:4000", "gateway-localhost-4000"},
+		{"remote-llms", "gateway-remote-llms"},
+		{"Remote LLMs", "gateway-remote-llms"},
+		{"127.0.0.1:4000", "gateway-127-0-0-1-4000"},
+		{"---", "gateway"},
+		{"", "gateway"},
+	}
+	for _, c := range cases {
+		if got := gatewayProviderKey(c.label); got != c.want {
+			t.Errorf("gatewayProviderKey(%q) = %q, want %q", c.label, got, c.want)
+		}
 	}
 }
 

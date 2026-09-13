@@ -10,6 +10,7 @@ package fleet
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -201,6 +202,24 @@ type GatewayConfig struct {
 	// TokenEnv names the environment variable holding the gateway's token.
 	// Empty means DefaultGatewayTokenEnv.
 	TokenEnv string `yaml:"tokenEnv"`
+	// Name labels this gateway for a harness a launch configures with no
+	// model of its own to name it by — see Label. Optional: it exists only
+	// to read better than the address-derived default in a model picker.
+	Name string `yaml:"name"`
+}
+
+// Label names this gateway for display and for keying a harness's provider
+// entry when nothing else does: the section's own Name when set, otherwise
+// the address's host — enough to tell two gateways apart in a picker without
+// requiring every fleet file to name one explicitly.
+func (g GatewayConfig) Label() string {
+	if g.Name != "" {
+		return g.Name
+	}
+	if u, err := url.Parse(g.URL); err == nil && u.Host != "" {
+		return u.Host
+	}
+	return g.URL
 }
 
 // GatewaySection returns the file's gateway section, with its token variable

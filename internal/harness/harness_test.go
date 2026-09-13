@@ -387,6 +387,50 @@ func TestOpencodeRemoveModelKey(t *testing.T) {
 	}
 }
 
+// TestOpencodeApplyWithDiscoveredModels merges a gateway-routed selection's
+// DiscoveredModels into the provider block's models map, with no model or
+// alias of its own and so no default model set.
+func TestOpencodeApplyWithDiscoveredModels(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	cat, err := catalog.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, _ := Lookup("opencode")
+	noEnv := func(string) string { return "" }
+	sel := spinloop.Selection{Provider: "openai-compatible", DiscoveredModels: []string{"m1", "m2"}}
+
+	sum, err := h.Apply(cat.Providers["openai-compatible"], sel, 0, 0, noEnv)
+	if err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if sum.DefaultModel != "" {
+		t.Errorf("DefaultModel = %q, want empty (no model or alias named)", sum.DefaultModel)
+	}
+
+	states, def, err := h.State()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if def != "" {
+		t.Errorf("top-level default model = %q, want empty", def)
+	}
+	st, ok := states["openai-compatible"]
+	if !ok {
+		t.Fatalf("state = %+v, want openai-compatible present", states)
+	}
+	want := map[string]bool{"m1": true, "m2": true}
+	if len(st.ModelKeys) != len(want) {
+		t.Fatalf("model keys = %v, want %v", st.ModelKeys, want)
+	}
+	for _, k := range st.ModelKeys {
+		if !want[k] {
+			t.Errorf("unexpected model key %q", k)
+		}
+	}
+}
+
 // TestPiApplyStateRemove round-trips a selection through the Pi adapter.
 func TestPiApplyStateRemove(t *testing.T) {
 	tmp := t.TempDir()
@@ -429,6 +473,48 @@ func TestPiApplyStateRemove(t *testing.T) {
 	n, err := h.Remove("openrouter", nil)
 	if err != nil || n != 1 {
 		t.Fatalf("Remove = %d, %v; want 1, nil", n, err)
+	}
+}
+
+// TestPiApplyWithDiscoveredModels merges a gateway-routed selection's
+// DiscoveredModels into the provider's models array, the way the opencode
+// adapter merges them into its models map.
+func TestPiApplyWithDiscoveredModels(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+
+	cat, err := catalog.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, _ := Lookup("pi")
+	noEnv := func(string) string { return "" }
+	sel := spinloop.Selection{Provider: "openai-compatible", DiscoveredModels: []string{"m1", "m2"}}
+
+	sum, err := h.Apply(cat.Providers["openai-compatible"], sel, 0, 0, noEnv)
+	if err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if sum.DefaultModel != "" {
+		t.Errorf("DefaultModel = %q, want empty", sum.DefaultModel)
+	}
+
+	states, _, err := h.State()
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, ok := states["openai-compatible"]
+	if !ok {
+		t.Fatalf("state = %+v, want openai-compatible present", states)
+	}
+	want := map[string]bool{"m1": true, "m2": true}
+	if len(st.ModelKeys) != len(want) {
+		t.Fatalf("model keys = %v, want %v", st.ModelKeys, want)
+	}
+	for _, k := range st.ModelKeys {
+		if !want[k] {
+			t.Errorf("unexpected model key %q", k)
+		}
 	}
 }
 

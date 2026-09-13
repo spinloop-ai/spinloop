@@ -167,6 +167,15 @@ A variable already set wins. Set nowhere, the launch fails before it writes
 anything, naming the variable the section names — `OPENAI_API_KEY` where the
 section names none.
 
+A gateway resolves the model per request, so [`spinloop fleet
+harness`](commands/fleet.md#launching-the-harness) needs no Spinloop at all
+when the fleet file names one: with none given, it configures a generic
+OpenAI-compatible provider at the gateway's address itself, its model list
+populated from the gateway's own listing, and no `MODEL`/`ALIAS` to pick.
+That provider reads the way a remote environment's does — labelled by the
+gateway's own `name`, or its address when the section names none — the same
+"llama.cpp (dev-2)" pattern described above.
+
 Note the missing `BASEURL` — the address is whichever node gets chosen. Writing
 one pins the address and turns routing off, and spinloop says so rather than
 choosing a node and discarding it.
