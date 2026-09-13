@@ -414,8 +414,8 @@ func TestCmdFleetHarnessNoSpinloopUsesGatewayModels(t *testing.T) {
 		t.Errorf("baseURL = %q, want %q", baseURL, gw.URL+"/v1")
 	}
 	host := strings.TrimPrefix(gw.URL, "http://")
-	if name, _ := entry["name"].(string); name != "OpenAI-compatible ("+host+")" {
-		t.Errorf("name = %q, want it to read like the remote-environment pattern (e.g. %q)", name, "OpenAI-compatible ("+host+")")
+	if name, _ := entry["name"].(string); name != "Gateway ("+host+")" {
+		t.Errorf("name = %q, want it to read like the remote-environment pattern (e.g. %q)", name, "Gateway ("+host+")")
 	}
 }
 
@@ -547,8 +547,8 @@ func TestCmdFleetHarnessNoSpinloopUsesGatewayName(t *testing.T) {
 	if !ok {
 		t.Fatalf("provider %q not found in %v", "gateway-remote-llms", provider)
 	}
-	if name, _ := entry["name"].(string); name != "OpenAI-compatible (remote-llms)" {
-		t.Errorf("name = %q, want %q", name, "OpenAI-compatible (remote-llms)")
+	if name, _ := entry["name"].(string); name != "Gateway (remote-llms)" {
+		t.Errorf("name = %q, want %q", name, "Gateway (remote-llms)")
 	}
 }
 
@@ -707,7 +707,7 @@ func TestCmdFleetHarnessNoSpinloopLucinateNoModelList(t *testing.T) {
 		t.Errorf("no defaultModel should be set, got: %v", v)
 	}
 	host := strings.TrimPrefix(gw.URL, "http://")
-	if name, _ := conn["name"].(string); name != "OpenAI-compatible ("+host+")" {
-		t.Errorf("name = %q, want it to read like the remote-environment pattern (e.g. %q)", name, "OpenAI-compatible ("+host+")")
+	if name, _ := conn["name"].(string); name != "Gateway ("+host+")" {
+		t.Errorf("name = %q, want it to read like the remote-environment pattern (e.g. %q)", name, "Gateway ("+host+")")
 	}
 }

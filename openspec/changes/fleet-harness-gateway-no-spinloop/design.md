@@ -183,6 +183,21 @@ and what lucinate's connection id is derived from
 (`spinloop:<key>`) — all three already key by `sel.Provider`, so the rename
 alone reaches every harness without touching the adapters again.
 
+**Found from user testing: the display name itself needs to say "gateway".**
+The provider key (`gateway-<slug>`) carries the word, but the *display name*
+— the text a harness's model picker actually shows and searches — did not:
+it was built as `catalog.RemoteProviderLabel(p.Name, gatewayLabel)`, and
+`p.Name` for the `openai-compatible` catalogue entry is always the generic
+"OpenAI-compatible", producing e.g. "OpenAI-compatible (localhost:4000)"
+with no "gateway" anywhere in it. A user searching opencode's model picker
+for "gateway" found nothing — or worse, an unrelated provider that happened
+to contain the word (a remote environment coincidentally named "gateway").
+Fixed by passing the literal `"Gateway"` instead of `p.Name` to
+`RemoteProviderLabel`, so the same call now reads "Gateway
+(localhost:4000)". `p.Name` remains correct for the environment-rename case
+just above it, where the engine's real name (e.g. "llama.cpp") is the
+meaningful part; it was never meaningful here; the gateway is.
+
 ## Risks / Trade-offs
 
 - [A hand-rolled Spinloop with `PROVIDER openai-compatible` and no `MODEL`

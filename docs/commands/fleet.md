@@ -251,8 +251,8 @@ provider it configures — otherwise every gateway a fleet might name would
 collide under the same generic id. `name` supplies that label directly; with
 none given, the section's address's host stands in (e.g. `localhost:4000`).
 Either way opencode and Pi show it the way a remote environment is shown —
-`OpenAI-compatible (remote-llms)` rather than a bare `OpenAI-compatible`, the
-same pattern as `llama.cpp (dev-2)`.
+`Gateway (remote-llms)` rather than a bare `OpenAI-compatible`, the same
+pattern as `llama.cpp (dev-2)`.
 
 ### Tokens
 

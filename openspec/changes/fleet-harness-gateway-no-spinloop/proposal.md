@@ -57,10 +57,12 @@ write the result into opencode's config, refreshed on every launch.
   shared `openai-compatible` id — otherwise every gateway a fleet might name
   would collide under one block, and none would read distinctly in a model
   picker. The fleet file's `gateway` section gains an optional `name` field to
-  label it explicitly (e.g. "OpenAI-compatible (remote-llms)"); with none
-  given, the gateway's address stands in (e.g. "OpenAI-compatible
-  (localhost:4000)") — the same pattern a remote environment already reads as
-  ("llama.cpp (dev-2)").
+  label it explicitly (e.g. "Gateway (remote-llms)"); with none given, the
+  gateway's address stands in (e.g. "Gateway (localhost:4000)") — the same
+  pattern a remote environment already reads as ("llama.cpp (dev-2)"), except
+  leading with "Gateway" rather than the catalogue's generic
+  "OpenAI-compatible" engine name, so the word a user would actually search a
+  model picker for is present in the text.
 
 ## Capabilities
 

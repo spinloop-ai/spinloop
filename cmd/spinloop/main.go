@@ -248,11 +248,13 @@ func applySelection(sel spinloop.Selection, h harness.Harness, spinloopPath, env
 		// catalogue's shared "openai-compatible" id, which every gateway a
 		// fleet might name would otherwise collide under. Key it by the
 		// gateway instead — mirroring the environment rename above — so a
-		// second gateway gets its own block, and label it the same way a
-		// remote environment is labelled (e.g. "OpenAI-compatible
-		// (localhost:4000)" rather than a bare "OpenAI-compatible").
+		// second gateway gets its own block. The display name leads with
+		// "Gateway" rather than the catalogue engine's own name: p.Name is
+		// always the generic "OpenAI-compatible" here, which carries no
+		// gateway in its text at all, so a user searching a harness's model
+		// picker for "gateway" would find nothing.
 		sel.Provider = gatewayProviderKey(gatewayLabel)
-		sel.DisplayName = catalog.RemoteProviderLabel(p.Name, gatewayLabel)
+		sel.DisplayName = catalog.RemoteProviderLabel("Gateway", gatewayLabel)
 	}
 
 	// A Spinloop applied against an environment states no BASEURL: the address
