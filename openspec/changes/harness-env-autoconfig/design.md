@@ -159,7 +159,12 @@ non-identity runner is added, one place has to change, not two.
 ## Migration Plan
 
 1. Add the deploy-config read to `remote/lambda/env/index.ts`, reusing the
-   `readDeployConfig`/`deployConfigParam` helpers `start` already imports.
+   `readDeployConfig`/`deployConfigParam` helpers `start` already imports, and
+   grant the env Lambda's role read-only `ssm:GetParameter` on the
+   deploy-config parameter in `remote/lib/llm-stack.ts` — easy to miss, since
+   the read still "succeeds" from the CLI's point of view: an `AccessDenied`
+   is caught by the same best-effort handling that covers "nothing deployed
+   yet," so the two look identical without the CDK-level test added for it.
 2. Extend `internal/remote` only if a gap is found in what `Response` already
    captures for `start`/`stats` (expected: none — see D2).
 3. Add the runner→provider reverse mapping next to `runnerFor` in

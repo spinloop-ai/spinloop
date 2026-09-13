@@ -613,10 +613,12 @@ export class LlmStack extends cdk.Stack {
     const statsUrl = statsFn.addFunctionUrl({ authType: lambda.FunctionUrlAuthType.AWS_IAM });
     const seedUrl = seedFn.addFunctionUrl({ authType: lambda.FunctionUrlAuthType.AWS_IAM });
 
-    // Env Lambda — returns the API key and base URL for a running endpoint.
-    // Minimal perms: read the environment's EIP and API key; no EC2 write.
+    // Env Lambda — returns the API key and base URL for a running endpoint,
+    // plus what is deployed to it (from the deploy-config), when there is one.
+    // Minimal perms: read the environment's EIP, API key and deploy-config;
+    // no EC2 write.
     const envFn = new nodejs.NodejsFunction(this, 'EnvFn', {
-      description: 'Returns base URL and API key for a running environment instance',
+      description: 'Returns base URL, API key and deploy-config for a running environment instance',
       entry: path.join(__dirname, '..', 'lambda', 'env', 'index.ts'),
       handler: 'handler',
       runtime: lambda.Runtime.NODEJS_22_X,
@@ -643,6 +645,8 @@ export class LlmStack extends cdk.Stack {
         resources: [envSecretArn],
       }),
     );
+    // Read-only: env never writes the deploy-config, only start/deploy/stats do.
+    envFn.addToRolePolicy(readEnvParamsStatement);
 
     const envUrl = envFn.addFunctionUrl({ authType: lambda.FunctionUrlAuthType.AWS_IAM });
 
