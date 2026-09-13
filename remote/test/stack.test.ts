@@ -395,6 +395,32 @@ describe('LlmStack (control plane)', () => {
     expect(weightsRead).toBeDefined();
   });
 
+  it('grants the env Lambda read-only access to the deploy-config', () => {
+    // Regression guard: the env Lambda reads the deploy-config to report what
+    // is deployed (spinloop harness --env auto-configure), but must never be
+    // able to write it — only deploy/start do that.
+    const fns = template.findResources('AWS::Lambda::Function');
+    const env = Object.values(fns).find((f) =>
+      String(f.Properties.Description).includes('Returns base URL, API key and deploy-config'),
+    );
+    expect(env).toBeDefined();
+
+    const policies = template.findResources('AWS::IAM::Policy');
+    const envPolicy = Object.values(policies).find((p) =>
+      String(p.Properties.PolicyName).startsWith('EnvFnServiceRoleDefaultPolicy'),
+    );
+    expect(envPolicy).toBeDefined();
+    const statements = envPolicy!.Properties.PolicyDocument.Statement as {
+      Action: string | string[];
+      Resource?: unknown;
+    }[];
+    const ssmRead = statements.find(
+      (s) => [s.Action].flat().includes('ssm:GetParameter') && JSON.stringify(s.Resource).includes('cloud-vm-llm'),
+    );
+    expect(ssmRead).toBeDefined();
+    expect([ssmRead!.Action].flat()).not.toContain('ssm:PutParameter');
+  });
+
   it('scopes per-environment SSM and secret access to the cloud-vm-llm prefix', () => {
     const statements = allPolicyStatements(template);
     const ssmStatement = statements.find((s) => [s.Action].flat().includes('ssm:PutParameter'));

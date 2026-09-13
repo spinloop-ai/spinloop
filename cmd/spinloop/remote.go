@@ -1022,6 +1022,22 @@ func runnerFor(provider string) (string, error) {
 	}
 }
 
+// providerForRunner is runnerFor's reverse: it maps a deployed environment's
+// runner back to the catalogue provider that engine kind is configured under,
+// so a launch with no Spinloop can key a provider selection off what an
+// environment reports it is running. Since runnerFor's mapping is an identity
+// for every runner it accepts, this only has to reject anything else — no
+// runner value that isn't llamacpp or vllm can ever reach a deploy-config,
+// because runnerFor already refused it at deploy time.
+func providerForRunner(runner string) (string, error) {
+	switch runner {
+	case "llamacpp", "vllm":
+		return runner, nil
+	default:
+		return "", fmt.Errorf("environment reports an unrecognised runner %q", runner)
+	}
+}
+
 // nodeRunnerFor is the runner resolver for the node path — waking a fleet node
 // that already exists. It accepts every engine `serve` can run and a daemon can
 // supervise: llamacpp, vllm, and mtplx. MTPLX is Apple-Silicon-only and has no

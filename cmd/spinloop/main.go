@@ -1157,14 +1157,83 @@ func overlayLocalEnv(base []string, sel spinloop.Selection, dir string) []string
 	return out
 }
 
-// flagsTerminated reports whether flag parsing stopped at an explicit bare
-// `--`. The flag package consumes that terminator without reporting it, so the
-// only reliable trace is the last argument it swallowed — scanning args for a
-// `--` before the first non-flag token would misread a detached flag value
-// (`spinloop harness -H pi -- run`).
-func flagsTerminated(args, rest []string) bool {
-	n := len(args) - len(rest)
-	return n > 0 && args[n-1] == "--"
+// splitHarnessArgs scans args for `harness`'s own flags and, at most once, a
+// leading positional naming a Spinloop, wherever either appears among the
+// arguments meant for spinloop itself; everything from the first argument
+// that is neither forwards to the harness untouched. This lets --env (or any
+// other of the command's flags) sit before or after the Spinloop name —
+// `spinloop harness dev-3 --env prod ...` and `spinloop harness --env prod
+// dev-3 ...` parse alike — which fs.Parse cannot do on its own: with
+// interspersed flags disabled it stops at the first positional, and with them
+// enabled it errors out on the first argument meant for the harness that
+// happens to look like a flag (e.g. --prompt).
+//
+// An explicit `--` stops the scan and is itself dropped, whether it is the
+// very first argument (opting out of Spinloop-naming entirely) or follows
+// some of spinloop's own flags or a consumed Spinloop name — the harness gets
+// everything after it, verbatim. Once a Spinloop name has been consumed
+// (spinloopPath.set), or once one is offered that does not name a Spinloop or
+// a registered alias, the scan stops there and that argument is the first one
+// forwarded — it is never silently dropped.
+func splitHarnessArgs(fs *pflag.FlagSet, spinloopPath *spinloopPathFlag, args []string) ([]string, error) {
+	i := 0
+	for i < len(args) {
+		tok := args[i]
+		if tok == "--" {
+			return args[i+1:], nil
+		}
+		if len(tok) > 1 && tok[0] == '-' {
+			flag, attached, hasAttached := lookupHarnessFlag(fs, tok)
+			if flag == nil {
+				return args[i:], nil
+			}
+			value := attached
+			if !hasAttached {
+				if flag.NoOptDefVal != "" {
+					value = flag.NoOptDefVal
+				} else if i+1 < len(args) {
+					i++
+					value = args[i]
+				} else {
+					return nil, fmt.Errorf("flag needs an argument: %s", tok)
+				}
+			}
+			if err := flag.Value.Set(value); err != nil {
+				return nil, fmt.Errorf("invalid argument %q for %s: %w", value, tok, err)
+			}
+			flag.Changed = true
+			i++
+			continue
+		}
+		if spinloopPath.set || !namesAnSpinloopOrAlias(tok) {
+			return args[i:], nil
+		}
+		spinloopPath.set, spinloopPath.path = true, tok
+		i++
+	}
+	return nil, nil
+}
+
+// lookupHarnessFlag resolves one argument token to a flag registered on fs,
+// splitting off any attached value: `--name=value`, `-xvalue`, or `-x=value`.
+// It reports a nil flag for anything unregistered, so the caller can treat it
+// as the start of the harness's own arguments rather than fail on it.
+func lookupHarnessFlag(fs *pflag.FlagSet, tok string) (flag *pflag.Flag, attached string, hasAttached bool) {
+	if strings.HasPrefix(tok, "--") {
+		name := tok[2:]
+		if eq := strings.IndexByte(name, '='); eq >= 0 {
+			name, attached, hasAttached = name[:eq], name[eq+1:], true
+		}
+		return fs.Lookup(name), attached, hasAttached
+	}
+	flag = fs.ShorthandLookup(tok[1:2])
+	if flag == nil {
+		return nil, "", false
+	}
+	if len(tok) > 2 {
+		attached, hasAttached = strings.TrimPrefix(tok[2:], "="), true
+	}
+	return flag, attached, hasAttached
 }
 
 // namesAnSpinloopOrAlias reports whether arg is a way of naming a Spinloop: a path
@@ -1214,11 +1283,20 @@ func applyBeforeLaunch(f spinloopPathFlag, providers string, h harness.Harness, 
 	if err != nil {
 		return spinloop.Selection{}, "", nil, nil, err
 	}
-	sel, envDir, remoteResp, choice, err := applyRoutedSpinloop(sel, path, providers, h, route)
+	sel, envDir, remoteResp, choice, err := applyRoutedSpinloop(sel, path, providers, h, route, false)
 	if err != nil {
 		return spinloop.Selection{}, "", nil, nil, err
 	}
 	return sel, envDir, remoteResp, choice, nil
+}
+
+// applyFromEnvironment configures the harness with no Spinloop at all: a bare
+// `spinloop harness --env <name>` reaches here. It is applyBeforeLaunch's
+// counterpart for that case — same return shape, same launch continuation —
+// except there is no Spinloop to read, so routing and the provider selection
+// come entirely from the named environment's live deploy-config.
+func applyFromEnvironment(providers string, h harness.Harness, route routeOptions) (spinloop.Selection, string, *remote.Response, *fleet.Choice, error) {
+	return applyRoutedSpinloop(spinloop.Selection{}, "", providers, h, route, true)
 }
 
 // applyRoutedSpinloop routes an already-read Spinloop and applies it to the
@@ -1227,7 +1305,16 @@ func applyBeforeLaunch(f spinloopPathFlag, providers string, h harness.Harness, 
 // fetch and the apply themselves. `spinloop harness` reads its Spinloop on the
 // way in; `spinloop fleet harness` reads its own, because with none it fails on
 // its own terms. Both then run this one path.
-func applyRoutedSpinloop(sel spinloop.Selection, path string, providers string, h harness.Harness, route routeOptions) (spinloop.Selection, string, *remote.Response, *fleet.Choice, error) {
+//
+// autoConfigure is set only by a bare `spinloop harness --env <name>`: no
+// Spinloop was read (sel is empty and path is ""), so once the environment's
+// live response is in hand, its deploy-config — what is actually deployed
+// there — supplies the provider selection instead, exactly as if a Spinloop
+// had stated the same PROVIDER/ALIAS/CONTEXT. An environment reporting
+// nothing deployed (or an env Lambda predating this) fails the launch rather
+// than reaching applySelection's generic "needs a model or an alias" error,
+// so the message names the actual cause and how to fix it.
+func applyRoutedSpinloop(sel spinloop.Selection, path string, providers string, h harness.Harness, route routeOptions, autoConfigure bool) (spinloop.Selection, string, *remote.Response, *fleet.Choice, error) {
 	// As for apply, --providers overrides the catalogue the selection resolves
 	// against (a Spinloop never names one).
 	sel.Providers = providers
@@ -1272,9 +1359,13 @@ func applyRoutedSpinloop(sel spinloop.Selection, path string, providers string, 
 	if label == "" {
 		label = route.fleetFile()
 	}
-	if path != "" {
+	switch {
+	case autoConfigure:
+		// Nothing to apply yet — the deploy-config print below covers this
+		// case once the environment's live response is in hand.
+	case path != "":
 		fmt.Printf("Applying %s\n\n", path)
-	} else {
+	default:
 		fmt.Printf("Applying the gateway named in %s\n\n", label)
 	}
 	// Before the apply, so a launch that cannot authenticate stops without
@@ -1282,6 +1373,25 @@ func applyRoutedSpinloop(sel spinloop.Selection, path string, providers string, 
 	remoteResp, err := fetchRemoteEnv(sel, route.envName, localResolve)
 	if err != nil {
 		return spinloop.Selection{}, "", nil, nil, err
+	}
+	if autoConfigure {
+		if remoteResp == nil || !remoteResp.Deployed || remoteResp.Runner == "" || remoteResp.ServedName == "" {
+			return spinloop.Selection{}, "", nil, nil, fmt.Errorf(
+				"nothing is deployed to environment %q to configure the harness with: "+
+					"run `spinloop remote deploy <spinloop> --env %s` to deploy one, "+
+					"or `spinloop remote bootstrap` to update the control plane if %s already has something deployed",
+				route.envName, route.envName, route.envName)
+		}
+		provider, err := providerForRunner(remoteResp.Runner)
+		if err != nil {
+			return spinloop.Selection{}, "", nil, nil, err
+		}
+		sel.Provider = provider
+		sel.Alias = remoteResp.ServedName
+		if remoteResp.ContextSize > 0 {
+			sel.Context = strconv.Itoa(remoteResp.ContextSize)
+		}
+		fmt.Printf("Configuring from what is deployed to %s.\n\n", route.envName)
 	}
 	resolve := remoteLaunchResolver(localResolve, remoteResp)
 	if choice != nil && choice.APIKey != "" {

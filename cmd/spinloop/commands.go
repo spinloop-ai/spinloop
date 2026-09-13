@@ -105,12 +105,15 @@ func harnessCmd() *cobra.Command {
 		Use:   "harness",
 		Short: "launch the active harness, optionally applying a Spinloop first",
 		Long: `launches the active harness, forwarding any trailing args to it. A
-leading argument that names a Spinloop — a registered alias or a path — is
-applied first and not forwarded; put -- before the harness's own args to
-keep them, and a leading -- opts out of this entirely. --spinloop/-O applies
-a Spinloop first, as if you had run apply before it. --get prints the active
-harness instead of launching it; --set <name> stores the default harness and
-exits. Honours -H/--harness and SPINLOOP_HARNESS.`,
+Spinloop — a registered alias or a path — can be named anywhere among
+spinloop's own flags (--env, -H, --spinloop, --fleet, ...), in any order; the
+first argument that is neither one of those flags nor a Spinloop name starts
+the harness's own args, forwarded byte-for-byte from there. Put -- before the
+harness's own args if one of them would otherwise be mistaken for a Spinloop
+name, and a leading -- opts out of Spinloop-naming entirely. --spinloop/-O
+applies a Spinloop first, as if you had run apply before it. --get prints the
+active harness instead of launching it; --set <name> stores the default
+harness and exits. Honours -H/--harness and SPINLOOP_HARNESS.`,
 		Args:               cobra.ArbitraryArgs,
 		DisableFlagParsing: true,
 		SilenceErrors:      true,
@@ -120,12 +123,13 @@ exits. Honours -H/--harness and SPINLOOP_HARNESS.`,
 		ValidArgsFunction: harnessSlot,
 		RunE: func(c *cobra.Command, args []string) error {
 			resolve(c)
-			// Parsing is spinloop's own (not Cobra's): a leading positional
-			// that names a Spinloop is consumed, and everything else forwards
-			// byte-for-byte, so the flag set stops at the first positional
-			// exactly as the flag package did.
+			// Parsing is spinloop's own (not Cobra's): spinloop's own flags are
+			// recognised wherever they appear, one leading positional that
+			// names a Spinloop is consumed alongside them, and everything from
+			// the first argument that is neither forwards byte-for-byte.
 			fs := c.Flags()
-			if err := fs.Parse(args); err != nil {
+			rest, err := splitHarnessArgs(fs, &spinloopPath, args)
+			if err != nil {
 				return err
 			}
 
@@ -157,27 +161,6 @@ exits. Honours -H/--harness and SPINLOOP_HARNESS.`,
 				return nil
 			}
 
-			// Take the first positional argument as the Spinloop to wear when it
-			// names one — a registered alias, a path, or a directory holding
-			// one. Everything else is forwarded to the harness untouched, so
-			// this can only claim an argument the harness could not have used
-			// anyway. An explicit `--` opts out, for an alias that collides
-			// with one of the harness's own subcommands.
-			rest := fs.Args()
-			if !spinloopPath.set && !flagsTerminated(args, rest) && len(rest) > 0 && namesAnSpinloopOrAlias(rest[0]) {
-				spinloopPath.set, spinloopPath.path = true, rest[0]
-				// Reslice rather than rebuild: rest shares its backing array
-				// with args, so appending to it would write over the caller's
-				// arguments.
-				rest = rest[1:]
-				// The `--` that separated spinloop's Spinloop from the harness's
-				// own args is ours to drop; any other `--` belongs to the
-				// harness and is forwarded.
-				if len(rest) > 0 && rest[0] == "--" {
-					rest = rest[1:]
-				}
-			}
-
 			// A named Spinloop — the flag's value, a leading positional, or the
 			// alias SPINLOOP_ALIAS names — travels to its fleet only by flag, so
 			// a fleet.yaml in the working directory is not picked up for it. A
@@ -197,6 +180,16 @@ exits. Honours -H/--harness and SPINLOOP_HARNESS.`,
 			if spinloopPath.set {
 				var err error
 				sel, envDir, remoteResp, choice, err = applyBeforeLaunch(spinloopPath, providers, h, rest, route)
+				if err != nil {
+					return err
+				}
+			} else if route.envName != "" {
+				// No Spinloop was applied, but --env still names where the
+				// model is served from: configure the harness from what is
+				// actually deployed there instead of doing nothing with the
+				// flag.
+				var err error
+				sel, envDir, remoteResp, choice, err = applyFromEnvironment(providers, h, route)
 				if err != nil {
 					return err
 				}

@@ -660,6 +660,15 @@ same values:
 `BASEURL` out of the Spinloop and still point your agent at the endpoint. A
 `BASEURL` in the Spinloop wins if you do set one.
 
+Deployed something and just want to point an agent at it from another
+machine? `spinloop harness --env dev-2` on its own — no Spinloop at all —
+configures the harness straight from what is deployed there:
+
+```sh
+spinloop remote deploy path/to/Spinloop --env dev-2   # from wherever you deployed it
+spinloop harness --env dev-2 --prompt "..."           # from anywhere with dev-2 registered
+```
+
 Every URL and the region can be overridden with the matching
 [`SPINLOOP_REMOTE_*`](docs/env-vars.md) environment variable. The commands
 sign with an AWS credential resolved per region: explicit environment

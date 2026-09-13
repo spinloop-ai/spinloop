@@ -142,6 +142,16 @@ before the command signs its AWS calls, so credentials, region and
 `SPINLOOP_REMOTE_*` overrides can travel with the Spinloop. The Spinloop does
 not select the environment — that is the flag's job alone.
 
+`spinloop remote env --env <name>` fetches a running endpoint's credentials
+(`export OPENAI_BASE_URL`/`export OPENAI_API_KEY`, safe to `eval`) without
+booting it. It also reports what is deployed to the environment — runner,
+served model, context size — whenever something is: this is what lets
+[`spinloop harness --env <name>`](harness.md#launching-with-no-spinloop-at-all)
+configure the harness from a deployed environment with no Spinloop at all. It
+appears once the control plane has been redeployed with `spinloop remote
+bootstrap`; an older control plane simply omits it, and `spinloop harness
+--env` with no Spinloop fails naming that as the fix.
+
 ## Listing environments
 
 ```sh
