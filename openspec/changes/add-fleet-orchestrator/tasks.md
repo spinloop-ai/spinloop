@@ -45,3 +45,8 @@
 
 - [x] 8.1 Thread the flag from the command into the dispatcher; where set, Launch creates a missing item directory (through `MkdirAll`) before the existence check, and a creation failure fails the item naming it and the cause; verify with unit tests for a created-and-launched item and for a directory it cannot create
 - [x] 8.2 Add the flag to the command's help and the command tests, and the spec's new scenario to the integration test (a missing directory runs with the flag, fails without); verify the full suite passes
+
+## 9. The agent's address for the gateway
+
+- [x] 9.1 Give the agent the gateway's OpenAI-compatible address — the fleet file's gateway URL with the `/v1` prefix added where it names no path — rather than the bare address: move `endpointBaseURL` from `cmd/spinloop` to `internal/fleet` as `EndpointBaseURL` and use it in the dispatch and the gateway-routed launch alike; verify with unit tests over bare, slashed, and path-carrying addresses, and the dispatch test asserting the applied selection's base URL
+- [x] 9.2 Make the docker e2e's stub agent make one real call at the gateway, addressed from the base URL its own harness config carries, and assert the engine's reply came back — the round trip the unit and integration tests cannot see; verify `bash -n` accepts the script

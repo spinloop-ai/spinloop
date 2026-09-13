@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/spinloop-ai/spinloop/internal/catalog"
+	"github.com/spinloop-ai/spinloop/internal/fleet"
 	"github.com/spinloop-ai/spinloop/internal/harness"
 	"github.com/spinloop-ai/spinloop/internal/spinloop"
 )
@@ -125,9 +126,12 @@ func (d *Dispatcher) Launch(item Item, node Node, logPath string) (Child, error)
 		return os.Getenv(name)
 	}
 	sel := spinloop.Selection{
-		Provider:    providerKey(node),
-		Model:       model,
-		BaseURL:     d.gateway,
+		Provider: providerKey(node),
+		Model:    model,
+		// The agent's address for the gateway is the OpenAI-compatible
+		// prefix the way a gateway-routed launch gives it: a gateway at
+		// http://gw:4000 is handed to the agent as http://gw:4000/v1.
+		BaseURL:     fleet.EndpointBaseURL(d.gateway),
 		DisplayName: "Spinloop fleet (" + node.Name + ")",
 	}
 	// Under the lock, with the exec inside it: the next dispatch's apply

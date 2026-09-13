@@ -727,8 +727,8 @@ func TestDispatch_RunsTheAgentOneShotInTheItemsDirectory(t *testing.T) {
 	if ap.sel.Provider != "spinloop-orchestrator-gpu-a" {
 		t.Errorf("the provider block is keyed per node, got %q", ap.sel.Provider)
 	}
-	if ap.sel.Model != "org/model" || ap.sel.BaseURL != "http://gateway:4000" {
-		t.Errorf("the selection names the node's model and the gateway, got %+v", ap.sel)
+	if ap.sel.Model != "org/model" || ap.sel.BaseURL != "http://gateway:4000/v1" {
+		t.Errorf("the selection names the node's model and the gateway's OpenAI-compatible address, got %+v", ap.sel)
 	}
 	if ap.setDefault {
 		t.Error("a dispatch does not make its model the harness's default")

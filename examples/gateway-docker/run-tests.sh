@@ -596,11 +596,21 @@ test_orchestrator_works_the_backlog() {
     "${sandbox}/work/b" "${sandbox}/work/c"
 
   # The agent: record what it was launched with and its key, then take its
-  # time, so two items are in flight at once and a third must wait.
+  # time, so two items are in flight at once and a third must wait. It also
+  # makes one real call at the gateway, addressed the way its own config
+  # tells it: the round trip this run must prove.
   cat > "${sandbox}/bin/opencode" <<'STUB'
 #!/usr/bin/env bash
 echo "key=${OPENAI_API_KEY:-<unset>}" > key.txt
 echo "$@" > args.txt
+base="$(sed -n 's/.*"baseURL"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
+  "${XDG_CONFIG_HOME}/opencode/opencode.json" 2>/dev/null | head -1)"
+if [ -n "${base}" ] && [ -n "${OPENAI_API_KEY}" ]; then
+  curl -fsS -X POST -H "Authorization: Bearer ${OPENAI_API_KEY}" \
+    -H 'Content-Type: application/json' \
+    -d '{"model":"fake-model","messages":[{"role":"user","content":"hi"}]}' \
+    "${base%/}/chat/completions" > reply.txt 2>reply.err
+fi
 sleep 3
 STUB
   chmod +x "${sandbox}/bin/opencode"
@@ -659,6 +669,8 @@ EOF
     "$(cat "${sandbox}/work/b/args.txt")" "spinloop-orchestrator-"
   assert_contains "the agent was given the gateway's token as its key" \
     "$(cat "${sandbox}/work/a/key.txt")" "key=${GATEWAY_TOKEN}"
+  assert_contains "the agent's inference reached the gateway, at the address its config named" \
+    "$(cat "${sandbox}/work/a/reply.txt" 2>/dev/null)" "Hello from the fake engine"
 
   kill -INT "${orch_pid}" 2>/dev/null || true
   local rc=0

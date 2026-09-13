@@ -144,8 +144,11 @@ name (served name where the node reports one, else the model id — the same
 name the gateway matches on), and the provider is applied into the harness's
 config the way `spinloop harness` applies one, under a lock so concurrent
 dispatches merge serially. The provider entry the orchestrator adds names the
-gateway and the token variable, never a value; it is added, not removed —
-removal stays the operator's `unapply`, as the launch path's is. The child
+gateway's OpenAI-compatible address — the gateway's address with the `/v1`
+prefix added where it names no path of its own, `fleet.EndpointBaseURL`, the
+same conversion a gateway-routed launch applies — and the token variable,
+never a value; it is added, not removed — removal stays the operator's
+`unapply`, as the launch path's is. The child
 is run with its working directory the item's and its output captured, rather
 than stdio forwarded, since no person is at the keyboard.
 

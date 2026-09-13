@@ -83,7 +83,8 @@ An admitted item is launched as the harness's non-interactive single-task
 form — `opencode run` or `pi --print` — in the item's directory. The model it
 runs against is the gateway and the chosen node: the node's model, under a
 provider the orchestrator writes into the harness config for the run, with the
-gateway's address as the base URL and the gateway's token as the key. A
+gateway's OpenAI-compatible address as the base URL — its address plus `/v1`
+where it names none — and the gateway's token as the key. A
 harness with no single-task form — lucinate — is refused at startup, naming it.
 
 The node an item takes is the fleet's own routing, read through the gateway:
