@@ -18,8 +18,8 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spinloop-ai/spinloop/internal/daemon"
 	"github.com/spinloop-ai/spinloop/internal/fleet"
+	"github.com/spinloop-ai/spinloop/internal/inference"
 	"github.com/spinloop-ai/spinloop/internal/metrics"
-	"github.com/spinloop-ai/spinloop/internal/remote"
 )
 
 // stubNode serves a daemon control API for one fleet node.
@@ -488,7 +488,7 @@ func (f *fakeFleetNode) Start(context.Context) (daemon.StatusResponse, error) {
 	f.startCalls++
 	return daemon.StatusResponse{State: "running"}, nil
 }
-func (f *fakeFleetNode) StartWith(context.Context, *remote.DeployConfig, string) (daemon.StatusResponse, error) {
+func (f *fakeFleetNode) StartWith(context.Context, *inference.DeployConfig, string) (daemon.StatusResponse, error) {
 	f.startWithCalls++
 	return daemon.StatusResponse{State: "running"}, nil
 }

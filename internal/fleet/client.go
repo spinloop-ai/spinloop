@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/spinloop-ai/spinloop/internal/daemon"
+	"github.com/spinloop-ai/spinloop/internal/inference"
 	"github.com/spinloop-ai/spinloop/internal/metrics"
-	"github.com/spinloop-ai/spinloop/internal/remote"
 )
 
 // RequestTimeout bounds one call to a node. A fleet view has to stay snappy:
@@ -149,7 +149,7 @@ func (c *Client) Start(ctx context.Context) (daemon.StatusResponse, error) {
 // so a caller can say what to run and run it in one call. A nil config starts
 // from what the node already has. The daemon validates the config against what
 // it can serve and stores it only if the start is accepted.
-func (c *Client) StartWith(ctx context.Context, dc *remote.DeployConfig, engineKey string) (daemon.StatusResponse, error) {
+func (c *Client) StartWith(ctx context.Context, dc *inference.DeployConfig, engineKey string) (daemon.StatusResponse, error) {
 	var out daemon.StatusResponse
 	var body any
 	if dc != nil {

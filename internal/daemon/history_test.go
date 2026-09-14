@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/spinloop-ai/spinloop/internal/inference"
 	"github.com/spinloop-ai/spinloop/internal/metrics"
-	"github.com/spinloop-ai/spinloop/internal/remote"
 )
 
 func f64(v float64) *float64 { return &v }
@@ -111,7 +111,7 @@ while true; do sleep 0.05; done`)
 		t.Fatalf("a reading was taken with no engine running: %+v", got)
 	}
 
-	if err := d.Push(remote.DeployConfig{Runner: "llamacpp", ModelID: "m"}); err != nil {
+	if err := d.Push(inference.DeployConfig{Runner: "llamacpp", ModelID: "m"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := d.StartEngine(); err != nil {
@@ -167,7 +167,7 @@ while true; do sleep 0.05; done`)
 		GOOS: "linux",
 		Run:  func(ctx context.Context, name string, args ...string) (string, error) { return "", exec.ErrNotFound },
 	}
-	if err := d.Push(remote.DeployConfig{Runner: "llamacpp", ModelID: "m"}); err != nil {
+	if err := d.Push(inference.DeployConfig{Runner: "llamacpp", ModelID: "m"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := d.StartEngine(); err != nil {
@@ -204,7 +204,7 @@ while true; do sleep 0.05; done`)
 	now := baseTime
 	d.Now = func() time.Time { return now }
 	d.Collector = linuxCollector()
-	if err := d.Push(remote.DeployConfig{Runner: "llamacpp", ModelID: "m"}); err != nil {
+	if err := d.Push(inference.DeployConfig{Runner: "llamacpp", ModelID: "m"}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -265,7 +265,7 @@ while true; do sleep 0.05; done`)
 		t.Errorf("absent history still serialised: %s", body)
 	}
 
-	if err := d.Push(remote.DeployConfig{Runner: "llamacpp", ModelID: "m"}); err != nil {
+	if err := d.Push(inference.DeployConfig{Runner: "llamacpp", ModelID: "m"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := d.StartEngine(); err != nil {
@@ -327,7 +327,7 @@ while true; do sleep 0.05; done`)
 		<-done
 	}()
 
-	if err := d.Push(remote.DeployConfig{Runner: "llamacpp", ModelID: "m"}); err != nil {
+	if err := d.Push(inference.DeployConfig{Runner: "llamacpp", ModelID: "m"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := d.StartEngine(); err != nil {
@@ -374,7 +374,7 @@ while true; do sleep 0.05; done`)
 		return inner(ctx, name, args...)
 	}
 	d.Collector = base
-	if err := d.Push(remote.DeployConfig{Runner: "llamacpp", ModelID: "m"}); err != nil {
+	if err := d.Push(inference.DeployConfig{Runner: "llamacpp", ModelID: "m"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := d.StartEngine(); err != nil {
@@ -410,7 +410,7 @@ while true; do sleep 0.05; done`)
 			return "", errors.New("vmstat exploded")
 		},
 	}
-	if err := d.Push(remote.DeployConfig{Runner: "llamacpp", ModelID: "m"}); err != nil {
+	if err := d.Push(inference.DeployConfig{Runner: "llamacpp", ModelID: "m"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := d.StartEngine(); err != nil {

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/spinloop-ai/spinloop/internal/daemon"
+	"github.com/spinloop-ai/spinloop/internal/inference"
 	"github.com/spinloop-ai/spinloop/internal/metrics"
 	"github.com/spinloop-ai/spinloop/internal/remote"
 )
@@ -81,7 +82,7 @@ type Node interface {
 	// StartWith starts the engine on a deploy config the caller supplies,
 	// gated with the key it supplies — which is how a router wakes a node to
 	// serve what it wants, and how that engine comes to be gated at all.
-	StartWith(ctx context.Context, dc *remote.DeployConfig, engineKey string) (daemon.StatusResponse, error)
+	StartWith(ctx context.Context, dc *inference.DeployConfig, engineKey string) (daemon.StatusResponse, error)
 	Stop(ctx context.Context) (daemon.StatusResponse, error)
 	Logs(ctx context.Context, offset int64, limit int) (daemon.LogsResponse, error)
 }
@@ -107,7 +108,7 @@ func (n *daemonNode) Start(ctx context.Context) (daemon.StatusResponse, error) {
 	return n.client.Start(ctx)
 }
 
-func (n *daemonNode) StartWith(ctx context.Context, dc *remote.DeployConfig, engineKey string) (daemon.StatusResponse, error) {
+func (n *daemonNode) StartWith(ctx context.Context, dc *inference.DeployConfig, engineKey string) (daemon.StatusResponse, error) {
 	return n.client.StartWith(ctx, dc, engineKey)
 }
 

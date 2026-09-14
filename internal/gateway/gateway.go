@@ -28,7 +28,7 @@ import (
 
 	"github.com/spinloop-ai/spinloop/internal/daemon"
 	"github.com/spinloop-ai/spinloop/internal/fleet"
-	"github.com/spinloop-ai/spinloop/internal/remote"
+	"github.com/spinloop-ai/spinloop/internal/inference"
 )
 
 // DefaultListen is where the gateway answers when --listen is not given: a
@@ -530,7 +530,7 @@ func (h *Handler) refuseWake(want fleet.Want, none error) error {
 // would be started with the wrong engine — and its refusal says so.
 func (h *Handler) matchingConfigFor(model string) fleet.ConfigFor {
 	base := h.cfgFor
-	return func(entry fleet.NodeConfig) (remote.DeployConfig, error) {
+	return func(entry fleet.NodeConfig) (inference.DeployConfig, error) {
 		dc, err := base(entry)
 		if err != nil {
 			return dc, err

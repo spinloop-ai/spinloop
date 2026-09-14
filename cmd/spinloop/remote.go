@@ -21,6 +21,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spinloop-ai/spinloop/internal/contextsize"
 	"github.com/spinloop-ai/spinloop/internal/fleet"
+	"github.com/spinloop-ai/spinloop/internal/inference"
 	"github.com/spinloop-ai/spinloop/internal/opencode"
 	"github.com/spinloop-ai/spinloop/internal/preset"
 	"github.com/spinloop-ai/spinloop/internal/remote"
@@ -1193,7 +1194,7 @@ func dropOwned(owned func(string) bool, params []preset.Param) []preset.Param {
 // A context size is required, because a cloud instance has to be sized before
 // it is provisioned. deployConfigWithoutContext is the same derivation for a
 // caller where that is not true.
-func deployConfigFor(sel spinloop.Selection, spinloopPath string) (remote.DeployConfig, error) {
+func deployConfigFor(sel spinloop.Selection, spinloopPath string) (inference.DeployConfig, error) {
 	return deployConfig(sel, spinloopPath, deployTarget{
 		runner:         runnerFor,
 		requireContext: true,
@@ -1211,7 +1212,7 @@ func deployConfigFor(sel spinloop.Selection, spinloopPath string) (remote.Deploy
 // does; and the Spinloop's own BASEURL is carried too, so a node with no
 // preset does not wake onto the engine's default — llama.cpp's loopback,
 // reachable from nobody but the node itself.
-func deployConfigForNode(sel spinloop.Selection, spinloopPath string) (remote.DeployConfig, error) {
+func deployConfigForNode(sel spinloop.Selection, spinloopPath string) (inference.DeployConfig, error) {
 	return deployConfig(sel, spinloopPath, deployTarget{
 		runner:         nodeRunnerFor,
 		owns:           isNodeOwned,
@@ -1233,8 +1234,8 @@ type deployTarget struct {
 	carriesBaseURL bool
 }
 
-func deployConfig(sel spinloop.Selection, spinloopPath string, target deployTarget) (remote.DeployConfig, error) {
-	var dc remote.DeployConfig
+func deployConfig(sel spinloop.Selection, spinloopPath string, target deployTarget) (inference.DeployConfig, error) {
+	var dc inference.DeployConfig
 
 	runner, err := target.runner(sel.Provider)
 	if err != nil {
@@ -1488,7 +1489,7 @@ func runRemoteDeploy(args []string, envName string, dryRun, overwrite, reseed bo
 // deploy` — so a node's resolved Spinloop source and a standalone `remote
 // deploy` of the same file agree about what they deploy and each names its
 // own environment.
-func deriveDeployTarget(usage, spinloopArg, env string) (sel spinloop.Selection, spinloopPath string, dc remote.DeployConfig, err error) {
+func deriveDeployTarget(usage, spinloopArg, env string) (sel spinloop.Selection, spinloopPath string, dc inference.DeployConfig, err error) {
 	sel, spinloopPath, err = readSpinloop(usage, spinloopArg)
 	if err != nil {
 		return
@@ -1570,7 +1571,7 @@ func (e *errDeployGuarded) Error() string {
 // It writes nothing to stdout itself; the caller decides what to do with
 // deployOutcome.Text, which is how `fleet deploy` labels several nodes'
 // outcomes instead of interleaving raw prints from concurrent goroutines.
-func runDeploy(spinloopPath, env string, dc remote.DeployConfig, opts deployOpts) (deployOutcome, error) {
+func runDeploy(spinloopPath, env string, dc inference.DeployConfig, opts deployOpts) (deployOutcome, error) {
 	if opts.allowedCidr != "" && !cidrPattern.MatchString(opts.allowedCidr) {
 		return deployOutcome{}, fmt.Errorf("--allowed-cidr must be an IPv4 CIDR (e.g. 203.0.113.7/32), got %q", opts.allowedCidr)
 	}

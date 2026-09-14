@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/spinloop-ai/spinloop/internal/daemon"
+	"github.com/spinloop-ai/spinloop/internal/inference"
 	"github.com/spinloop-ai/spinloop/internal/metrics"
 	"github.com/spinloop-ai/spinloop/internal/remote"
 )
@@ -270,7 +271,7 @@ func TestRemoteNodeLogsSharesTheFollowCursorWithRemoteLogsCommand(t *testing.T) 
 
 func TestRemoteNodeStartWithIsRefused(t *testing.T) {
 	node, _ := NewRemoteNode("env", remote.Config{StartURL: "http://x", StopURL: "http://x", Region: "r"})
-	_, err := node.StartWith(context.Background(), &remote.DeployConfig{Runner: "llamacpp"}, "")
+	_, err := node.StartWith(context.Background(), &inference.DeployConfig{Runner: "llamacpp"}, "")
 	if err == nil || !strings.Contains(err.Error(), "spinloop remote deploy") {
 		t.Errorf("StartWith should refuse, naming the deploy path; got %v", err)
 	}
@@ -559,7 +560,7 @@ func (n *failingNode) Metrics(context.Context) (metrics.Stats, error) {
 func (n *failingNode) Start(context.Context) (daemon.StatusResponse, error) {
 	return daemon.StatusResponse{}, nil
 }
-func (n *failingNode) StartWith(context.Context, *remote.DeployConfig, string) (daemon.StatusResponse, error) {
+func (n *failingNode) StartWith(context.Context, *inference.DeployConfig, string) (daemon.StatusResponse, error) {
 	return daemon.StatusResponse{}, nil
 }
 func (n *failingNode) Stop(context.Context) (daemon.StatusResponse, error) {

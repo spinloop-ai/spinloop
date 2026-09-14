@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/spinloop-ai/spinloop/internal/inference"
 	"github.com/spinloop-ai/spinloop/internal/preset"
-	"github.com/spinloop-ai/spinloop/internal/remote"
 	"github.com/spinloop-ai/spinloop/internal/spinloop"
 )
 
@@ -93,12 +93,12 @@ func TestAssembleEngineArgv(t *testing.T) {
 func TestArgvFromDeployConfigPerEngine(t *testing.T) {
 	cases := []struct {
 		provider string
-		dc       remote.DeployConfig
+		dc       inference.DeployConfig
 		wantTail []string // asserted after the engine's own binary
 	}{
 		{
 			provider: "llamacpp",
-			dc: remote.DeployConfig{
+			dc: inference.DeployConfig{
 				Runner:          "llamacpp",
 				ModelID:         "org/model",
 				ContextSize:     16000,
@@ -108,7 +108,7 @@ func TestArgvFromDeployConfigPerEngine(t *testing.T) {
 		},
 		{
 			provider: "omlx",
-			dc: remote.DeployConfig{
+			dc: inference.DeployConfig{
 				Runner:          "omlx",
 				ModelID:         "org/model",
 				ServedModelName: "friendly",
@@ -119,7 +119,7 @@ func TestArgvFromDeployConfigPerEngine(t *testing.T) {
 		},
 		{
 			provider: "vllm",
-			dc: remote.DeployConfig{
+			dc: inference.DeployConfig{
 				Runner:          "vllm",
 				ModelID:         "org/model",
 				Quant:           "Q4_K_M",

@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/spinloop-ai/spinloop/internal/inference"
 	"github.com/spinloop-ai/spinloop/internal/metrics"
-	"github.com/spinloop-ai/spinloop/internal/remote"
 )
 
 // baseTime is a fixed clock origin, so an idle duration is arithmetic rather
@@ -110,7 +110,7 @@ while true; do sleep 0.05; done`)
 		t.Fatalf("status before any engine = %+v, want no activity", got)
 	}
 
-	if err := d.Push(remote.DeployConfig{Runner: "llamacpp", ModelID: "m"}); err != nil {
+	if err := d.Push(inference.DeployConfig{Runner: "llamacpp", ModelID: "m"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := d.StartEngine(); err != nil {
@@ -249,7 +249,7 @@ while true; do sleep 0.05; done`)
 		t.Fatal("sampled activity with no engine running")
 	}
 
-	if err := d.Push(remote.DeployConfig{Runner: "llamacpp", ModelID: "m"}); err != nil {
+	if err := d.Push(inference.DeployConfig{Runner: "llamacpp", ModelID: "m"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := d.StartEngine(); err != nil {
@@ -286,7 +286,7 @@ func TestSampleOnceNoTarget(t *testing.T) {
 	d := testDaemon(t, `trap 'exit 0' TERM
 while true; do sleep 0.05; done`)
 	d.Now = func() time.Time { return baseTime }
-	if err := d.Push(remote.DeployConfig{Runner: "llamacpp", ModelID: "m"}); err != nil {
+	if err := d.Push(inference.DeployConfig{Runner: "llamacpp", ModelID: "m"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := d.StartEngine(); err != nil {
@@ -351,7 +351,7 @@ while true; do sleep 0.05; done`)
 		t.Errorf("status before any engine carries idleSeconds: %v", got)
 	}
 
-	if err := d.Push(remote.DeployConfig{Runner: "llamacpp", ModelID: "m"}); err != nil {
+	if err := d.Push(inference.DeployConfig{Runner: "llamacpp", ModelID: "m"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := d.StartEngine(); err != nil {
@@ -403,7 +403,7 @@ while true; do sleep 0.05; done`)
 	clock := &fakeClock{t: baseTime}
 	d.Now = clock.now
 	d.SetScrape(metrics.ScrapeTarget{BaseURL: engine.URL, Engine: "llamacpp"})
-	if err := d.Push(remote.DeployConfig{Runner: "llamacpp", ModelID: "m"}); err != nil {
+	if err := d.Push(inference.DeployConfig{Runner: "llamacpp", ModelID: "m"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := d.StartEngine(); err != nil {
@@ -471,7 +471,7 @@ while true; do sleep 0.05; done`)
 	}
 
 	d.SetScrape(metrics.ScrapeTarget{BaseURL: engine.URL, Engine: "llamacpp"})
-	if err := d.Push(remote.DeployConfig{Runner: "llamacpp", ModelID: "m"}); err != nil {
+	if err := d.Push(inference.DeployConfig{Runner: "llamacpp", ModelID: "m"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := d.StartEngine(); err != nil {
@@ -556,7 +556,7 @@ while true; do sleep 0.05; done`)
 	d.Now = clock.now
 	// A target nothing is listening on — the shape of the real failure.
 	d.SetScrape(metrics.ScrapeTarget{BaseURL: "http://127.0.0.1:1", Engine: "llamacpp"})
-	if err := d.Push(remote.DeployConfig{Runner: "llamacpp", ModelID: "m"}); err != nil {
+	if err := d.Push(inference.DeployConfig{Runner: "llamacpp", ModelID: "m"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := d.StartEngine(); err != nil {
@@ -599,7 +599,7 @@ func TestMetricsDoesNotBlockOnABusyEngine(t *testing.T) {
 	d := testDaemon(t, `trap 'exit 0' TERM
 while true; do sleep 0.05; done`)
 	d.SetScrape(metrics.ScrapeTarget{BaseURL: engine.URL, Engine: "llamacpp"})
-	if err := d.Push(remote.DeployConfig{Runner: "llamacpp", ModelID: "m"}); err != nil {
+	if err := d.Push(inference.DeployConfig{Runner: "llamacpp", ModelID: "m"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := d.StartEngine(); err != nil {
@@ -645,7 +645,7 @@ while true; do sleep 0.05; done`)
 	defer cancel()
 	go d.SampleActivity(ctx)
 
-	if err := d.Push(remote.DeployConfig{Runner: "llamacpp", ModelID: "m"}); err != nil {
+	if err := d.Push(inference.DeployConfig{Runner: "llamacpp", ModelID: "m"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := d.StartEngine(); err != nil {

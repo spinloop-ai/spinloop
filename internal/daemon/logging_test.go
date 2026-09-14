@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/spinloop-ai/spinloop/internal/remote"
+	"github.com/spinloop-ai/spinloop/internal/inference"
 )
 
 func TestParseLevel(t *testing.T) {
@@ -375,7 +375,7 @@ func TestRequestSummaryNeverCarriesABody(t *testing.T) {
 
 	// A deploy config's serve args are exactly the sort of thing that can hold
 	// a credential.
-	body, err := json.Marshal(remote.DeployConfig{
+	body, err := json.Marshal(inference.DeployConfig{
 		Runner:    "llamacpp",
 		ModelID:   "org/model",
 		ServeArgs: []string{"--api-key", "not-in-the-log"},
@@ -518,7 +518,7 @@ while true; do sleep 0.05; done`)
 	d.Logger = captureLogger(&buf, slog.LevelDebug)
 	d.Sup.Logger = d.Logger
 
-	if err := d.Push(remote.DeployConfig{Runner: "llamacpp", ModelID: "org/model"}); err != nil {
+	if err := d.Push(inference.DeployConfig{Runner: "llamacpp", ModelID: "org/model"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := d.StartEngine(); err != nil {
@@ -805,11 +805,11 @@ func TestStartEngineRecordsASupervisorFailure(t *testing.T) {
 	d := testDaemon(t, "exit 0")
 	d.Logger = captureLogger(&buf, slog.LevelInfo)
 	d.Sup.Logger = d.Logger
-	if err := d.Push(remote.DeployConfig{Runner: "llamacpp", ModelID: "org/model"}); err != nil {
+	if err := d.Push(inference.DeployConfig{Runner: "llamacpp", ModelID: "org/model"}); err != nil {
 		t.Fatal(err)
 	}
 	// Point the built command at nothing.
-	d.BuildArgv = func(*remote.DeployConfig) ([]string, error) {
+	d.BuildArgv = func(*inference.DeployConfig) ([]string, error) {
 		return []string{filepath.Join(t.TempDir(), "no-such-engine")}, nil
 	}
 

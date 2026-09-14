@@ -10,8 +10,8 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/spinloop-ai/spinloop/internal/inference"
 	"github.com/spinloop-ai/spinloop/internal/metrics"
-	"github.com/spinloop-ai/spinloop/internal/remote"
 )
 
 // fakeHealth is a stand-in engine health endpoint whose status the test
@@ -176,7 +176,7 @@ func TestStartEngineForgetsReadiness(t *testing.T) {
 
 	d := testDaemon(t, `trap 'exit 0' TERM
 while true; do sleep 0.05; done`)
-	if err := d.Push(remote.DeployConfig{Runner: "llamacpp", ModelID: "m"}); err != nil {
+	if err := d.Push(inference.DeployConfig{Runner: "llamacpp", ModelID: "m"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := d.StartEngine(); err != nil {

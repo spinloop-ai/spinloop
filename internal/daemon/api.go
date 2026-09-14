@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/spinloop-ai/spinloop/internal/remote"
+	"github.com/spinloop-ai/spinloop/internal/inference"
 )
 
 // TokenEnvVar names the environment variable carrying the control API's
@@ -229,7 +229,7 @@ func int64Param(r *http.Request, name string, missing int64) (int64, error) {
 }
 
 func (d *Daemon) handleDeployConfig(w http.ResponseWriter, r *http.Request) {
-	var dc remote.DeployConfig
+	var dc inference.DeployConfig
 	if err := json.NewDecoder(r.Body).Decode(&dc); err != nil {
 		writeError(w, http.StatusBadRequest, fmt.Errorf("decoding deploy config: %w", err))
 		return

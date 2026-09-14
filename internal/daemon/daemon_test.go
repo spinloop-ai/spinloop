@@ -15,8 +15,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/spinloop-ai/spinloop/internal/inference"
 	"github.com/spinloop-ai/spinloop/internal/metrics"
-	"github.com/spinloop-ai/spinloop/internal/remote"
 )
 
 // stubEngine writes an executable shell script and returns its path.
@@ -159,13 +159,13 @@ func testDaemon(t *testing.T, engineScript string) *Daemon {
 	d := &Daemon{
 		Sup: NewSupervisor(filepath.Join(dir, "engine.log")),
 		Dir: dir,
-		BuildArgv: func(dc *remote.DeployConfig) ([]string, error) {
+		BuildArgv: func(dc *inference.DeployConfig) ([]string, error) {
 			if dc == nil {
 				return nil, fmt.Errorf("nothing to serve: no Spinloop and no stored deploy config")
 			}
 			return append([]string{engine}, dc.ServeArgs...), nil
 		},
-		ValidateConfig: func(dc remote.DeployConfig) error {
+		ValidateConfig: func(dc inference.DeployConfig) error {
 			if dc.Runner != "llamacpp" {
 				return fmt.Errorf("runner %q cannot be served locally", dc.Runner)
 			}
@@ -187,7 +187,7 @@ func TestDaemonDeployConfigPersistence(t *testing.T) {
 	}
 
 	// An unservable runner is rejected and not stored.
-	if err := d.Push(remote.DeployConfig{Runner: "vllm"}); err == nil ||
+	if err := d.Push(inference.DeployConfig{Runner: "vllm"}); err == nil ||
 		!strings.Contains(err.Error(), "vllm") {
 		t.Fatalf("push of unservable runner = %v", err)
 	}
@@ -195,7 +195,7 @@ func TestDaemonDeployConfigPersistence(t *testing.T) {
 		t.Fatal("rejected config was stored")
 	}
 
-	dc := remote.DeployConfig{Runner: "llamacpp", ModelID: "org/model", ServeArgs: []string{}}
+	dc := inference.DeployConfig{Runner: "llamacpp", ModelID: "org/model", ServeArgs: []string{}}
 	if err := d.Push(dc); err != nil {
 		t.Fatal(err)
 	}
@@ -223,7 +223,7 @@ func TestDaemonDeployConfigPersistence(t *testing.T) {
 // unmarshal would pass every same-process test and lose the value here.
 func TestDaemonDeployConfigParallelSurvivesRestart(t *testing.T) {
 	d := testDaemon(t, "exit 0")
-	dc := remote.DeployConfig{
+	dc := inference.DeployConfig{
 		Runner: "llamacpp", ModelID: "org/model",
 		ContextSize: 128000, Parallel: 2, ServeArgs: []string{},
 	}
@@ -253,7 +253,7 @@ func TestDaemonDeployConfigParallelSurvivesRestart(t *testing.T) {
 // asked for parallelism at all.
 func TestDaemonDeployConfigOmitsUnsetParallel(t *testing.T) {
 	d := testDaemon(t, "exit 0")
-	if err := d.Push(remote.DeployConfig{
+	if err := d.Push(inference.DeployConfig{
 		Runner: "llamacpp", ModelID: "org/model", ServeArgs: []string{},
 	}); err != nil {
 		t.Fatal(err)
@@ -411,7 +411,7 @@ while true; do sleep 0.05; done`)
 
 	// A crashed engine restarts only on explicit start.
 	crash := testDaemon(t, "exit 3")
-	crash.Push(remote.DeployConfig{Runner: "llamacpp", ModelID: "org/model"})
+	crash.Push(inference.DeployConfig{Runner: "llamacpp", ModelID: "org/model"})
 	if err := crash.StartEngine(); err != nil {
 		t.Fatal(err)
 	}
@@ -473,7 +473,7 @@ while true; do sleep 0.05; done`)
 		t.Errorf("idle daemon reported an engine endpoint: %+v", got.Engine)
 	}
 
-	if err := d.Push(remote.DeployConfig{Runner: "llamacpp", ModelID: "m"}); err != nil {
+	if err := d.Push(inference.DeployConfig{Runner: "llamacpp", ModelID: "m"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := d.StartEngine(); err != nil {
@@ -528,7 +528,7 @@ while true; do sleep 0.05; done`)
 func TestStatusOmitsUnknownEngineEndpoint(t *testing.T) {
 	d := testDaemon(t, `trap 'exit 0' TERM
 while true; do sleep 0.05; done`)
-	if err := d.Push(remote.DeployConfig{Runner: "llamacpp", ModelID: "m"}); err != nil {
+	if err := d.Push(inference.DeployConfig{Runner: "llamacpp", ModelID: "m"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := d.StartEngine(); err != nil {
@@ -552,11 +552,11 @@ func TestEngineKeyReachesTheEngineAsAFile(t *testing.T) {
 	d := testDaemon(t, `echo "$@" > `+argsFile+`
 trap 'exit 0' TERM
 while true; do sleep 0.05; done`)
-	d.EngineKeyArgs = func(_ *remote.DeployConfig, path string) ([]string, error) {
+	d.EngineKeyArgs = func(_ *inference.DeployConfig, path string) ([]string, error) {
 		return []string{"--api-key-file", path}, nil
 	}
 
-	if err := d.Push(remote.DeployConfig{Runner: "llamacpp", ModelID: "m"}); err != nil {
+	if err := d.Push(inference.DeployConfig{Runner: "llamacpp", ModelID: "m"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := d.SetEngineKey("sk-supplied"); err != nil {
@@ -641,10 +641,10 @@ func TestEngineKeyIsReplacedAndCleared(t *testing.T) {
 // gated with a literal argument.
 func TestUngatableEngineIsRefused(t *testing.T) {
 	d := testDaemon(t, "exit 0")
-	d.EngineKeyArgs = func(*remote.DeployConfig, string) ([]string, error) {
+	d.EngineKeyArgs = func(*inference.DeployConfig, string) ([]string, error) {
 		return nil, fmt.Errorf("vllm cannot be gated with an API key")
 	}
-	if err := d.Push(remote.DeployConfig{Runner: "llamacpp", ModelID: "m"}); err != nil {
+	if err := d.Push(inference.DeployConfig{Runner: "llamacpp", ModelID: "m"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := d.SetEngineKey("sk"); err != nil {
@@ -667,7 +667,7 @@ func TestUngatableEngineIsRefused(t *testing.T) {
 func TestStartRequestKeyNeverComesBack(t *testing.T) {
 	d := testDaemon(t, `trap 'exit 0' TERM
 while true; do sleep 0.05; done`)
-	d.EngineKeyArgs = func(_ *remote.DeployConfig, path string) ([]string, error) {
+	d.EngineKeyArgs = func(_ *inference.DeployConfig, path string) ([]string, error) {
 		return []string{"--api-key-file", path}, nil
 	}
 	srv := httptest.NewServer(d.Handler(""))
@@ -744,7 +744,7 @@ while true; do sleep 0.05; done`)
 func TestKeyTravelsWithItsConfig(t *testing.T) {
 	d := testDaemon(t, "exit 0")
 
-	if err := d.Push(remote.DeployConfig{Runner: "llamacpp", ModelID: "m"}); err != nil {
+	if err := d.Push(inference.DeployConfig{Runner: "llamacpp", ModelID: "m"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := d.SetEngineKey("sk-first"); err != nil {
@@ -776,10 +776,10 @@ while true; do sleep 0.05; done`)
 	// Exactly what the CLI does: the endpoint is set from the argv before the
 	// key exists on it.
 	d.SetEngineEndpoint(&EngineEndpoint{Port: 8080})
-	d.EngineKeyArgs = func(_ *remote.DeployConfig, path string) ([]string, error) {
+	d.EngineKeyArgs = func(_ *inference.DeployConfig, path string) ([]string, error) {
 		return []string{"--api-key-file", path}, nil
 	}
-	if err := d.Push(remote.DeployConfig{Runner: "llamacpp", ModelID: "m"}); err != nil {
+	if err := d.Push(inference.DeployConfig{Runner: "llamacpp", ModelID: "m"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := d.SetEngineKey("sk"); err != nil {
