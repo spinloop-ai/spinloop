@@ -33,6 +33,9 @@ Every `spinloop` command resolves the harness the same way:
 Launch the active harness's executable, forwarding stdio and any trailing
 arguments to it. The harness's exit code is yours.
 
+`spinloop code` is a one-word shortcut for this same launch — the same flags,
+Spinloop application, and forwarding. See [`spinloop code`](code.md).
+
 ### Configure, then launch
 
 `--spinloop`/`-O` applies an [`Spinloop`](../spinloop-file.md) on the way in —
@@ -418,6 +421,7 @@ Notes:
 
 ## See also
 
+- [`spinloop code`](code.md) — this launch, as a one-word top-level shortcut
 - [`spinloop provider list`](provider.md#spinloop-provider-list) — what the harness could be configured with
 - [`spinloop fleet route`](fleet.md#which-node-would-i-get) — which node a launch would pick
 - [`spinloop fleet harness`](fleet.md#launching-the-harness) — launch against the fleet file beside you
