@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -10,6 +11,20 @@ import (
 
 	"github.com/spinloop-ai/spinloop/internal/orchestrator"
 )
+
+// deadPID is a pid no process carries: a process started and waited on.
+func deadPID(t *testing.T) int {
+	t.Helper()
+	cmd := exec.Command("true")
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	pid := cmd.Process.Pid
+	if err := cmd.Wait(); err != nil {
+		t.Fatal(err)
+	}
+	return pid
+}
 
 // runWork works the work command group the way the binary does, the output
 // kept for the test to read: the stdout the command wrote, and its error.
@@ -314,6 +329,101 @@ func TestWorkRemove_TheWaitComesBackWhereTheRunIsLive(t *testing.T) {
 	}
 	if !strings.Contains(out, `item "a" removed`) {
 		t.Errorf("the remove reports the item: %s", out)
+	}
+}
+
+func TestAwaitAbort_TheBoundRunsOutFirst(t *testing.T) {
+	path := workFileIn(t, "- id: a\n  instructions: do a\n  dir: .\n",
+		`{"items":{"a":{"state":"running","node":"n","startedAt":"2026-09-14T00:00:00Z"}}}`)
+	if err := os.WriteFile(path+".lock", []byte(itoa(os.Getpid())), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := orchestrator.RequestAbort(path, "a"); err != nil {
+		t.Fatal(err)
+	}
+
+	bound, tick := workWaitBound, workWaitTick
+	workWaitBound, workWaitTick = 100*time.Millisecond, 5*time.Millisecond
+	defer func() { workWaitBound, workWaitTick = bound, tick }()
+
+	// The marker stands, the holder stays live, and no run takes it up.
+	if err := awaitAbort(path, "a", os.Getpid()); err == nil ||
+		!strings.Contains(err.Error(), "still pending") || !strings.Contains(err.Error(), `abort of "a"`) {
+		t.Errorf("the bound runs out, naming the item and the ask: %v", err)
+	}
+}
+
+func TestAwaitAbort_TheRunDiesWhileTheWaitIsPending(t *testing.T) {
+	path := workFileIn(t, "- id: a\n  instructions: do a\n  dir: .\n",
+		`{"items":{"a":{"state":"running","node":"n","startedAt":"2026-09-14T00:00:00Z"}}}`)
+	dead := deadPID(t)
+	if err := os.WriteFile(path+".lock", []byte(itoa(os.Getpid())), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := orchestrator.RequestAbort(path, "a"); err != nil {
+		t.Fatal(err)
+	}
+	// The run dies a moment out: its lock goes stale.
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		os.WriteFile(path+".lock", []byte(itoa(dead)), 0o600)
+	}()
+
+	bound, tick := workWaitBound, workWaitTick
+	workWaitBound, workWaitTick = 5*time.Second, 5*time.Millisecond
+	defer func() { workWaitBound, workWaitTick = bound, tick }()
+
+	err := awaitAbort(path, "a", os.Getpid())
+	if err == nil || !strings.Contains(err.Error(), "stopped while the abort of \"a\" was pending") {
+		t.Errorf("the dead run is reported, naming the item: %v", err)
+	}
+	// The marker stands: the ask was never taken up.
+	if _, err := os.Stat(filepath.Join(path+".aborts", "a")); err != nil {
+		t.Errorf("the marker stands beside the file: %v", err)
+	}
+}
+
+func TestAwaitRecordGone_TheBoundRunsOutFirst(t *testing.T) {
+	path := workFileIn(t, "- id: b\n  instructions: do b\n  dir: .\n",
+		`{"items":{"a":{"state":"done","node":"n","endedAt":"2026-09-14T00:00:00Z"}}}`)
+	if err := os.WriteFile(path+".lock", []byte(itoa(os.Getpid())), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	bound, tick := workWaitBound, workWaitTick
+	workWaitBound, workWaitTick = 100*time.Millisecond, 5*time.Millisecond
+	defer func() { workWaitBound, workWaitTick = bound, tick }()
+
+	// The record stands, the holder stays live, and no run drops it.
+	if err := awaitRecordGone(path, "a"); err == nil ||
+		!strings.Contains(err.Error(), "still records") || !strings.Contains(err.Error(), `"a"`) {
+		t.Errorf("the bound runs out, naming the item: %v", err)
+	}
+}
+
+func TestAwaitRecordGone_TheRunDiesAndTheCommandWritesTheFinalWord(t *testing.T) {
+	path := workFileIn(t, "- id: b\n  instructions: do b\n  dir: .\n",
+		`{"items":{"a":{"state":"done","node":"n","endedAt":"2026-09-14T00:00:00Z"}}}`)
+	dead := deadPID(t)
+	if err := os.WriteFile(path+".lock", []byte(itoa(os.Getpid())), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// The run dies a moment out: its lock goes stale, the record standing.
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		os.WriteFile(path+".lock", []byte(itoa(dead)), 0o600)
+	}()
+
+	bound, tick := workWaitBound, workWaitTick
+	workWaitBound, workWaitTick = 5*time.Second, 5*time.Millisecond
+	defer func() { workWaitBound, workWaitTick = bound, tick }()
+
+	if err := awaitRecordGone(path, "a"); err != nil {
+		t.Fatalf("the dead run is no fault: the command writes the final word: %v", err)
+	}
+	state, _ := os.ReadFile(path + ".state.json")
+	if strings.Contains(string(state), `"a"`) {
+		t.Errorf("the command's own write is the final word, the record gone:\n%s", state)
 	}
 }
 

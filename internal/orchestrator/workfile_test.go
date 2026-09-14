@@ -118,6 +118,13 @@ func TestLoadStateFile_And_SaveStateFile(t *testing.T) {
 	}
 }
 
+func TestLogPathFor_TheLogsBesideTheFile(t *testing.T) {
+	path := writeItems(t, itemsFile(itemSpec{id: "a", dir: t.TempDir()}))
+	if got, want := LogPathFor(path, "a"), filepath.Join(path+".logs", "a.log"); got != want {
+		t.Errorf("the kept output's path: %s (want %s)", got, want)
+	}
+}
+
 func TestValidateItem_TheFields(t *testing.T) {
 	if err := ValidateItem(Item{ID: "a", Instructions: "", Dir: t.TempDir()}); err == nil {
 		t.Error("an item with no instructions is a fault")

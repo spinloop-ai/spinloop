@@ -68,6 +68,60 @@ func TestConsumeAborts_TheMarkerStopsTheItemAndHoldsThePass(t *testing.T) {
 	end(1)
 }
 
+// stubbornChild is a launched agent the polite signal does not end: Stop
+// stands to reason, and only the hard end closes its wait.
+type stubbornChild struct {
+	release chan struct{}
+	stopped bool
+	killed  bool
+}
+
+func (c *stubbornChild) Wait() error {
+	<-c.release
+	return nil
+}
+
+func (c *stubbornChild) Stop() { c.stopped = true }
+
+func (c *stubbornChild) Kill() {
+	c.killed = true
+	close(c.release)
+}
+
+// TestConsumeAborts_TheGraceRunsOutAndTheHardEndComes is the take-up where
+// the agent does not end on the polite signal: the grace, then the hard end,
+// the record and the marker gone all the same.
+func TestConsumeAborts_TheGraceRunsOutAndTheHardEndComes(t *testing.T) {
+	topo := Topology{Wake: true, Nodes: []Node{runningNode("n", "org/m", nil)}}
+	h := &fakeHarness{name: "opencode", bin: "unused"}
+	child := &stubbornChild{release: make(chan struct{})}
+	rec := &launchRecorder{factory: func(bin string, args []string, dir, logPath string, env []string) (Child, error) {
+		return child, nil
+	}}
+	wl, path := workListWithLoop(t, h, rec, itemsFile(itemSpec{id: "a", dir: t.TempDir()}))
+
+	wl.pass(topo, nil)
+	if err := RequestAbort(path, "a"); err != nil {
+		t.Fatal(err)
+	}
+
+	grace := stopGrace
+	stopGrace = 20 * time.Millisecond
+	defer func() { stopGrace = grace }()
+
+	suppressed := wl.consumeAborts()
+	if !suppressed["a"] {
+		t.Errorf("the marker is taken up: %v", suppressed)
+	}
+	if !child.stopped {
+		t.Error("the polite signal goes first")
+	}
+	if !child.killed {
+		t.Error("the grace runs out, and the hard end comes")
+	}
+	wl.reap()
+}
+
 // TestPrune_AnInFlightItemTheFileLetGoKeepsItsRecord: the file lets go of an
 // item that is running, the agent runs to its end, and the record goes with
 // it out of the state once it is no longer in flight.
