@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [1.40.0] - 2026-09-14
+### Added
+- feat(fleet): target a registered environment with --env
+- feat(gateway): let the gateway wake a deployed remote node
+- feat: add code as a shortcut for harness open
+- feat: add the work command family
+- feat: converge fleet harness into code
+- feat: serve the orchestrator's work list over HTTP
+- feat: work a backlog of items against the fleet
+
+### Changed
+- chore(openspec): archive fleet-env-target and neutral-engine-config
+- refactor: group the harness and provider commands (#210)
+- refactor: move the deploy config into a neutral inference package
+
 ## [1.39.0] - 2026-09-13
 ### Added
 - feat(harness): auto-configure launches from --env alone
