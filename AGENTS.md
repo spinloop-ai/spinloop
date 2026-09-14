@@ -50,6 +50,7 @@ Run a single test: `go test -run TestWriteConfig_Idempotent ./...`
 The binary lives under `cmd/`; domain logic is split into `internal/` packages so each concern is isolated and independently testable. Spec pointers below name the `openspec/specs/` directory that governs a package's behavior — read it before changing that behavior.
 
 - `cmd/spinloop/commands.go` + `main.go` — the Cobra command tree and command bodies: `add`/`remove`/`apply`/`unapply`/`show`/`export`/`harness`/`alias`/`unalias`. (`harness-management`, `alias-registry`)
+- `cmd/spinloop/code.go` — the one launch path, shared by `harness open` and its one-word shortcut `code`: the custom argument split that decides what is spinloop's and what forwards to the agent, and the three ways a launch learns where the model is served (a Spinloop, `--env`, or a fleet's gateway). Nothing else reaches `launchAgent`. (`code-command`, `harness-management`, `fleet-routing`)
 - `cmd/spinloop/serve.go` — the `serve` command: engine dispatch (llama.cpp, oMLX) and the Spinloop/preset→flags mappings. (`local-serving`, `inference-runners`)
 - `cmd/spinloop/hf.go` — the `hf` command: one Hugging Face reference in, the Spinloop that serves it out — rendered to stdout or `-o`, narrated to stderr, optionally `--apply`ed. (`huggingface-spinloops`)
 - `cmd/spinloop/complete.go` — tab completion, built on Cobra's `__complete` engine. (`shell-completion`)
