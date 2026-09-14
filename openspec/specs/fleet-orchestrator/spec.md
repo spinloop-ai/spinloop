@@ -40,6 +40,16 @@ The command SHALL take a `--create-item-dirs` flag, defaulting to false:
 where it is set, the orchestrator creates an item's missing directory before
 launching its agent; where it is not, a missing directory fails the item.
 
+The command SHALL take a `--listen` flag, defaulting to loopback port 4010:
+where it is set, the orchestrator serves the work list API on that address
+for the life of the run. The command SHALL take a `--loopback` flag that
+selects loopback port 4010: it SHALL refuse to run the API on an address
+that is not loopback unless an API token is set, and the API token is a flag
+or a flag naming the file that holds the token — it SHALL resolve the flag
+first, then the file, and SHALL NOT write it anywhere. The API token is the
+orchestrator's own: it is distinct from the gateway's token and is not
+inherited from any environment variable the command itself uses.
+
 #### Scenario: A gateway and an items file drive the command
 
 - **WHEN** the operator runs the command naming a reachable gateway and an
@@ -69,6 +79,98 @@ launching its agent; where it is not, a missing directory fails the item.
   answer, or that refuses its token
 - **THEN** the command fails, naming the gateway and what went wrong, and
   works no item
+
+#### Scenario: A loopback API takes no token
+
+- **WHEN** the operator runs the command with a loopback listen address, and
+  no API token set
+- **THEN** the work list API serves on that address, and its requests take
+  no token
+
+#### Scenario: A non-loopback API without a token refuses
+
+- **WHEN** the operator runs the command with a non-loopback listen address,
+  and no API token set
+- **THEN** the command fails before it works an item, naming the token
+
+#### Scenario: The API token is its own
+
+- **WHEN** the operator runs the command against a gateway that has a
+  token, with the API token set
+- **THEN** the API authenticates on its own token, and the gateway's token
+  is not what its requests present
+
+#### Scenario: A listen address that conflicts is refused
+
+- **WHEN** the operator gives both a loopback flag and a listen address, or
+  an address that is not loopback with no token
+- **THEN** the command fails before it works an item, naming the conflict
+
+### Requirement: Serving the work list API
+
+The orchestrator SHALL serve a work list API for the life of the run, on
+the address its `--listen` flag names. The API's paths SHALL be:
+
+- `GET /` — the list of the items file's items as the run holds them: each
+  item's id, state, and the node it runs on, where it is running.
+- `GET /log/<id>` — the output of the item named, where the run keeps it.
+- `POST /` — a new item: the run admits it to the backlog, writes it to the
+  items file, and the items file stays the source of truth.
+- `DELETE /<id>` — an item out of the backlog: the run removes it from the
+  items file and its state.
+- `POST /abort/<id>` — an item out of the running: the run stops its agent,
+  puts the item back in the backlog, and writes that to the items file and
+  its state.
+
+The API SHALL answer from the run's in-memory view of the items — the same
+view the run's own loop reads and writes — and SHALL NOT re-read the items
+file to answer a request. Where the run writes the items file, the write
+SHALL carry the run's view, and SHALL NOT drop an item the API added or
+remove one it removed. The run's loop and the API SHALL share one view of
+the items: an item the API adds SHALL be eligible for admission on the
+loop's next pass, and an item the loop finishes SHALL show finished to the
+API.
+
+The API SHALL authenticate its requests with a bearer token: where the run
+listens on an address that is not loopback, every request SHALL present the
+run's API token or be refused; where it listens on loopback, a request MAY
+present no token and be served.
+
+#### Scenario: The run's view answers the list
+
+- **WHEN** the run's loop admits an item and a request reads the list
+- **THEN** the list shows the item running, on the node it was matched to
+
+#### Scenario: A new item enters through the API
+
+- **WHEN** a request posts an item to the API
+- **THEN** the run's view holds it, the items file holds it, and the loop's
+  next pass may admit it
+
+#### Scenario: An item comes out through the API
+
+- **WHEN** a request removes an item from the backlog, or aborts one that is
+  running
+- **THEN** the run's view no longer holds it in that state, the items file
+  no longer holds it where it is removed, and an aborted item's agent is
+  stopped and its item back in the backlog
+
+#### Scenario: A stopped run's API is gone
+
+- **WHEN** the run stops, whatever its cause
+- **THEN** the API no longer answers
+
+#### Scenario: A request without a token is refused off loopback
+
+- **WHEN** the run listens on an address that is not loopback, and a request
+  presents no token, or the wrong one
+- **THEN** the request is refused, and no item is read or changed
+
+#### Scenario: The loop and the API see one view
+
+- **WHEN** the API adds an item while the loop's next pass runs
+- **THEN** the pass sees the item, and an item the loop finishes shows
+  finished to a request that reads it
 
 ### Requirement: Work items
 

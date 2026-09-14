@@ -87,6 +87,14 @@ record per `id`. To change what a finished item does, change its `instructions`
 and `dir` — the record is kept, so the orchestrator will not work it again.
 To make it run once more, give it a new `id`.
 
+While a run is working, the same additions go over the [work list
+API](commands/orchestrator.md#the-work-list-api) — `POST /v1/items` against
+the address the run prints — and an item the API adds is worked on the run's
+next pass, like any item the file carries. The API is also how a client
+watches the backlog move and acts on it: the list with each item's state, an
+item's kept output, a removal of an item the operator no longer wants, and an
+abort of one that is running.
+
 ## Managing the backlog
 
 Beside the items file `spinloop` keeps:
@@ -120,6 +128,7 @@ giving only the gateway's address.
 
 ## Where next
 
-- [`spinloop orchestrator`](commands/orchestrator.md) — the full command reference
+- [`spinloop orchestrator`](commands/orchestrator.md) — the full command reference, and
+  the [work list API](commands/orchestrator.md#the-work-list-api) a client works the backlog through
 - [The fleet file](commands/fleet.md) — tags, concurrency, and waking
 - [The gateway](commands/gateway.md) — the front door the orchestrator reads and routes through

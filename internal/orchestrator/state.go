@@ -35,10 +35,26 @@ type stateFile struct {
 	Items map[string]ItemState `json:"items"`
 }
 
-// Store is the state beside one items file: the record of what happened to
-// each item, the per-item logs, and the lock that keeps a second
-// orchestrator off the same file.
-type Store struct {
+// Store is the state an orchestrator works from beside its items file: the
+// record of what happened to each item, the per-item logs, and the lock that
+// keeps a second orchestrator off the same file. The file-backed store
+// beside the items file is the default implementation; the run and the work
+// list API both work through this seam, and a test needs no state on disk.
+type Store interface {
+	// Load reads the record: every item's ItemState, keyed by the item's id.
+	Load() (map[string]ItemState, error)
+	// Save writes the record, the way a torn write must never leave a
+	// restart unsure which items were running.
+	Save(items map[string]ItemState) error
+	// LogPath is where one item's agent output is kept.
+	LogPath(id string) string
+	// Close releases the store's hold on the items file.
+	Close()
+}
+
+// fileStore is the state beside one items file: the state file, the log
+// directory, and the lock.
+type fileStore struct {
 	statePath string
 	logsDir   string
 	lockPath  string
@@ -49,7 +65,7 @@ type Store struct {
 // lock, refusing a second orchestrator for the same file, and performs the
 // recovery a restart owes — an item the state left running is recorded
 // failed, naming the interruption, and is not re-run.
-func OpenStore(itemsPath string) (*Store, error) {
+func OpenStore(itemsPath string) (Store, error) {
 	statePath := itemsPath + ".state.json"
 	lockPath := itemsPath + ".lock"
 
@@ -57,7 +73,7 @@ func OpenStore(itemsPath string) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	s := &Store{
+	s := &fileStore{
 		statePath: statePath,
 		logsDir:   itemsPath + ".logs",
 		lockPath:  lockPath,
@@ -67,25 +83,25 @@ func OpenStore(itemsPath string) (*Store, error) {
 		s.dropLock()
 		return nil, fmt.Errorf("opening the log directory beside %s: %v", itemsPath, err)
 	}
-	sf, err := s.load()
+	items, err := s.Load()
 	if err != nil {
 		s.dropLock()
 		return nil, err
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	changed := false
-	for id, st := range sf.Items {
+	for id, st := range items {
 		if st.State != StateRunning {
 			continue
 		}
 		st.State = StateFailed
 		st.Why = "the orchestrator stopped while it was running"
 		st.EndedAt = now
-		sf.Items[id] = st
+		items[id] = st
 		changed = true
 	}
 	if changed {
-		if err := s.save(sf); err != nil {
+		if err := s.Save(items); err != nil {
 			s.dropLock()
 			return nil, err
 		}
@@ -94,7 +110,7 @@ func OpenStore(itemsPath string) (*Store, error) {
 }
 
 // Close releases the file's lock.
-func (s *Store) Close() { s.dropLock() }
+func (s *fileStore) Close() { s.dropLock() }
 
 // takeLock claims the lock file for this process. A lock held by a live
 // process is refused, naming the holder; a lock whose process is gone is
@@ -131,33 +147,32 @@ func takeLock(path string) (int, error) {
 }
 
 // dropLock releases the lock file, the way a clean exit leaves it: gone.
-func (s *Store) dropLock() {
+func (s *fileStore) dropLock() {
 	os.Remove(s.lockPath)
 }
 
-// load reads the state, an absent file being an empty record.
-func (s *Store) load() (stateFile, error) {
+// Load reads the record, an absent file being an empty one.
+func (s *fileStore) Load() (map[string]ItemState, error) {
 	var sf stateFile
 	data, err := os.ReadFile(s.statePath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			sf.Items = map[string]ItemState{}
-			return sf, nil
+			return map[string]ItemState{}, nil
 		}
-		return sf, fmt.Errorf("reading the state beside the work items file: %v", err)
+		return nil, fmt.Errorf("reading the state beside the work items file: %v", err)
 	}
 	if err := json.Unmarshal(data, &sf); err != nil {
-		return sf, fmt.Errorf("the state beside the work items file is not a record: %v", err)
+		return nil, fmt.Errorf("the state beside the work items file is not a record: %v", err)
 	}
 	if sf.Items == nil {
 		sf.Items = map[string]ItemState{}
 	}
-	return sf, nil
+	return sf.Items, nil
 }
 
-// save writes the state atomically: a torn write must never leave a restart
-// unsure which items were running.
-func (s *Store) save(sf stateFile) error {
+// save writes the record as the file's state, atomically: a torn write must
+// never leave a restart unsure which items were running.
+func (s *fileStore) save(sf stateFile) error {
 	data, err := json.MarshalIndent(sf, "", "  ")
 	if err != nil {
 		return err
@@ -173,7 +188,15 @@ func (s *Store) save(sf stateFile) error {
 	return nil
 }
 
+// Save writes the record, atomically.
+func (s *fileStore) Save(items map[string]ItemState) error {
+	if items == nil {
+		items = map[string]ItemState{}
+	}
+	return s.save(stateFile{Items: items})
+}
+
 // LogPath is where one item's agent output is kept, beside the items file.
-func (s *Store) LogPath(id string) string {
+func (s *fileStore) LogPath(id string) string {
 	return filepath.Join(s.logsDir, id+".log")
 }

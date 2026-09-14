@@ -78,19 +78,8 @@ func ParseItems(data []byte) ([]Item, error) {
 			return nil, fmt.Errorf("duplicate id %q (items %d and %d)", f.ID, at+1, i+1)
 		}
 		seen[f.ID] = i
-		if f.Instructions == "" {
-			return nil, fmt.Errorf("item %q has no instructions", f.ID)
-		}
-		if f.Dir == "" {
-			return nil, fmt.Errorf("item %q has no working directory", f.ID)
-		}
-		for _, tag := range f.Tags {
-			if _, _, ok := fleet.SplitTag(tag); !ok {
-				return nil, fmt.Errorf("item %q's tag %q is not a key=value pair", f.ID, tag)
-			}
-		}
-		if keys := duplicateTagKeys(f.Tags); keys != "" {
-			return nil, fmt.Errorf("item %q names the tag key%s more than once", f.ID, keys)
+		if err := checkItem(f); err != nil {
+			return nil, err
 		}
 		priority := 0
 		if f.Priority != nil {
@@ -105,6 +94,39 @@ func ParseItems(data []byte) ([]Item, error) {
 		})
 	}
 	return items, nil
+}
+
+// checkItem is the validation one item's fields pass: a present id,
+// instructions, and working directory, and tags that are well-formed key
+// =value pairs, no key named twice. The file's parse applies it, and the
+// work list API's add applies the same.
+func checkItem(f fileItem) error {
+	if f.Instructions == "" {
+		return fmt.Errorf("item %q has no instructions", f.ID)
+	}
+	if f.Dir == "" {
+		return fmt.Errorf("item %q has no working directory", f.ID)
+	}
+	for _, tag := range f.Tags {
+		if _, _, ok := fleet.SplitTag(tag); !ok {
+			return fmt.Errorf("item %q's tag %q is not a key=value pair", f.ID, tag)
+		}
+	}
+	if keys := duplicateTagKeys(f.Tags); keys != "" {
+		return fmt.Errorf("item %q names the tag key%s more than once", f.ID, keys)
+	}
+	return nil
+}
+
+// fileItemFromItem is the item's file form: the priority rendered where it
+// is above the lowest rank, absent where it is the lowest.
+func fileItemFromItem(it Item) fileItem {
+	f := fileItem{ID: it.ID, Instructions: it.Instructions, Dir: it.Dir, Tags: it.Tags}
+	if it.Priority > 0 {
+		p := it.Priority
+		f.Priority = &p
+	}
+	return f
 }
 
 // duplicateTagKeys reports the tag keys an item names more than once, as a

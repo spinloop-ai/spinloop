@@ -1,6 +1,7 @@
 package main
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -32,6 +33,10 @@ func TestOrchestratorHelpReadsPerTheCliConventions(t *testing.T) {
 		"-f, --fleet",
 		"-H, --harness",
 		"--create-item-dirs",
+		"--listen",
+		"-l, --loopback",
+		"--api-token",
+		"--api-token-file",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the help should carry %q, got:\n%s", want, out)
@@ -133,7 +138,7 @@ func TestCmdOrchestrator_AFleetFileNamesTheGateway(t *testing.T) {
 	})
 
 	done := make(chan error, 1)
-	go func() { done <- cmdOrchestrator(nil) }()
+	go func() { done <- cmdOrchestrator([]string{"-l"}) }()
 
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
@@ -214,7 +219,7 @@ func TestCmdOrchestrator_AGatewayThatDoesNotAnswerEndsTheRunNamingIt(t *testing.
 	dir := t.TempDir()
 	t.Chdir(dir)
 	mustWrite(t, "work.yaml", "- id: a\n  instructions: do\n  dir: .\n")
-	err := cmdOrchestrator([]string{"--gateway", "http://127.0.0.1:1"})
+	err := cmdOrchestrator([]string{"--gateway", "http://127.0.0.1:1", "-l"})
 	if err == nil {
 		t.Fatal("a gateway that does not answer should end the run")
 	}
@@ -238,7 +243,7 @@ func TestCmdOrchestrator_AGatewayThatRefusesTheTokenEndsTheRunNamingIt(t *testin
 	dir := t.TempDir()
 	t.Chdir(dir)
 	mustWrite(t, "work.yaml", "- id: a\n  instructions: do\n  dir: .\n")
-	err := cmdOrchestrator([]string{"--gateway", srv.URL})
+	err := cmdOrchestrator([]string{"--gateway", srv.URL, "-l"})
 	if err == nil {
 		t.Fatal("a gateway that refuses the token should end the run")
 	}
@@ -280,7 +285,7 @@ func TestCmdOrchestrator_WorksAgainstAGatewayOnLoopback(t *testing.T) {
 	})
 
 	done := make(chan error, 1)
-	go func() { done <- cmdOrchestrator([]string{"--gateway", "http://" + ln.Addr().String()}) }()
+	go func() { done <- cmdOrchestrator([]string{"--gateway", "http://" + ln.Addr().String(), "-l"}) }()
 
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
@@ -309,5 +314,153 @@ func TestCmdOrchestrator_WorksAgainstAGatewayOnLoopback(t *testing.T) {
 		}
 	case <-time.After(15 * time.Second):
 		t.Fatal("the interrupt did not end the run")
+	}
+}
+
+// --loopback and --listen are two answers to one question: the conflict is
+// named before anything is resolved or served.
+func TestCmdOrchestrator_LoopbackConflictsWithAnExplicitListen(t *testing.T) {
+	isolateConfig(t)
+	dir := t.TempDir()
+	t.Chdir(dir)
+	mustWrite(t, "work.yaml", "- id: a\n  instructions: do\n  dir: .\n")
+	err := cmdOrchestrator([]string{"--loopback", "--listen", "127.0.0.1:4010"})
+	if err == nil || !strings.Contains(err.Error(), "--loopback") || !strings.Contains(err.Error(), "--listen") {
+		t.Errorf("the conflict should name both flags, got %v", err)
+	}
+}
+
+// A non-loopback bind without a token is refused before serving, naming the
+// address and the ways a token may be supplied.
+func TestCmdOrchestrator_RefusesATokenlessNonLoopbackBind(t *testing.T) {
+	isolateConfig(t)
+	t.Setenv("OPENAI_API_KEY", "the-token")
+	t.Setenv("SPINLOOP_API_TOKEN", "")
+	dir := t.TempDir()
+	t.Chdir(dir)
+	mustWrite(t, "work.yaml", "- id: a\n  instructions: do\n  dir: .\n")
+	err := cmdOrchestrator([]string{"--gateway", "http://gw:4000", "--listen", "0.0.0.0:4010"})
+	if err == nil {
+		t.Fatal("a tokenless non-loopback bind should be refused")
+	}
+	for _, want := range []string{"0.0.0.0:4010", "--api-token-file", "SPINLOOP_API_TOKEN", "--api-token"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the refusal should name %q, got %v", want, err)
+		}
+	}
+}
+
+// The API's token is resolved the daemon's way: the environment variable, a
+// file, or the literal flag, two of which at once is a conflict.
+func TestCmdOrchestrator_TheAPITokenIsResolvedTheDaemonsWay(t *testing.T) {
+	isolateConfig(t)
+	t.Setenv("OPENAI_API_KEY", "the-token")
+	dir := t.TempDir()
+	t.Chdir(dir)
+	mustWrite(t, "work.yaml", "- id: a\n  instructions: do\n  dir: .\n")
+
+	// The environment: a non-loopback bind with it gets past the refusal,
+	// and the run ends on the gateway, not the token.
+	t.Setenv("SPINLOOP_API_TOKEN", "the-api-token")
+	err := cmdOrchestrator([]string{"--gateway", "http://127.0.0.1:1"})
+	if err == nil || !strings.Contains(err.Error(), "http://127.0.0.1:1") {
+		t.Fatalf("a token from the environment should get past the refusal, got %v", err)
+	}
+
+	// A file: likewise.
+	t.Setenv("SPINLOOP_API_TOKEN", "")
+	tokenFile := filepath.Join(dir, "token")
+	mustWrite(t, tokenFile, "the-api-token\n")
+	err = cmdOrchestrator([]string{"--gateway", "http://127.0.0.1:1", "--api-token-file", tokenFile})
+	if err == nil || !strings.Contains(err.Error(), "http://127.0.0.1:1") {
+		t.Fatalf("a token from a file should get past the refusal, got %v", err)
+	}
+
+	// Two sources at once is a conflict.
+	err = cmdOrchestrator([]string{"--gateway", "http://127.0.0.1:1", "-l", "--api-token", "a", "--api-token-file", tokenFile})
+	if err == nil || !strings.Contains(err.Error(), "--api-token") || !strings.Contains(err.Error(), "--api-token-file") {
+		t.Fatalf("two token sources at once should be a conflict, got %v", err)
+	}
+}
+
+// On loopback the work list API serves without a token: a caller needs
+// nothing while the run works, the startup line names the address, and the
+// clean interrupt takes the server down with the run, the state saved.
+func TestCmdOrchestrator_LoopbackServesTheWorkListWithoutAToken(t *testing.T) {
+	isolateConfig(t)
+	t.Setenv("OPENAI_API_KEY", "the-token")
+	t.Setenv("SPINLOOP_API_TOKEN", "")
+	node := newRoutableNode(t, "qwen3-27b", true, 300)
+	dir := t.TempDir()
+	fleetFileIn(t, dir, "nodes:\n"+node.entry("gpu-box"))
+	t.Chdir(dir)
+	// The item names a tag no node carries, so nothing is launched.
+	mustWrite(t, "work.yaml", "- id: a\n  instructions: do\n  dir: .\n  tags:\n    - gpu=a100\n")
+
+	srv, ln, err := newGatewayServer("", "127.0.0.1:0", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	go srv.Serve(ln)
+
+	// The banner goes to stdout; redirect it the way the gateway test does.
+	stdout := filepath.Join(t.TempDir(), "stdout")
+	f, err := os.Create(stdout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := os.Stdout
+	os.Stdout = f
+	t.Cleanup(func() {
+		os.Stdout = old
+		f.Close()
+	})
+
+	done := make(chan error, 1)
+	go func() { done <- cmdOrchestrator([]string{"--gateway", "http://" + ln.Addr().String(), "-l"}) }()
+
+	// The startup line names the address the work list answers on.
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		data, _ := os.ReadFile(stdout)
+		if strings.Contains(string(data), "Work list on") {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	data, _ := os.ReadFile(stdout)
+	if !strings.Contains(string(data), "Work list on 127.0.0.1:4010") {
+		t.Fatalf("the startup line should name the work list's address, got:\n%s", data)
+	}
+
+	// A tokenless caller reads the work list while the run works.
+	resp, err := http.Get("http://127.0.0.1:4010/v1/items")
+	if err != nil {
+		t.Fatalf("the work list API should answer on loopback: %v", err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || !strings.Contains(string(body), `"a"`) || !strings.Contains(string(body), `"backlog"`) {
+		t.Fatalf("a tokenless caller should read the work list, got %d: %s", resp.StatusCode, body)
+	}
+
+	interruptSelf(t)
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("the interrupt should end the run without an error, got %v", err)
+		}
+	case <-time.After(15 * time.Second):
+		t.Fatal("the interrupt did not end the run")
+	}
+
+	// The server is down with the run, the state saved.
+	if resp, err := http.Get("http://127.0.0.1:4010/health"); err == nil {
+		resp.Body.Close()
+		t.Error("the interrupt should take the work list API down with the run")
+	}
+	if _, err := os.Stat("work.yaml.state.json"); err != nil {
+		t.Errorf("the interrupt should leave the state saved: %v", err)
 	}
 }
