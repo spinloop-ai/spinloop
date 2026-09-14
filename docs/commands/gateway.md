@@ -73,7 +73,7 @@ picker and a second gateway does not overwrite this one. See
 | Path | Meaning |
 | ---- | ------- |
 | `GET /health` | That the gateway is up. It touches no node on purpose — it is how you tell the gateway down from the fleet down. |
-| `GET /v1/models` | The OpenAI list of what a request can reach: what the running nodes report (the served name when a node reports one, else the model id), and — when [wake](#waking-a-node) is on — what a stopped node's own source describes, the model a request would start it with. Duplicates once. Nothing reachable is an empty list, not an error. |
+| `GET /v1/models` | The OpenAI list of what a request can reach: what the running nodes report (the served name when a node reports one, else the model id), and, for a stopped node [waking can reach](#waking-a-node), the model it would start with — its own Spinloop source for a `kind: daemon` node, its own stats reply for a `kind: remote` one. Duplicates once. Nothing reachable is an empty list, not an error. |
 | `POST /v1/chat/completions` | Routed to the node serving the request's `model`, the way a launch routes. |
 | `POST /v1/completions` | The same, for the completions endpoint. |
 | `GET /v1/fleet` | The fleet's [topology](#the-fleets-topology) — what a [`spinloop orchestrator`](orchestrator.md) reads to work its backlog. |
@@ -83,10 +83,15 @@ not serve is refused with a `404` naming the ones it does.
 
 The list is what a request can reach, so it is bounded by what the gateway can
 start: a running node contributes only what it reports — a running engine is
-never displaced to make room — and a `kind: remote` environment contributes
-nothing beyond what it runs, because a request never wakes one. With
-`wake: off`, only what is running is listed. Each node's source is read at most
-once in a short window, so a poll of the models list is cheap.
+never displaced to make room. A deployed-but-stopped `kind: remote`
+environment contributes the model id its own stats reply reports — read
+directly from its stored deploy config, the way `spinloop remote metrics`
+already reads it, since its status reply carries no such facts while
+stopped — since the gateway can wake it the same way it wakes a
+`kind: daemon` node; one with nothing deployed contributes nothing, and
+neither does any node whose own `wake` (or the file's, when it names none)
+is off. Each node's source is read at most once in a short window, so a
+poll of the models list is cheap.
 
 ### Routing a request
 
@@ -114,8 +119,8 @@ fleet-level settings. Each node's entry carries its name, kind,
 [tags](fleet.md#tags), state, what it serves (the served name where a running
 engine reports one, else the model id), whether it has answered its own health
 check, when it last did work — and, for a node that is not running, the model
-a request would start it with, where its own source describes one and the
-file's [wake policy](fleet.md#waking) allows it. The file's `wake` and
+a request would start it with, where the node describes one and
+[waking is allowed](fleet.md#waking) for it. The file's `wake` and
 `prefer` settings and its [concurrency](fleet.md#concurrency) limits ride
 along, each absent where the file declares none. A node that does not answer
 is reported in its place — the way the fleet's own views report it — rather
@@ -127,20 +132,36 @@ of the fleet: the orchestrator takes no fleet file of its own.
 
 ### Waking a node
 
-When no running node serves the model and the fleet file's
-[`wake`](fleet.md#waking) setting allows it, the gateway starts a node with
-the config that node's own Spinloop source resolves to — only nodes whose
-source describes the requested model are candidates, and a node whose stored
-config already matches is tried first — and holds the request until the engine
-answers, bounded by `--wake-timeout` (default 5m). A timeout fails the request
-saying so and leaves the engine running, so a slow load is not thrown away.
-Concurrent requests for the same model wake at most one engine: a request that
-loses the start to the daemon's "already running" answer takes the node the
-other one started.
+When no running node serves the model and [waking is allowed](fleet.md#waking)
+for at least one candidate, the gateway starts one and holds the request until
+its engine answers. What a node is started with, and how it is picked, depends
+on its kind — only nodes describing the requested model are candidates, and
+one whose stored config already matches is tried first:
 
-With `wake: off`, or when no node's source describes the model, a request
-nothing is serving fails without starting anything, naming the node and the
-`spinloop fleet start <node>` command that would start it.
+- A **`kind: daemon`** node is started with the config its own Spinloop
+  source resolves to.
+- A **deployed-but-stopped `kind: remote`** node is booted as it is: its own
+  stored deploy config — set by `spinloop remote deploy`, not by this wake —
+  decides what it serves, and the gateway pushes nothing new. An
+  **undeployed** environment is never a candidate: it has nothing to serve
+  yet, and choosing what to deploy is `spinloop remote deploy`'s call, not a
+  request's.
+
+The wait is bounded by `--wake-timeout` (default 5m); a timeout fails the
+request saying so and leaves the engine running, so a slow load — or, for a
+remote node, a slow boot — is not thrown away. Concurrent requests for the
+same model wake at most one engine: the gateway coalesces two requests
+racing to wake the same node into a single start, so a request that arrives
+mid-wake joins the one already under way rather than starting a second
+engine of its own — a daemon node's control API would refuse the second
+start anyway, but a remote environment's control plane does not, so this is
+what keeps a burst of requests from booting (and billing for) more than one
+instance.
+
+A request nothing is serving fails without starting anything, naming the node
+and the `spinloop fleet start <node>` command that would start it, when no
+candidate node may be woken — its own `wake`, or the file's when it names
+none, is off — or when no node describes the model at all.
 
 The gateway needs the same environment a machine running
 `spinloop fleet start` would: the tokens the fleet file names, set in its

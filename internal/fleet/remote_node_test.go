@@ -269,11 +269,63 @@ func TestRemoteNodeLogsSharesTheFollowCursorWithRemoteLogsCommand(t *testing.T) 
 	}
 }
 
-func TestRemoteNodeStartWithIsRefused(t *testing.T) {
-	node, _ := NewRemoteNode("env", remote.Config{StartURL: "http://x", StopURL: "http://x", Region: "r"})
-	_, err := node.StartWith(context.Background(), &inference.DeployConfig{Runner: "llamacpp"}, "")
-	if err == nil || !strings.Contains(err.Error(), "spinloop remote deploy") {
-		t.Errorf("StartWith should refuse, naming the deploy path; got %v", err)
+// StartWith boots a deployed-but-stopped environment exactly as Start does,
+// ignoring the config and key it is handed: what a remote environment
+// serves, and the key that gates it, are fixed by `spinloop remote deploy`,
+// not by a wake call.
+func TestRemoteNodeStartWithBootsADeployedEnvironment(t *testing.T) {
+	stubAWSCreds(t)
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"state":"stopped"}`))
+	})
+	mux.HandleFunc("POST /", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"state":"ready","healthy":true}`))
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	node, err := NewRemoteNode("env", remote.Config{StartURL: srv.URL, StopURL: srv.URL, Region: "us-east-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	status, err := node.StartWith(context.Background(),
+		&inference.DeployConfig{Runner: "llamacpp", ModelID: "org/other"}, "some-key")
+	if err != nil {
+		t.Fatalf("StartWith should boot a deployed environment: %v", err)
+	}
+	if status.State != "ready" {
+		t.Errorf("status = %+v, want ready", status)
+	}
+}
+
+// StartWith does not itself tell a deployed environment from an undeployed
+// one by reading status: the control plane's status reply carries no deploy
+// facts for a stopped environment either way (only a running one's does), so
+// a status read cannot distinguish them. That check belongs to the caller —
+// the gateway's own candidate matching confirms deployment from a stats read
+// before a candidate is ever chosen — so StartWith just boots, whatever a
+// status read would have said.
+func TestRemoteNodeStartWithDoesNotItselfCheckDeployment(t *testing.T) {
+	stubAWSCreds(t)
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"state":"undeployed"}`))
+	})
+	mux.HandleFunc("POST /", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"state":"ready","healthy":true}`))
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	node, err := NewRemoteNode("env", remote.Config{StartURL: srv.URL, StopURL: srv.URL, Region: "us-east-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := node.StartWith(context.Background(), &inference.DeployConfig{Runner: "llamacpp"}, ""); err != nil {
+		t.Fatalf("StartWith should not refuse on a status read alone: %v", err)
 	}
 }
 
@@ -392,6 +444,25 @@ func TestStatusFromRemoteServingFacts(t *testing.T) {
 	without := statusFromRemote(remote.Response{State: "running"})
 	if without.Runner != "" || without.Model != "" || without.ServedName != "" {
 		t.Errorf("an absent serving fact must stay empty, got %+v", without)
+	}
+}
+
+// statusFromRemote maps the control plane's own health check onto Ready the
+// way a local daemon's reading is reported, so a router waiting for a
+// remote engine to answer trusts it instead of a raw TCP probe — which can
+// succeed well before the model has finished loading.
+func TestStatusFromRemoteMapsHealthyOntoReady(t *testing.T) {
+	if got := statusFromRemote(remote.Response{State: "running", Healthy: boolPtr(true)}); got.Ready != "ready" {
+		t.Errorf("healthy=true should map to Ready=%q, got %q", "ready", got.Ready)
+	}
+	if got := statusFromRemote(remote.Response{State: "running", Healthy: boolPtr(false)}); got.Ready != "not-ready" {
+		t.Errorf("healthy=false should map to Ready=%q, got %q", "not-ready", got.Ready)
+	}
+	// No healthy reading at all — an older control plane, or the branch
+	// where the SSM agent is not yet reachable — leaves Ready empty rather
+	// than claiming either answer.
+	if got := statusFromRemote(remote.Response{State: "running"}); got.Ready != "" {
+		t.Errorf("an absent healthy reading should leave Ready empty, got %q", got.Ready)
 	}
 }
 

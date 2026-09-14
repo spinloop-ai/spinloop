@@ -90,15 +90,26 @@ func (n *remoteNode) StartWithProgress(ctx context.Context, report func(StartPha
 	return statusFromRemote(*resp), nil
 }
 
-// StartWith is how a router wakes a node to serve something. A remote environment
-// is not woken: what it serves is set by `spinloop remote deploy`, a heavier flow
-// (provisioning, weight seeding, ingress) that a node start must not conflate.
+// StartWith is how a router wakes a node to serve something. A remote
+// environment's engine is not configured by a start: what it serves and the
+// key that gates it are fixed by `spinloop remote deploy`, a heavier flow
+// (provisioning, weight seeding, ingress) that a node start must not
+// conflate — so dc and engineKey are ignored, and this boots the instance
+// exactly as Start does.
+//
+// An undeployed environment is not checked for here: a status read cannot
+// tell a stopped-but-deployed environment from an undeployed one — the
+// control plane only relays what an environment serves on its status reply
+// while it is running — so that check has to happen where deployment is
+// actually confirmed, by reading the environment's deploy config directly
+// (its stats reply, in the gateway's own candidate matching) before a
+// candidate ever reaches this call. A caller that skips that matching and
+// hands an undeployed environment straight to StartWith gets the boot
+// call's own answer instead, whatever that turns out to be.
 func (n *remoteNode) StartWith(ctx context.Context, dc *inference.DeployConfig, engineKey string) (daemon.StatusResponse, error) {
 	_ = dc
 	_ = engineKey
-	return daemon.StatusResponse{}, fmt.Errorf(
-		"%s is a remote environment, not a node to be woken: tell it what to serve with `spinloop remote deploy`",
-		n.name)
+	return n.StartWithProgress(ctx, func(StartPhase) {})
 }
 
 func (n *remoteNode) Stop(ctx context.Context) (daemon.StatusResponse, error) {
@@ -172,6 +183,16 @@ func (n *remoteNode) Logs(ctx context.Context, offset int64, limit int) (daemon.
 // routing resolves a remote node's address the way it resolves any node's.
 // Absent (a stopped or undeployed environment reports none) means no engine
 // address, exactly as the parts would be.
+//
+// Healthy is the control plane's own readiness reading — the same health
+// check (hitting the engine's /health, excluding the 503 it answers while
+// still loading weights) a running remote view already carries — mapped
+// onto Ready the way a local daemon's own reading is, so a router waiting
+// for a remote engine to answer trusts this instead of falling back to
+// whether its port merely accepts a connection, which it can do well before
+// the model has loaded. Absent (an older control plane, or the SSM agent
+// not yet reachable) leaves Ready empty, the same "no reading yet" a local
+// daemon reports before its own first check lands.
 func statusFromRemote(resp remote.Response) daemon.StatusResponse {
 	s := daemon.StatusResponse{
 		State:        resp.State,
@@ -180,6 +201,13 @@ func statusFromRemote(resp remote.Response) daemon.StatusResponse {
 		ServedName:   resp.ServedName,
 		LastActiveAt: resp.LastActiveAt,
 		IdleSeconds:  resp.IdleSeconds,
+	}
+	if resp.Healthy != nil {
+		if *resp.Healthy {
+			s.Ready = daemon.ReadyYes
+		} else {
+			s.Ready = daemon.ReadyNo
+		}
 	}
 	if u, err := url.Parse(resp.BaseURL); resp.BaseURL != "" && err == nil && u.Host != "" {
 		port, _ := strconv.Atoi(u.Port())

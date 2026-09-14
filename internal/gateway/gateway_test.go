@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -9,6 +10,8 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -20,6 +23,35 @@ import (
 	"github.com/spinloop-ai/spinloop/internal/fleet"
 	"github.com/spinloop-ai/spinloop/internal/inference"
 )
+
+// registerRemoteEnv points the environment registry (SPINLOOP_CONFIG_DIR) at
+// a temp config directory and writes one environment's remote.json, whose
+// control plane — start, stop and stats alike — is the server url given, and
+// stubs the AWS credential chain so a signed control call reaches it.
+// Reproduced from internal/fleet's own helper of the same name because it
+// lives in a different package.
+func registerRemoteEnv(t *testing.T, name, url string) {
+	t.Helper()
+	t.Setenv("AWS_ACCESS_KEY_ID", "AKIATESTTESTTESTTEST")
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "test-secret")
+	t.Setenv("AWS_SESSION_TOKEN", "")
+	t.Setenv("AWS_PROFILE", "")
+	t.Setenv("AWS_CONFIG_FILE", filepath.Join(t.TempDir(), "no-such-file"))
+	t.Setenv("AWS_SHARED_CREDENTIALS_FILE", filepath.Join(t.TempDir(), "no-such-file"))
+	t.Setenv("AWS_EC2_METADATA_DISABLED", "true")
+
+	home := t.TempDir()
+	t.Setenv("SPINLOOP_CONFIG_DIR", home)
+	envDir := filepath.Join(home, "remotes", name)
+	if err := os.MkdirAll(envDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	body := fmt.Sprintf(`{"start_url":%q,"stop_url":%q,"stats_url":%q,"region":"us-east-1","environment":%q}`,
+		url, url, url+"/stats", name)
+	if err := os.WriteFile(filepath.Join(envDir, "remote.json"), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
 
 // fakeNode is one machine: its daemon's control API and, once running, its
 // engine's real HTTP endpoint on the port the daemon reports — so the
@@ -435,17 +467,77 @@ func TestModelsListsOnlyWhatRunsWhenWakeIsOff(t *testing.T) {
 	}
 }
 
-// The gateway cannot start a remote environment — a request never wakes one —
-// so its source's model is not wakeable and not listed.
-func TestModelsLeavesOutARemoteEnvironment(t *testing.T) {
+// A deployed-but-stopped remote environment's model comes from its own
+// stats reply — the environment's stored deploy config, read directly by
+// the stats Lambda — not from its status reply, which carries no deploy
+// facts while the environment is stopped, and not from a Spinloop source.
+// So it is wakeable and listed the same as a daemon node's.
+func TestModelsListsADeployedRemoteEnvironment(t *testing.T) {
+	url, _ := remoteControlServer(t)
+	registerRemoteEnv(t, "env", url)
 	cfg := &fleet.Config{Path: "fleet.yaml", Dir: t.TempDir(), Nodes: []fleet.NodeConfig{
 		{Name: "env", Kind: fleet.KindRemote},
 	}}
-	h := New(cfg, "", Options{ConfigFor: cfgForOf(t,
-		map[string]inference.DeployConfig{"env": {Runner: "llamacpp", ModelID: "org/cold"}},
-		nil)})
-	if m := h.wakeableModels(); len(m) != 0 {
-		t.Errorf("a remote environment's source is not a request's, got %v", m)
+	h := New(cfg, "", Options{})
+	m := h.wakeableModels(context.Background())
+	if got := m["env"]; got != "org/deployed" {
+		t.Errorf("wakeableModels()[env] = %q, want the model id from its stats reply", got)
+	}
+}
+
+// An undeployed remote environment's stats read fails outright — the stats
+// Lambda has no deploy config to read — so it has nothing to be woken with
+// and is not listed.
+func TestModelsLeavesOutAnUndeployedRemoteEnvironment(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"state":"undeployed"}`))
+	})
+	mux.HandleFunc("GET /stats", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"error":"cannot read deploy config: run spinloop remote deploy first"}`))
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	registerRemoteEnv(t, "env", srv.URL)
+
+	cfg := &fleet.Config{Path: "fleet.yaml", Dir: t.TempDir(), Nodes: []fleet.NodeConfig{
+		{Name: "env", Kind: fleet.KindRemote},
+	}}
+	h := New(cfg, "", Options{})
+	if m := h.wakeableModels(context.Background()); len(m) != 0 {
+		t.Errorf("an undeployed remote environment has nothing to start it with, got %v", m)
+	}
+}
+
+// A remote node with its own wake disabled is not listed, even though it is
+// deployed, and even under a fleet that wakes.
+func TestModelsLeavesOutARemoteEnvironmentWithWakeDisabled(t *testing.T) {
+	url, _ := remoteControlServer(t)
+	registerRemoteEnv(t, "env", url)
+	cfg := &fleet.Config{Path: "fleet.yaml", Dir: t.TempDir(), Nodes: []fleet.NodeConfig{
+		{Name: "env", Kind: fleet.KindRemote, WakePolicy: fleet.WakeOff},
+	}}
+	h := New(cfg, "", Options{})
+	if m := h.wakeableModels(context.Background()); len(m) != 0 {
+		t.Errorf("a node with its own wake disabled should not be listed, got %v", m)
+	}
+}
+
+// A remote node whose environment is not registered fails before any network
+// call, naming the node the way a daemon node with no resolvable Spinloop
+// source would.
+func TestRemoteConfigForUnregisteredEnvironment(t *testing.T) {
+	t.Setenv("SPINLOOP_CONFIG_DIR", t.TempDir())
+	cfg := &fleet.Config{Path: "fleet.yaml", Dir: t.TempDir(), Nodes: []fleet.NodeConfig{
+		{Name: "env", Kind: fleet.KindRemote},
+	}}
+	h := New(cfg, "", Options{})
+	cfgFor := h.remoteConfigFor(context.Background())
+	if _, err := cfgFor(fleet.NodeConfig{Name: "env", Kind: fleet.KindRemote}); err == nil ||
+		!strings.Contains(err.Error(), "env") {
+		t.Errorf("an unregistered environment should fail naming it, got %v", err)
 	}
 }
 
@@ -1060,6 +1152,162 @@ func TestNothingCanServeNamesEveryRefusal(t *testing.T) {
 	defer func() { a.mu.Unlock(); b.mu.Unlock() }()
 	if a.started != 0 || b.started != 0 {
 		t.Error("nothing is started when nothing can serve")
+	}
+}
+
+// --- waking a remote node -----------------------------------------------------
+
+// remoteControlServer serves a deployed-but-stopped environment's status
+// until its instance is booted (POST), after which it reports running with
+// an engine that actually answers an OpenAI-compatible completion — so a
+// request proxied to it end to end gets a real reply, the same way it does
+// against a daemon's engine.
+//
+// Its GET / (status) reply matches the real control plane: deploy facts
+// (runner, modelId, servedName) ride along only once the environment is
+// running, not while it is stopped — a stopped environment's status names
+// only its state and base_url, the same gap that "gateway waking an
+// undeployed node" is really about. GET /stats always carries runner and
+// modelId (never servedName — the stats reply has none), since the stats
+// Lambda reads the deploy config directly rather than relaying it alongside
+// instance state; that is what the gateway now resolves a stopped remote
+// node's wakeable model from.
+func remoteControlServer(t *testing.T) (url string, started func() bool) {
+	t.Helper()
+	var (
+		mu      sync.Mutex
+		engine  net.Listener
+		wasSent bool
+	)
+	engineHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"id":"cmpl-1","object":"chat.completion","choices":[{"message":{"role":"assistant","content":"hello"}}]}`)
+	})
+	statusBody := func() string {
+		mu.Lock()
+		defer mu.Unlock()
+		if engine == nil {
+			return `{"state":"stopped"}`
+		}
+		return fmt.Sprintf(
+			`{"state":"running","runner":"llamacpp","modelId":"org/deployed","servedName":"deployed","base_url":"http://%s/v1"}`,
+			engine.Addr())
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(statusBody()))
+	})
+	mux.HandleFunc("GET /stats", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"state":"stopped","runner":"llamacpp","modelId":"org/deployed"}`)
+	})
+	mux.HandleFunc("POST /", func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		wasSent = true
+		ln, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			mu.Unlock()
+			t.Fatal(err)
+		}
+		engine = ln
+		mu.Unlock()
+		go (&http.Server{Handler: engineHandler}).Serve(ln)
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `{"state":"ready","healthy":true,"runner":"llamacpp","modelId":"org/deployed","servedName":"deployed","base_url":"http://%s/v1"}`, ln.Addr())
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(func() {
+		srv.Close()
+		mu.Lock()
+		defer mu.Unlock()
+		if engine != nil {
+			engine.Close()
+		}
+	})
+	return srv.URL, func() bool { mu.Lock(); defer mu.Unlock(); return wasSent }
+}
+
+// A request for a model only a deployed-but-stopped remote node serves is
+// held and answered once that node's instance boots — the gateway sources
+// its wakeable model from its own last status, not a Spinloop source, and
+// StartWith boots it without pushing any config.
+func TestColdRequestWakesADeployedRemoteNode(t *testing.T) {
+	shortWake := func(t *testing.T) {
+		old := fleet.WakeTimeout
+		fleet.WakeTimeout = 3 * time.Second
+		t.Cleanup(func() { fleet.WakeTimeout = old })
+	}
+	shortWake(t)
+	url, started := remoteControlServer(t)
+	registerRemoteEnv(t, "cloud", url)
+
+	cfg := &fleet.Config{Path: "fleet.yaml", Dir: t.TempDir(), Nodes: []fleet.NodeConfig{
+		{Name: "cloud", Kind: fleet.KindRemote},
+	}}
+	h := New(cfg, "", Options{})
+
+	resp, body := post(t, h, "", `{"model":"org/deployed"}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("HTTP %d, body %s", resp.StatusCode, body)
+	}
+	if !started() {
+		t.Error("the environment's instance was never started")
+	}
+}
+
+// An undeployed remote node's stats read fails outright — nothing deployed
+// to read — so it does not match any request and the failure says so,
+// naming the deploy path, without holding the request for the wake timeout.
+func TestWakeRefusesAnUndeployedRemoteNode(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"state":"undeployed"}`))
+	})
+	mux.HandleFunc("GET /stats", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"error":"cannot read deploy config: run spinloop remote deploy first"}`))
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	registerRemoteEnv(t, "cloud", srv.URL)
+
+	cfg := &fleet.Config{Path: "fleet.yaml", Dir: t.TempDir(), Nodes: []fleet.NodeConfig{
+		{Name: "cloud", Kind: fleet.KindRemote},
+	}}
+	h := New(cfg, "", Options{})
+
+	resp, body := post(t, h, "", `{"model":"org/deployed"}`)
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("HTTP %d, want 503: %s", resp.StatusCode, body)
+	}
+	if !strings.Contains(body, "spinloop remote deploy") {
+		t.Errorf("the failure should name the deploy path: %s", body)
+	}
+}
+
+// A remote node whose own wake is disabled is not started even though its
+// last status matches the request, and the failure says waking is off for
+// it rather than that nothing can serve the model at all.
+func TestWakeDisabledForAMatchingRemoteNodeNamesIt(t *testing.T) {
+	url, started := remoteControlServer(t)
+	registerRemoteEnv(t, "cloud", url)
+
+	cfg := &fleet.Config{Path: "fleet.yaml", Dir: t.TempDir(), Nodes: []fleet.NodeConfig{
+		{Name: "cloud", Kind: fleet.KindRemote, WakePolicy: fleet.WakeOff},
+	}}
+	h := New(cfg, "", Options{})
+
+	resp, body := post(t, h, "", `{"model":"org/deployed"}`)
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("HTTP %d, want 503: %s", resp.StatusCode, body)
+	}
+	if !strings.Contains(body, "cloud") {
+		t.Errorf("the failure should name the node: %s", body)
+	}
+	if started() {
+		t.Error("a node with its own wake disabled must not be started")
 	}
 }
 

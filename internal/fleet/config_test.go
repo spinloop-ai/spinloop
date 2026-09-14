@@ -664,6 +664,83 @@ func TestWakeRejectsUnknownValue(t *testing.T) {
 	}
 }
 
+// A node's own wake setting overrides the fleet-wide one for that node
+// alone; a node naming none is governed by the fleet-wide setting, exactly
+// as before per-node overrides existed.
+func TestNodeWakeOverride(t *testing.T) {
+	cases := []struct {
+		name      string
+		fleet     string
+		wantFleet bool
+		wantNode  bool
+	}{
+		{"node off overrides fleet on",
+			"wake: on\nnodes:\n  - name: a\n    host: a.local\n    wake: off\n", true, false},
+		{"node on overrides fleet off",
+			"wake: off\nnodes:\n  - name: a\n    host: a.local\n    wake: on\n", false, true},
+		{"node names none, fleet on",
+			"wake: on\nnodes:\n  - name: a\n    host: a.local\n", true, true},
+		{"node names none, fleet off",
+			"wake: off\nnodes:\n  - name: a\n    host: a.local\n", false, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			cfg, err := Load(writeFleet(t, c.fleet, ""))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := cfg.Wakes(); got != c.wantFleet {
+				t.Errorf("Wakes() = %v, want %v", got, c.wantFleet)
+			}
+			if got := cfg.NodeWakes(cfg.Nodes[0]); got != c.wantNode {
+				t.Errorf("NodeWakes(a) = %v, want %v", got, c.wantNode)
+			}
+		})
+	}
+}
+
+// AnyNodeWakes is true whenever at least one node may be woken, whichever
+// level decides it for that node — not just when the fleet-wide setting is
+// on.
+func TestAnyNodeWakes(t *testing.T) {
+	cases := []struct {
+		name string
+		file string
+		want bool
+	}{
+		{"fleet wakes, no override", "wake: on\nnodes:\n  - name: a\n    host: a.local\n", true},
+		{"fleet off, no override anywhere",
+			"wake: off\nnodes:\n  - name: a\n    host: a.local\n  - name: b\n    host: b.local\n", false},
+		{"fleet off, one node opts in",
+			"wake: off\nnodes:\n  - name: a\n    host: a.local\n  - name: b\n    host: b.local\n    wake: on\n", true},
+		{"fleet on, every node opts out",
+			"wake: on\nnodes:\n  - name: a\n    host: a.local\n    wake: off\n", false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			cfg, err := Load(writeFleet(t, c.file, ""))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := cfg.AnyNodeWakes(); got != c.want {
+				t.Errorf("AnyNodeWakes() = %v, want %v", got, c.want)
+			}
+		})
+	}
+}
+
+func TestNodeWakeRejectsUnknownValue(t *testing.T) {
+	_, err := Load(writeFleet(t, "nodes:\n  - name: a\n    host: a.local\n    wake: sometimes\n", ""))
+	if err == nil {
+		t.Fatal("an unknown per-node wake value should fail to parse")
+	}
+	for _, want := range []string{"on", "off", "a"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error should name %q, got %q", want, err)
+		}
+	}
+}
+
 func TestGatewaySection(t *testing.T) {
 	path := writeFleet(t, `
 nodes:

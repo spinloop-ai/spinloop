@@ -15,6 +15,8 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/sync/singleflight"
+
 	"github.com/spinloop-ai/spinloop/internal/daemon"
 	"github.com/spinloop-ai/spinloop/internal/inference"
 )
@@ -26,6 +28,18 @@ var WakeTimeout = 5 * time.Minute
 
 // wakePoll is how often a waking node is re-checked.
 var wakePoll = 2 * time.Second
+
+// wakeSingleflight coalesces concurrent wakes of the same node in the same
+// fleet file into one actual start. Two requests racing to wake the same
+// node is the ordinary shape of two agents starting near enough together,
+// and a daemon node's own 409 already turns the loser into a joiner — but a
+// remote environment's control plane has no equivalent guard: its instance
+// lookup is eventually consistent right after a launch, so two wakes that
+// race within that window can each miss the other's not-yet-visible
+// instance and each launch one, doubling the bill for what should have been
+// a single machine. Keyed by the fleet file's path alongside the node's
+// name, so distinct fleets never coalesce across each other.
+var wakeSingleflight singleflight.Group
 
 // Waker reports progress while a node is woken. A silent five-minute pause
 // reads as a hang, so the caller is given something to print.
@@ -88,6 +102,14 @@ func (c *Config) Wake(ctx context.Context, w Want, cfgFor ConfigFor, results []N
 
 	var refused []string
 	for _, cand := range cands {
+		if !c.NodeWakes(cand.entry) {
+			// Waking is off for this node — its own setting, or the fleet's
+			// when it names none — so it is refused here rather than
+			// started, the same as a node that refuses the config: another
+			// candidate may still serve the request.
+			refused = append(refused, fmt.Sprintf("%s: waking is disabled for this node", cand.entry.Name))
+			continue
+		}
 		dc, err := resolver.config(cand.entry)
 		if err != nil {
 			refused = append(refused, fmt.Sprintf("%s: %v", cand.entry.Name, err))
@@ -106,33 +128,32 @@ func (c *Config) Wake(ctx context.Context, w Want, cfgFor ConfigFor, results []N
 		if err != nil {
 			return nil, err
 		}
-		log("Waking %s to serve %s...\n", cand.entry.Name, w.wanted())
-		_, err = node.StartWith(ctx, &dc, engineKey)
+		// Concurrent wakes of this same node — another request racing this
+		// one, on the same fleet file — coalesce into one actual start via
+		// wakeSingleflight: only the first caller through runs startAndWait,
+		// and every caller for this node gets its result.
+		// The shared call runs on its own background context rather than
+		// this caller's: whichever caller happens to be first must not have
+		// its start-and-wait cut short by ITS OWN request being cancelled
+		// (a client disconnecting) while another caller is still waiting on
+		// the same node — waitReady bounds the wait by WakeTimeout on its
+		// own regardless.
+		key := c.Path + "\x00" + cand.entry.Name
+		v, err, _ := wakeSingleflight.Do(key, func() (any, error) {
+			return c.startAndWait(context.Background(), node, cand, dc, engineKey, w, log)
+		})
 		if err != nil {
-			// Another client may have woken this node first. That is
-			// another route to the same place, not a failure — re-read
-			// its state and take it if it is now serving what we want.
-			// The state alone is not the answer, though: the other start may
-			// still be loading, so the same readiness wait applies to a node
-			// we did not start ourselves.
-			if isAlreadyRunning(err) {
-				if status, err := node.Status(ctx); err == nil && w.matches(servingNames(status)...) {
-					log("%s was already started by someone else; waiting for its engine to answer...\n", cand.entry.Name)
-					ready, err := c.waitReady(ctx, node, cand.entry, w, log)
-					if err != nil {
-						return nil, err
-					}
-					cand.result = NodeResult{Name: cand.entry.Name, Outcome: OutcomeOK, Status: ready}
-					return c.choiceFor(cand, w, true, engineKey)
-				}
+			var fatal *fatalWakeError
+			if errors.As(err, &fatal) {
+				// The engine was started, or was already running, but never
+				// answered — it is left running, so no other candidate is
+				// tried: that would leave two engines up for one request.
+				return nil, fatal.err
 			}
 			refused = append(refused, fmt.Sprintf("%s: %v", cand.entry.Name, err))
 			continue
 		}
-		ready, err := c.waitReady(ctx, node, cand.entry, w, log)
-		if err != nil {
-			return nil, err
-		}
+		ready := v.(daemon.StatusResponse)
 		cand.result = NodeResult{Name: cand.entry.Name, Outcome: OutcomeOK, Status: ready}
 		return c.choiceFor(cand, w, true, engineKey)
 	}
@@ -141,9 +162,55 @@ func (c *Config) Wake(ctx context.Context, w Want, cfgFor ConfigFor, results []N
 		c.Path, w.wanted(), strings.Join(refused, "\n  "))
 }
 
+// fatalWakeError marks a wake failure that must not be answered by trying
+// the next candidate: the engine was started, or was found already running,
+// and is left running either way, so falling through would leave two
+// engines up for one request rather than one that simply took longer.
+type fatalWakeError struct{ err error }
+
+func (e *fatalWakeError) Error() string { return e.err.Error() }
+func (e *fatalWakeError) Unwrap() error { return e.err }
+
+// startAndWait starts cand's node — or, when another caller's start won a
+// race, joins the engine that start produced — and waits for it to answer.
+// It is the unit wakeSingleflight coalesces: everything from the log line a
+// caller sees through the readiness wait happens at most once per node per
+// overlapping set of wakes, however many requests are waiting on it.
+func (c *Config) startAndWait(ctx context.Context, node Node, cand candidate, dc inference.DeployConfig, engineKey string, w Want, log Waker) (daemon.StatusResponse, error) {
+	log("Waking %s to serve %s...\n", cand.entry.Name, w.wanted())
+	_, err := node.StartWith(ctx, &dc, engineKey)
+	if err != nil {
+		// Another client may have woken this node first. That is another
+		// route to the same place, not a failure — re-read its state and
+		// take it if it is now serving what we want. The state alone is not
+		// the answer, though: the other start may still be loading, so the
+		// same readiness wait applies to a node we did not start ourselves.
+		if isAlreadyRunning(err) {
+			if status, serr := node.Status(ctx); serr == nil && w.matches(servingNames(status)...) {
+				log("%s was already started by someone else; waiting for its engine to answer...\n", cand.entry.Name)
+				ready, werr := c.waitReady(ctx, node, cand.entry, w, log)
+				if werr != nil {
+					return daemon.StatusResponse{}, &fatalWakeError{werr}
+				}
+				return ready, nil
+			}
+		}
+		return daemon.StatusResponse{}, err
+	}
+	ready, werr := c.waitReady(ctx, node, cand.entry, w, log)
+	if werr != nil {
+		return daemon.StatusResponse{}, &fatalWakeError{werr}
+	}
+	return ready, nil
+}
+
 // wakeable keeps the nodes that could be started, in the order to try them: a
 // node whose stored config already names the wanted model first, since it has
-// the weights and starts sooner.
+// the weights and starts sooner. Whether waking is actually allowed for a
+// given node is Wake's own concern, not this ordering's — WouldWake reports
+// the node that would be tried first on config alone, regardless of policy,
+// which is what lets a caller explain a wake-off refusal by naming the node
+// it would otherwise have started.
 func wakeable(cands []candidate, resolver *configResolver) []candidate {
 	var warm, cold []candidate
 	for _, c := range cands {
@@ -202,8 +269,14 @@ func (c *Config) WaitLoading(ctx context.Context, w Want, results []NodeResult, 
 //
 // A daemon that reports its own readiness reading — the engine has answered
 // its health check — is taken on that word; it checked from the same machine
-// the engine runs on. A daemon that reports none (older builds, or a runner
-// with no known health-check convention) falls back to the TCP probe.
+// the engine runs on, and a remote node's reading is the control plane's own
+// equivalent check. A ReadyNo reading is taken on its word too: the engine's
+// port can accept a connection well before the engine can answer a request
+// — llama.cpp and vLLM both open it early and answer their own health check
+// 503 while still loading — so an explicit "not ready" must not be
+// second-guessed by the weaker TCP probe. That probe is the fallback only
+// for a node that reports no reading at all (older builds, or a runner with
+// no known health-check convention) — the one case a reading cannot settle.
 //
 // On timeout the started engine is deliberately left running: it is probably
 // still loading, and stopping it throws away the only expensive part.
@@ -216,15 +289,21 @@ func (c *Config) waitReady(ctx context.Context, node Node, entry NodeConfig, w W
 		if err == nil {
 			last = status
 			if status.State == string(daemon.StateRunning) {
-				if status.Ready == daemon.ReadyYes {
+				switch status.Ready {
+				case daemon.ReadyYes:
 					return status, nil
-				}
-				baseURL, urlErr := c.EngineBaseURL(entry, status)
-				if urlErr != nil {
-					return status, urlErr
-				}
-				if engineAnswers(ctx, baseURL) {
-					return status, nil
+				case daemon.ReadyNo:
+					// Taken on its word: falling back to the TCP probe here
+					// would hand out an address the engine itself just said
+					// is not ready to answer.
+				default:
+					baseURL, urlErr := c.EngineBaseURL(entry, status)
+					if urlErr != nil {
+						return status, urlErr
+					}
+					if engineAnswers(ctx, baseURL) {
+						return status, nil
+					}
 				}
 				if !announced {
 					log("%s is up; waiting for its engine to load...\n", entry.Name)

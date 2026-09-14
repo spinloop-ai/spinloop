@@ -250,6 +250,26 @@ An explicit `--no-wake` still refuses to start anything, whatever the file
 says; an explicit `spinloop fleet start` does the opposite — it always starts,
 because it was asked.
 
+A node MAY declare its own `wake`, overriding the file's setting for that
+node alone:
+
+```yaml
+wake: on
+nodes:
+  - name: gpu-box
+    host: 198.51.100.7
+  - name: prod
+    kind: remote
+    wake: off   # this one node stays asleep even though the fleet wakes
+```
+
+This matters most for a `kind: remote` node, whose wake boots a billed cloud
+instance rather than starting a process on a machine you already run — so you
+can leave the fleet's daemons on `wake: on` while deciding a given remote
+environment's waking separately, in either direction: `wake: off` on one node
+under a fleet that otherwise wakes, or `wake: on` on one node under a fleet
+that otherwise does not.
+
 ### Tags
 
 A node's `tags` name the kind of work the node takes on — key/value pairs the

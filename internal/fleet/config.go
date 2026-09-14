@@ -104,6 +104,33 @@ func (c *Config) Wakes() bool {
 	return c.WakePolicy != WakeOff
 }
 
+// NodeWakes reports whether routing may start an engine on entry specifically:
+// entry's own wake setting when it names one, taking precedence over the
+// fleet-wide policy; the fleet-wide policy otherwise. This is the check a
+// candidate search makes per node — Wakes alone answers for a fleet that
+// names no per-node override anywhere.
+func (c *Config) NodeWakes(entry NodeConfig) bool {
+	if entry.WakePolicy != "" {
+		return entry.WakePolicy != WakeOff
+	}
+	return c.Wakes()
+}
+
+// AnyNodeWakes reports whether waking is allowed for at least one node in
+// the fleet. A caller that pre-empts Wake with a friendlier refusal when
+// nothing at all may be woken (naming the node whose config already matches,
+// if one does) uses this to decide whether that pre-emption still applies —
+// a fleet-wide `wake: off` no longer means nothing wakes, once one node's
+// own setting overrides it.
+func (c *Config) AnyNodeWakes() bool {
+	for _, entry := range c.Nodes {
+		if c.NodeWakes(entry) {
+			return true
+		}
+	}
+	return false
+}
+
 // Concurrency is the fleet's declared capacity: how much work it may take at
 // once. It sits in the file beside wake and prefer for the same reason — how
 // much work the fleet's machines will take is a property of the fleet, owned
@@ -257,6 +284,14 @@ type NodeConfig struct {
 	// never changes what the node's engine runs. Named key=value where tags
 	// are named in a limit or an item; HasTag matches on that form.
 	Tags map[string]string `yaml:"tags"`
+	// WakePolicy overrides the fleet-wide wake policy for this node alone,
+	// in the same `on`/`off` shape. Empty means the fleet-wide setting
+	// decides for this node, as it always has. It exists because waking is
+	// not free the same way on every node — a remote environment's wake
+	// boots a cloud instance, unlike a local daemon's engine — so an
+	// operator may want to decide one node's waking on its own terms rather
+	// than through a single fleet-wide switch.
+	WakePolicy WakePolicy `yaml:"wake,omitempty"`
 }
 
 // HasTag reports whether the node carries the tag named key=value. A name
@@ -496,6 +531,11 @@ func (c *Config) validate() error {
 		seen[n.Name] = true
 		if n.Kind == "" {
 			n.Kind = KindDaemon
+		}
+		if n.WakePolicy != "" {
+			if _, err := ParseWakePolicy(string(n.WakePolicy)); err != nil {
+				return fmt.Errorf("node %q: %w", n.Name, err)
+			}
 		}
 		for key, value := range n.Tags {
 			if key == "" || value == "" {
