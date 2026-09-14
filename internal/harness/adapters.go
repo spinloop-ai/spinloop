@@ -31,10 +31,13 @@ func (opencodeHarness) Command() string { return "opencode" }
 
 func (opencodeHarness) ConfigPath() (string, error) { return opencode.ResolveConfigFile() }
 
-func (opencodeHarness) Apply(p *catalog.Provider, sel spinloop.Selection, contextWindow, outputTokens int, resolve func(string) string) (Summary, error) {
+func (opencodeHarness) Apply(p *catalog.Provider, sel spinloop.Selection, contextWindow, outputTokens int, setDefaultModel bool, resolve func(string) string) (Summary, error) {
 	block, defaultModel, err := catalog.BuildProviderBlock(sel.Provider, p, modelKey(sel), sel.BaseURL, resolve)
 	if err != nil {
 		return Summary{}, err
+	}
+	if !setDefaultModel {
+		defaultModel = ""
 	}
 	// A remote selection renames the provider after its environment and carries a
 	// display name to match; opencode's model picker lists providers by that
@@ -123,7 +126,7 @@ func (piHarness) Command() string { return "pi" }
 
 func (piHarness) ConfigPath() (string, error) { return pi.ConfigPath() }
 
-func (piHarness) Apply(p *catalog.Provider, sel spinloop.Selection, contextWindow, outputTokens int, resolve func(string) string) (Summary, error) {
+func (piHarness) Apply(p *catalog.Provider, sel spinloop.Selection, contextWindow, outputTokens int, setDefaultModel bool, resolve func(string) string) (Summary, error) {
 	prov, defaultModel, err := catalog.BuildPiProvider(sel.Provider, p, modelKey(sel), sel.BaseURL, resolve)
 	if err != nil {
 		return Summary{}, err
@@ -195,10 +198,13 @@ func (lucinateHarness) Command() string { return "lucinate" }
 
 func (lucinateHarness) ConfigPath() (string, error) { return lucinate.ConfigPath() }
 
-func (lucinateHarness) Apply(p *catalog.Provider, sel spinloop.Selection, contextWindow, outputTokens int, resolve func(string) string) (Summary, error) {
+func (lucinateHarness) Apply(p *catalog.Provider, sel spinloop.Selection, contextWindow, outputTokens int, setDefaultModel bool, resolve func(string) string) (Summary, error) {
 	conn, defaultModel, err := catalog.BuildLucinateConnection(sel.Provider, p, modelKey(sel), sel.BaseURL, resolve)
 	if err != nil {
 		return Summary{}, err
+	}
+	if !setDefaultModel {
+		defaultModel = ""
 	}
 	// lucinate speaks to a concrete OpenAI-compatible endpoint, so a connection
 	// with no URL cannot work — fail rather than write a dead entry.

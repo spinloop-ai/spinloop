@@ -565,3 +565,20 @@ func TestLoadingNamesTheStartingNodes(t *testing.T) {
 		t.Fatalf("Loading() = %v, want just the node starting qwen", got)
 	}
 }
+
+func TestEndpointBaseURL(t *testing.T) {
+	cases := []struct {
+		target string
+		want   string
+	}{
+		{"http://gw:4000", "http://gw:4000/v1"},
+		{"http://gw:4000/", "http://gw:4000/v1"},
+		{"http://gw:4000/custom", "http://gw:4000/custom"},
+		{"not a url", "not a url"},
+	}
+	for _, c := range cases {
+		if got := EndpointBaseURL(c.target); got != c.want {
+			t.Errorf("EndpointBaseURL(%q) = %q, want %q", c.target, got, c.want)
+		}
+	}
+}

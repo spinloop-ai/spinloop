@@ -382,10 +382,16 @@ func TestComplete_FlagValues(t *testing.T) {
 		{"harness", "config", "--set", ""},
 		{"harness", "config", "-H", ""},
 		{"harness", "apply", "--harness", ""},
+		{"orchestrator", "--harness", ""},
+		{"orchestrator", "-H", ""},
 	} {
 		if got, _ := complete(t, words...); !hasAll(got, "opencode", "pi") {
 			t.Errorf("%v: harnesses missing from %v", words, got)
 		}
+	}
+	// The items file completes paths, the way every file argument does.
+	if _, directive := complete(t, "orchestrator", "--items", ""); directive != directiveFile {
+		t.Errorf("--items should complete paths, got %q", directive)
 	}
 
 	if got, _ := complete(t, "harness", "add", "--provider", ""); !hasAll(got, "llamacpp", "openrouter") {
@@ -397,6 +403,11 @@ func TestComplete_FlagValues(t *testing.T) {
 	// -f is the short form of the fleet file on harness: it completes paths.
 	if _, directive := complete(t, "harness", "-f", ""); directive != directiveFile {
 		t.Errorf("harness -f should complete paths, got %q", directive)
+	}
+	// The orchestrator's fleet flag completes paths, the way every fleet file
+	// does.
+	if _, directive := complete(t, "orchestrator", "--fleet", ""); directive != directiveFile {
+		t.Errorf("orchestrator --fleet should complete paths, got %q", directive)
 	}
 	if got, _ := complete(t, "completion", ""); !hasAll(got, "bash", "zsh", "powershell") {
 		t.Errorf("shells missing from %v", got)

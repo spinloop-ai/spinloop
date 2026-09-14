@@ -812,7 +812,7 @@ func runFleetRoute(path, node, prefer string, args []string) error {
 	if gw, ok := cfg.GatewaySection(); ok {
 		// The file names a gateway: the choosing is already done — no node is
 		// queried, and nothing is started.
-		fmt.Printf("The fleet file names a gateway: a launch would point the agent at %s.\n", endpointBaseURL(gw.URL))
+		fmt.Printf("The fleet file names a gateway: a launch would point the agent at %s.\n", fleet.EndpointBaseURL(gw.URL))
 		fmt.Println("No node is queried, and nothing is started.")
 		return nil
 	}

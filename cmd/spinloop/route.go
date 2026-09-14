@@ -10,9 +10,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/url"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/spinloop-ai/spinloop/internal/fleet"
@@ -88,7 +86,7 @@ func routeThroughFleet(sel spinloop.Selection, spinloopPath string, opts routeOp
 	if gw, ok := cfg.GatewaySection(); ok {
 		choice := &fleet.Choice{
 			Gateway:         true,
-			BaseURL:         endpointBaseURL(gw.URL),
+			BaseURL:         fleet.EndpointBaseURL(gw.URL),
 			GatewayTokenEnv: gw.TokenEnv,
 			Label:           gw.Label(),
 			Reason:          "the fleet file names a gateway",
@@ -170,16 +168,4 @@ func announceChoice(c *fleet.Choice) {
 		return
 	}
 	fmt.Fprintf(os.Stderr, "Using %s at %s — %s\n", c.Node.Name, c.BaseURL, c.Reason)
-}
-
-// endpointBaseURL is the address a launch gives an agent for a gateway: the
-// value as given when it carries a path, and the OpenAI-compatible prefix
-// added when it does not, so a gateway at http://gw:4000 points the agent at
-// http://gw:4000/v1.
-func endpointBaseURL(target string) string {
-	u, err := url.Parse(target)
-	if err != nil || (u.Path != "" && u.Path != "/") {
-		return target
-	}
-	return strings.TrimRight(target, "/") + "/v1"
 }

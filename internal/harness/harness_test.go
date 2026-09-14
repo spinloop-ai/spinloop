@@ -215,7 +215,7 @@ func TestLucinateApplyStateRemove(t *testing.T) {
 	}
 	sel := spinloop.Selection{Provider: "openrouter", Model: "deepseek/deepseek-v4-pro"}
 
-	sum, err := h.Apply(cat.Providers["openrouter"], sel, 0, 0, resolve)
+	sum, err := h.Apply(cat.Providers["openrouter"], sel, 0, 0, true, resolve)
 	if err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
@@ -256,7 +256,7 @@ func TestLucinateRejectsNonOpenAIProvider(t *testing.T) {
 	cat, _ := catalog.Load()
 	h, _ := Lookup("lucinate")
 	sel := spinloop.Selection{Provider: "amazon-bedrock", Model: "some-model"}
-	if _, err := h.Apply(cat.Providers["amazon-bedrock"], sel, 0, 0, func(string) string { return "" }); err == nil {
+	if _, err := h.Apply(cat.Providers["amazon-bedrock"], sel, 0, 0, true, func(string) string { return "" }); err == nil {
 		t.Error("expected amazon-bedrock to be unsupported by lucinate")
 	}
 }
@@ -279,7 +279,7 @@ func TestOpencodeApplyStateRemove(t *testing.T) {
 	}
 	sel := spinloop.Selection{Provider: "openrouter", Model: "deepseek/deepseek-v4-pro"}
 
-	sum, err := h.Apply(cat.Providers["openrouter"], sel, 0, 0, resolve)
+	sum, err := h.Apply(cat.Providers["openrouter"], sel, 0, 0, true, resolve)
 	if err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
@@ -326,7 +326,7 @@ func TestOpencodeApplyWithContextSize(t *testing.T) {
 	}
 	sel := spinloop.Selection{Provider: "openrouter", Model: "deepseek/deepseek-v4-pro"}
 
-	_, err = h.Apply(cat.Providers["openrouter"], sel, 128000, 32000, resolve)
+	_, err = h.Apply(cat.Providers["openrouter"], sel, 128000, 32000, true, resolve)
 	if err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
@@ -365,8 +365,8 @@ func TestOpencodeRemoveModelKey(t *testing.T) {
 	// Apply two models.
 	sel1 := spinloop.Selection{Provider: "openrouter", Model: "deepseek/deepseek-v4-pro", Alias: "v4"}
 	sel2 := spinloop.Selection{Provider: "openrouter", Model: "qwen3.6-27b", Alias: "qwen"}
-	h.Apply(cat.Providers["openrouter"], sel1, 0, 0, resolve)
-	h.Apply(cat.Providers["openrouter"], sel2, 0, 0, resolve)
+	h.Apply(cat.Providers["openrouter"], sel1, 0, 0, true, resolve)
+	h.Apply(cat.Providers["openrouter"], sel2, 0, 0, true, resolve)
 
 	// Remove just "v4".
 	n, err := h.Remove("openrouter", []string{"v4"})
@@ -401,7 +401,7 @@ func TestOpencodeApplyWithDiscoveredModels(t *testing.T) {
 	noEnv := func(string) string { return "" }
 	sel := spinloop.Selection{Provider: "openai-compatible", DiscoveredModels: []string{"m1", "m2"}}
 
-	sum, err := h.Apply(cat.Providers["openai-compatible"], sel, 0, 0, noEnv)
+	sum, err := h.Apply(cat.Providers["openai-compatible"], sel, 0, 0, true, noEnv)
 	if err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
@@ -449,7 +449,7 @@ func TestPiApplyStateRemove(t *testing.T) {
 	}
 	sel := spinloop.Selection{Provider: "openrouter", Model: "deepseek/deepseek-v4-pro"}
 
-	sum, err := h.Apply(cat.Providers["openrouter"], sel, 0, 0, resolve)
+	sum, err := h.Apply(cat.Providers["openrouter"], sel, 0, 0, true, resolve)
 	if err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
@@ -491,7 +491,7 @@ func TestPiApplyWithDiscoveredModels(t *testing.T) {
 	noEnv := func(string) string { return "" }
 	sel := spinloop.Selection{Provider: "openai-compatible", DiscoveredModels: []string{"m1", "m2"}}
 
-	sum, err := h.Apply(cat.Providers["openai-compatible"], sel, 0, 0, noEnv)
+	sum, err := h.Apply(cat.Providers["openai-compatible"], sel, 0, 0, true, noEnv)
 	if err != nil {
 		t.Fatalf("Apply: %v", err)
 	}

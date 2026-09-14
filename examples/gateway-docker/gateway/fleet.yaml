@@ -16,6 +16,11 @@
 # file.
 prefer: idle
 
+# The pace this fleet works at, for the orchestrator: at most two items in
+# flight at once. node-a's tag is what an item may name to take only it.
+concurrency:
+  total: 2
+
 nodes:
   - name: node-a
     host: node-a
@@ -23,6 +28,8 @@ nodes:
     tokenEnv: NODE_A_TOKEN
     engineTokenEnv: NODE_A_ENGINE_KEY
     file: ./Spinloop
+    tags:
+      engine: fake
 
   - name: node-b
     host: node-b

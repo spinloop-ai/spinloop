@@ -37,6 +37,8 @@ Four words carry the whole tool:
   run, with a [containerised fleet](../examples/fleet-docker/) and a
   [containerised gateway](../examples/gateway-docker/) you can bring up on a
   laptop
+- [Working a backlog against the fleet](work-items.md) — a file of work items,
+  worked by one-shot agents at the pace the fleet allows
 - [Environment variables](env-vars.md) — every variable spinloop reads
 - [Runnable examples](../examples/) — ready-to-apply Spinloops with walkthroughs
 - [Deploying your own cloud GPU endpoint](../remote/) — the AWS project behind
@@ -59,6 +61,7 @@ Four words carry the whole tool:
 | [`spinloop daemon`](commands/serve.md#the-control-api---api-and-spinloop-daemon) | Supervise an engine over the [control API](http-api.md) |
 | [`spinloop fleet`](commands/fleet.md) | Observe and drive the engines on every machine you run, and launch your agent against them |
 | [`spinloop gateway`](commands/gateway.md) | Serve the fleet under one OpenAI-compatible endpoint |
+| [`spinloop orchestrator`](commands/orchestrator.md) | Work a backlog of items against the fleet, at the fleet's declared pace |
 | [`spinloop remote`](commands/remote.md) | Run the model on a cloud GPU that stops when you do |
 | [`spinloop hf`](commands/hf.md) | Write a `Spinloop` for a Hugging Face model, from its page reference |
 | [`spinloop harness`](commands/harness.md) | Configure the agent (add, remove, apply, unapply, show, export), launch it (open), and set the default (config) |

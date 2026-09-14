@@ -21,6 +21,18 @@ import (
 // address when neither the node nor its daemon names another.
 const DefaultPath = "/v1"
 
+// EndpointBaseURL is the address a launch gives an agent for an
+// OpenAI-compatible endpoint: the value as given when it carries a path, and
+// the OpenAI-compatible prefix added when it does not, so a gateway at
+// http://gw:4000 points the agent at http://gw:4000/v1.
+func EndpointBaseURL(target string) string {
+	u, err := url.Parse(target)
+	if err != nil || (u.Path != "" && u.Path != "/") {
+		return target
+	}
+	return strings.TrimRight(target, "/") + DefaultPath
+}
+
 // Want describes what a launch is looking for. Model and Alias are the two
 // names a node might report serving — a Spinloop's MODEL, and the ALIAS the
 // engine may be serving it under — and either matching is a match.

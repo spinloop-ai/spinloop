@@ -228,6 +228,9 @@ func cfgForOf(t *testing.T, table map[string]remote.DeployConfig, refused map[st
 	}
 }
 
+// intPtr is a pointer to an int, for a declared limit.
+func intPtr(n int) *int { return &n }
+
 // post sends one completion request to a handler and returns the reply.
 func post(t *testing.T, h http.Handler, token string, body string) (*http.Response, string) {
 	t.Helper()
@@ -328,7 +331,7 @@ func TestUnknownPathNamesTheSurface(t *testing.T) {
 		t.Fatalf("HTTP %d, want 404", rec.Code)
 	}
 	body := rec.Body.String()
-	for _, want := range []string{"/v1/models", "/v1/chat/completions", "/v1/completions", "/health"} {
+	for _, want := range []string{"/v1/models", "/v1/chat/completions", "/v1/completions", "/v1/fleet", "/health"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("404 should name %s, got: %s", want, body)
 		}
@@ -487,6 +490,181 @@ func TestModelsResolvesEachSourceOnce(t *testing.T) {
 	modelsList(t, h)
 	if calls != 2 {
 		t.Fatalf("the aged reading should have resolved the source once more, got %d total", calls)
+	}
+}
+
+// --- topology -----------------------------------------------------------------
+
+// topologyFetch makes one topology request and returns the decoded reply,
+// failing the test when the reply is not a 200 topology.
+func topologyFetch(t *testing.T, h http.Handler, token string) *Topology {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, "http://gw/v1/fleet", nil)
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("HTTP %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+	topo := new(Topology)
+	if err := json.NewDecoder(rec.Body).Decode(topo); err != nil {
+		t.Fatalf("the reply is not a topology: %v", err)
+	}
+	return topo
+}
+
+// The reply joins the reading with the file's claims: tags and settings as
+// declared, serving facts as reported, in the file's order.
+func TestTopologyReportsTheFleet(t *testing.T) {
+	live := newFakeNode(t, string(daemon.StateRunning), "org/live")
+	live.servedName = "the-alias"
+	live.ready = daemon.ReadyYes
+	cold := newFakeNode(t, string(daemon.StateStopped), "")
+	cfg := fleetOf(t, []string{"gpu-a", "cpu-a"}, live, cold)
+	cfg.Nodes[0].Tags = map[string]string{"gpu": "a100", "region": "eu"}
+	cfg.Nodes[1].Tags = map[string]string{"cpu": "big"}
+	cfg.Prefer = fleet.PreferActive
+	cfg.Concurrency = &fleet.Concurrency{Total: intPtr(4), Tags: map[string]int{"gpu=a100": 2}}
+	h := New(cfg, "", Options{ConfigFor: cfgForOf(t,
+		map[string]remote.DeployConfig{"cpu-a": {Runner: "llamacpp", ModelID: "org/cold"}},
+		nil)})
+
+	topo := topologyFetch(t, h, "")
+	if !topo.Wake {
+		t.Error("a fleet that declares no wake policy wakes; the reply should say so")
+	}
+	if topo.Prefer != "active" {
+		t.Errorf("prefer should be the file's, got %q", topo.Prefer)
+	}
+	if topo.Concurrency == nil || topo.Concurrency.Total == nil || *topo.Concurrency.Total != 4 {
+		t.Errorf("the fleet-wide limit should be the file's, got %+v", topo.Concurrency)
+	}
+	if got := topo.Concurrency.Tags["gpu=a100"]; got != 2 {
+		t.Errorf("the tag limit should be the file's, got %d", got)
+	}
+	if len(topo.Nodes) != 2 || topo.Nodes[0].Name != "gpu-a" || topo.Nodes[1].Name != "cpu-a" {
+		t.Fatalf("nodes should be in the file's order, got %+v", topo.Nodes)
+	}
+	gpu := topo.Nodes[0]
+	if gpu.Kind != fleet.KindDaemon || gpu.Tags["gpu"] != "a100" || gpu.Tags["region"] != "eu" {
+		t.Errorf("the file's claims should ride on the node, got %+v", gpu)
+	}
+	if gpu.State != string(daemon.StateRunning) || gpu.Model != "org/live" ||
+		gpu.ServedName != "the-alias" || gpu.Ready != daemon.ReadyYes {
+		t.Errorf("a running node reports what it serves, got %+v", gpu)
+	}
+	if gpu.WakeableModel != "" {
+		t.Errorf("a running engine is never displaced, so it names no wakeable model, got %q", gpu.WakeableModel)
+	}
+	cpu := topo.Nodes[1]
+	if cpu.State != string(daemon.StateStopped) || cpu.WakeableModel != "org/cold" {
+		t.Errorf("a stopped node names what a request would start it with, got %+v", cpu)
+	}
+}
+
+// A node that does not answer is reported in its place, the way the fleet's
+// own views report it; the rest of the reply stands.
+func TestTopologyReportsADeadNodeInPlace(t *testing.T) {
+	live := newFakeNode(t, string(daemon.StateRunning), "org/live")
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	port := ln.Addr().(*net.TCPAddr).Port
+	ln.Close()
+	cfg := fleetOf(t, []string{"gpu-a", "down"}, live)
+	cfg.Nodes = append(cfg.Nodes, fleet.NodeConfig{
+		Name: "down", Host: "127.0.0.1", Port: port, Kind: fleet.KindDaemon,
+	})
+	h := New(cfg, "", Options{})
+
+	topo := topologyFetch(t, h, "")
+	if len(topo.Nodes) != 2 {
+		t.Fatalf("both nodes should be reported, got %+v", topo.Nodes)
+	}
+	if topo.Nodes[0].State != string(daemon.StateRunning) {
+		t.Errorf("the live node should report as it is, got %+v", topo.Nodes[0])
+	}
+	dead := topo.Nodes[1]
+	if dead.State != string(fleet.OutcomeUnreachable) || dead.Detail == "" {
+		t.Errorf("a dead node is reported with its outcome and its detail, got %+v", dead)
+	}
+	if dead.Model != "" || dead.WakeableModel != "" {
+		t.Errorf("a node that does not answer reports no serving facts, got %+v", dead)
+	}
+}
+
+// Settings the file does not declare are absent from the reply, not filled
+// with defaults a consumer could mistake for a declaration.
+func TestTopologySettingsAbsentWhereUndeclared(t *testing.T) {
+	node := newFakeNode(t, string(daemon.StateIdle), "")
+	cfg := fleetOf(t, []string{"box"}, node)
+	h := New(cfg, "", Options{})
+
+	req := httptest.NewRequest(http.MethodGet, "http://gw/v1/fleet", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	var raw map[string]json.RawMessage
+	if err := json.NewDecoder(rec.Body).Decode(&raw); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := raw["prefer"]; ok {
+		t.Error("an undeclared preference should be absent, not default-filled")
+	}
+	if _, ok := raw["concurrency"]; ok {
+		t.Error("an undeclared concurrency section should be absent")
+	}
+	var nodes []json.RawMessage
+	if err := json.Unmarshal(raw["nodes"], &nodes); err != nil {
+		t.Fatalf("nodes should be an array: %v", err)
+	}
+	if len(nodes) != 1 {
+		t.Fatalf("one node should be reported, got %d", len(nodes))
+	}
+	var first map[string]json.RawMessage
+	if err := json.Unmarshal(nodes[0], &first); err != nil {
+		t.Fatalf("the node should be an object: %v", err)
+	}
+	if _, ok := first["tags"]; ok {
+		t.Error("a node the file gives no tags should carry none")
+	}
+}
+
+// With the fleet's wake off, no node is started on a request, so no node
+// names a wakeable model — and the reply says the fleet does not wake.
+func TestTopologyNamesNoWakeableModelWhenWakeIsOff(t *testing.T) {
+	cold := newFakeNode(t, string(daemon.StateStopped), "")
+	cfg := fleetOf(t, []string{"cold"}, cold)
+	cfg.WakePolicy = fleet.WakeOff
+	h := New(cfg, "", Options{ConfigFor: cfgForOf(t,
+		map[string]remote.DeployConfig{"cold": {Runner: "llamacpp", ModelID: "org/cold"}},
+		nil)})
+
+	topo := topologyFetch(t, h, "")
+	if topo.Wake {
+		t.Error("the reply should say the fleet does not wake")
+	}
+	if got := topo.Nodes[0].WakeableModel; got != "" {
+		t.Errorf("nothing is started when wake is off, got %q", got)
+	}
+}
+
+// The topology rides the gateway's own authentication: the token through,
+// its absence refused as on every other path.
+func TestTopologyBehindTheCallerToken(t *testing.T) {
+	cfg := fleetOf(t, []string{"box"}, newFakeNode(t, string(daemon.StateIdle), ""))
+	h := New(cfg, "secret", Options{})
+
+	req := httptest.NewRequest(http.MethodGet, "http://gw/v1/fleet", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("no token: HTTP %d, want 401", rec.Code)
+	}
+	if topo := topologyFetch(t, h, "secret"); len(topo.Nodes) != 1 {
+		t.Fatalf("the token gets the topology, got %+v", topo)
 	}
 }
 

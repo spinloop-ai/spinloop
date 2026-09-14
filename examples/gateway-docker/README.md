@@ -114,8 +114,9 @@ spinloop fleet harness -O=./client/Spinloop
 `./run-tests.sh` drives this same stack and asserts the behaviours above: a
 model is listed once running, a cold request wakes a node and streams a reply,
 the engine key is injected and never reaches the caller, a wrong token is 401,
-and `wake: off` refuses. CI runs it on every pull request, which is the point:
-an example that is exercised cannot quietly stop working.
+`wake: off` refuses, and an orchestrator works a small backlog against the
+gateway at the pace the fleet file declares. CI runs it on every pull request,
+which is the point: an example that is exercised cannot quietly stop working.
 
 ```sh
 ./run-tests.sh          # up, assert, tear down
