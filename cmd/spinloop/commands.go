@@ -322,6 +322,30 @@ func groupFallback(c *cobra.Command, args []string) error {
 	return cobra.NoArgs(c, args)
 }
 
+// groupArgs is a command group's Args validator: a first word naming a
+// subcommand the group no longer has fails naming the command that replaced
+// it, the way rootArgs does for a moved top-level command. It has to be the
+// validator rather than the group's RunE, because cobra rejects an unknown
+// subcommand before the parent's RunE is reached.
+func groupArgs(c *cobra.Command, args []string) error {
+	if len(args) == 0 {
+		return nil
+	}
+	spelling := c.Name() + " " + args[0]
+	if replacement, moved := movedSubcommands[spelling]; moved {
+		return fmt.Errorf("%q moved: run spinloop %s", spelling, replacement)
+	}
+	return nil
+}
+
+// movedSubcommands maps a group subcommand that was removed to the command
+// that replaced it, keyed "<group> <subcommand>". It is the group-level twin
+// of movedTopLevelCommands: the same signpost, for a spelling that was two
+// words rather than one.
+var movedSubcommands = map[string]string{
+	"fleet harness": "code --fleet <path>",
+}
+
 // fleetCmd builds the fleet parent and its subcommands. The parent does
 // nothing itself — see groupFallback.
 func fleetCmd() *cobra.Command {
@@ -335,6 +359,7 @@ node names, or --all for the whole fleet, and with neither they list the
 fleet and touch nothing; deploy provisions kind: remote nodes' AWS
 environments the same way. A node that fails is a rendered row, never an
 error — only a problem with the fleet file itself fails a command.`,
+		Args:          groupArgs,
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		RunE:          groupFallback,
@@ -345,7 +370,6 @@ error — only a problem with the fleet file itself fails a command.`,
 		fleetLogsCmd(),
 		fleetDashboardCmd(),
 		fleetRouteCmd(),
-		fleetHarnessCmd(),
 		fleetStartCmd(),
 		fleetStopCmd(),
 		fleetDeployCmd(),

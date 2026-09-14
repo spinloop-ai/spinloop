@@ -9,8 +9,11 @@ for a Spinloop to name; requiring one would ask for a file whose contents the
 launch then ignores.
 
 Where the fleet file names no gateway, a launch with no Spinloop SHALL fail
-before launching, saying that a launch needs a Spinloop to know which model to
-route: a node can only be matched by the model a Spinloop names.
+before launching, saying that `--fleet` needs a Spinloop because it is the
+Spinloop's model that decides which node can serve you: a node can only be
+matched by the model a Spinloop names. Where the named fleet file cannot be
+read at all, the failure SHALL name that file rather than the missing
+Spinloop — the file is the thing the launch was pointed at.
 
 The same applies to a Spinloop that is given but names neither a model nor an
 alias, when routed at a gateway: the launch SHALL NOT fail on that account
@@ -51,8 +54,15 @@ for is "gateway" — lets them find it at all.
 
 - **WHEN** the user runs `spinloop code --fleet ./fleet.yaml` in a directory
   holding no Spinloop, and that fleet file names no gateway
-- **THEN** the launch fails saying a launch needs a Spinloop to know which
-  model to route, and no harness is launched
+- **THEN** the launch fails saying `--fleet` needs a Spinloop, and no harness
+  is launched
+
+#### Scenario: A named fleet file that cannot be read names itself
+
+- **WHEN** the user runs `spinloop code --fleet ./fleet.yaml` where that file
+  does not exist
+- **THEN** the launch fails naming the fleet file it could not read, rather
+  than the Spinloop it also lacks
 
 #### Scenario: A Spinloop naming no model routes at a gateway
 

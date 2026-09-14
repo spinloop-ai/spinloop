@@ -3,7 +3,7 @@
 #
 # The gateways are not nodes in it — they serve the fleet files baked into
 # the image. The `gateway` section below names the waking gateway's published
-# address instead: `spinloop fleet harness` from here points the agent at the
+# address instead: `spinloop code --fleet fleet.yaml` points the agent at the
 # gateway, with the gateway's token, and never at a node. This is also how you
 # watch and drive the fleet itself: status, start, stop, metrics, logs.
 #

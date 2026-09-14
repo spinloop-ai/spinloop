@@ -1,8 +1,6 @@
 package main
 
 import (
-	"fmt"
-
 	"github.com/spf13/cobra"
 
 	"github.com/spinloop-ai/spinloop/internal/fleet"
@@ -93,7 +91,15 @@ func openLaunchCmd(use, short, long string) *cobra.Command {
 					return err
 				}
 			} else if route.fleetPath != "" {
-				return fmt.Errorf("--fleet needs a Spinloop: it is the Spinloop's model that decides which node can serve you")
+				// No Spinloop, but a fleet was named. A gateway resolves the
+				// model per request, so a fleet that names one needs no
+				// Spinloop; a fleet that does not still does, and this says
+				// so.
+				var err error
+				sel, envDir, remoteResp, choice, err = applyFromGateway(providers, h, route)
+				if err != nil {
+					return err
+				}
 			}
 			return launchAgent(h, rest, providers, envDir, remoteResp, sel, spinloopPath.set, choice)
 		},
