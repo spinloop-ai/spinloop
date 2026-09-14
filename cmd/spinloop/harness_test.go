@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/spinloop-ai/spinloop/internal/remote"
 	"github.com/spinloop-ai/spinloop/internal/spinloop"
 )
 
@@ -218,15 +219,29 @@ func TestConfig_DoesNotApply(t *testing.T) {
 	}
 }
 
-// launchedArgs runs cmdHarness against a stubbed binary and returns what the
-// harness was launched with, plus everything spinloop printed on the way.
+// launchedArgs runs the `harness open` launch against a stubbed binary and
+// returns what the harness was launched with, plus everything spinloop printed
+// on the way.
 func launchedArgs(t *testing.T, args []string) (forwarded, out string) {
+	return launchedArgsVia(t, cmdOpen, args)
+}
+
+// codeLaunchedArgs is launchedArgs for the `code` shortcut: it runs the `code`
+// launch against a stubbed binary and returns what the harness was launched
+// with.
+func codeLaunchedArgs(t *testing.T, args []string) (forwarded, out string) {
+	return launchedArgsVia(t, cmdCode, args)
+}
+
+// launchedArgsVia runs run against a stubbed binary and returns what the
+// harness was launched with, plus everything spinloop printed on the way.
+func launchedArgsVia(t *testing.T, run func([]string) error, args []string) (forwarded, out string) {
 	t.Helper()
 	argsFile := filepath.Join(t.TempDir(), "args")
 	stubHarnessBinary(t, "opencode", argsFile)
 	out = captureStdout(t, func() {
-		if err := cmdOpen(args); err != nil {
-			t.Fatalf("cmdHarness %v: %v", args, err)
+		if err := run(args); err != nil {
+			t.Fatalf("launch %v: %v", args, err)
 		}
 	})
 	got, err := os.ReadFile(argsFile)
@@ -254,6 +269,48 @@ func aliasFor(t *testing.T, name, model string) string {
 // TestHarness_LeadingAliasAppliesThenLaunches checks the shorthand the alias
 // registry exists for: `spinloop harness <name> -- <args>` wears the Spinloop and
 // hands the harness only its own arguments.
+// TestCode_SameLaunchAsHarnessOpen pins that `code` is a shortcut for `harness
+// open`, not a second launch: for the same arguments, both spellings reach the
+// harness with identical args — whether nothing is applied, a Spinloop is
+// applied first, or the launch is configured from a registered environment.
+func TestCode_SameLaunchAsHarnessOpen(t *testing.T) {
+	isolateConfig(t)
+	stubAWSEnv(t)
+
+	// A Spinloop applied by leading alias, by a valueless -O (resolved through
+	// SPINLOOP_ALIAS), and by an explicit path.
+	aliasFor(t, "q3", "gemma")
+	spath := filepath.Join(t.TempDir(), "Spinloop")
+	mustWrite(t, spath, "PROVIDER llamacpp\nMODEL mixtral\n")
+	t.Setenv("SPINLOOP_ALIAS", "q3")
+
+	// A registered environment, for the --env case: a bare --env configures the
+	// harness from what the environment reports as deployed.
+	env := deployedEnvServer(t)
+	defer env.Close()
+	registerEnv(t, "dev-1", remote.Config{
+		StartURL: env.URL, StopURL: env.URL, EnvURL: env.URL,
+		BaseURL: "http://198.51.100.1:8000/v1", Region: "eu-west-1", Environment: "dev-1",
+	})
+
+	cases := [][]string{
+		{},                        // bare: nothing applied
+		{"run", "hello"},          // trailing args forwarded
+		{"--", "--flag", "x"},     // a leading -- opts out and forwards verbatim
+		{"q3", "run"},             // a leading alias is applied, then the rest forwards
+		{"-O", "run"},             // a valueless -O applies the SPINLOOP_ALIAS Spinloop
+		{"-O=" + spath, "run"},    // -O applies the Spinloop at an explicit path
+		{"--env", "dev-1", "run"}, // --env configures from the environment
+	}
+	for _, args := range cases {
+		openForwarded, _ := launchedArgs(t, args)
+		codeForwarded, _ := codeLaunchedArgs(t, args)
+		if codeForwarded != openForwarded {
+			t.Errorf("args %v: code forwarded %q, want %q (harness open's result)", args, codeForwarded, openForwarded)
+		}
+	}
+}
+
 func TestHarness_LeadingAliasAppliesThenLaunches(t *testing.T) {
 	home := isolateConfig(t)
 	path := aliasFor(t, "q3", "gemma")

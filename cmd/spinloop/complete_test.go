@@ -95,7 +95,7 @@ func TestComplete_CommandNames(t *testing.T) {
 	isolateConfig(t)
 
 	got, directive := complete(t, "")
-	if !hasAll(got, "alias", "unalias", "serve", "harness", "provider", "completion") {
+	if !hasAll(got, "alias", "unalias", "serve", "harness", "provider", "code", "completion") {
 		t.Errorf("commands missing from %v", got)
 	}
 	// The spellings the harness/provider grouping removed are not top-level
@@ -290,6 +290,21 @@ func TestComplete_HarnessOpenOffersSpinloop(t *testing.T) {
 	registerSpinloop(t, "PROVIDER llamacpp\nALIAS qwen\n")
 
 	got, directive := complete(t, "harness", "open", "")
+	if !hasAll(got, "qwen") {
+		t.Errorf("aliases missing from %v", got)
+	}
+	if directive != directiveFile {
+		t.Errorf("directive = %q, want %q (the launch slot completes paths)", directive, directiveFile)
+	}
+}
+
+// TestComplete_CodeOffersSpinloop checks that the `code` shortcut completes the
+// same Spinloop names and paths as `harness open` — it is the same launch.
+func TestComplete_CodeOffersSpinloop(t *testing.T) {
+	isolateConfig(t)
+	registerSpinloop(t, "PROVIDER llamacpp\nALIAS qwen\n")
+
+	got, directive := complete(t, "code", "")
 	if !hasAll(got, "qwen") {
 		t.Errorf("aliases missing from %v", got)
 	}

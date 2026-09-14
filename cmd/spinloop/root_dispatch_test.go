@@ -205,6 +205,37 @@ func TestRoot_HarnessOpenLaunches(t *testing.T) {
 	}
 }
 
+// TestRoot_CodeLaunches pins that `code` dispatches to the launch at the root:
+// a bare code launches with nothing forwarded, and a non-Spinloop first word is
+// forwarded — the same behaviour `harness open` has.
+func TestRoot_CodeLaunches(t *testing.T) {
+	isolateConfig(t)
+	argsFile := filepath.Join(t.TempDir(), "args")
+	stubHarnessBinary(t, "opencode", argsFile)
+
+	// A bare code launches with nothing forwarded.
+	if _, err := rootExec(t, "code"); err != nil {
+		t.Fatalf("code: %v", err)
+	}
+	if args, launched := launched(t, argsFile); !launched {
+		t.Fatal("code did not launch the agent")
+	} else if strings.TrimSpace(args) != "" {
+		t.Errorf("code forwarded %q, want nothing", args)
+	}
+
+	// A first word that is not a Spinloop is forwarded to the harness.
+	argsFile2 := filepath.Join(t.TempDir(), "args")
+	stubHarnessBinary(t, "opencode", argsFile2)
+	if _, err := rootExec(t, "code", "run", "hello"); err != nil {
+		t.Fatalf("code run: %v", err)
+	}
+	if args, launched := launched(t, argsFile2); !launched {
+		t.Fatal("code run did not launch the agent")
+	} else if strings.TrimSpace(args) != "run\nhello" {
+		t.Errorf("code run forwarded %q, want \"run\\nhello\"", args)
+	}
+}
+
 // TestRoot_HarnessOpenHelpDoesNotLaunch pins that -h/--help on open shows
 // open's own help instead of launching the agent: Cobra does not intercept the
 // help flag while flag parsing is off, so open's body must. A -- before it

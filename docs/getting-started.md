@@ -53,7 +53,8 @@ spinloop harness open
 
 That launches the agent (opencode by default) running the model you picked.
 Prefer Pi? `spinloop harness config --set pi` once, and every command targets
-it from then on.
+it from then on. Want it in one word? `spinloop code` is this same launch —
+see [`spinloop code`](commands/code.md).
 
 ## 5. Make it declarative
 
