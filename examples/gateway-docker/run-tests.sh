@@ -492,9 +492,9 @@ test_cold_request_wakes_and_streams() {
 }
 
 #######################################
-# Assert `spinloop fleet harness` against the client's Spinloop points the
-# agent at the fleet file's gateway — the section's address, the section's
-# token variable — and writes the harness config for it.
+# Assert `spinloop code` against the client's Spinloop points the agent at the
+# fleet file's gateway — the section's address, the section's token variable —
+# and writes the harness config for it.
 # Globals:
 #   HERE, SPINLOOP_BIN, GATEWAY_TOKEN
 #######################################
@@ -509,14 +509,15 @@ echo "HARNESS base_url=${OPENAI_BASE_URL:-<unset>} key=${OPENAI_API_KEY:-<unset>
 STUB
   chmod +x "${sandbox}/bin/opencode"
 
-  # From this directory: no -f, so the fleet.yaml beside the Spinloop is the
-  # one routed through, and its gateway section is where the agent goes.
+  # The Spinloop is named explicitly, so the fleet is named explicitly too: a
+  # launch picks up a directory's fleet.yaml only for a Spinloop it was not
+  # told the path of. Its gateway section is where the agent goes.
   local launch
   launch="$(PATH="${sandbox}/bin:${PATH}" HOME="${sandbox}/home" \
     XDG_CONFIG_HOME="${sandbox}/home/.config" \
     OPENAI_BASE_URL="" \
     OPENAI_API_KEY="" \
-    "${SPINLOOP_BIN}" fleet harness -O=client/Spinloop -H opencode 2>&1 || true)"
+    "${SPINLOOP_BIN}" code -O=client/Spinloop --fleet fleet.yaml -H opencode 2>&1 || true)"
   assert_contains "the agent is pointed at the gateway with its prefix" \
     "${launch}" "base_url=http://127.0.0.1:4000/v1"
   assert_contains "the agent is given the gateway's token as its key" \
@@ -555,7 +556,7 @@ STUB
     XDG_CONFIG_HOME="${sandbox}/home/.config" \
     OPENAI_BASE_URL="" \
     GATEWAY_TOKEN="" \
-    "${SPINLOOP_BIN}" fleet harness -O=client/Spinloop -H opencode 2>&1 || true)"
+    "${SPINLOOP_BIN}" code -O=client/Spinloop --fleet fleet.yaml -H opencode 2>&1 || true)"
   assert_contains "the failure names the variable to set" "${launch}" "GATEWAY_TOKEN"
   assert_not_contains "the agent was not started" "${launch}" "HARNESS"
   if [[ ! -f "${sandbox}/home/.config/opencode/opencode.json" ]]; then

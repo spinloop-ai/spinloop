@@ -153,11 +153,10 @@ Which node wins among several that could all serve you is a
 takes the machine that has been quiet longest, keeping a second agent off an
 engine that is mid-request; `active` consolidates onto the busy one instead.
 
-[`spinloop fleet harness`](fleet.md#launching-the-harness) is the fleet-level
-form of this launch: the fleet file comes from the command — `-f`, or the
-`fleet.yaml` beside it — and a fleet file that names a
-[gateway](fleet.md#gateway) points the agent there, so the address lives in the
-file, not in every Spinloop.
+A fleet file that names a [gateway](fleet.md#gateway) points the agent there,
+so the address lives in the file rather than in every Spinloop — and because a
+gateway resolves the model per request, a launch through one needs no Spinloop
+at all: `spinloop code --fleet ./fleet.yaml` is enough.
 
 ## spinloop harness config
 
@@ -424,5 +423,4 @@ Notes:
 - [`spinloop code`](code.md) — this launch, as a one-word top-level shortcut
 - [`spinloop provider list`](provider.md#spinloop-provider-list) — what the harness could be configured with
 - [`spinloop fleet route`](fleet.md#which-node-would-i-get) — which node a launch would pick
-- [`spinloop fleet harness`](fleet.md#launching-the-harness) — launch against the fleet file beside you
 - [`examples/fleet-local/`](../../examples/fleet-local/) — routing at a single local node, end to end

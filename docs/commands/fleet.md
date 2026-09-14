@@ -52,9 +52,9 @@ and takes each of their defaults. All of them describe how several nodes are
 used, which a fleet of one has no occasion for; put the environment in a
 `fleet.yaml` when you want any of them.
 
-`spinloop fleet harness` does not take `--env`. To launch an agent against a
-single environment, use [`spinloop code --env <name>`](code.md), which
-configures the harness from what that environment reports is deployed.
+To launch an agent against a single environment, use
+[`spinloop code --env <name>`](code.md), which configures the harness from what
+that environment reports is deployed.
 
 ## Try it without any hardware
 
@@ -316,7 +316,7 @@ As with a node's choice, the launch reports the address on stderr before the
 agent starts.
 
 This is how a machine that holds the fleet file points a harness at the fleet:
-`spinloop fleet harness` reads the section when it is there, so a Spinloop
+A launch reads the section when it is there, so a Spinloop
 beside the file needs only the model, and the address travels with the file.
 `spinloop fleet route` answers a file that names a gateway the same way — the
 address, and that no node is queried and nothing is started.
@@ -641,31 +641,36 @@ Use it to check a route before an agent depends on it, to see what the other
 
 ## Launching the harness
 
-`spinloop fleet harness` is the fleet-level form of a
-[harness launch](harness.md#launching-against-your-fleet): the fleet file comes
-from the command — `--fleet`, or the `fleet.yaml` in the working directory —
-never from the Spinloop. A fleet file that names a
-[gateway](#gateway) points the agent there, so the address lives in the file,
-not in every Spinloop:
+Launching an agent against a fleet is [`spinloop code`](code.md) — or
+[`spinloop harness open`](harness.md#launching-against-your-fleet), which it
+shortens. There is no fleet-level spelling: `spinloop fleet harness` was
+removed, and typing it names its replacement.
 
 ```sh
-spinloop fleet harness                  # the Spinloop and fleet.yaml beside it
-spinloop fleet harness my-spinloop      # a leading Spinloop
-spinloop fleet harness -O=./client/Spinloop
-spinloop fleet harness --node gpu-box   # the launch's steering flags
+spinloop code                            # the Spinloop and fleet.yaml beside it
+spinloop code my-spinloop --fleet fleet.yaml
+spinloop code -O=./client/Spinloop --fleet fleet.yaml
+spinloop code --fleet fleet.yaml --node gpu-box   # the launch's steering flags
 ```
+
+A fleet file that names a [gateway](#gateway) points the agent there, so the
+address lives in the file rather than in every Spinloop.
+
+The fleet comes from `--fleet`/`-f`, or from the `fleet.yaml` in the working
+directory when the Spinloop was not named explicitly. A Spinloop you give the
+path of travels to its fleet only by flag — so `spinloop code -O=./x/Spinloop`
+needs `--fleet` to route, while a bare `spinloop code -O` beside a `fleet.yaml`
+picks it up.
 
 Routing is the launch's routing: at the gateway where the file names one,
 otherwise by node selection and, where the file's
 [wake policy](#waking) allows, a wake — `--node`, `--prefer`, `--no-wake` and
-`--wake-timeout` steer it as on the launch. A Spinloop that pins a `BASEURL` is
-not routed, and a variable already set in spinloop's environment wins, in each
-case as on the launch.
+`--wake-timeout` steer it. A Spinloop that pins a `BASEURL` is not routed, and
+a variable already set in spinloop's environment wins.
 
-With no Spinloop to route — none passed, none beside the fleet file — what
-happens next depends on the fleet file. Routing to a node needs a model to
-match one against, so the command fails saying a launch needs a Spinloop to
-know which model to route. A gateway needs no such match — it resolves the
+With no Spinloop to route, what happens next depends on the fleet file.
+Routing to a node needs a model to match one against, so the launch fails
+saying `--fleet` needs a Spinloop. A gateway needs no such match — it resolves the
 model per request — so a launch through one needs no Spinloop at all: the
 harness is configured with a generic OpenAI-compatible provider at the
 gateway's address, its model list populated from the gateway's own

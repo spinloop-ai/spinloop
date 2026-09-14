@@ -11,10 +11,10 @@ import (
 	"testing"
 )
 
-// fleetHarnessDir writes a fleet file and a Spinloop into a temp dir and moves
+// codeFleetDir writes a fleet file and a Spinloop into a temp dir and moves
 // the test into it: the command's defaults — the fleet.yaml beside it, the
 // Spinloop beside it — are working-directory stories.
-func fleetHarnessDir(t *testing.T, fleetBody, spinloopBody string) {
+func codeFleetDir(t *testing.T, fleetBody, spinloopBody string) {
 	t.Helper()
 	dir := t.TempDir()
 	if fleetBody != "" {
@@ -28,7 +28,7 @@ func fleetHarnessDir(t *testing.T, fleetBody, spinloopBody string) {
 
 // No flags at all: the fleet file beside the command names a gateway, so the
 // agent is pointed at it with the section's token, and no node is contacted.
-func TestCmdFleetHarnessUsesTheFleetsGateway(t *testing.T) {
+func TestCodeFleetUsesTheFleetsGateway(t *testing.T) {
 	home := isolateConfig(t)
 	t.Setenv("GATEWAY_TOKEN", "gw-token")
 	t.Setenv("OPENAI_API_KEY", "")
@@ -37,13 +37,13 @@ func TestCmdFleetHarnessUsesTheFleetsGateway(t *testing.T) {
 	envFile := filepath.Join(t.TempDir(), "env")
 	stubHarnessBinaryWithEnv(t, argsFile, envFile)
 
-	fleetHarnessDir(t,
+	codeFleetDir(t,
 		"nodes:\n  - name: dead\n    host: 127.0.0.1\n    port: 1\ngateway:\n  url: http://gw.internal:4000\n  tokenEnv: GATEWAY_TOKEN\n",
 		"PROVIDER llamacpp\nMODEL qwen3-27b\n")
 	stderr := captureStderr(t, func() {
 		captureStdout(t, func() {
-			if err := cmdFleetHarness(nil); err != nil {
-				t.Fatalf("cmdFleetHarness: %v", err)
+			if err := cmdCode([]string{"-O"}); err != nil {
+				t.Fatalf("cmdCode: %v", err)
 			}
 		})
 	})
@@ -75,7 +75,7 @@ func TestCmdFleetHarnessUsesTheFleetsGateway(t *testing.T) {
 
 // A fleet file naming no gateway routes to a node, as a fleet-routed launch
 // would.
-func TestCmdFleetHarnessRoutesToANode(t *testing.T) {
+func TestCodeFleetRoutesToANode(t *testing.T) {
 	node := newRoutableNode(t, "qwen3-27b", true, 300)
 	isolateConfig(t)
 	t.Setenv("OPENAI_API_KEY", "")
@@ -84,12 +84,12 @@ func TestCmdFleetHarnessRoutesToANode(t *testing.T) {
 	envFile := filepath.Join(t.TempDir(), "env")
 	stubHarnessBinaryWithEnv(t, argsFile, envFile)
 
-	fleetHarnessDir(t,
+	codeFleetDir(t,
 		"nodes:\n"+node.entry("gpu-box"),
 		"PROVIDER llamacpp\nMODEL qwen3-27b\n")
 	captureStdout(t, func() {
-		if err := cmdFleetHarness(nil); err != nil {
-			t.Fatalf("cmdFleetHarness: %v", err)
+		if err := cmdCode([]string{"-O"}); err != nil {
+			t.Fatalf("cmdCode: %v", err)
 		}
 	})
 	data, err := os.ReadFile(envFile)
@@ -104,7 +104,7 @@ func TestCmdFleetHarnessRoutesToANode(t *testing.T) {
 
 // -f beats the fleet.yaml beside the command: the section in the named file is
 // where the agent is pointed, not the one in the working directory.
-func TestCmdFleetHarnessFileFlagBeatsTheCwdFleet(t *testing.T) {
+func TestCodeFleetFileFlagBeatsTheCwdFleet(t *testing.T) {
 	isolateConfig(t)
 	t.Setenv("OPENAI_API_KEY", "gw-token")
 	t.Setenv("OPENAI_BASE_URL", "")
@@ -114,12 +114,12 @@ func TestCmdFleetHarnessFileFlagBeatsTheCwdFleet(t *testing.T) {
 
 	fleetPath := fleetFileIn(t, t.TempDir(),
 		"nodes:\n  - name: dead\n    host: 127.0.0.1\n    port: 1\ngateway:\n  url: http://b.internal:4000\n")
-	fleetHarnessDir(t,
+	codeFleetDir(t,
 		"nodes:\n  - name: dead\n    host: 127.0.0.1\n    port: 1\ngateway:\n  url: http://a.internal:4000\n",
 		"PROVIDER llamacpp\nMODEL qwen3-27b\n")
 	captureStdout(t, func() {
-		if err := cmdFleetHarness([]string{"-f", fleetPath}); err != nil {
-			t.Fatalf("cmdFleetHarness: %v", err)
+		if err := cmdCode([]string{"-O", "-f", fleetPath}); err != nil {
+			t.Fatalf("cmdCode: %v", err)
 		}
 	})
 	data, err := os.ReadFile(envFile)
@@ -131,9 +131,9 @@ func TestCmdFleetHarnessFileFlagBeatsTheCwdFleet(t *testing.T) {
 	}
 }
 
-// A directory holding no Spinloop, with none given: the command fails saying a
-// launch needs a Spinloop to know which model to route, and launches nothing.
-func TestCmdFleetHarnessNeedsASpinloop(t *testing.T) {
+// A named fleet file that does not exist: the failure names the file, not the
+// Spinloop also missing — the file is what the launch was pointed at.
+func TestCodeFleetNamesTheFleetFileItCannotRead(t *testing.T) {
 	isolateConfig(t)
 	t.Setenv("SPINLOOP_ALIAS", "")
 	argsFile := filepath.Join(t.TempDir(), "args")
@@ -141,138 +141,23 @@ func TestCmdFleetHarnessNeedsASpinloop(t *testing.T) {
 
 	t.Chdir(t.TempDir())
 	captureStdout(t, func() {
-		err := cmdFleetHarness(nil)
+		err := cmdCode([]string{"--fleet", "fleet.yaml"})
 		if err == nil {
 			t.Fatal("a launch with no Spinloop should fail")
 		}
-		if !strings.Contains(err.Error(), "a launch needs a Spinloop to know which model to route") {
-			t.Errorf("the failure should say a launch needs a Spinloop, got:\n%v", err)
+		if !strings.Contains(err.Error(), "fleet.yaml") {
+			t.Errorf("the failure should name the fleet file it could not read, got:\n%v", err)
 		}
 	})
 	if _, err := os.ReadFile(argsFile); err == nil {
-		t.Error("the harness was launched with no Spinloop to route")
-	}
-}
-
-// A leading argument that is not a Spinloop is refused: there is no forwarding
-// on this command, so a stray positional names nothing it could be.
-func TestCmdFleetHarnessRefusesANonSpinloopArgument(t *testing.T) {
-	isolateConfig(t)
-	argsFile := filepath.Join(t.TempDir(), "args")
-	stubHarnessBinary(t, "opencode", argsFile)
-
-	fleetHarnessDir(t,
-		"nodes:\n  - name: dead\n    host: 127.0.0.1\n    port: 1\ngateway:\n  url: http://gw.internal:4000\n",
-		"PROVIDER llamacpp\nMODEL qwen3-27b\n")
-	captureStdout(t, func() {
-		err := cmdFleetHarness([]string{"not-a-spinloop"})
-		if err == nil {
-			t.Fatal("a positional that names no Spinloop should fail")
-		}
-		if !strings.Contains(err.Error(), "does not name a Spinloop") {
-			t.Errorf("the failure should say the argument names no Spinloop, got:\n%v", err)
-		}
-	})
-	if _, err := os.ReadFile(argsFile); err == nil {
-		t.Error("the harness was launched for an argument that names no Spinloop")
-	}
-}
-
-// The Spinloop is taken the way spinloop harness takes one: -O, in each of its
-// spellings — valueless, space, and equals.
-func TestCmdFleetHarnessSpinloopFlag(t *testing.T) {
-	node := newRoutableNode(t, "qwen3-27b", true, 300)
-	isolateConfig(t)
-	t.Setenv("OPENAI_API_KEY", "")
-	t.Setenv("OPENAI_BASE_URL", "")
-	argsFile := filepath.Join(t.TempDir(), "args")
-	envFile := filepath.Join(t.TempDir(), "env")
-	stubHarnessBinaryWithEnv(t, argsFile, envFile)
-
-	fleetHarnessDir(t, "nodes:\n"+node.entry("gpu-box"), "PROVIDER llamacpp\nMODEL qwen3-27b\n")
-	forms := []struct {
-		name string
-		args []string
-	}{
-		{"valueless", []string{"-O"}},
-		{"space", []string{"-O", "Spinloop"}},
-		{"equals", []string{"-O=Spinloop"}},
-	}
-	want := "BASE=http://127.0.0.1:" + strconv.Itoa(node.enginePort) + "/v1"
-	for _, form := range forms {
-		t.Run(form.name, func(t *testing.T) {
-			if err := os.Remove(envFile); err != nil && !os.IsNotExist(err) {
-				t.Fatal(err)
-			}
-			captureStdout(t, func() {
-				if err := cmdFleetHarness(form.args); err != nil {
-					t.Fatalf("cmdFleetHarness %v: %v", form.args, err)
-				}
-			})
-			data, err := os.ReadFile(envFile)
-			if err != nil {
-				t.Fatalf("the harness was not launched: %v", err)
-			}
-			if !strings.Contains(string(data), want) {
-				t.Errorf("the agent's base URL should be the node's engine, got:\n%s", data)
-			}
-		})
-	}
-}
-
-// A -O that names a Spinloop there is no read of fails naming the path, and
-// launches nothing.
-func TestCmdFleetHarnessNamesTheSpinloopItCannotRead(t *testing.T) {
-	isolateConfig(t)
-	argsFile := filepath.Join(t.TempDir(), "args")
-	stubHarnessBinary(t, "opencode", argsFile)
-
-	missing := filepath.Join(t.TempDir(), "Spinloop")
-	fleetHarnessDir(t, "nodes:\n  - name: dead\n    host: 127.0.0.1\n    port: 1\n", "")
-	captureStdout(t, func() {
-		err := cmdFleetHarness([]string{"-O=" + missing})
-		if err == nil {
-			t.Fatal("a -O naming a missing Spinloop should fail")
-		}
-		if !strings.Contains(err.Error(), missing) {
-			t.Errorf("the failure should name the path, got:\n%v", err)
-		}
-	})
-	if _, err := os.ReadFile(argsFile); err == nil {
-		t.Error("the harness was launched for a Spinloop that could not be read")
-	}
-}
-
-// A harness the command cannot resolve fails before anything is routed or
-// written.
-func TestCmdFleetHarnessRefusesAnUnknownHarness(t *testing.T) {
-	home := isolateConfig(t)
-	argsFile := filepath.Join(t.TempDir(), "args")
-	stubHarnessBinary(t, "opencode", argsFile)
-
-	fleetHarnessDir(t, "nodes:\n  - name: dead\n    host: 127.0.0.1\n    port: 1\n",
-		"PROVIDER llamacpp\nMODEL qwen3-27b\n")
-	captureStdout(t, func() {
-		err := cmdFleetHarness([]string{"-H", "nosuchharness"})
-		if err == nil {
-			t.Fatal("an unresolvable harness should fail")
-		}
-		if !strings.Contains(err.Error(), "nosuchharness") {
-			t.Errorf("the failure should name the harness, got:\n%v", err)
-		}
-	})
-	if _, err := os.ReadFile(argsFile); err == nil {
-		t.Error("the harness was launched for a name that resolves to nothing")
-	}
-	if _, err := os.Stat(filepath.Join(home, ".config", "opencode", "opencode.json")); !os.IsNotExist(err) {
-		t.Errorf("a harness config was written for a launch that never routed (stat: %v)", err)
+		t.Error("the harness was launched with no fleet to route through")
 	}
 }
 
 // Nothing serving, wake allowed: the command starts the idle node's engine and
 // points the agent at it, the way a fleet-routed launch does — the wake
 // timeout flag bounds the wait.
-func TestCmdFleetHarnessWakesANode(t *testing.T) {
+func TestCodeFleetWakesANode(t *testing.T) {
 	node := newRoutableNode(t, "qwen3-27b", false, 0)
 	isolateConfig(t)
 	t.Setenv("OPENAI_API_KEY", "")
@@ -281,11 +166,11 @@ func TestCmdFleetHarnessWakesANode(t *testing.T) {
 	envFile := filepath.Join(t.TempDir(), "env")
 	stubHarnessBinaryWithEnv(t, argsFile, envFile)
 
-	fleetHarnessDir(t, "nodes:\n"+node.entry("idle-box"), "PROVIDER llamacpp\nMODEL qwen3-27b\n")
+	codeFleetDir(t, "nodes:\n"+node.entry("idle-box"), "PROVIDER llamacpp\nMODEL qwen3-27b\n")
 	stderr := captureStderr(t, func() {
 		captureStdout(t, func() {
-			if err := cmdFleetHarness([]string{"--wake-timeout", "5s"}); err != nil {
-				t.Fatalf("cmdFleetHarness: %v", err)
+			if err := cmdCode([]string{"-O", "--wake-timeout", "5s"}); err != nil {
+				t.Fatalf("cmdCode: %v", err)
 			}
 		})
 	})
@@ -307,15 +192,15 @@ func TestCmdFleetHarnessWakesANode(t *testing.T) {
 
 // --no-wake with nothing serving fails rather than starting an engine, and the
 // refusal names the node and the flag to drop.
-func TestCmdFleetHarnessNoWakeRefuses(t *testing.T) {
+func TestCodeFleetNoWakeRefuses(t *testing.T) {
 	node := newRoutableNode(t, "qwen3-27b", false, 0)
 	isolateConfig(t)
 	argsFile := filepath.Join(t.TempDir(), "args")
 	stubHarnessBinary(t, "opencode", argsFile)
 
-	fleetHarnessDir(t, "nodes:\n"+node.entry("idle-box"), "PROVIDER llamacpp\nMODEL qwen3-27b\n")
+	codeFleetDir(t, "nodes:\n"+node.entry("idle-box"), "PROVIDER llamacpp\nMODEL qwen3-27b\n")
 	captureStdout(t, func() {
-		err := cmdFleetHarness([]string{"--no-wake"})
+		err := cmdCode([]string{"-O", "--no-wake"})
 		if err == nil {
 			t.Fatal("--no-wake with nothing serving should fail")
 		}
@@ -365,7 +250,7 @@ func gatewayKeyForTest(gw *httptest.Server) string {
 // gateway: the command does not fail. It configures opencode's
 // openai-compatible provider at the gateway's address, its models populated
 // from the gateway's live listing, and no default model.
-func TestCmdFleetHarnessNoSpinloopUsesGatewayModels(t *testing.T) {
+func TestCodeFleetNoSpinloopUsesGatewayModels(t *testing.T) {
 	home := isolateConfig(t)
 	gw := newModelsGateway(t, "gw-token", []string{"m1", "m2"})
 	t.Setenv("GATEWAY_TOKEN", "gw-token")
@@ -375,12 +260,12 @@ func TestCmdFleetHarnessNoSpinloopUsesGatewayModels(t *testing.T) {
 	envFile := filepath.Join(t.TempDir(), "env")
 	stubHarnessBinaryWithEnv(t, argsFile, envFile)
 
-	fleetHarnessDir(t,
+	codeFleetDir(t,
 		"nodes:\n  - name: dead\n    host: 127.0.0.1\n    port: 1\ngateway:\n  url: "+gw.URL+"\n  tokenEnv: GATEWAY_TOKEN\n",
 		"")
 	captureStdout(t, func() {
-		if err := cmdFleetHarness(nil); err != nil {
-			t.Fatalf("cmdFleetHarness: %v", err)
+		if err := cmdCode([]string{"--fleet", "fleet.yaml"}); err != nil {
+			t.Fatalf("cmdCode: %v", err)
 		}
 	})
 	if _, err := os.ReadFile(argsFile); err != nil {
@@ -421,7 +306,7 @@ func TestCmdFleetHarnessNoSpinloopUsesGatewayModels(t *testing.T) {
 
 // The same launch with --harness pi: the discovered models land in Pi's own
 // models.json provider entry instead.
-func TestCmdFleetHarnessNoSpinloopUsesGatewayModelsForPi(t *testing.T) {
+func TestCodeFleetNoSpinloopUsesGatewayModelsForPi(t *testing.T) {
 	home := isolateConfig(t)
 	gw := newModelsGateway(t, "gw-token", []string{"m1", "m2"})
 	t.Setenv("GATEWAY_TOKEN", "gw-token")
@@ -430,12 +315,12 @@ func TestCmdFleetHarnessNoSpinloopUsesGatewayModelsForPi(t *testing.T) {
 	argsFile := filepath.Join(t.TempDir(), "args")
 	stubHarnessBinary(t, "pi", argsFile)
 
-	fleetHarnessDir(t,
+	codeFleetDir(t,
 		"nodes:\n  - name: dead\n    host: 127.0.0.1\n    port: 1\ngateway:\n  url: "+gw.URL+"\n  tokenEnv: GATEWAY_TOKEN\n",
 		"")
 	captureStdout(t, func() {
-		if err := cmdFleetHarness([]string{"-H", "pi"}); err != nil {
-			t.Fatalf("cmdFleetHarness -H pi: %v", err)
+		if err := cmdCode([]string{"--fleet", "fleet.yaml", "-H", "pi"}); err != nil {
+			t.Fatalf("cmdCode -H pi: %v", err)
 		}
 	})
 	root := readPiModels(t, home)
@@ -463,7 +348,7 @@ func TestCmdFleetHarnessNoSpinloopUsesGatewayModelsForPi(t *testing.T) {
 // The gateway authenticates fine but its models endpoint fails: the launch
 // still succeeds, with a warning and no models populated — the models query
 // is a convenience for the picker, not something the launch depends on.
-func TestCmdFleetHarnessNoSpinloopModelsFetchFails(t *testing.T) {
+func TestCodeFleetNoSpinloopModelsFetchFails(t *testing.T) {
 	home := isolateConfig(t)
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/models", func(w http.ResponseWriter, r *http.Request) {
@@ -479,13 +364,13 @@ func TestCmdFleetHarnessNoSpinloopModelsFetchFails(t *testing.T) {
 	envFile := filepath.Join(t.TempDir(), "env")
 	stubHarnessBinaryWithEnv(t, argsFile, envFile)
 
-	fleetHarnessDir(t,
+	codeFleetDir(t,
 		"nodes:\n  - name: dead\n    host: 127.0.0.1\n    port: 1\ngateway:\n  url: "+srv.URL+"\n  tokenEnv: GATEWAY_TOKEN\n",
 		"")
 	stderr := captureStderr(t, func() {
 		captureStdout(t, func() {
-			if err := cmdFleetHarness(nil); err != nil {
-				t.Fatalf("cmdFleetHarness: %v", err)
+			if err := cmdCode([]string{"--fleet", "fleet.yaml"}); err != nil {
+				t.Fatalf("cmdCode: %v", err)
 			}
 		})
 	})
@@ -516,7 +401,7 @@ func TestCmdFleetHarnessNoSpinloopModelsFetchFails(t *testing.T) {
 
 // A fleet file's gateway.name overrides the address-derived label: the
 // provider is keyed and displayed under the hand-picked name instead.
-func TestCmdFleetHarnessNoSpinloopUsesGatewayName(t *testing.T) {
+func TestCodeFleetNoSpinloopUsesGatewayName(t *testing.T) {
 	home := isolateConfig(t)
 	gw := newModelsGateway(t, "gw-token", []string{"m1"})
 	t.Setenv("GATEWAY_TOKEN", "gw-token")
@@ -526,12 +411,12 @@ func TestCmdFleetHarnessNoSpinloopUsesGatewayName(t *testing.T) {
 	envFile := filepath.Join(t.TempDir(), "env")
 	stubHarnessBinaryWithEnv(t, argsFile, envFile)
 
-	fleetHarnessDir(t,
+	codeFleetDir(t,
 		"nodes:\n  - name: dead\n    host: 127.0.0.1\n    port: 1\ngateway:\n  url: "+gw.URL+"\n  tokenEnv: GATEWAY_TOKEN\n  name: remote-llms\n",
 		"")
 	captureStdout(t, func() {
-		if err := cmdFleetHarness(nil); err != nil {
-			t.Fatalf("cmdFleetHarness: %v", err)
+		if err := cmdCode([]string{"--fleet", "fleet.yaml"}); err != nil {
+			t.Fatalf("cmdCode: %v", err)
 		}
 	})
 	config, err := os.ReadFile(filepath.Join(home, ".config", "opencode", "opencode.json"))
@@ -554,19 +439,19 @@ func TestCmdFleetHarnessNoSpinloopUsesGatewayName(t *testing.T) {
 
 // A fleet file naming no gateway still fails needing a Spinloop, even though
 // it resolves fine — only a fleet naming a gateway waives the requirement.
-func TestCmdFleetHarnessNeedsASpinloopWithNodesOnlyFleet(t *testing.T) {
+func TestCodeFleetNeedsASpinloopWithNodesOnlyFleet(t *testing.T) {
 	isolateConfig(t)
 	argsFile := filepath.Join(t.TempDir(), "args")
 	stubHarnessBinary(t, "opencode", argsFile)
 
-	fleetHarnessDir(t, "nodes:\n  - name: dead\n    host: 127.0.0.1\n    port: 1\n", "")
+	codeFleetDir(t, "nodes:\n  - name: dead\n    host: 127.0.0.1\n    port: 1\n", "")
 	captureStdout(t, func() {
-		err := cmdFleetHarness(nil)
+		err := cmdCode([]string{"--fleet", "fleet.yaml"})
 		if err == nil {
 			t.Fatal("a launch with no Spinloop and no gateway should fail")
 		}
-		if !strings.Contains(err.Error(), "a launch needs a Spinloop to know which model to route") {
-			t.Errorf("the failure should say a launch needs a Spinloop, got:\n%v", err)
+		if !strings.Contains(err.Error(), "--fleet needs a Spinloop") {
+			t.Errorf("the failure should say --fleet needs a Spinloop, got:\n%v", err)
 		}
 	})
 	if _, err := os.ReadFile(argsFile); err == nil {
@@ -577,17 +462,17 @@ func TestCmdFleetHarnessNeedsASpinloopWithNodesOnlyFleet(t *testing.T) {
 // No Spinloop, a gateway named, but its token is unset: the command still
 // fails naming the fleet file (not an empty path) rather than launching with
 // no way to authenticate.
-func TestCmdFleetHarnessNoSpinloopGatewayNoToken(t *testing.T) {
+func TestCodeFleetNoSpinloopGatewayNoToken(t *testing.T) {
 	isolateConfig(t)
 	t.Setenv("GATEWAY_TOKEN", "")
 	argsFile := filepath.Join(t.TempDir(), "args")
 	stubHarnessBinary(t, "opencode", argsFile)
 
-	fleetHarnessDir(t,
+	codeFleetDir(t,
 		"nodes:\n  - name: dead\n    host: 127.0.0.1\n    port: 1\ngateway:\n  url: http://gw.internal:4000\n  tokenEnv: GATEWAY_TOKEN\n",
 		"")
 	captureStdout(t, func() {
-		err := cmdFleetHarness(nil)
+		err := cmdCode([]string{"--fleet", "fleet.yaml"})
 		if err == nil {
 			t.Fatal("a gateway with no token set should fail")
 		}
@@ -607,7 +492,7 @@ func TestCmdFleetHarnessNoSpinloopGatewayNoToken(t *testing.T) {
 // gateway's token still resolves from the .env beside the fleet file, not the
 // working directory — matching what the "no token" error already claims, and
 // regardless of where the command was run from.
-func TestCmdFleetHarnessNoSpinloopReadsEnvBesideFleetFile(t *testing.T) {
+func TestCodeFleetNoSpinloopReadsEnvBesideFleetFile(t *testing.T) {
 	isolateConfig(t)
 	gw := newModelsGateway(t, "gw-token", []string{"m1"})
 	t.Setenv("GATEWAY_TOKEN", "")
@@ -624,8 +509,8 @@ func TestCmdFleetHarnessNoSpinloopReadsEnvBesideFleetFile(t *testing.T) {
 	t.Chdir(t.TempDir())
 
 	captureStdout(t, func() {
-		if err := cmdFleetHarness([]string{"--fleet", fleetPath}); err != nil {
-			t.Fatalf("cmdFleetHarness: %v", err)
+		if err := cmdCode([]string{"--fleet", "fleet.yaml", "--fleet", fleetPath}); err != nil {
+			t.Fatalf("cmdCode: %v", err)
 		}
 	})
 	data, err := os.ReadFile(envFile)
@@ -639,7 +524,7 @@ func TestCmdFleetHarnessNoSpinloopReadsEnvBesideFleetFile(t *testing.T) {
 
 // A hand-written Spinloop naming only a provider, routed at a gateway, gets
 // its model list populated the same way the no-Spinloop case does.
-func TestCmdFleetHarnessHandwrittenProviderOnlySpinloopGetsModels(t *testing.T) {
+func TestCodeFleetHandwrittenProviderOnlySpinloopGetsModels(t *testing.T) {
 	home := isolateConfig(t)
 	gw := newModelsGateway(t, "gw-token", []string{"m1"})
 	t.Setenv("GATEWAY_TOKEN", "gw-token")
@@ -649,12 +534,12 @@ func TestCmdFleetHarnessHandwrittenProviderOnlySpinloopGetsModels(t *testing.T) 
 	envFile := filepath.Join(t.TempDir(), "env")
 	stubHarnessBinaryWithEnv(t, argsFile, envFile)
 
-	fleetHarnessDir(t,
+	codeFleetDir(t,
 		"nodes:\n  - name: dead\n    host: 127.0.0.1\n    port: 1\ngateway:\n  url: "+gw.URL+"\n  tokenEnv: GATEWAY_TOKEN\n",
 		"PROVIDER "+gatewayProviderID+"\n")
 	captureStdout(t, func() {
-		if err := cmdFleetHarness(nil); err != nil {
-			t.Fatalf("cmdFleetHarness: %v", err)
+		if err := cmdCode([]string{"-O"}); err != nil {
+			t.Fatalf("cmdCode: %v", err)
 		}
 	})
 	config, err := os.ReadFile(filepath.Join(home, ".config", "opencode", "opencode.json"))
@@ -681,7 +566,7 @@ func TestCmdFleetHarnessHandwrittenProviderOnlySpinloopGetsModels(t *testing.T) 
 // connection holds one model, so the discovered list is not consulted, but
 // the connection itself is written with the gateway's address and no
 // defaultModel key.
-func TestCmdFleetHarnessNoSpinloopLucinateNoModelList(t *testing.T) {
+func TestCodeFleetNoSpinloopLucinateNoModelList(t *testing.T) {
 	home := isolateConfig(t)
 	gw := newModelsGateway(t, "gw-token", []string{"m1"})
 	t.Setenv("GATEWAY_TOKEN", "gw-token")
@@ -690,12 +575,12 @@ func TestCmdFleetHarnessNoSpinloopLucinateNoModelList(t *testing.T) {
 	argsFile := filepath.Join(t.TempDir(), "args")
 	stubHarnessBinary(t, "lucinate", argsFile)
 
-	fleetHarnessDir(t,
+	codeFleetDir(t,
 		"nodes:\n  - name: dead\n    host: 127.0.0.1\n    port: 1\ngateway:\n  url: "+gw.URL+"\n  tokenEnv: GATEWAY_TOKEN\n",
 		"")
 	captureStdout(t, func() {
-		if err := cmdFleetHarness([]string{"-H", "lucinate"}); err != nil {
-			t.Fatalf("cmdFleetHarness -H lucinate: %v", err)
+		if err := cmdCode([]string{"--fleet", "fleet.yaml", "-H", "lucinate"}); err != nil {
+			t.Fatalf("cmdCode -H lucinate: %v", err)
 		}
 	})
 	root := readLucinateStore(t, home)
@@ -709,5 +594,105 @@ func TestCmdFleetHarnessNoSpinloopLucinateNoModelList(t *testing.T) {
 	host := strings.TrimPrefix(gw.URL, "http://")
 	if name, _ := conn["name"].(string); name != "Gateway ("+host+")" {
 		t.Errorf("name = %q, want it to read like the remote-environment pattern (e.g. %q)", name, "Gateway ("+host+")")
+	}
+}
+
+// A combination neither spelling ran before: `fleet harness` forwarded no
+// arguments to the agent, and the launch never reached a gateway without a
+// Spinloop. Now both hold at once, so a gateway launch forwards its trailing
+// arguments the way every other launch does.
+func TestCodeFleetGatewayLaunchForwardsTrailingArgs(t *testing.T) {
+	isolateConfig(t)
+	t.Setenv("GATEWAY_TOKEN", "gw-token")
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("OPENAI_BASE_URL", "")
+	argsFile := filepath.Join(t.TempDir(), "args")
+	stubHarnessBinary(t, "opencode", argsFile)
+
+	codeFleetDir(t,
+		"nodes:\n  - name: dead\n    host: 127.0.0.1\n    port: 1\ngateway:\n  url: http://gw.internal:4000\n  tokenEnv: GATEWAY_TOKEN\n",
+		"")
+	captureStderr(t, func() {
+		captureStdout(t, func() {
+			if err := cmdCode([]string{"--fleet", "fleet.yaml", "run", "--print"}); err != nil {
+				t.Fatalf("cmdCode: %v", err)
+			}
+		})
+	})
+	data, err := os.ReadFile(argsFile)
+	if err != nil {
+		t.Fatalf("the harness was not launched: %v", err)
+	}
+	got := string(data)
+	for _, want := range []string{"run", "--print"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("the agent should receive %q, got:\n%s", want, got)
+		}
+	}
+}
+
+// The removed spelling names its replacement, the way a moved top-level
+// command does, rather than reporting an unknown subcommand.
+func TestFleetHarnessMovedNamesItsReplacement(t *testing.T) {
+	err := cmdFleet([]string{"harness"})
+	if err == nil {
+		t.Fatal("`fleet harness` should fail: it moved")
+	}
+	for _, want := range []string{"fleet harness", "moved", "spinloop code --fleet"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the error should mention %q, got:\n%v", want, err)
+		}
+	}
+}
+
+// The one deliberate behaviour change: `fleet harness` defaulted the fleet
+// file in every case, while a launch picks one up only when the worn Spinloop
+// was not named explicitly. A named Spinloop therefore no longer routes on its
+// own, and passing --fleet restores it.
+func TestCodeFleetNamedSpinloopNeedsTheFleetFlag(t *testing.T) {
+	isolateConfig(t)
+	t.Setenv("SPINLOOP_ALIAS", "")
+	t.Setenv("GATEWAY_TOKEN", "gw-token")
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("OPENAI_BASE_URL", "")
+	argsFile := filepath.Join(t.TempDir(), "args")
+	envFile := filepath.Join(t.TempDir(), "env")
+	stubHarnessBinaryWithEnv(t, argsFile, envFile)
+
+	codeFleetDir(t,
+		"nodes:\n  - name: dead\n    host: 127.0.0.1\n    port: 1\ngateway:\n  url: http://gw.internal:4000\n  tokenEnv: GATEWAY_TOKEN\n",
+		"PROVIDER llamacpp\nMODEL qwen3-27b\n")
+
+	// Named explicitly: the directory's fleet file is not picked up, so the
+	// launch does not route and the agent gets no gateway address.
+	captureStderr(t, func() {
+		captureStdout(t, func() {
+			if err := cmdCode([]string{"-O=Spinloop"}); err != nil {
+				t.Fatalf("cmdCode: %v", err)
+			}
+		})
+	})
+	data, err := os.ReadFile(envFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "BASE=http://gw.internal:4000") {
+		t.Error("a named Spinloop should not pick up the directory's fleet file")
+	}
+
+	// The same Spinloop with --fleet routes at the gateway.
+	captureStderr(t, func() {
+		captureStdout(t, func() {
+			if err := cmdCode([]string{"-O=Spinloop", "--fleet", "fleet.yaml"}); err != nil {
+				t.Fatalf("cmdCode --fleet: %v", err)
+			}
+		})
+	})
+	data, err = os.ReadFile(envFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "BASE=http://gw.internal:4000/v1") {
+		t.Errorf("--fleet should route the named Spinloop at the gateway, got:\n%s", data)
 	}
 }

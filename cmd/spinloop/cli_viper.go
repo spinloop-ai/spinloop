@@ -52,8 +52,16 @@ func viperGetenv() func(string) string {
 // resolve binds a command's pflags to cliViper, so a flag whose name is also a
 // CLI-owned SPINLOOP_ variable (SPINLOOP_<name>) resolves pflag-changed > env >
 // flag default through the one mechanism, instead of a re-implementation at the
-// call site. It runs at the top of each command's RunE, so within a process
-// only the running command's flags are ever bound.
+// call site. It runs at the top of each command's RunE, and rebuilds cliViper
+// first so that only the running command's flags are ever bound: BindPFlags
+// accumulates, and a binding left by a command that already ran would answer
+// for a key the running command never names — its stale pflag value winning
+// over the environment variable of the same name. One command per process
+// hides this; a process that runs several (the test suite) does not.
+//
+// Rebuilding is safe because resolve runs on the one goroutine, at the top of
+// RunE, before a command does any work; viperGetenv reads the package variable
+// at call time rather than capturing it, so its closures follow the swap.
 //
 // In the current surface no CLI-owned variable has a flag spelling —
 // SPINLOOP_ALIAS and the SPINLOOP_REMOTE_* settings have none — so every binding
@@ -63,5 +71,6 @@ func viperGetenv() func(string) string {
 // internal packages on purpose and stay that way; binding them here would
 // create the second reader this migration removes.
 func resolve(cmd *cobra.Command) {
+	cliViper = newCLIViper()
 	cliViper.BindPFlags(cmd.Flags())
 }

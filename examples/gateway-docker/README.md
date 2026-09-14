@@ -61,7 +61,7 @@ There are three Spinloops here:
 
 - [`client/Spinloop`](client/Spinloop) — what an *agent's* machine wears: just
   the model. Where it is served lives in [`fleet.yaml`](fleet.yaml)'s `gateway`
-  section, and `spinloop fleet harness` from this directory reads it: the
+  section, and `spinloop code --fleet fleet.yaml` reads it: the
   gateway has done the choosing, and the agent is only pointed at it, with the
   gateway's token as its key.
 - [`node/Spinloop`](node/Spinloop) — what a *node* runs when started. Its
@@ -106,7 +106,7 @@ curl -i -X POST http://127.0.0.1:18080/v1/chat/completions \
 
 # Launch an agent at the fleet's gateway: fleet.yaml's gateway section points
 # the agent at the gateway, with the gateway's token, and nothing else.
-spinloop fleet harness -O=./client/Spinloop
+spinloop code -O=./client/Spinloop --fleet ./fleet.yaml
 ```
 
 ## It is also the integration test
@@ -135,7 +135,7 @@ which is the point: an example that is exercised cannot quietly stop working.
 | `shim/llama-server` | Stands in for the engine binary. Reads the key file the daemon passes and hands the mock its gate as an environment variable, so the value never rides on a command line. |
 | `engine/` | What the fake engine serves: `/health` and `/metrics` for the daemon, and the gated, stream-answering OpenAI routes. |
 | `node/Spinloop` | What a node runs when started: a model, and a `BASEURL` that binds the engine to every interface. |
-| `client/Spinloop` | What an *agent's* machine wears: the model. Its address comes from `fleet.yaml`'s gateway section, via `spinloop fleet harness`. |
+| `client/Spinloop` | What an *agent's* machine wears: the model. Its address comes from `fleet.yaml`'s gateway section, via `spinloop code --fleet`. |
 
 Two details that are easy to get wrong, and matter:
 

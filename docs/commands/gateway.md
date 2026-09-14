@@ -34,7 +34,7 @@ side.
 
 A [`gateway` section](fleet.md#gateway) in the fleet file names the address and
 the variable holding the token. A launch routed through that file — `spinloop
-harness -f` or `spinloop fleet harness` — is pointed at the gateway rather than
+harness open -f` or `spinloop code -f` — is pointed at the gateway rather than
 a node: the section's address is the agent's base URL (with the OpenAI-
 compatible `/v1` prefix added when it carries no path), and the agent
 authenticates with the gateway's token, resolved the way a key is resolved
@@ -52,14 +52,14 @@ gateway:
 ```
 
 ```sh
-spinloop fleet harness -O=./Spinloop   # from the fleet file's directory
+spinloop code -O=./Spinloop --fleet ./fleet.yaml
 ```
 
 A Spinloop beside that file then needs only the model, and the address travels
 with the file when the gateway moves. See
 [The `Spinloop` file](../spinloop-file.md#running-the-model-on-another-machine-you-own).
 
-A gateway resolves the model per request, so `spinloop fleet harness` needs no
+A gateway resolves the model per request, so a launch through one needs no
 Spinloop at all when the fleet file names one: with none given and none
 beside the file, it configures opencode or Pi with a generic OpenAI-compatible
 provider at the gateway's address, its models populated from the gateway's own

@@ -1315,6 +1315,42 @@ func applyFromEnvironment(providers string, h harness.Harness, route routeOption
 	return applyRoutedSpinloop(spinloop.Selection{}, "", providers, h, route, true)
 }
 
+// gatewayProviderID is the catalogue provider a gateway-only launch
+// configures — a generic OpenAI-compatible endpoint — when no Spinloop names
+// one: the gateway resolves the model per request, so nothing here needs to
+// name one either.
+const gatewayProviderID = "openai-compatible"
+
+// applyFromGateway configures the harness for a fleet's gateway with no
+// Spinloop at all: a launch that names a fleet but wears nothing reaches here.
+// It is applyFromEnvironment's counterpart for the other way a launch can
+// know where the model is served without being told which model.
+//
+// A gateway matches no node against a model — it resolves one per request — so
+// a launch through one needs no Spinloop to name it. Where the fleet names no
+// gateway there is nothing to route by, and the launch fails saying so: a node
+// can only be matched by the model a Spinloop names.
+//
+// The model list the harness is given, the provider's gateway-derived name and
+// key, and the warn-rather-than-fail on an unreachable gateway are all
+// applyRoutedSpinloop's already — this supplies only the selection that says
+// "a gateway is the endpoint", which is the one thing a Spinloop would
+// otherwise have carried.
+func applyFromGateway(providers string, h harness.Harness, route routeOptions) (spinloop.Selection, string, *remote.Response, *fleet.Choice, error) {
+	fail := func(err error) (spinloop.Selection, string, *remote.Response, *fleet.Choice, error) {
+		return spinloop.Selection{}, "", nil, nil, err
+	}
+	cfg, err := fleet.Resolve(route.fleetPath)
+	if err != nil {
+		return fail(err)
+	}
+	if _, ok := cfg.GatewaySection(); !ok {
+		return fail(fmt.Errorf(
+			"--fleet needs a Spinloop: it is the Spinloop's model that decides which node can serve you"))
+	}
+	return applyRoutedSpinloop(spinloop.Selection{Provider: gatewayProviderID}, "", providers, h, route, false)
+}
+
 // applyRoutedSpinloop routes an already-read Spinloop and applies it to the
 // harness that is about to be launched: routing first, so a launch that cannot
 // find a node leaves the harness config exactly as it was, then the remote
