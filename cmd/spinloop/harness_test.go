@@ -311,6 +311,34 @@ func TestCode_SameLaunchAsHarnessOpen(t *testing.T) {
 	}
 }
 
+// TestCode_SameErrorsAsHarnessOpen pins that the launch's error guards fire the
+// same way under both spellings: an unknown harness is rejected, and --fleet
+// without a Spinloop fails naming the fix. `code` must not be a shortcut that
+// skips the guards `harness open` has.
+func TestCode_SameErrorsAsHarnessOpen(t *testing.T) {
+	isolateConfig(t)
+	stubHarnessBinary(t, "opencode", filepath.Join(t.TempDir(), "args"))
+
+	cases := [][]string{
+		{"-H", "bogus", "run"},           // an unknown harness is rejected
+		{"--fleet", "fleet.yaml", "run"}, // --fleet needs a Spinloop to route by
+	}
+	for _, args := range cases {
+		var openErr, codeErr error
+		captureStdout(t, func() { openErr = cmdOpen(args) })
+		captureStdout(t, func() { codeErr = cmdCode(args) })
+		if (openErr == nil) != (codeErr == nil) {
+			t.Errorf("args %v: open err=%v, code err=%v — one errored and the other did not", args, openErr, codeErr)
+			continue
+		}
+		if openErr == nil {
+			t.Errorf("args %v: expected an error from both spellings, got none", args)
+		} else if codeErr.Error() != openErr.Error() {
+			t.Errorf("args %v: code error = %q, want open's %q", args, codeErr.Error(), openErr.Error())
+		}
+	}
+}
+
 func TestHarness_LeadingAliasAppliesThenLaunches(t *testing.T) {
 	home := isolateConfig(t)
 	path := aliasFor(t, "q3", "gemma")
