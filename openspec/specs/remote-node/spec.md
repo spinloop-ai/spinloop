@@ -26,9 +26,15 @@ including a rejected AWS credential — SHALL be reported as a typed outcome aga
 environment, the same way an unreachable or unauthorized node is, rather than failing the
 command or being silently dropped.
 
-Because a remote endpoint is provisioned by deployment rather than woken like a node, a
-node-level start asked to run on a supplied deploy configuration SHALL be refused with a
-message naming the deployment path, rather than attempted.
+A deployed remote environment — one whose stored deploy config already describes what to
+serve — SHALL answer a node-level start the same way a local node does: the instance is
+booted and the call waits for it, without deploying a new configuration. Any deploy
+configuration a caller supplies to the start SHALL NOT be pushed onto the environment: it
+already knows what to run, and choosing what it runs is `spinloop remote deploy`'s job, not
+a node start's. An undeployed remote environment — one with no stored deploy config —
+SHALL still refuse a node-level start, with a message naming the deployment path, rather
+than attempted: starting one would mean choosing what to serve and paying for provisioning
+and weights, a heavier decision a node start must not make on a caller's behalf.
 
 #### Scenario: A remote environment answers status like a node
 
@@ -58,10 +64,18 @@ message naming the deployment path, rather than attempted.
 - **THEN** the environment is reported with a failure outcome and the reason, and it does
   not abort or blank the rest of the node set
 
+#### Scenario: A deployed remote environment is started
+
+- **WHEN** a node-level start is requested for a stopped remote environment whose stored
+  deploy config already describes what to serve
+- **THEN** the environment's instance is booted, the call waits for it the way a local
+  node's start does, and the environment serves what its own stored config names, not
+  any config the start call carried
+
 #### Scenario: Waking a remote environment is refused
 
-- **WHEN** a node-level start is requested for a remote environment, carrying a deploy
-  configuration
+- **WHEN** a node-level start is requested for a remote environment with no stored deploy
+  config
 - **THEN** it is refused with a message naming the deployment path, and the environment
   is not started
 
