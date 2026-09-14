@@ -639,6 +639,7 @@ EOF
         --gateway "${GATEWAY_URL}" \
         --items "${sandbox}/work.yaml" \
         --harness opencode \
+        -l \
         > "${out}" 2>&1
   ) &
   local orch_pid=$!
@@ -671,6 +672,169 @@ EOF
     "$(cat "${sandbox}/work/a/key.txt")" "key=${GATEWAY_TOKEN}"
   assert_contains "the agent's inference reached the gateway, at the address its config named" \
     "$(cat "${sandbox}/work/a/reply.txt" 2>/dev/null)" "Hello from the fake engine"
+
+  kill -INT "${orch_pid}" 2>/dev/null || true
+  local rc=0
+  wait "${orch_pid}" || rc=$?
+  assert_equals "the signal ends the run cleanly" "${rc}" "0"
+
+  rm -rf "${sandbox}"
+}
+
+#######################################
+# Serve the work list while the orchestrator works, against the stack's
+# gateway with a stub agent: the work list shows the items as they flow, an
+# add over the API is worked to done, an abort returns a running item to the
+# backlog and the run admits it again, and a remove takes an item with its
+# record and its output.
+# Globals:
+#   HERE, SPINLOOP_BIN, GATEWAY_TOKEN, GATEWAY_URL
+#######################################
+test_orchestrator_work_list_api() {
+  echo "The orchestrator serves the work list while it works"
+  local sandbox="${HERE}/.orch-api-sandbox"
+  rm -rf "${sandbox}"
+  mkdir -p "${sandbox}/bin" "${sandbox}/home" "${sandbox}/work/a" \
+    "${sandbox}/work/b" "${sandbox}/work/c"
+
+  # The agent: it records each launch in its own directory, then holds where
+  # its instructions say hold, takes its time otherwise.
+  cat > "${sandbox}/bin/opencode" <<'STUB'
+#!/usr/bin/env bash
+echo "$@" >> launches.txt
+if [[ "$*" == *hold* ]]; then
+  sleep 300
+fi
+sleep 2
+STUB
+  chmod +x "${sandbox}/bin/opencode"
+
+  cat > "${sandbox}/work.yaml" <<EOF
+- id: a
+  instructions: do a
+  dir: ${sandbox}/work/a
+EOF
+
+  local out="${sandbox}/orchestrator.out"
+  (
+    PATH="${sandbox}/bin:${PATH}" \
+      HOME="${sandbox}/home" \
+      XDG_CONFIG_HOME="${sandbox}/home/.config" \
+      OPENAI_API_KEY="${GATEWAY_TOKEN}" \
+      "${SPINLOOP_BIN}" orchestrator \
+        --gateway "${GATEWAY_URL}" \
+        --items "${sandbox}/work.yaml" \
+        --harness opencode \
+        -l \
+        > "${out}" 2>&1
+  ) &
+  local orch_pid=$!
+
+  # The startup line names the address the work list answers on.
+  local addr deadline=$((SECONDS + 30))
+  while (( SECONDS < deadline )); do
+    addr="$(sed -n 's/^Work list on //p' "${out}" 2>/dev/null | head -1)"
+    if [[ -n "${addr}" ]]; then
+      break
+    fi
+    sleep 0.2
+  done
+  if [[ -z "${addr}" ]]; then
+    fail "the startup line names the work list's address" "a 'Work list on' line" "$(cat "${out}")"
+    kill -INT "${orch_pid}" 2>/dev/null || true
+    wait "${orch_pid}" 2>/dev/null || true
+    rm -rf "${sandbox}"
+    return
+  fi
+  local base="http://${addr}"
+
+  # The file's item is worked, and the work list shows it done.
+  local list
+  deadline=$((SECONDS + 60))
+  while (( SECONDS < deadline )); do
+    list="$(curl -fsS "${base}/v1/items" 2>/dev/null || true)"
+    if [[ "${list}" == *'"id":"a"'* && "${list}" == *'"state":"done"'* ]]; then
+      break
+    fi
+    sleep 0.2
+  done
+  assert_contains "the work list shows the item the run worked, done" \
+    "${list}" '"state":"done"'
+
+  # An add over the API enters the backlog and is worked to done, like any
+  # item the run reads from the file.
+  local add
+  add="$(curl -fsS -X POST -H 'Content-Type: application/json' \
+    -d "{\"id\":\"b\",\"instructions\":\"do b\",\"dir\":\"${sandbox}/work/b\"}" \
+    "${base}/v1/items")"
+  assert_contains "the add is answered with the item it created" "${add}" '"id":"b"'
+  deadline=$((SECONDS + 60))
+  while (( SECONDS < deadline )); do
+    list="$(curl -fsS "${base}/v1/items" 2>/dev/null || true)"
+    if echo "${list}" | grep -q '"id":"b"[^}]*"state":"done"'; then
+      break
+    fi
+    sleep 0.2
+  done
+  if echo "${list}" | grep -q '"id":"b"[^}]*"state":"done"'; then
+    pass "the added item is worked to done"
+  else
+    fail "the added item is worked to done" '"id":"b" ... "state":"done"' "${list}"
+  fi
+
+  # An item the agent holds: it goes running, and stays there.
+  add="$(curl -fsS -X POST -H 'Content-Type: application/json' \
+    -d "{\"id\":\"c\",\"instructions\":\"hold the line\",\"dir\":\"${sandbox}/work/c\"}" \
+    "${base}/v1/items")"
+  assert_contains "the add is answered with the item it created" "${add}" '"id":"c"'
+  deadline=$((SECONDS + 60))
+  while (( SECONDS < deadline )); do
+    list="$(curl -fsS "${base}/v1/items" 2>/dev/null || true)"
+    if echo "${list}" | grep -q '"id":"c"[^}]*"state":"running"'; then
+      break
+    fi
+    sleep 0.2
+  done
+  if echo "${list}" | grep -q '"id":"c"[^}]*"state":"running"'; then
+    pass "the held item is running"
+  else
+    fail "the held item is running" '"id":"c" ... "state":"running"' "${list}"
+  fi
+
+  # Its removal is refused while it runs, naming the abort that goes first.
+  local body code
+  body="$(curl -s -X DELETE "${base}/v1/items/c")"
+  code="$(curl -s -o /dev/null -w '%{http_code}' -X DELETE "${base}/v1/items/c")"
+  assert_equals "removing a running item is refused" "${code}" "409"
+  assert_contains "the refusal names the abort that goes first" "${body}" "abort"
+
+  # The abort stops the agent, and the run admits the item again: it is
+  # launched a second time.
+  body="$(curl -s -X POST "${base}/v1/items/c/abort")"
+  assert_contains "the abort is answered for the item it stopped" "${body}" '"id":"c"'
+  deadline=$((SECONDS + 60))
+  while (( SECONDS < deadline )); do
+    if [[ "$(wc -l < "${sandbox}/work/c/launches.txt" 2>/dev/null | tr -d ' ')" == "2" ]]; then
+      break
+    fi
+    sleep 0.2
+  done
+  assert_equals "the aborted item is admitted again, launched a second time" \
+    "$(wc -l < "${sandbox}/work/c/launches.txt" 2>/dev/null | tr -d ' ')" "2"
+
+  # A remove of an ended item takes the item, its record, and its output.
+  body="$(curl -s -X DELETE "${base}/v1/items/a")"
+  assert_contains "the remove is answered for the item it took" "${body}" '"id":"a"'
+  list="$(curl -fsS "${base}/v1/items")"
+  assert_not_contains "the work list no longer carries the removed item" \
+    "${list}" '"id":"a"'
+  assert_not_contains "the state no longer carries the removed item's record" \
+    "$(cat "${sandbox}/work.yaml.state.json" 2>/dev/null)" '"a"'
+  if [[ ! -f "${sandbox}/work.yaml.logs/a.log" ]]; then
+    pass "the removed item's kept output is gone"
+  else
+    fail "the removed item's kept output is gone" "no log file" "one is still there"
+  fi
 
   kill -INT "${orch_pid}" 2>/dev/null || true
   local rc=0
@@ -729,6 +893,8 @@ main() {
   test_launch_fails_without_token
   echo
   test_orchestrator_works_the_backlog
+  echo
+  test_orchestrator_work_list_api
 
   echo
   if (( failures > 0 )); then

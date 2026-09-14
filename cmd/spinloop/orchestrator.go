@@ -12,9 +12,11 @@ package main
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/spinloop-ai/spinloop/internal/fleet"
 	"github.com/spinloop-ai/spinloop/internal/harness"
@@ -26,6 +28,8 @@ import (
 func orchestratorCmd() *cobra.Command {
 	var gatewayAddr, fleetPath, itemsPath, tokenEnv, harnessName, logLevel string
 	var createItemDirs bool
+	var listen, apiToken, apiTokenFile string
+	var loopback bool
 	c := &cobra.Command{
 		Use:   "orchestrator",
 		Short: "work a backlog of items against the fleet, at the fleet's pace",
@@ -52,17 +56,26 @@ the agent works in:
 An item names the tags of the nodes it may run on, and a priority, higher
 first. What it keeps — one record per item, and each agent's output —
 lives beside the items file: <file>.state.json and <file>.logs/. An item
-that has ended is not run again on a restart.`,
+that has ended is not run again on a restart.
+
+While it works, the orchestrator serves the work list — the items, their
+state, and each agent's kept output — over HTTP, the gateway's server
+pattern: an address and a token, loopback the bind that needs neither
+beyond the machine.`,
 		Args:          cobra.NoArgs,
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		RunE: func(c *cobra.Command, args []string) error {
 			resolve(c)
+			listenAddr, err := orchestratorListenAddr(listen, c.Flags().Changed("listen"), loopback)
+			if err != nil {
+				return err
+			}
 			gateway, tokenVar, err := orchestratorGateway(c, gatewayAddr, fleetPath, tokenEnv)
 			if err != nil {
 				return err
 			}
-			return runOrchestratorCommand(gateway, itemsPath, tokenVar, harnessName, logLevel, createItemDirs)
+			return runOrchestratorCommand(gateway, itemsPath, tokenVar, harnessName, logLevel, createItemDirs, listenAddr, apiToken, apiTokenFile)
 		},
 	}
 
@@ -75,6 +88,10 @@ that has ended is not run again on a restart.`,
 	fs.StringVarP(&harnessName, "harness", "H", "", "which harness to run the agents with")
 	fs.StringVar(&logLevel, "log-level", "", logLevelUsage)
 	fs.BoolVar(&createItemDirs, "create-item-dirs", false, "create an item's working directory if it does not exist")
+	fs.StringVar(&listen, "listen", orchestrator.DefaultListen, "the address to serve the work list API on")
+	fs.BoolVarP(&loopback, "loopback", "l", false, "serve the work list API on loopback on the default port ("+orchestrator.LoopbackListen+"); needs no token")
+	fs.StringVar(&apiTokenFile, "api-token-file", "", "read the work list API's bearer token from this file")
+	fs.StringVar(&apiToken, "api-token", "", "the work list API's bearer token")
 	compRegister(c, "items", compFiles)
 	compRegister(c, "harness", compHarnessNames)
 	compRegister(c, "log-level", compLogLevel)
@@ -122,11 +139,26 @@ func orchestratorGateway(c *cobra.Command, gatewayAddr, fleetPath, tokenEnv stri
 	return gw.URL, token, nil
 }
 
+// orchestratorListenAddr resolves the address the work list API listens on:
+// --loopback takes the default, and an explicit address and --loopback are
+// two answers to one question.
+func orchestratorListenAddr(listen string, listenExplicit, loopback bool) (string, error) {
+	if loopback && listenExplicit {
+		return "", fmt.Errorf("--loopback and --listen both given: pass one")
+	}
+	if loopback {
+		return orchestrator.LoopbackListen, nil
+	}
+	return listen, nil
+}
+
 // runOrchestratorCommand is the body of `spinloop orchestrator`: the checks a
 // startup owes — the gateway named, its token resolvable, the harness able to
-// run an item, the items file a list of items — and then the loop, held
-// until the signal ends it.
-func runOrchestratorCommand(gatewayAddr, itemsPath, token, harnessName, logLevel string, createItemDirs bool) error {
+// run an item, the items file a list of items, the API's address bindable —
+// and then the work list API standing before the run's first pass, the way
+// the gateway has its handler in before a signal can arrive, held until the
+// signal ends the run and the server goes down with it.
+func runOrchestratorCommand(gatewayAddr, itemsPath, token, harnessName, logLevel string, createItemDirs bool, listenAddr, apiToken, apiTokenFile string) error {
 	h, _, err := harness.Resolve(harnessName)
 	if err != nil {
 		return err
@@ -142,22 +174,57 @@ func runOrchestratorCommand(gatewayAddr, itemsPath, token, harnessName, logLevel
 	if err != nil {
 		return err
 	}
+	apiTok, err := daemonToken(apiToken, apiTokenFile)
+	if err != nil {
+		return err
+	}
+	ln, err := orchestrator.Listen(listenAddr, apiTok)
+	if err != nil {
+		return err
+	}
+	defer ln.Close()
+
+	dispatch := orchestrator.NewDispatcher(h, gatewayAddr, token, createItemDirs)
+	store, err := orchestrator.OpenStore(itemsPath)
+	if err != nil {
+		return err
+	}
+	wl, err := orchestrator.NewWorkList(itemsPath, store, dispatch, gatewayAddr, logger)
+	if err != nil {
+		return err
+	}
+	// The store's lock goes with the process, after the server has gone
+	// down and with it any request that could still touch the store.
+	defer wl.Close()
+
+	handler := orchestrator.NewHandler(wl, apiTok, logger)
+	srv := &http.Server{Handler: handler}
 
 	unit := "items"
 	if len(items) == 1 {
 		unit = "item"
 	}
 	fmt.Printf("Working %s against %s: %d %s in the backlog\n", itemsPath, gatewayAddr, len(items), unit)
+	fmt.Printf("Work list on %s\n\n", ln.Addr().String())
 
 	// The signal ends the run the way the loop's contract says it does: the
 	// agents it has launched are stopped, their items back in the backlog.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	return orchestrator.Run(ctx, orchestrator.Config{
+
+	go srv.Serve(ln)
+	runErr := orchestrator.Run(ctx, orchestrator.Config{
 		Gateway:    gatewayAddr,
 		ItemsPath:  itemsPath,
 		Topologist: orchestrator.NewGatewayTopologist(gatewayAddr, token),
-		Dispatcher: orchestrator.NewDispatcher(h, gatewayAddr, token, createItemDirs),
+		Dispatcher: dispatch,
 		Log:        logger,
+		WorkList:   wl,
 	})
+	// The run is over — a clean interrupt, or a gateway that stopped
+	// answering: take the server down before the store's lock goes.
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	srv.Shutdown(shutdownCtx)
+	cancel()
+	return runErr
 }
