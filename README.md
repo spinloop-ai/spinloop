@@ -108,6 +108,7 @@ Wherever the model ended up, this part is the same, and it reads the same file:
 ```sh
 spinloop harness apply       # point your agent at that model
 spinloop harness open    # launch the agent, now running it
+spinloop code            # the same launch, in one word
 ```
 
 opencode, Pi and lucinate are all supported, chosen when you launch rather than
