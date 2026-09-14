@@ -20,6 +20,42 @@ A fleet is also where [`spinloop harness open`](harness.md#launching-against-you
 sends an agent: a launch routed through a fleet file picks a node and launches
 against it, so the machine you are sitting at needs no engine of its own.
 
+## Which fleet a command acts on
+
+Every `spinloop fleet` command takes its target one of three ways:
+
+| | target |
+| --- | --- |
+| `--env <name>` | one registered environment, as a fleet of one |
+| `--fleet <path>` (`-f`, except on `logs`) | that fleet file |
+| neither | the `fleet.yaml` in the working directory |
+
+`--env` and `--fleet` name two different things, so passing both fails saying
+so rather than picking one. A `fleet.yaml` merely sitting in the working
+directory is not a conflict: only a flag states a target, so `--env` simply
+wins and the file is not read.
+
+### One environment, no fleet file
+
+A registered environment and a one-node fleet file naming it describe the same
+thing, so `--env` lets you skip writing the file:
+
+```sh
+spinloop fleet status --env qwen      # the same row a one-node fleet file gives
+spinloop fleet dashboard --env qwen   # the tiled view, on one environment
+spinloop fleet logs --env qwen        # its engine's log
+```
+
+Because such a fleet has no file, it carries none of the settings a fleet file
+supplies — no `prefer`, no wake policy, no `gateway`, no concurrency limits —
+and takes each of their defaults. All of them describe how several nodes are
+used, which a fleet of one has no occasion for; put the environment in a
+`fleet.yaml` when you want any of them.
+
+`spinloop fleet harness` does not take `--env`. To launch an agent against a
+single environment, use [`spinloop code --env <name>`](code.md), which
+configures the harness from what that environment reports is deployed.
+
 ## Try it without any hardware
 
 [`examples/fleet-docker/`](../../examples/fleet-docker/) brings up a real

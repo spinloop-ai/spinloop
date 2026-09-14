@@ -18,7 +18,7 @@ import (
 
 // fleetDashboardCmd builds the `fleet dashboard` subcommand.
 func fleetDashboardCmd() *cobra.Command {
-	var path string
+	var path, envName string
 	c := &cobra.Command{
 		Use:   "dashboard",
 		Short: "watch the fleet in an interactive tiled view",
@@ -45,25 +45,27 @@ metrics --watch instead.`,
 		SilenceUsage:  true,
 		RunE: func(c *cobra.Command, _ []string) error {
 			resolve(c)
-			return runFleetDashboard(path)
+			return runFleetDashboard(fleetTarget{envName: envName, fleetPath: path})
 		},
 	}
 	fs := c.Flags()
 	fs.StringVarP(&path, "fleet", "f", "", fleetFileUsage)
+	fs.StringVar(&envName, "env", "", envFlagTargetUsage)
 	c.ValidArgsFunction = noPositionals
 	compRegister(c, "fleet", compFiles)
+	compRegister(c, "env", compEnvs)
 	return c
 }
 
 // runFleetDashboard opens the view. The terminal check comes first — before
 // the fleet file is even read — so a piped invocation fails the same way
 // wherever the fleet file stands: it never half-enters the view.
-func runFleetDashboard(path string) error {
+func runFleetDashboard(target fleetTarget) error {
 	if !term.IsTerminal(int(os.Stdout.Fd())) {
 		return fmt.Errorf("the dashboard needs an interactive terminal — " +
 			"stream the metrics instead with fleet metrics --watch")
 	}
-	m, err := dashModelFor(path)
+	m, err := dashModelFor(target)
 	if err != nil {
 		return err
 	}
@@ -74,8 +76,8 @@ func runFleetDashboard(path string) error {
 // and — for the entries that could not become nodes — the standing outcome
 // their tile shows. A broken fleet file is an error here, before any part of
 // the view exists.
-func dashModelFor(path string) (dashModel, error) {
-	cfg, err := fleet.Resolve(path)
+func dashModelFor(target fleetTarget) (dashModel, error) {
+	cfg, err := resolveFleetTarget(target)
 	if err != nil {
 		return dashModel{}, err
 	}
@@ -98,7 +100,7 @@ func dashModelFor(path string) (dashModel, error) {
 		results = append(results, e.standing)
 		actions = append(actions, dashAction{})
 	}
-	return dashModel{fleetPath: cfg.Path, entries: entries, results: results, actions: actions, gauge: true}, nil
+	return dashModel{fleetPath: describeTarget(cfg), entries: entries, results: results, actions: actions, gauge: true}, nil
 }
 
 // runDashProgram runs the view on the alternate screen. Bubble Tea restores

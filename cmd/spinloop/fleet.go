@@ -43,7 +43,7 @@ const fleetFileUsage = "path to the fleet file (default ./fleet.yaml)"
 // that cannot be reached is a row, not a failure: the rest of the fleet still
 // renders and the command still succeeds.
 func fleetStatusCmd() *cobra.Command {
-	var path string
+	var path, envName string
 	c := &cobra.Command{
 		Use:           "status",
 		Short:         "report every node's engine state",
@@ -52,7 +52,7 @@ func fleetStatusCmd() *cobra.Command {
 		SilenceUsage:  true,
 		RunE: func(c *cobra.Command, _ []string) error {
 			resolve(c)
-			cfg, err := fleet.Resolve(path)
+			cfg, err := resolveFleetTarget(fleetTarget{envName: envName, fleetPath: path})
 			if err != nil {
 				return err
 			}
@@ -62,8 +62,10 @@ func fleetStatusCmd() *cobra.Command {
 		},
 	}
 	c.Flags().StringVarP(&path, "fleet", "f", "", fleetFileUsage)
+	c.Flags().StringVar(&envName, "env", "", envFlagTargetUsage)
 	c.ValidArgsFunction = noPositionals
 	compRegister(c, "fleet", compFiles)
+	compRegister(c, "env", compEnvs)
 	return c
 }
 
@@ -109,9 +111,10 @@ func fleetRow(r fleet.NodeResult) (state, serving string) {
 // redraws the whole fleet on an interval.
 func fleetMetricsCmd() *cobra.Command {
 	var (
-		path   string
-		format string
-		watch  bool
+		path    string
+		envName string
+		format  string
+		watch   bool
 	)
 	c := &cobra.Command{
 		Use:           "metrics",
@@ -124,7 +127,7 @@ func fleetMetricsCmd() *cobra.Command {
 			if err := validateMetricsFormat(format); err != nil {
 				return err
 			}
-			cfg, err := fleet.Resolve(path)
+			cfg, err := resolveFleetTarget(fleetTarget{envName: envName, fleetPath: path})
 			if err != nil {
 				return err
 			}
@@ -137,10 +140,12 @@ func fleetMetricsCmd() *cobra.Command {
 	}
 	fs := c.Flags()
 	fs.StringVarP(&path, "fleet", "f", "", fleetFileUsage)
+	fs.StringVar(&envName, "env", "", envFlagTargetUsage)
 	fs.StringVar(&format, "format", "gauge", "output format: gauge (default), bar, table or json")
 	fs.BoolVarP(&watch, "watch", "w", false, "redraw the fleet every 60 seconds")
 	c.ValidArgsFunction = noPositionals
 	compRegister(c, "fleet", compFiles)
+	compRegister(c, "env", compEnvs)
 	return c
 }
 
@@ -275,8 +280,9 @@ func renderFleetMetricsJSON(w io.Writer, results []fleet.NodeResult) error {
 // deploy time.
 func fleetStartCmd() *cobra.Command {
 	var (
-		path string
-		all  bool
+		path    string
+		envName string
+		all     bool
 	)
 	c := &cobra.Command{
 		Use:           "start",
@@ -286,7 +292,7 @@ func fleetStartCmd() *cobra.Command {
 		SilenceUsage:  true,
 		RunE: func(c *cobra.Command, args []string) error {
 			resolve(c)
-			cfg, err := fleet.Resolve(path)
+			cfg, err := resolveFleetTarget(fleetTarget{envName: envName, fleetPath: path})
 			if err != nil {
 				return err
 			}
@@ -295,9 +301,11 @@ func fleetStartCmd() *cobra.Command {
 	}
 	fs := c.Flags()
 	fs.StringVarP(&path, "fleet", "f", "", fleetFileUsage)
+	fs.StringVar(&envName, "env", "", envFlagTargetUsage)
 	fs.BoolVar(&all, "all", false, "start every node in the fleet")
 	c.ValidArgsFunction = noPositionals
 	compRegister(c, "fleet", compFiles)
+	compRegister(c, "env", compEnvs)
 	return c
 }
 
@@ -306,8 +314,9 @@ func fleetStartCmd() *cobra.Command {
 // its target selection is shared with start.
 func fleetStopCmd() *cobra.Command {
 	var (
-		path string
-		all  bool
+		path    string
+		envName string
+		all     bool
 	)
 	c := &cobra.Command{
 		Use:           "stop",
@@ -317,7 +326,7 @@ func fleetStopCmd() *cobra.Command {
 		SilenceUsage:  true,
 		RunE: func(c *cobra.Command, args []string) error {
 			resolve(c)
-			cfg, err := fleet.Resolve(path)
+			cfg, err := resolveFleetTarget(fleetTarget{envName: envName, fleetPath: path})
 			if err != nil {
 				return err
 			}
@@ -330,9 +339,11 @@ func fleetStopCmd() *cobra.Command {
 	}
 	fs := c.Flags()
 	fs.StringVarP(&path, "fleet", "f", "", fleetFileUsage)
+	fs.StringVar(&envName, "env", "", envFlagTargetUsage)
 	fs.BoolVar(&all, "all", false, "stop every node in the fleet")
 	c.ValidArgsFunction = noPositionals
 	compRegister(c, "fleet", compFiles)
+	compRegister(c, "env", compEnvs)
 	return c
 }
 
@@ -422,6 +433,7 @@ func runFleetDrive(verb string, cfg *fleet.Config, all bool, names []string, cal
 func fleetDeployCmd() *cobra.Command {
 	var (
 		path            string
+		envName         string
 		all             bool
 		dryRun          bool
 		overwrite       bool
@@ -444,7 +456,7 @@ derivation, consent, and registration behaviour as "spinloop remote deploy".`,
 		SilenceUsage:  true,
 		RunE: func(c *cobra.Command, args []string) error {
 			resolve(c)
-			return runFleetDeploy(path, all, args, deployOpts{
+			return runFleetDeploy(fleetTarget{envName: envName, fleetPath: path}, all, args, deployOpts{
 				dryRun:          dryRun,
 				overwrite:       overwrite,
 				reseed:          reseed,
@@ -457,6 +469,7 @@ derivation, consent, and registration behaviour as "spinloop remote deploy".`,
 	}
 	fs := c.Flags()
 	fs.StringVarP(&path, "fleet", "f", "", fleetFileUsage)
+	fs.StringVar(&envName, "env", "", envFlagTargetUsage)
 	fs.BoolVar(&all, "all", false, "deploy every kind: remote node in the fleet")
 	fs.BoolVarP(&dryRun, "dry-run", "n", false, "print the config that would be deployed, without sending it")
 	fs.BoolVar(&overwrite, "overwrite", false, "proceed against an already-registered or live environment")
@@ -467,12 +480,13 @@ derivation, consent, and registration behaviour as "spinloop remote deploy".`,
 	fs.StringVar(&apiKeyEnv, "api-key-env", "", "name the environment variable holding the engine key to create or rotate, applied to every targeted node; with no flag each environment keeps its stored key")
 	c.ValidArgsFunction = noPositionals
 	compRegister(c, "fleet", compFiles)
+	compRegister(c, "env", compEnvs)
 	return c
 }
 
 // runFleetDeploy is the body of `spinloop fleet deploy`.
-func runFleetDeploy(path string, all bool, names []string, opts deployOpts) error {
-	cfg, err := fleet.Resolve(path)
+func runFleetDeploy(target fleetTarget, all bool, names []string, opts deployOpts) error {
+	cfg, err := resolveFleetTarget(target)
 	if err != nil {
 		return err
 	}
@@ -741,7 +755,7 @@ func resolveNodeSpinloop(node fleet.NodeConfig, fleetDir string) (arg, source st
 // config written. It is how a routing decision is checked before an agent
 // depends on it, and how an unexpected choice is diagnosed after one.
 func fleetRouteCmd() *cobra.Command {
-	var path, node, prefer string
+	var path, envName, node, prefer string
 	c := &cobra.Command{
 		Use:           "route",
 		Short:         "report which node a launch would take",
@@ -750,20 +764,22 @@ func fleetRouteCmd() *cobra.Command {
 		SilenceUsage:  true,
 		RunE: func(c *cobra.Command, args []string) error {
 			resolve(c)
-			return runFleetRoute(path, node, prefer, args)
+			return runFleetRoute(path, envName, node, prefer, args)
 		},
 	}
 	fs := c.Flags()
 	fs.StringVarP(&path, "fleet", "f", "", fleetFileUsage)
+	fs.StringVar(&envName, "env", "", envFlagTargetUsage)
 	fs.StringVar(&node, "node", "", "report this node rather than choosing one")
 	fs.StringVar(&prefer, "prefer", "", "rank nodes by `idle` or `active` (overrides the fleet file)")
 	c.ValidArgsFunction = aliasSlot
 	compRegister(c, "fleet", compFiles)
+	compRegister(c, "env", compEnvs)
 	return c
 }
 
 // runFleetRoute is the body of `spinloop fleet route`.
-func runFleetRoute(path, node, prefer string, args []string) error {
+func runFleetRoute(path, envName, node, prefer string, args []string) error {
 	var spinloopPath string
 	if len(args) > 0 {
 		spinloopPath = args[0]
@@ -778,17 +794,17 @@ func runFleetRoute(path, node, prefer string, args []string) error {
 	// positional and no SPINLOOP_ALIAS, the default Spinloop standing in for
 	// the user. A named Spinloop routes only by flag, as a launch does.
 	target := path
-	if target == "" && spinloopPath == "" && !spinloopAliasInForce() {
+	if envName == "" && target == "" && spinloopPath == "" && !spinloopAliasInForce() {
 		if _, err := os.Stat(fleet.DefaultFile); err == nil {
 			target = fleet.DefaultFile
 		}
 	}
-	if target == "" {
+	if envName == "" && target == "" {
 		return fmt.Errorf(
-			"no fleet file to route %s through: pass --fleet <path> to say which fleet to route through",
+			"no fleet to route %s through: pass --fleet <path> or --env <name> to say which fleet to route through",
 			resolvedPath)
 	}
-	cfg, err := fleet.Resolve(target)
+	cfg, err := resolveFleetTarget(fleetTarget{envName: envName, fleetPath: target})
 	if err != nil {
 		return err
 	}
@@ -804,7 +820,7 @@ func runFleetRoute(path, node, prefer string, args []string) error {
 		Node: node, Prefer: preference,
 	}
 
-	fmt.Printf("Spinloop: %s\nFleet:  %s\nPrefer: %s\n\n", resolvedPath, cfg.Path, preference)
+	fmt.Printf("Spinloop: %s\nFleet:  %s\nPrefer: %s\n\n", resolvedPath, describeTarget(cfg), preference)
 	if sel.BaseURL != "" {
 		fmt.Printf("This Spinloop pins BASEURL %s, so a launch would not route at all.\n", sel.BaseURL)
 		return nil

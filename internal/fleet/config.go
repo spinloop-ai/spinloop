@@ -375,6 +375,51 @@ func Resolve(flagPath string) (*Config, error) {
 	return Load(path)
 }
 
+// ForEnvironment builds the fleet a `--env <name>` target names: one cloud
+// node, named by the registered environment whose remote.json holds its
+// control config. A registered environment and a one-node fleet file naming it
+// describe the same thing — `fleet deploy` registers an environment under its
+// node's name, which is why every other fleet command can find one by name —
+// so this is the same fleet, assembled from the registry rather than read from
+// a file.
+//
+// The name is checked here rather than at the socket: a value that is not a
+// plain identifier, and a name nothing is registered under, each fail naming
+// the fix before any node is contacted.
+//
+// Path and Dir are deliberately empty. Dir feeds the adjacent-.env lookup that
+// resolves a node's token reference, and a cloud node names none — it is
+// reached through its control plane with the operator's own credentials — so
+// nothing here reads either field. A fleet assembled this way carries none of
+// the settings a fleet file supplies (preference, wake policy, gateway,
+// concurrency, a fleet-wide key), and takes each of their defaults; all of
+// them describe how several nodes are used, which a fleet of one has no
+// occasion for.
+func ForEnvironment(name string) (*Config, error) {
+	if !remote.IsEnvName(name) {
+		return nil, fmt.Errorf(
+			"%q is not an environment name: an environment name is a plain identifier, with no path", name)
+	}
+	path, err := remote.EnvConfigPath(name)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := os.Stat(path); err != nil {
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf(
+				"environment %q is not registered: run `spinloop remote deploy --env %q` to create it", name, name)
+		}
+		return nil, err
+	}
+	cfg := &Config{Nodes: []NodeConfig{{Name: name, Kind: KindRemote}}}
+	// The same validation a parsed file gets, so a fleet of one cannot reach a
+	// command in a state a fleet file could not.
+	if err := cfg.validate(); err != nil {
+		return nil, err
+	}
+	return cfg, nil
+}
+
 // tagDuplicates walks the raw file for a node whose tags name one key twice.
 // The typed parse would refuse the duplicate too, but its error names the key
 // and the lines, not the node; the node is the thing the operator needs to
