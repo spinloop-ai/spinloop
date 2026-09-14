@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/spinloop-ai/spinloop/internal/catalog"
@@ -160,8 +162,22 @@ func startChild(bin string, args []string, dir, logPath string, env []string) (C
 	if err != nil {
 		return nil, fmt.Errorf("opening the item's log: %v", err)
 	}
+	// opencode run, given no directory of its own, works in the directory its
+	// PWD variable names rather than its own working directory, so the
+	// variable the child inherits must carry the item's directory, not the
+	// place the orchestrator was started from.
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		log.Close()
+		return nil, fmt.Errorf("resolving the item's directory %s: %v", dir, err)
+	}
+	for i, e := range env {
+		if name, _, ok := strings.Cut(e, "="); ok && name == "PWD" {
+			env[i] = "PWD=" + abs
+		}
+	}
 	cmd := exec.Command(bin, args...)
-	cmd.Dir = dir
+	cmd.Dir = abs
 	cmd.Env = env
 	cmd.Stdout = log
 	cmd.Stderr = log

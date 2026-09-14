@@ -652,7 +652,10 @@ func stubAgent(t *testing.T) string {
 	path := filepath.Join(dir, "agent")
 	script := `#!/bin/sh
 {
-  echo "cwd:$(pwd)"
+  # pwd honours the PWD variable, so take the physical directory for the
+  # record's working directory and the variable's own value separately.
+  echo "cwd:$(pwd -P)"
+  echo "pwd:$(printenv PWD)"
   for a in "$@"; do echo "arg:$a"; done
   echo "key:$OPENAI_API_KEY"
 } > "$RECORD_FILE"
@@ -735,6 +738,43 @@ func TestDispatch_RunsTheAgentOneShotInTheItemsDirectory(t *testing.T) {
 	}
 	if ap.keyEnv != "the-token" {
 		t.Errorf("the config's key variable resolves to the gateway's token, got %q", ap.keyEnv)
+	}
+}
+
+func TestDispatch_TheChildsPWDVariableCarriesTheItemsDirectory(t *testing.T) {
+	work := t.TempDir()
+	itemDir := filepath.Join(work, "item")
+	if err := os.MkdirAll(itemDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	record := filepath.Join(work, "record")
+	t.Setenv("RECORD_FILE", record)
+	t.Setenv("OPENAI_API_KEY", "")
+	// The variable the orchestrator's own environment carries points at a
+	// different directory: a launch that merely inherited the environment
+	// would hand the agent that directory instead of the item's.
+	t.Setenv("PWD", work)
+	bin := stubAgent(t)
+
+	h := &fakeHarness{name: "opencode", bin: bin}
+	d := NewDispatcher(h, "http://gateway:4000", "the-token", false)
+	child, err := d.Launch(
+		Item{ID: "a", Instructions: "fix the parser", Dir: itemDir},
+		runningNode("gpu-a", "org/model", nil),
+		filepath.Join(work, "a.log"),
+	)
+	if err != nil {
+		t.Fatalf("the launch should succeed: %v", err)
+	}
+	if err := child.Wait(); err != nil {
+		t.Fatalf("the agent should end cleanly: %v", err)
+	}
+
+	// The variable carries the directory resolved the way filepath.Abs
+	// gives it — the symlinked form, not the kernel's resolved cwd.
+	rec := readRecord(t, record)
+	if !strings.Contains(rec, "pwd:"+itemDir) {
+		t.Errorf("the child's PWD variable should carry the item's directory, record:\n%s", rec)
 	}
 }
 
