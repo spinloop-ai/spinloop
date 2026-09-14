@@ -149,11 +149,11 @@ using it — so a fleet with every machine busy on other models fails rather tha
 displacing anyone. `--no-wake` turns starting off entirely.
 
 Which node wins among several that could all serve you is a
-[`prefer` setting](fleet.md#spreading-or-consolidating): `idle` (the default)
+[`prefer` setting](../fleet-file.md#spreading-or-consolidating): `idle` (the default)
 takes the machine that has been quiet longest, keeping a second agent off an
 engine that is mid-request; `active` consolidates onto the busy one instead.
 
-A fleet file that names a [gateway](fleet.md#gateway) points the agent there,
+A fleet file that names a [gateway](../fleet-file.md#gateway) points the agent there,
 so the address lives in the file rather than in every Spinloop — and because a
 gateway resolves the model per request, a launch through one needs no Spinloop
 at all: `spinloop code --fleet ./fleet.yaml` is enough.
@@ -314,7 +314,7 @@ Notes:
   that a file named `Spinloop` in the current directory — see
   [`spinloop alias`](alias.md#naming-one-for-the-whole-shell).
 - A URL ending in `/` is treated like a directory — `Spinloop` is appended. See
-  [Fetching a Spinloop from a URL](../spinloop-file.md#fetching-an-spinloop-from-a-url).
+  [Fetching a Spinloop from a URL](../spinloop-file.md#fetching-a-spinloop-from-a-url).
 - A Spinloop's `PRESET` line is for [`spinloop serve`](serve.md); `apply`
   ignores it — never fetched, even when it's a URL.
 - With `--env <name>`, the Spinloop points at a registered

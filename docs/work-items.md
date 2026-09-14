@@ -11,9 +11,9 @@ only to find that gateway, and holds no node credentials of its own.
 
 Three things, all described on their own pages:
 
-- A [fleet file](commands/fleet.md) whose nodes carry [tags](commands/fleet.md#tags) —
+- A [fleet file](fleet-file.md) whose nodes carry [tags](fleet-file.md#tags) —
   the operator's description of what work each node can take on — and which
-  declares its [concurrency limits](commands/fleet.md#concurrency), how much
+  declares its [concurrency limits](fleet-file.md#concurrency), how much
   work the fleet may hold in flight at once
 - A [gateway](commands/gateway.md) in front of that fleet, which is how the
   orchestrator sees the nodes and how each agent's requests reach them —
@@ -62,7 +62,7 @@ export OPENAI_API_KEY=the-gateway-token
 spinloop orchestrator --gateway http://127.0.0.1:4100 --items ./work.yaml
 ```
 
-Where the fleet file's [gateway section](commands/fleet.md#gateway) names the gateway
+Where the fleet file's [gateway section](fleet-file.md#gateway) names the gateway
 — and you run from the directory the file lives in — the flag stands down:
 
 ```sh
@@ -134,7 +134,7 @@ file left off. An orchestrator that dies uncleanly leaves its items marked
 ## What it does not do
 
 It never starts or stops a node — a stopped node is offered to an item only
-where the fleet's [wake policy](commands/fleet.md#waking) says a request may
+where the fleet's [wake policy](fleet-file.md#waking) says a request may
 start it, and it is the gateway that does the starting. It does not re-run an
 item that has ended, finished or failed, and its run holds no node
 credentials: the gateway is its only view of the fleet, the fleet file

@@ -135,7 +135,7 @@ machine.
 
 ## Running the model on another machine you own
 
-A [fleet file](commands/fleet.md#fleetyaml) names the machines on your network
+A [fleet file](fleet-file.md) names the machines on your network
 running `spinloop daemon`, and `spinloop harness open` can pick one for you.
 Which fleet file a launch routes through is a launch concern, not a Spinloop
 field:
