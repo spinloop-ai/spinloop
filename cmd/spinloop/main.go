@@ -1335,15 +1335,12 @@ func applyRoutedSpinloop(sel spinloop.Selection, path string, providers string, 
 	// against (a Spinloop never names one).
 	sel.Providers = providers
 	// --env and a fleet are two different answers to where the model is served
-	// from — a named environment, or a set of nodes to pick from. A launch that
-	// states both is a mistake, so it fails naming both rather than resolving
-	// one by precedence.
-	if route.envName != "" {
-		if target := route.fleetFile(); target != "" {
-			return spinloop.Selection{}, "", nil, nil, fmt.Errorf(
-				"the launch states both an environment (--env %s) and a fleet (%s): each names where the model is served from, so state one",
-				route.envName, target)
-		}
+	// from, and the rule against naming both is the fleet commands' too, so it
+	// is enforced and worded in one place. The fleet passed is the one this
+	// launch's own discovery settled on — which, unlike a fleet command's, may
+	// come from the working directory.
+	if err := checkOneTarget(route.envName, route.fleetFile()); err != nil {
+		return spinloop.Selection{}, "", nil, nil, err
 	}
 	envDir := envFileDir(path)
 	if path == "" {

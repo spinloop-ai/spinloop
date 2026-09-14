@@ -30,10 +30,11 @@ const bytesPerLineGuess = 512
 // is a fleet-wide question. Naming a node narrows it to that one.
 func fleetLogsCmd() *cobra.Command {
 	var (
-		path   string
-		follow bool
-		limit  int
-		format string
+		path    string
+		follow  bool
+		limit   int
+		format  string
+		envName string
 	)
 	const followUsage = "keep printing new output as it arrives"
 	c := &cobra.Command{
@@ -44,7 +45,7 @@ func fleetLogsCmd() *cobra.Command {
 		SilenceUsage:  true,
 		RunE: func(c *cobra.Command, args []string) error {
 			resolve(c)
-			return runFleetLogs(path, follow, limit, format, args)
+			return runFleetLogs(fleetTarget{envName: envName, fleetPath: path}, follow, limit, format, args)
 		},
 	}
 	fs := c.Flags()
@@ -52,16 +53,18 @@ func fleetLogsCmd() *cobra.Command {
 	// cannot carry two meanings on one command line. Every other fleet
 	// subcommand offers -f for the fleet file.
 	fs.StringVar(&path, "fleet", "", fleetFileUsage)
+	fs.StringVar(&envName, "env", "", envFlagTargetUsage)
 	fs.BoolVarP(&follow, "follow", "f", false, followUsage)
 	fs.IntVar(&limit, "limit", 200, "lines of backlog to print per node")
 	fs.StringVar(&format, "format", "text", "output format: text (default) or json")
 	c.ValidArgsFunction = noPositionals
 	compRegister(c, "fleet", compFiles)
+	compRegister(c, "env", compEnvs)
 	return c
 }
 
 // runFleetLogs is the body of `spinloop fleet logs`.
-func runFleetLogs(path string, follow bool, limit int, format string, args []string) error {
+func runFleetLogs(target fleetTarget, follow bool, limit int, format string, args []string) error {
 	if format != "text" && format != "json" {
 		return fmt.Errorf("--format must be \"text\" or \"json\", got %q", format)
 	}
@@ -69,7 +72,7 @@ func runFleetLogs(path string, follow bool, limit int, format string, args []str
 		return fmt.Errorf("--limit must be positive, got %d", limit)
 	}
 
-	cfg, err := fleet.Resolve(path)
+	cfg, err := resolveFleetTarget(target)
 	if err != nil {
 		return err
 	}

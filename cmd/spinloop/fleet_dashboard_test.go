@@ -2220,11 +2220,11 @@ func TestFleetDashboardRefusesPipedOutput(t *testing.T) {
 func TestDashModelForFleetFile(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
-	if _, err := dashModelFor(""); err == nil {
+	if _, err := dashModelFor(fleetTarget{}); err == nil {
 		t.Fatal("missing fleet file did not fail")
 	}
 	writeFleetFile(t, "nodes:\n  - name: ok\n    host: 127.0.0.1\n    port: 4242\n  - name: broken\n    host: 127.0.0.1\n    port: 1\n    tokenEnv: NO_SUCH_SPINLOOP_VAR\n")
-	m, err := dashModelFor("")
+	m, err := dashModelFor(fleetTarget{})
 	if err != nil {
 		t.Fatal(err)
 	}
