@@ -199,6 +199,70 @@ func TestWakeSkipsANodeThatRefusesTheConfig(t *testing.T) {
 	}
 }
 
+// A node whose own wake is off is never started, even though its config
+// matches and the fleet otherwise wakes: another candidate is tried instead.
+func TestWakeSkipsANodeWithItsOwnWakeDisabled(t *testing.T) {
+	shortWake(t)
+	disabled := newFakeNode(t, string(daemon.StateIdle), "")
+	enabled := newFakeNode(t, string(daemon.StateIdle), "")
+	cfg := fleetOf(t, []string{"disabled-box", "enabled-box"}, disabled, enabled)
+	cfg.Nodes[0].WakePolicy = WakeOff
+
+	choice, err := cfg.Wake(context.Background(), Want{Model: "m"},
+		ConstantConfig(inference.DeployConfig{Runner: "llamacpp", ModelID: "m"}, nil), statusOf(t, cfg), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if choice.Node.Name != "enabled-box" {
+		t.Errorf("chose %q, want the node whose own wake is not disabled", choice.Node.Name)
+	}
+	disabled.mu.Lock()
+	defer disabled.mu.Unlock()
+	if disabled.started {
+		t.Error("a node with its own wake disabled must not be started")
+	}
+}
+
+// A node with nothing to try but a disabled node reports why, naming the
+// node and that its own waking is disabled — not a generic "refuses the
+// config" reason.
+func TestWakeDisabledNodeNamesItselfInTheRefusal(t *testing.T) {
+	shortWake(t)
+	disabled := newFakeNode(t, string(daemon.StateIdle), "")
+	cfg := fleetOf(t, []string{"disabled-box"}, disabled)
+	cfg.Nodes[0].WakePolicy = WakeOff
+
+	_, err := cfg.Wake(context.Background(), Want{Model: "m"},
+		ConstantConfig(inference.DeployConfig{Runner: "llamacpp", ModelID: "m"}, nil), statusOf(t, cfg), nil)
+	if err == nil {
+		t.Fatal("expected a failure: the only candidate's own wake is disabled")
+	}
+	for _, want := range []string{"disabled-box", "waking is disabled"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("message should mention %q, got:\n%s", want, err)
+		}
+	}
+}
+
+// A node that opts its own wake on is started even though the fleet as a
+// whole does not wake.
+func TestWakeStartsANodeThatOptsInUnderAFleetThatDoesNotWake(t *testing.T) {
+	shortWake(t)
+	node := newFakeNode(t, string(daemon.StateIdle), "")
+	cfg := fleetOf(t, []string{"opted-in-box"}, node)
+	cfg.WakePolicy = WakeOff
+	cfg.Nodes[0].WakePolicy = WakeOn
+
+	choice, err := cfg.Wake(context.Background(), Want{Model: "m"},
+		ConstantConfig(inference.DeployConfig{Runner: "llamacpp", ModelID: "m"}, nil), statusOf(t, cfg), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if choice.Node.Name != "opted-in-box" {
+		t.Errorf("chose %q, want the node that opted its own wake on", choice.Node.Name)
+	}
+}
+
 func TestWakeReportsEveryRefusal(t *testing.T) {
 	shortWake(t)
 	a := newFakeNode(t, string(daemon.StateIdle), "")

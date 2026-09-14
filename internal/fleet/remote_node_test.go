@@ -332,6 +332,37 @@ func TestRemoteNodeStartWithRefusesWhenUndeployed(t *testing.T) {
 	}
 }
 
+// When the pre-check status read itself fails — a transient network error,
+// not an answer — StartWith does not treat that as "nothing deployed": it
+// proceeds to the boot call rather than refusing on a read that told it
+// nothing.
+func TestRemoteNodeStartWithProceedsWhenTheStatusReadFails(t *testing.T) {
+	stubAWSCreds(t)
+	booted := false
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(`{"error":"boom"}`))
+	})
+	mux.HandleFunc("POST /", func(w http.ResponseWriter, r *http.Request) {
+		booted = true
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"state":"ready","healthy":true}`))
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	node, err := NewRemoteNode("env", remote.Config{StartURL: srv.URL, StopURL: srv.URL, Region: "us-east-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := node.StartWith(context.Background(), &inference.DeployConfig{Runner: "llamacpp"}, ""); err != nil {
+		t.Fatalf("StartWith should proceed to the boot call when the pre-check read fails: %v", err)
+	}
+	if !booted {
+		t.Error("StartWith should have called the boot endpoint")
+	}
+}
+
 func TestRemoteNodeStatusOverTheControlPlane(t *testing.T) {
 	stubAWSCreds(t)
 	srv := remoteControlServer(t,

@@ -699,6 +699,36 @@ func TestNodeWakeOverride(t *testing.T) {
 	}
 }
 
+// AnyNodeWakes is true whenever at least one node may be woken, whichever
+// level decides it for that node — not just when the fleet-wide setting is
+// on.
+func TestAnyNodeWakes(t *testing.T) {
+	cases := []struct {
+		name string
+		file string
+		want bool
+	}{
+		{"fleet wakes, no override", "wake: on\nnodes:\n  - name: a\n    host: a.local\n", true},
+		{"fleet off, no override anywhere",
+			"wake: off\nnodes:\n  - name: a\n    host: a.local\n  - name: b\n    host: b.local\n", false},
+		{"fleet off, one node opts in",
+			"wake: off\nnodes:\n  - name: a\n    host: a.local\n  - name: b\n    host: b.local\n    wake: on\n", true},
+		{"fleet on, every node opts out",
+			"wake: on\nnodes:\n  - name: a\n    host: a.local\n    wake: off\n", false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			cfg, err := Load(writeFleet(t, c.file, ""))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := cfg.AnyNodeWakes(); got != c.want {
+				t.Errorf("AnyNodeWakes() = %v, want %v", got, c.want)
+			}
+		})
+	}
+}
+
 func TestNodeWakeRejectsUnknownValue(t *testing.T) {
 	_, err := Load(writeFleet(t, "nodes:\n  - name: a\n    host: a.local\n    wake: sometimes\n", ""))
 	if err == nil {

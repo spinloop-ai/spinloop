@@ -507,6 +507,24 @@ func TestModelsLeavesOutARemoteEnvironmentWithWakeDisabled(t *testing.T) {
 	}
 }
 
+// remoteConfigFor fails naming the node when results holds nothing for it at
+// all, or when the node's last read was not OK — distinct from an OK read
+// that reports nothing deployed.
+func TestRemoteConfigForWithNoRecentStatus(t *testing.T) {
+	cfgFor := remoteConfigFor(nil)
+	if _, err := cfgFor(fleet.NodeConfig{Name: "env", Kind: fleet.KindRemote}); err == nil ||
+		!strings.Contains(err.Error(), "env") {
+		t.Errorf("a node missing from results should fail naming it, got %v", err)
+	}
+
+	failed := []fleet.NodeResult{{Name: "env", Outcome: fleet.OutcomeUnreachable}}
+	cfgFor = remoteConfigFor(failed)
+	if _, err := cfgFor(fleet.NodeConfig{Name: "env", Kind: fleet.KindRemote}); err == nil ||
+		!strings.Contains(err.Error(), "env") {
+		t.Errorf("a node whose last read failed should fail naming it, got %v", err)
+	}
+}
+
 // Two sources describing one model list it once.
 func TestModelsListsASharedSourceModelOnce(t *testing.T) {
 	a := newFakeNode(t, string(daemon.StateStopped), "")
