@@ -15,7 +15,6 @@ import (
 
 	"github.com/spinloop-ai/spinloop/internal/daemon"
 	"github.com/spinloop-ai/spinloop/internal/inference"
-	"github.com/spinloop-ai/spinloop/internal/remote"
 )
 
 // fakeNode is one machine's daemon plus, optionally, its engine's listener.
@@ -392,16 +391,83 @@ func TestWakeWithoutAKeyIsUngated(t *testing.T) {
 }
 
 // The wake path stays daemon-only: a remote is never woken — what it serves is
-// set by `spinloop remote deploy`, a heavier flow a node start must not conflate.
-// The refusal is the contract Wake relies on to move to its next candidate.
-func TestRemoteRefusesToBeWoken(t *testing.T) {
-	n, err := NewRemoteNode("cloud", remote.Config{StartURL: "https://s", StopURL: "https://x", Region: "us-east-1"})
+// set by `spinloop remote deploy`. Wake boots its instance and waits for its
+// engine to answer the same way it does for a daemon node, without pushing
+// the candidate resolver's config onto it — the environment already knows
+// what it serves.
+func TestWakeStartsADeployedRemoteNode(t *testing.T) {
+	shortWake(t)
+	stubAWSCreds(t)
+
+	var (
+		mu      sync.Mutex
+		engine  net.Listener
+		started bool
+	)
+	statusBody := func() string {
+		mu.Lock()
+		defer mu.Unlock()
+		if engine == nil {
+			return `{"state":"stopped","runner":"llamacpp","modelId":"org/m","servedName":"m"}`
+		}
+		return fmt.Sprintf(
+			`{"state":"running","runner":"llamacpp","modelId":"org/m","servedName":"m","base_url":"http://%s/v1"}`,
+			engine.Addr())
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(statusBody()))
+	})
+	mux.HandleFunc("POST /", func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		started = true
+		ln, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			mu.Unlock()
+			t.Fatal(err)
+		}
+		engine = ln
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		// remote.Start only accepts HTTP 200 with state "ready" as done; the
+		// engine's own running state comes from the status polls waitReady
+		// makes afterwards, not from this reply.
+		fmt.Fprintf(w, `{"state":"ready","healthy":true,"runner":"llamacpp","modelId":"org/m","servedName":"m","base_url":"http://%s/v1"}`, ln.Addr())
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(func() {
+		srv.Close()
+		mu.Lock()
+		defer mu.Unlock()
+		if engine != nil {
+			engine.Close()
+		}
+	})
+	registerRemoteEnv(t, "cloud", srv.URL, srv.URL)
+
+	path := writeFleet(t, "nodes:\n  - name: cloud\n    kind: remote\n", "")
+	cfg, err := Load(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = n.StartWith(context.Background(), &inference.DeployConfig{Runner: "llamacpp", ModelID: "m"}, "sk-key")
-	if err == nil || !strings.Contains(err.Error(), "not a node to be woken") {
-		t.Errorf("want the remote refusal, got %v", err)
+	results := statusOf(t, cfg)
+	if !results[0].OK() || results[0].Status.State != "stopped" {
+		t.Fatalf("initial status = %+v", results[0])
+	}
+
+	cfgFor := ConstantConfig(inference.DeployConfig{Runner: "llamacpp", ModelID: "org/m", ServedModelName: "m"}, nil)
+	choice, err := cfg.Wake(context.Background(), Want{Model: "org/m"}, cfgFor, results, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if choice.Node.Name != "cloud" {
+		t.Errorf("chose %q, want cloud", choice.Node.Name)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if !started {
+		t.Error("the environment's instance was never started")
 	}
 }
 

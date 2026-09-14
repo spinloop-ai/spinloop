@@ -21,13 +21,19 @@ change and is the proof that booting a deployed environment with no pushed
 config already works end to end.
 
 The remote start Lambda (`remote/lambda/start/index.ts`) already reads the
-environment's own stored deploy config on every wake and already refuses,
+environment's own stored deploy config on every wake and already answers,
 with a `503` naming `spinloop remote deploy`, when nothing is deployed
 (`state: 'unconfigured'`) or nothing is provisioned (`state: 'undeployed'`).
-The Go client (`internal/remote/remote.go`) surfaces that as an error from
-`remote.Start`. So the "undeployed refuses" half of this change does not
-need a check on the Go side at all — it already happens, one layer down,
-every time `remote.Start` is called.
+That reply is not an immediate failure on the Go side, though:
+`remote.Start` (`internal/remote/remote.go`) treats every `503` alike —
+still booting, no capacity, or undeployed — and retries after the reply's
+`retry_after_seconds` until its own deadline, so an undeployed environment
+would otherwise hold a wake request for the whole wake timeout before
+failing with a generic "gave up waiting" message. The "undeployed refuses
+promptly" half of this change does need a check on the Go side because of
+that: `StartWith` reads a fresh status first and refuses immediately when it
+reports nothing served, rather than handing an undeployed environment to the
+retry loop.
 
 ## Goals / Non-Goals
 
@@ -84,10 +90,14 @@ it already does for a daemon one.
 `StartWithProgress` that `Start` already uses, ignoring the `dc` and
 `engineKey` it is handed: a remote environment's engine is gated by the key
 fixed at deploy time, and what it serves is fixed by its own stored deploy
-config, not by anything a wake call supplies. The undeployed case is not
-special-cased in Go — the control plane's own `503` (see Context) is the
-refusal, surfaced through the same error path a daemon's refusal already
-takes through `fleet.Wake`'s `refused` accumulation.
+config, not by anything a wake call supplies. Before that call, `StartWith`
+reads a fresh status and refuses immediately, naming `spinloop remote
+deploy`, when it reports nothing served (see Context on why this cannot be
+left to the boot call's own `503`). This is the same "nothing deployed"
+signal `remoteConfigFor` already reads from a status reply elsewhere in this
+change, so the two layers agree on what "undeployed" means without sharing
+code — one reads it from the gateway's already-fanned-out `results`, the
+other from a fresh call because `StartWith` is not handed a `NodeResult`.
 
 Rejected alternative: check `dc` against the environment's last known model
 before calling `StartWithProgress`, refusing locally on a mismatch. Rejected
@@ -100,16 +110,33 @@ condition the caller already enforced.
 
 Add `NodeConfig.WakePolicy` (yaml `wake`, same `on`/`off` shape and parse
 validation as the fleet-wide setting) and `Config.NodeWakes(entry) bool`:
-the node's own setting when it names one, else the fleet's. `wakeable()` in
-`wake.go` filters candidates through it, in addition to the existing
-not-running check, so a node whose own wake is off is never a candidate
-regardless of the fleet's setting, and vice versa.
+the node's own setting when it names one, else the fleet's — plus
+`Config.AnyNodeWakes() bool` for a caller that needs to know whether waking
+is possible at all before it tries.
 
-The gateway's request-time refusal (`wakeFor`/`refuseWake`) and its
-advertisement (`wakeableModels`) switch from the single `h.cfg.Wakes()` check
-to `h.cfg.NodeWakes(entry)` per node they consider, so the refusal message
-can still name which node would have served the model and why it would not
-be woken.
+The check itself lives inside `Wake`'s own per-candidate loop, not in
+`wakeable()`'s ordering: a candidate whose own wake is off is skipped there
+the same way a candidate whose config doesn't match is skipped, contributing
+"waking is disabled for this node" to the refusal `Wake` reports when
+nothing else can serve the request either. `wakeable()` and `WouldWake`
+stay exactly as they were — reporting the node that would be tried first on
+config alone, regardless of policy. That is deliberate: `WouldWake` is what
+`fleet route`'s and the gateway's pre-emptive refusal already used to name
+the node a wake-off setting was refusing, and a caller doing that still
+needs the answer to "who would this have woken" even when the answer is
+"nobody, because policy said no" — folding the policy into `wakeable()`
+itself would have made `WouldWake` blind to that node whenever the fleet or
+the node's own setting is off, breaking the exact message it exists to
+produce.
+
+The gateway's request-time refusal (`wakeFor`) and its advertisement
+(`wakeableModels`) switch from the single `h.cfg.Wakes()` check to,
+respectively, `h.cfg.AnyNodeWakes()` (is there any point trying `Wake` at
+all) and `h.cfg.NodeWakes(entry)` per node (does this one contribute to what
+a request could start). `cmd/spinloop/route.go`'s own pre-emptive refusal —
+outside this change's stated scope, but sharing the same fleet-wide-only gate
+this change touches — gets the same `AnyNodeWakes()` swap, so a per-node
+override is not silently inert there.
 
 Rejected alternative (from the issue): a second fleet-wide flag scoped to
 remote nodes only (e.g. `wakeRemote`). Rejected per the chosen direction — a

@@ -90,15 +90,29 @@ func (n *remoteNode) StartWithProgress(ctx context.Context, report func(StartPha
 	return statusFromRemote(*resp), nil
 }
 
-// StartWith is how a router wakes a node to serve something. A remote environment
-// is not woken: what it serves is set by `spinloop remote deploy`, a heavier flow
-// (provisioning, weight seeding, ingress) that a node start must not conflate.
+// StartWith is how a router wakes a node to serve something. A remote
+// environment's engine is not configured by a start: what it serves and the
+// key that gates it are fixed by `spinloop remote deploy`, a heavier flow
+// (provisioning, weight seeding, ingress) that a node start must not
+// conflate — so dc and engineKey are ignored, and this boots the instance
+// exactly as Start does.
+//
+// An environment with nothing deployed is refused here rather than handed to
+// the boot call: the control plane's own start Lambda answers an undeployed
+// environment with a retryable 503, the same shape it uses for "still
+// booting" and "no capacity", so a caller that just retried it — the way a
+// wake retries a dropped connection — would hold the request until the wake
+// timeout for a state that is never going to change. A fresh status read
+// reporting nothing served is what "undeployed" looks like from here; a
+// status read that fails outright is left to the boot call to explain.
 func (n *remoteNode) StartWith(ctx context.Context, dc *inference.DeployConfig, engineKey string) (daemon.StatusResponse, error) {
 	_ = dc
 	_ = engineKey
-	return daemon.StatusResponse{}, fmt.Errorf(
-		"%s is a remote environment, not a node to be woken: tell it what to serve with `spinloop remote deploy`",
-		n.name)
+	if status, err := n.Status(ctx); err == nil && status.Model == "" && status.ServedName == "" {
+		return daemon.StatusResponse{}, fmt.Errorf(
+			"%s has nothing deployed: run `spinloop remote deploy`", n.name)
+	}
+	return n.StartWithProgress(ctx, func(StartPhase) {})
 }
 
 func (n *remoteNode) Stop(ctx context.Context) (daemon.StatusResponse, error) {

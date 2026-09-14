@@ -269,11 +269,66 @@ func TestRemoteNodeLogsSharesTheFollowCursorWithRemoteLogsCommand(t *testing.T) 
 	}
 }
 
-func TestRemoteNodeStartWithIsRefused(t *testing.T) {
-	node, _ := NewRemoteNode("env", remote.Config{StartURL: "http://x", StopURL: "http://x", Region: "r"})
-	_, err := node.StartWith(context.Background(), &inference.DeployConfig{Runner: "llamacpp"}, "")
+// StartWith boots a deployed-but-stopped environment exactly as Start does,
+// ignoring the config and key it is handed: what a remote environment
+// serves, and the key that gates it, are fixed by `spinloop remote deploy`,
+// not by a wake call.
+func TestRemoteNodeStartWithBootsADeployedEnvironment(t *testing.T) {
+	stubAWSCreds(t)
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"state":"stopped","runner":"llamacpp","modelId":"org/deployed","servedName":"deployed"}`))
+	})
+	mux.HandleFunc("POST /", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"state":"ready","healthy":true}`))
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	node, err := NewRemoteNode("env", remote.Config{StartURL: srv.URL, StopURL: srv.URL, Region: "us-east-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	status, err := node.StartWith(context.Background(),
+		&inference.DeployConfig{Runner: "llamacpp", ModelID: "org/other"}, "some-key")
+	if err != nil {
+		t.Fatalf("StartWith should boot a deployed environment: %v", err)
+	}
+	if status.State != "ready" {
+		t.Errorf("status = %+v, want ready", status)
+	}
+}
+
+// An environment with nothing deployed is refused immediately, before the
+// boot call: remote.Start's own retry loop treats an undeployed
+// environment's 503 as retryable the same way it treats a capacity wait, so
+// StartWith reads a fresh status first rather than handing it to that loop.
+func TestRemoteNodeStartWithRefusesWhenUndeployed(t *testing.T) {
+	stubAWSCreds(t)
+	booted := false
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"state":"undeployed"}`))
+	})
+	mux.HandleFunc("POST /", func(w http.ResponseWriter, r *http.Request) {
+		booted = true
+		w.WriteHeader(http.StatusServiceUnavailable)
+		w.Write([]byte(`{"state":"undeployed","retryAfterSeconds":300}`))
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	node, err := NewRemoteNode("env", remote.Config{StartURL: srv.URL, StopURL: srv.URL, Region: "us-east-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = node.StartWith(context.Background(), &inference.DeployConfig{Runner: "llamacpp"}, "")
 	if err == nil || !strings.Contains(err.Error(), "spinloop remote deploy") {
 		t.Errorf("StartWith should refuse, naming the deploy path; got %v", err)
+	}
+	if booted {
+		t.Error("StartWith should refuse before calling the boot endpoint, not after")
 	}
 }
 

@@ -88,6 +88,14 @@ func (c *Config) Wake(ctx context.Context, w Want, cfgFor ConfigFor, results []N
 
 	var refused []string
 	for _, cand := range cands {
+		if !c.NodeWakes(cand.entry) {
+			// Waking is off for this node — its own setting, or the fleet's
+			// when it names none — so it is refused here rather than
+			// started, the same as a node that refuses the config: another
+			// candidate may still serve the request.
+			refused = append(refused, fmt.Sprintf("%s: waking is disabled for this node", cand.entry.Name))
+			continue
+		}
 		dc, err := resolver.config(cand.entry)
 		if err != nil {
 			refused = append(refused, fmt.Sprintf("%s: %v", cand.entry.Name, err))
@@ -143,7 +151,11 @@ func (c *Config) Wake(ctx context.Context, w Want, cfgFor ConfigFor, results []N
 
 // wakeable keeps the nodes that could be started, in the order to try them: a
 // node whose stored config already names the wanted model first, since it has
-// the weights and starts sooner.
+// the weights and starts sooner. Whether waking is actually allowed for a
+// given node is Wake's own concern, not this ordering's — WouldWake reports
+// the node that would be tried first on config alone, regardless of policy,
+// which is what lets a caller explain a wake-off refusal by naming the node
+// it would otherwise have started.
 func wakeable(cands []candidate, resolver *configResolver) []candidate {
 	var warm, cold []candidate
 	for _, c := range cands {

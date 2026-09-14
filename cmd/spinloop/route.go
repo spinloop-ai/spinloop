@@ -135,11 +135,11 @@ func routeThroughFleet(sel spinloop.Selection, spinloopPath string, opts routeOp
 	if opts.noWake {
 		return nil, fmt.Errorf("%w\nStart one with `spinloop fleet start <node>`, or drop --no-wake to have spinloop do it", err)
 	}
-	if !cfg.Wakes() {
-		// The fleet file says the machines are not to be started on demand. The
-		// refusal still names the node that would have been woken, the way a
-		// --no-wake refusal does: the setting decides whether to wake, not what
-		// would be woken.
+	if !cfg.AnyNodeWakes() {
+		// No node in the fleet may be woken — the fleet-wide setting, since
+		// no node's own overrides it. The refusal still names the node that
+		// would have been woken, the way a --no-wake refusal does: the
+		// setting decides whether to wake, not what would be woken.
 		if wake, ok := cfg.WouldWake(none.Results, fleet.ConstantConfig(dc, dcErr)); ok {
 			return nil, fmt.Errorf(
 				"%w\nwake is off in %s: start %s with `spinloop fleet start %s`",
