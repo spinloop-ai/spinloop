@@ -29,18 +29,30 @@ That reply is not an immediate failure on the Go side, though:
 still booting, no capacity, or undeployed — and retries after the reply's
 `retry_after_seconds` until its own deadline, so an undeployed environment
 would otherwise hold a wake request for the whole wake timeout before
-failing with a generic "gave up waiting" message. The "undeployed refuses
-promptly" half of this change does need a check on the Go side because of
-that: `StartWith` reads a fresh status first and refuses immediately when it
-reports nothing served, rather than handing an undeployed environment to the
-retry loop.
+failing with a generic "gave up waiting" message. That means a candidate
+must be confirmed deployed *before* `StartWith` is ever called, not by
+`StartWith` itself — see the next point for why it also cannot be confirmed
+from a status read.
+
+The status Lambda's own non-running branch (`status()`, same file) answers a
+stopped or undeployed environment with only `{state, environment, healthy,
+base_url}` — no runner, model id, or served name; those only ride along
+(`readDeployFacts`, spread into the reply) once the instance is `running`.
+So a fan-out's cached status for a stopped environment cannot say what it
+would serve, deployed or not — the two look identical. The stats Lambda
+(`remote/lambda/stats/index.ts`) is different: it reads the deploy config
+directly (`readDeployConfig`) before it even looks at instance state, and
+fails outright (no instance-state branch reached at all) when there is none
+to read. Its reply carries `runner` and `modelId` in every branch it does
+reach, running or not — but never a served name, which only the deploy
+config's own field name (not relayed by this Lambda) would supply.
 
 ## Goals / Non-Goals
 
 **Goals:**
 - A deployed-but-stopped remote node becomes a wake candidate for the
   gateway's `/v1/models`, its topology endpoint, and its request-time wake,
-  sourced from the node's own last status rather than a local file.
+  sourced from the node's own stats reply rather than a local file.
 - An operator can allow or refuse waking on one node without changing the
   fleet's own `wake` setting.
 
@@ -57,12 +69,14 @@ retry loop.
 
 ### Where a remote node's wakeable config comes from
 
-Resolve it from the node's own last-read status (`NodeResult.Status`, already
-gathered by the fan-out every caller already runs), not from a local Spinloop
-source. `statusFromRemote` already carries `Model` and `ServedName` from the
-environment's stored deploy config on every status read, deployed or not,
-running or not — that is the authoritative record of what the environment
-would serve, and it is already in hand wherever a candidate list is built.
+Resolve it from a live call to the environment's stats endpoint
+(`Node.Metrics`, wrapping `remote.Stats`), not from the status a fan-out
+already holds and not from a local Spinloop source. The status reply is no
+good for this (see Context: it carries deploy facts only while running), so
+this is a genuine extra network call rather than a free read of data already
+in hand — bounded the same way a daemon node's Spinloop-file read is, by the
+gateway's existing `sourcesTTL` cache on `wakeableModels`, and by `Wake`'s
+own per-node-name memoisation (`configResolver`) within one wake attempt.
 
 Rejected alternative: give a remote node entry a local Spinloop source and
 resolve its config the way a daemon node's is. Rejected because a remote
@@ -71,18 +85,21 @@ can drift from whatever local file the fleet entry happens to point at (or
 point at nothing); trusting the control plane's own record avoids a second
 copy of "what does this node run" that could disagree with the first.
 
-This resolution is added as a small remote-aware branch on top of the
-existing `ConfigFor` the gateway already injects into `fleet.Wake` and
-`wakeableModels` — built once per request from the `results` already in
-scope, since a `ConfigFor` is `func(NodeConfig) (inference.DeployConfig,
-error)` and has no other way to see live status. `internal/fleet` itself
-(`wake.go`, `configResolver`, `candidates`, `WouldWake`) is untouched: it
-already only knows about "the injected resolver said X" and does not care
-whether X came from a file or from a status read. The existing "does the
-resolved config match what the request wants" check
-(`gateway.matchingConfigFor`) keeps wrapping that combined resolver
+Because this needs a live call — building the node from the registry and
+reaching its control plane — it is a method on `Handler`
+(`remoteConfigFor(ctx) fleet.ConfigFor`), not a pure function over `results`:
+it needs `h.cfg.NewNode` and a `context.Context` to bound the call, neither
+of which a `results []fleet.NodeResult` slice carries. `wakeableModels` and
+`wakeFor` pass a request-scoped context through; the config-resolution
+signature otherwise stays the same shape (`fleet.ConfigFor`), so
+`internal/fleet` itself (`wake.go`, `configResolver`, `candidates`,
+`WouldWake`) is still untouched — it only knows "the injected resolver said
+X" and does not care whether X came from a file or a live stats call. The
+existing "does the resolved config match what the request wants" check
+(`gateway.matchingConfigFor`) keeps wrapping the combined resolver
 unchanged, so it enforces the match for a remote candidate exactly the way
-it already does for a daemon one.
+it already does for a daemon one — on `ModelID` alone for a remote node,
+since the stats reply carries no served name to match on.
 
 ### Starting a deployed remote node
 
@@ -90,21 +107,24 @@ it already does for a daemon one.
 `StartWithProgress` that `Start` already uses, ignoring the `dc` and
 `engineKey` it is handed: a remote environment's engine is gated by the key
 fixed at deploy time, and what it serves is fixed by its own stored deploy
-config, not by anything a wake call supplies. Before that call, `StartWith`
-reads a fresh status and refuses immediately, naming `spinloop remote
-deploy`, when it reports nothing served (see Context on why this cannot be
-left to the boot call's own `503`). This is the same "nothing deployed"
-signal `remoteConfigFor` already reads from a status reply elsewhere in this
-change, so the two layers agree on what "undeployed" means without sharing
-code — one reads it from the gateway's already-fanned-out `results`, the
-other from a fresh call because `StartWith` is not handed a `NodeResult`.
+config, not by anything a wake call supplies. It does not itself check
+whether the environment is deployed — a status read cannot tell that apart
+from stopped-and-deployed (see Context), so a check here would inherit the
+same blind spot the original design mistakenly built into it. That
+confirmation already happened one step earlier, in the gateway's own
+candidate matching (`remoteConfigFor`, this document's other decision),
+which reads the stats reply and only offers a candidate whose deploy
+config actually resolved — `Wake`'s loop never reaches `StartWith` for a
+node that check refused. `internal/fleet.Wake` has exactly one caller of
+`StartWith` on a remote node, so there is nowhere else that gap could be
+reached from today.
 
 Rejected alternative: check `dc` against the environment's last known model
 before calling `StartWithProgress`, refusing locally on a mismatch. Rejected
 as unnecessary — a remote candidate only reaches `StartWith` after the
-gateway's own match check already accepted its last-known config as
-matching the request, and duplicating that check here is validating a
-condition the caller already enforced.
+gateway's own match check already accepted its resolved config as matching
+the request, and duplicating that check here is validating a condition the
+caller already enforced.
 
 ### Per-node wake override
 
@@ -147,13 +167,19 @@ documented separately.
 
 ## Risks / Trade-offs
 
-- [A remote candidate's last-known status is stale by up to the reading's
-  cache window, so a wake could be attempted against a model the
-  environment was just re-deployed away from] → Mitigation: the same
-  staleness already applies to a daemon node's running state, and the
-  control plane's own reply is still the last word — a mismatch surfaces as
-  the started engine not matching what was asked, the same class of race
-  routing already tolerates elsewhere.
+- [A remote candidate's resolved config is stale by up to `wakeableModels`'
+  cache window on the models/topology paths (30s) — not on the wake path
+  itself, which resolves fresh — so a listed model could lag a re-deploy
+  briefly] → Mitigation: the same staleness already applies to a daemon
+  node's Spinloop-file read under the same cache, and the control plane's
+  own reply when the wake is actually attempted is still the last word.
+- [Every stopped remote node now costs a live stats call each time
+  `wakeableModels` re-resolves (every `sourcesTTL`), instead of a free read
+  of already-fanned-out status] → Mitigation: bounded by the same cache a
+  daemon node's file read already relies on; a remote environment missing a
+  configured `stats_url` fails that one node's resolution the same way a
+  daemon node with no resolvable Spinloop source does, rather than the
+  whole reply.
 - [A second place (`node.wake`) now decides whether a node wakes, which
   could confuse debugging] → Mitigation: refusal and topology text names
   which setting decided it.

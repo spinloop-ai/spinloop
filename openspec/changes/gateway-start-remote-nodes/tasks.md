@@ -95,3 +95,49 @@
       `internal/gateway`) individually meeting it. All packages pass;
       `internal/fleet` 89.2%, `internal/gateway` 93.8%, `cmd/spinloop` 91.3%.
 - [x] 6.2 Run `gofmt -l .` and confirm it reports nothing.
+
+## 7. Bug fix: resolve a remote node's wakeable model from its stats reply
+
+Found running the orchestrator against a real deployed-but-stopped remote
+node: the gateway's topology named no `wakeableModel` for it, and the
+orchestrator's dispatch failed with "node X reports no model to run item
+against". Root cause: the remote control plane's *status* reply only relays
+deploy-config facts (runner, model id, served name) while the environment is
+`running` — a stopped environment's status reply carries only its state and
+address. Task 3.1's resolver read `NodeResult.Status`, so it always saw a
+stopped-but-deployed remote node as if nothing were deployed. The *stats*
+reply is the one that reads the deploy config directly regardless of run
+state (and fails outright when there is none to read) — the same source
+`spinloop remote metrics`/`stats` already uses.
+
+- [x] 7.1 Rewrite `remoteConfigFor` (`internal/gateway/gateway.go`) as a
+      `Handler` method taking a `context.Context`: build the node via
+      `h.cfg.NewNode(entry)` and resolve its `inference.DeployConfig` from
+      `node.Metrics(ctx)` (`stats.ModelID`; no served name — the stats reply
+      carries none), erroring straight through a failed `Metrics` call
+      (unregistered environment, no `stats_url`, or an undeployed
+      environment's stats read, which the control plane itself fails).
+      `combinedConfigFor`, `wakeableModels`, and `wakeFor` thread the context
+      through instead of `results`, since the resolution is no longer a pure
+      read of already-fanned-out data. Verify with a unit test covering an
+      unregistered environment, and with `handleModels`/`handleTopology`
+      tests using a fake control plane that only carries deploy facts on its
+      `/stats` route, matching the real Lambda split.
+- [x] 7.2 Remove the "nothing deployed" pre-check `StartWith`
+      (`internal/fleet/remote_node.go`) gained in task 2.2: it read the same
+      status reply, so it could never actually distinguish undeployed from
+      stopped-and-deployed either, and would have refused every legitimate
+      wake once 3.1's bug was fixed elsewhere. The gateway's own candidate
+      matching (7.1) already confirms deployment via stats before a
+      candidate is chosen, and `Wake` has exactly one call site for
+      `StartWith` on a remote node — so nothing currently reaches `StartWith`
+      without that confirmation already having happened. Verify with a test
+      that `StartWith` boots regardless of what a status read alone would
+      have said.
+- [x] 7.3 Update the delta specs (`fleet-gateway`), `design.md`, and
+      `docs/commands/gateway.md` to say "stats reply", not "status reply" or
+      "last status", for where a remote node's wakeable model comes from, and
+      to drop the served-name claim for a stopped remote node (the stats
+      reply carries none — model id only).
+- [x] 7.4 Re-run `go test ./... -cover` and `gofmt -l .` to confirm the fix
+      and its test changes are clean.

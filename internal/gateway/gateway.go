@@ -249,7 +249,7 @@ func (h *Handler) handleHealth(w http.ResponseWriter, _ *http.Request) {
 // list, not an error.
 func (h *Handler) handleModels(w http.ResponseWriter, r *http.Request) {
 	results := h.reading(r.Context())
-	wakeable := h.wakeableModels(results)
+	wakeable := h.wakeableModels(r.Context())
 	seen := map[string]bool{}
 	data := []map[string]any{}
 	add := func(name string) {
@@ -285,17 +285,18 @@ func (h *Handler) handleModels(w http.ResponseWriter, r *http.Request) {
 // waking is allowed (its own `wake` setting, or the fleet's when it names
 // none), the model it would be started with, under the served-name-first
 // naming a running node reports. A daemon node's model comes from its own
-// Spinloop source; a remote node's comes from its own last status in
-// results — the environment's stored deploy config, which a status reply
-// carries whether the environment is running or stopped. It is resolved at
-// most once per sourcesTTL, shared by every models request.
-func (h *Handler) wakeableModels(results []fleet.NodeResult) map[string]string {
+// Spinloop source; a remote node's comes from its own stats reply. It is
+// resolved at most once per sourcesTTL, shared by every models request —
+// which bounds how often a remote node's resolution pays a live control-
+// plane call, the same way it bounds how often a daemon node's pays a
+// Spinloop file read.
+func (h *Handler) wakeableModels(ctx context.Context) map[string]string {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if h.wakeable != nil && h.now().Sub(h.wakeableAt) < sourcesTTL {
 		return h.wakeable
 	}
-	cfgFor := h.combinedConfigFor(results)
+	cfgFor := h.combinedConfigFor(ctx)
 	m := map[string]string{}
 	for _, entry := range h.cfg.Nodes {
 		if !h.cfg.NodeWakes(entry) {
@@ -318,40 +319,41 @@ func (h *Handler) wakeableModels(results []fleet.NodeResult) map[string]string {
 	return m
 }
 
-// remoteConfigFor resolves what a kind: remote node would be started with
-// from its own last status in results: the environment's stored deploy
-// config, which a status reply carries — Model and ServedName — whether the
-// environment is running, stopped, or has never been deployed. It fails the
-// way a daemon node with no resolvable Spinloop source fails — naming the
-// node and the fix — when results holds no answering status for it, or when
-// the status reports nothing being served.
-func remoteConfigFor(results []fleet.NodeResult) fleet.ConfigFor {
-	byName := make(map[string]fleet.NodeResult, len(results))
-	for _, r := range results {
-		byName[r.Name] = r
-	}
+// remoteConfigFor resolves what a kind: remote node would be started with:
+// the environment's stored deploy config, read from its stats reply. The
+// status reply a fan-out already holds is no good for this — the control
+// plane only relays deploy facts on the status reply while the environment
+// is running (see remote-node's "A running environment's status..."
+// requirement), so a stopped environment's status names nothing served even
+// though it is deployed. The stats reply carries the runner and model id
+// unconditionally, since the stats Lambda reads the deploy config directly
+// rather than relaying it alongside instance state; an undeployed
+// environment's stats read fails outright (no config to read), which is
+// what "nothing deployed" looks like here. It carries no served name — the
+// stats reply has none — so a stopped remote node's wakeable model is its
+// model id alone, unlike a running one's served-name-first naming.
+func (h *Handler) remoteConfigFor(ctx context.Context) fleet.ConfigFor {
 	return func(entry fleet.NodeConfig) (inference.DeployConfig, error) {
-		res, ok := byName[entry.Name]
-		if !ok || !res.OK() {
-			return inference.DeployConfig{}, fmt.Errorf(
-				"%s has no recent status to resolve what it would serve", entry.Name)
+		node, err := h.cfg.NewNode(entry)
+		if err != nil {
+			return inference.DeployConfig{}, err
 		}
-		if res.Status.Model == "" && res.Status.ServedName == "" {
-			return inference.DeployConfig{}, fmt.Errorf(
-				"%s has nothing deployed: run `spinloop remote deploy`", entry.Name)
+		stats, err := node.Metrics(ctx)
+		if err != nil {
+			return inference.DeployConfig{}, fmt.Errorf("%s: %w (run `spinloop remote deploy` if nothing is deployed)", entry.Name, err)
 		}
-		return inference.DeployConfig{ModelID: res.Status.Model, ServedModelName: res.Status.ServedName}, nil
+		return inference.DeployConfig{ModelID: stats.ModelID}, nil
 	}
 }
 
 // combinedConfigFor resolves what any node — daemon or remote — would be
 // started with: a daemon node through the gateway's own cfgFor (its
-// Spinloop source), a remote node through its own last status in results
+// Spinloop source), a remote node through its own stats reply
 // (remoteConfigFor). A daemon node fails the way it always has when the
 // gateway holds no cfgFor at all; a remote node's resolution does not
 // depend on cfgFor, so it still works when the gateway was built with none.
-func (h *Handler) combinedConfigFor(results []fleet.NodeResult) fleet.ConfigFor {
-	remoteFor := remoteConfigFor(results)
+func (h *Handler) combinedConfigFor(ctx context.Context) fleet.ConfigFor {
+	remoteFor := h.remoteConfigFor(ctx)
 	return func(entry fleet.NodeConfig) (inference.DeployConfig, error) {
 		if entry.Kind == fleet.KindRemote {
 			return remoteFor(entry)
@@ -371,7 +373,7 @@ func (h *Handler) combinedConfigFor(results []fleet.NodeResult) fleet.ConfigFor 
 // the whole reply.
 func (h *Handler) handleTopology(w http.ResponseWriter, r *http.Request) {
 	results := h.reading(r.Context())
-	wakeable := h.wakeableModels(results)
+	wakeable := h.wakeableModels(r.Context())
 
 	topo := Topology{Wake: h.cfg.Wakes(), Prefer: string(h.cfg.Prefer)}
 	if c := h.cfg.Concurrency; c != nil {
@@ -553,7 +555,7 @@ func (h *Handler) progress() fleet.Waker {
 // nothing else can serve the request either.
 func (h *Handler) wakeFor(ctx context.Context, want fleet.Want, results []fleet.NodeResult) (*fleet.Choice, error) {
 	none := &fleet.ErrNoneServing{Results: results, Want: want, Path: h.cfg.Path}
-	matching := h.matchingConfigFor(want.Model, h.combinedConfigFor(results))
+	matching := h.matchingConfigFor(want.Model, h.combinedConfigFor(ctx))
 	if !h.cfg.AnyNodeWakes() {
 		return nil, h.refuseWake(want, none, matching)
 	}

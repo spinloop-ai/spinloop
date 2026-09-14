@@ -97,21 +97,18 @@ func (n *remoteNode) StartWithProgress(ctx context.Context, report func(StartPha
 // conflate — so dc and engineKey are ignored, and this boots the instance
 // exactly as Start does.
 //
-// An environment with nothing deployed is refused here rather than handed to
-// the boot call: the control plane's own start Lambda answers an undeployed
-// environment with a retryable 503, the same shape it uses for "still
-// booting" and "no capacity", so a caller that just retried it — the way a
-// wake retries a dropped connection — would hold the request until the wake
-// timeout for a state that is never going to change. A fresh status read
-// reporting nothing served is what "undeployed" looks like from here; a
-// status read that fails outright is left to the boot call to explain.
+// An undeployed environment is not checked for here: a status read cannot
+// tell a stopped-but-deployed environment from an undeployed one — the
+// control plane only relays what an environment serves on its status reply
+// while it is running — so that check has to happen where deployment is
+// actually confirmed, by reading the environment's deploy config directly
+// (its stats reply, in the gateway's own candidate matching) before a
+// candidate ever reaches this call. A caller that skips that matching and
+// hands an undeployed environment straight to StartWith gets the boot
+// call's own answer instead, whatever that turns out to be.
 func (n *remoteNode) StartWith(ctx context.Context, dc *inference.DeployConfig, engineKey string) (daemon.StatusResponse, error) {
 	_ = dc
 	_ = engineKey
-	if status, err := n.Status(ctx); err == nil && status.Model == "" && status.ServedName == "" {
-		return daemon.StatusResponse{}, fmt.Errorf(
-			"%s has nothing deployed: run `spinloop remote deploy`", n.name)
-	}
 	return n.StartWithProgress(ctx, func(StartPhase) {})
 }
 

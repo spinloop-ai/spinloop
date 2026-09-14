@@ -73,7 +73,7 @@ picker and a second gateway does not overwrite this one. See
 | Path | Meaning |
 | ---- | ------- |
 | `GET /health` | That the gateway is up. It touches no node on purpose — it is how you tell the gateway down from the fleet down. |
-| `GET /v1/models` | The OpenAI list of what a request can reach: what the running nodes report (the served name when a node reports one, else the model id), and, for a stopped node [waking can reach](#waking-a-node), the model it would start with — its own Spinloop source for a `kind: daemon` node, its own last status for a `kind: remote` one. Duplicates once. Nothing reachable is an empty list, not an error. |
+| `GET /v1/models` | The OpenAI list of what a request can reach: what the running nodes report (the served name when a node reports one, else the model id), and, for a stopped node [waking can reach](#waking-a-node), the model it would start with — its own Spinloop source for a `kind: daemon` node, its own stats reply for a `kind: remote` one. Duplicates once. Nothing reachable is an empty list, not an error. |
 | `POST /v1/chat/completions` | Routed to the node serving the request's `model`, the way a launch routes. |
 | `POST /v1/completions` | The same, for the completions endpoint. |
 | `GET /v1/fleet` | The fleet's [topology](#the-fleets-topology) — what a [`spinloop orchestrator`](orchestrator.md) reads to work its backlog. |
@@ -84,12 +84,14 @@ not serve is refused with a `404` naming the ones it does.
 The list is what a request can reach, so it is bounded by what the gateway can
 start: a running node contributes only what it reports — a running engine is
 never displaced to make room. A deployed-but-stopped `kind: remote`
-environment contributes the model its own last status reports — the same
-served-name-first naming a running node reports — since the gateway can wake
-it the same way it wakes a `kind: daemon` node; one with nothing deployed
-contributes nothing, and neither does any node whose own `wake` (or the
-file's, when it names none) is off. Each node's source is read at most once
-in a short window, so a poll of the models list is cheap.
+environment contributes the model id its own stats reply reports — read
+directly from its stored deploy config, the way `spinloop remote metrics`
+already reads it, since its status reply carries no such facts while
+stopped — since the gateway can wake it the same way it wakes a
+`kind: daemon` node; one with nothing deployed contributes nothing, and
+neither does any node whose own `wake` (or the file's, when it names none)
+is off. Each node's source is read at most once in a short window, so a
+poll of the models list is cheap.
 
 ### Routing a request
 

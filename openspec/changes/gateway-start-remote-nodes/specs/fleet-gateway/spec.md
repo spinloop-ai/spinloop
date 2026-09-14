@@ -10,17 +10,18 @@ running and is a wake candidate — waking is allowed for it (its own `wake`
 setting, or the fleet-wide one when it names none) and it names a model to
 start with — the list SHALL additionally carry that model, under the same
 served-name-first naming a wake would start it with: a daemon node's own
-Spinloop source describes it, and a remote node's own status reply carries it
-— the environment's stored deploy config, reported the same way whether the
-environment is running or stopped. A running node SHALL contribute nothing
+Spinloop source describes it, and a remote node's own stats reply carries it
+— the environment's stored deploy config, which the stats reply carries
+whether the environment is running or stopped (unlike the status reply,
+which only relays it while running). A running node SHALL contribute nothing
 but what it reports: a running engine is never displaced, so its source's
 model is not a request the gateway would answer from it. An undeployed remote
-environment — one whose status reports nothing being served — and a node for
-which waking is not allowed SHALL contribute nothing beyond what is running,
-and duplicates SHALL be listed once. The model a node would be started with
-SHALL be resolved at most once in a short window shared by all models
-requests, so a burst does not re-read every node's source or re-fetch every
-remote node's status.
+environment — one whose stats read fails outright, having no deploy config
+to read — and a node for which waking is not allowed SHALL contribute
+nothing beyond what is running, and duplicates SHALL be listed once. The
+model a node would be started with SHALL be resolved at most once in a short
+window shared by all models requests, so a burst does not re-read every
+node's source or re-fetch every remote node's stats.
 
 #### Scenario: Running models are listed
 
@@ -43,7 +44,7 @@ remote node's status.
 
 #### Scenario: A deployed remote environment's model is listed
 
-- **WHEN** a remote environment is stopped, its last status reports what its
+- **WHEN** a remote environment is stopped, its stats reply reports what its
   stored deploy config would serve, and waking is allowed for it, and a
   models request is made
 - **THEN** the response lists that model beside what the running nodes serve
@@ -89,11 +90,13 @@ model to start with, matching the one the request asks for:
   the fleet file, resolved the way `spinloop fleet start` resolves it —
   describing a config whose model or served name is the one the request asks
   for.
-- A remote node names one through its own last status reply, which carries
-  the environment's stored deploy config — the model and served name it was
-  last deployed with — the same way a running remote node reports what it
-  serves. An undeployed remote environment names none and is not a
-  candidate.
+- A remote node names one through its own stats reply, which reads the
+  environment's stored deploy config directly and so carries its model id
+  whether the environment is running or stopped — unlike its status reply,
+  which only relays the deploy config while running, and unlike the stats
+  reply itself, which carries no served name. An undeployed remote
+  environment's stats read fails outright, having no deploy config to read;
+  it names nothing and is not a candidate.
 
 A node is started with what it names, never with a config invented for the
 request: a daemon node is started with the Spinloop source's config; a remote
@@ -137,7 +140,7 @@ rather than trying to start a node with nothing.
 #### Scenario: A cold request wakes a deployed remote environment
 
 - **WHEN** no node is running the model a request names, one remote node's
-  last status reports it is deployed to serve it, and waking is allowed for
+  stats reply reports it is deployed to serve it, and waking is allowed for
   it
 - **THEN** that environment's instance is started, its own stored deploy
   config decides what it serves, and the request is answered once its engine
@@ -217,7 +220,7 @@ serving facts — the model it serves when it is running, the name it serves
 that model under where it reports one, whether its engine has answered, and
 when it was last active. For a node that is not running, the reply SHALL name
 the model a request would start it with, where the node names one — a daemon
-node's own source, or a remote node's own last status reply — and waking is
+node's own source, or a remote node's own stats reply — and waking is
 allowed for it (its own `wake` setting, or the fleet's when it names none); a
 node that names no such model, or for which waking is not allowed, SHALL
 report none. A node that does not answer SHALL be reported as such in the
@@ -251,7 +254,7 @@ gateway holds no copy of either beyond what it already holds.
 
 #### Scenario: A stopped, deployed remote node reports what it would start
 
-- **WHEN** a remote node is stopped, its last status reports its stored
+- **WHEN** a remote node is stopped, its stats reply reports its stored
   deploy config, and waking is allowed for it
 - **THEN** the topology names that config's model as what a request would
   start it with, the same way a daemon node's is named

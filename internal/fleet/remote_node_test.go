@@ -278,7 +278,7 @@ func TestRemoteNodeStartWithBootsADeployedEnvironment(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"state":"stopped","runner":"llamacpp","modelId":"org/deployed","servedName":"deployed"}`))
+		w.Write([]byte(`{"state":"stopped"}`))
 	})
 	mux.HandleFunc("POST /", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -300,52 +300,21 @@ func TestRemoteNodeStartWithBootsADeployedEnvironment(t *testing.T) {
 	}
 }
 
-// An environment with nothing deployed is refused immediately, before the
-// boot call: remote.Start's own retry loop treats an undeployed
-// environment's 503 as retryable the same way it treats a capacity wait, so
-// StartWith reads a fresh status first rather than handing it to that loop.
-func TestRemoteNodeStartWithRefusesWhenUndeployed(t *testing.T) {
+// StartWith does not itself tell a deployed environment from an undeployed
+// one by reading status: the control plane's status reply carries no deploy
+// facts for a stopped environment either way (only a running one's does), so
+// a status read cannot distinguish them. That check belongs to the caller —
+// the gateway's own candidate matching confirms deployment from a stats read
+// before a candidate is ever chosen — so StartWith just boots, whatever a
+// status read would have said.
+func TestRemoteNodeStartWithDoesNotItselfCheckDeployment(t *testing.T) {
 	stubAWSCreds(t)
-	booted := false
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"state":"undeployed"}`))
 	})
 	mux.HandleFunc("POST /", func(w http.ResponseWriter, r *http.Request) {
-		booted = true
-		w.WriteHeader(http.StatusServiceUnavailable)
-		w.Write([]byte(`{"state":"undeployed","retryAfterSeconds":300}`))
-	})
-	srv := httptest.NewServer(mux)
-	t.Cleanup(srv.Close)
-	node, err := NewRemoteNode("env", remote.Config{StartURL: srv.URL, StopURL: srv.URL, Region: "us-east-1"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = node.StartWith(context.Background(), &inference.DeployConfig{Runner: "llamacpp"}, "")
-	if err == nil || !strings.Contains(err.Error(), "spinloop remote deploy") {
-		t.Errorf("StartWith should refuse, naming the deploy path; got %v", err)
-	}
-	if booted {
-		t.Error("StartWith should refuse before calling the boot endpoint, not after")
-	}
-}
-
-// When the pre-check status read itself fails — a transient network error,
-// not an answer — StartWith does not treat that as "nothing deployed": it
-// proceeds to the boot call rather than refusing on a read that told it
-// nothing.
-func TestRemoteNodeStartWithProceedsWhenTheStatusReadFails(t *testing.T) {
-	stubAWSCreds(t)
-	booted := false
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(`{"error":"boom"}`))
-	})
-	mux.HandleFunc("POST /", func(w http.ResponseWriter, r *http.Request) {
-		booted = true
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"state":"ready","healthy":true}`))
 	})
@@ -356,10 +325,7 @@ func TestRemoteNodeStartWithProceedsWhenTheStatusReadFails(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := node.StartWith(context.Background(), &inference.DeployConfig{Runner: "llamacpp"}, ""); err != nil {
-		t.Fatalf("StartWith should proceed to the boot call when the pre-check read fails: %v", err)
-	}
-	if !booted {
-		t.Error("StartWith should have called the boot endpoint")
+		t.Fatalf("StartWith should not refuse on a status read alone: %v", err)
 	}
 }
 

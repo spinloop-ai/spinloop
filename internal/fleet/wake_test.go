@@ -472,7 +472,10 @@ func TestWakeStartsADeployedRemoteNode(t *testing.T) {
 		mu.Lock()
 		defer mu.Unlock()
 		if engine == nil {
-			return `{"state":"stopped","runner":"llamacpp","modelId":"org/m","servedName":"m"}`
+			// The control plane carries no deploy facts on a stopped
+			// environment's status reply — only a running one's does — so
+			// this deliberately reports none, the way the real one does.
+			return `{"state":"stopped"}`
 		}
 		return fmt.Sprintf(
 			`{"state":"running","runner":"llamacpp","modelId":"org/m","servedName":"m","base_url":"http://%s/v1"}`,
