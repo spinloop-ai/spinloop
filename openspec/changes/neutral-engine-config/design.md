@@ -42,18 +42,37 @@ See proposal.md — Why. The implementation-relevant current state:
 
 ## Decisions
 
-**D1: The new package is `internal/engine`, a leaf holding `DeployConfig`.**
+**D1: The new package is `internal/inference`, a leaf holding `DeployConfig`.**
 
-The name says what the type describes — what an engine serves — rather than
-which caller wants it. It imports only the standard library, so every current
-and future node kind can depend on it.
+The name says what the type describes — what an inference engine serves —
+rather than which caller wants it. It imports only the standard library, so
+every current and future node kind can depend on it. `inference` appears
+nowhere in the Go source as an identifier today, only in prose, so it shadows
+nothing.
 
-Alternatives: putting the type in `internal/spinloop` (rejected — that package
-is the Spinloop *file* grammar, a pure parse leaf, and a deploy config is not a
-file format); putting it in `internal/config` (rejected — that is spinloop's own
-config file, a different concern that happens to share a word); leaving it in
-`internal/remote` and having `daemon` keep the import (rejected — that is the
-problem being fixed).
+The name matters more than it looks, because three obvious candidates each
+collide with a word this codebase already uses for something else:
+
+- `engine` names the serve-engine adapter throughout (`engine := stubEngine(…)`,
+  `engineFor`, `serveEngine`) — 47 identifier uses. A package of that name is
+  shadowed wherever a local is declared before the type is referenced, which
+  breaks `internal/daemon`'s tests and `cmd/spinloop/serve*.go`.
+- `runner` already means the engine *kind* — llamacpp, vllm, omlx, mtplx — with
+  an `inference-runners` spec, `remote bake <runner>`, and `runnerFor`. It is
+  also a field on this very type, so `runner.DeployConfig{Runner: …}` would use
+  one word for the package and one of its fields, meaning different things. A
+  compiler catches shadowing; it cannot catch this.
+- `workload` is clear of identifiers but sits too close to the orchestrator's
+  work items (`internal/orchestrator/items.go`, `docs/work-items.md`).
+
+Also rejected: `internal/spinloop` (that package is the Spinloop *file* grammar,
+a pure parse leaf, and a deploy config is not a file format); `internal/config`
+(spinloop's own config file, a different concern sharing a word);
+`internal/deploy` (clear of identifiers, and "deploy config" is already the
+shared term all three kinds use — but it collides with the `remote deploy` and
+`fleet deploy` commands and their `deployOpts`/`deployTarget`/`runDeploy`
+helpers); leaving the type in `internal/remote` and having `daemon` keep the
+import (that is the problem being fixed).
 
 **D2: `IsInstanceType` stays in `internal/remote`.**
 
@@ -65,7 +84,7 @@ point is not having any.
 
 A field in the neutral package validated from the cloud package is the right
 split: the cloud is the only thing that acts on that field. Alternative:
-move it and accept the EC2 knowledge in `internal/engine` (rejected — it would
+move it and accept the EC2 knowledge in `internal/inference` (rejected — it would
 make the next AWS-shaped helper look like it belongs there too).
 
 **D3: `daemon.StatusResponse` does not move.**
@@ -112,7 +131,7 @@ on the type still reads.
 - [Another change lands on the same files and conflicts] → the touched
   packages are stable and the diff is import-shaped, so conflicts resolve
   mechanically; the change is small enough to land quickly rather than sit.
-- [`internal/engine` becomes a dumping ground for anything two packages share]
+- [`internal/inference` becomes a dumping ground for anything two packages share]
   → D1 and D2 fix the admission rule: it holds what describes an engine's
   workload and imports nothing of ours. Anything cloud-shaped stays in
   `internal/remote`.

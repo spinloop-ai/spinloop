@@ -18,7 +18,7 @@ import (
 
 	"github.com/spinloop-ai/spinloop/internal/daemon"
 	"github.com/spinloop-ai/spinloop/internal/fleet"
-	"github.com/spinloop-ai/spinloop/internal/remote"
+	"github.com/spinloop-ai/spinloop/internal/inference"
 )
 
 // fakeNode is one machine: its daemon's control API and, once running, its
@@ -50,7 +50,7 @@ type fakeNode struct {
 	loopbackOnly bool
 	// started counts accepted starts; pushed is the last config and key.
 	started   int
-	pushed    *remote.DeployConfig
+	pushed    *inference.DeployConfig
 	pushedKey string
 	// engineGotAuth is the last authorisation the engine itself saw.
 	engineGotAuth string
@@ -215,14 +215,14 @@ func fleetOf(t *testing.T, names []string, nodes ...*fakeNode) *fleet.Config {
 
 // cfgForOf is a per-node source resolver from a table: what each node's own
 // Spinloop source would resolve to, or its refusal.
-func cfgForOf(t *testing.T, table map[string]remote.DeployConfig, refused map[string]string) fleet.ConfigFor {
-	return func(entry fleet.NodeConfig) (remote.DeployConfig, error) {
+func cfgForOf(t *testing.T, table map[string]inference.DeployConfig, refused map[string]string) fleet.ConfigFor {
+	return func(entry fleet.NodeConfig) (inference.DeployConfig, error) {
 		if msg, ok := refused[entry.Name]; ok {
-			return remote.DeployConfig{}, fmt.Errorf("%s", msg)
+			return inference.DeployConfig{}, fmt.Errorf("%s", msg)
 		}
 		dc, ok := table[entry.Name]
 		if !ok {
-			return remote.DeployConfig{}, fmt.Errorf("node %q names no Spinloop source: no `file` field, no alias, no subdirectory", entry.Name)
+			return inference.DeployConfig{}, fmt.Errorf("node %q names no Spinloop source: no `file` field, no alias, no subdirectory", entry.Name)
 		}
 		return dc, nil
 	}
@@ -393,7 +393,7 @@ func TestModelsListsWhatAWakeCanStart(t *testing.T) {
 	cold := newFakeNode(t, string(daemon.StateStopped), "")
 	cfg := fleetOf(t, []string{"live", "cold"}, live, cold)
 	h := New(cfg, "", Options{ConfigFor: cfgForOf(t,
-		map[string]remote.DeployConfig{
+		map[string]inference.DeployConfig{
 			"live": {Runner: "llamacpp", ModelID: "org/live"},
 			"cold": {Runner: "llamacpp", ModelID: "org/cold", ServedModelName: "cold"},
 		},
@@ -414,7 +414,7 @@ func TestRunningNodeListsOnlyWhatItReports(t *testing.T) {
 	node := newFakeNode(t, string(daemon.StateRunning), "org/live")
 	cfg := fleetOf(t, []string{"box"}, node)
 	h := New(cfg, "", Options{ConfigFor: cfgForOf(t,
-		map[string]remote.DeployConfig{"box": {Runner: "llamacpp", ModelID: "org/other"}},
+		map[string]inference.DeployConfig{"box": {Runner: "llamacpp", ModelID: "org/other"}},
 		nil)})
 	if ids := modelsList(t, h); len(ids) != 1 || ids[0] != "org/live" {
 		t.Errorf("a running node lists what it reports, got %v", ids)
@@ -428,7 +428,7 @@ func TestModelsListsOnlyWhatRunsWhenWakeIsOff(t *testing.T) {
 	cfg := fleetOf(t, []string{"cold"}, cold)
 	cfg.WakePolicy = fleet.WakeOff
 	h := New(cfg, "", Options{ConfigFor: cfgForOf(t,
-		map[string]remote.DeployConfig{"cold": {Runner: "llamacpp", ModelID: "org/cold"}},
+		map[string]inference.DeployConfig{"cold": {Runner: "llamacpp", ModelID: "org/cold"}},
 		nil)})
 	if ids := modelsList(t, h); len(ids) != 0 {
 		t.Errorf("with wake off a stopped node's model is not listed, got %v", ids)
@@ -442,7 +442,7 @@ func TestModelsLeavesOutARemoteEnvironment(t *testing.T) {
 		{Name: "env", Kind: fleet.KindRemote},
 	}}
 	h := New(cfg, "", Options{ConfigFor: cfgForOf(t,
-		map[string]remote.DeployConfig{"env": {Runner: "llamacpp", ModelID: "org/cold"}},
+		map[string]inference.DeployConfig{"env": {Runner: "llamacpp", ModelID: "org/cold"}},
 		nil)})
 	if m := h.wakeableModels(); len(m) != 0 {
 		t.Errorf("a remote environment's source is not a request's, got %v", m)
@@ -455,7 +455,7 @@ func TestModelsListsASharedSourceModelOnce(t *testing.T) {
 	b := newFakeNode(t, string(daemon.StateStopped), "")
 	cfg := fleetOf(t, []string{"a", "b"}, a, b)
 	h := New(cfg, "", Options{ConfigFor: cfgForOf(t,
-		map[string]remote.DeployConfig{
+		map[string]inference.DeployConfig{
 			"a": {Runner: "llamacpp", ModelID: "org/same"},
 			"b": {Runner: "llamacpp", ModelID: "org/same"},
 		},
@@ -475,9 +475,9 @@ func TestModelsResolvesEachSourceOnce(t *testing.T) {
 	calls := 0
 	h := New(cfg, "", Options{
 		Now: func() time.Time { return now },
-		ConfigFor: func(entry fleet.NodeConfig) (remote.DeployConfig, error) {
+		ConfigFor: func(entry fleet.NodeConfig) (inference.DeployConfig, error) {
 			calls++
-			return remote.DeployConfig{Runner: "llamacpp", ModelID: "org/cold"}, nil
+			return inference.DeployConfig{Runner: "llamacpp", ModelID: "org/cold"}, nil
 		},
 	})
 	for range 3 {
@@ -528,7 +528,7 @@ func TestTopologyReportsTheFleet(t *testing.T) {
 	cfg.Prefer = fleet.PreferActive
 	cfg.Concurrency = &fleet.Concurrency{Total: intPtr(4), Tags: map[string]int{"gpu=a100": 2}}
 	h := New(cfg, "", Options{ConfigFor: cfgForOf(t,
-		map[string]remote.DeployConfig{"cpu-a": {Runner: "llamacpp", ModelID: "org/cold"}},
+		map[string]inference.DeployConfig{"cpu-a": {Runner: "llamacpp", ModelID: "org/cold"}},
 		nil)})
 
 	topo := topologyFetch(t, h, "")
@@ -639,7 +639,7 @@ func TestTopologyNamesNoWakeableModelWhenWakeIsOff(t *testing.T) {
 	cfg := fleetOf(t, []string{"cold"}, cold)
 	cfg.WakePolicy = fleet.WakeOff
 	h := New(cfg, "", Options{ConfigFor: cfgForOf(t,
-		map[string]remote.DeployConfig{"cold": {Runner: "llamacpp", ModelID: "org/cold"}},
+		map[string]inference.DeployConfig{"cold": {Runner: "llamacpp", ModelID: "org/cold"}},
 		nil)})
 
 	topo := topologyFetch(t, h, "")
@@ -904,7 +904,7 @@ func TestColdRequestWakesANode(t *testing.T) {
 	cfg.Nodes[0].EngineTokenEnv = "BOX_ENGINE_KEY"
 	h := New(cfg, "", Options{
 		ConfigFor: cfgForOf(t,
-			map[string]remote.DeployConfig{"box": {Runner: "llamacpp", ModelID: "org/wanted", ServedModelName: "org/wanted"}},
+			map[string]inference.DeployConfig{"box": {Runner: "llamacpp", ModelID: "org/wanted", ServedModelName: "org/wanted"}},
 			nil),
 	})
 
@@ -936,7 +936,7 @@ func TestConcurrentColdRequestsShareOneWake(t *testing.T) {
 	cfg := fleetOf(t, []string{"box"}, node)
 	h := New(cfg, "", Options{
 		ConfigFor: cfgForOf(t,
-			map[string]remote.DeployConfig{"box": {Runner: "llamacpp", ModelID: "org/wanted"}},
+			map[string]inference.DeployConfig{"box": {Runner: "llamacpp", ModelID: "org/wanted"}},
 			nil),
 	})
 
@@ -973,7 +973,7 @@ func TestWakeTimeoutFailsTheRequestAndLeavesTheEngine(t *testing.T) {
 	cfg := fleetOf(t, []string{"box"}, node)
 	h := New(cfg, "", Options{
 		ConfigFor: cfgForOf(t,
-			map[string]remote.DeployConfig{"box": {Runner: "llamacpp", ModelID: "org/wanted"}},
+			map[string]inference.DeployConfig{"box": {Runner: "llamacpp", ModelID: "org/wanted"}},
 			nil),
 	})
 
@@ -997,7 +997,7 @@ func TestWakeOffRefusesNamingTheNodeAndCommand(t *testing.T) {
 	cfg.WakePolicy = fleet.WakeOff
 	h := New(cfg, "", Options{
 		ConfigFor: cfgForOf(t,
-			map[string]remote.DeployConfig{"box": {Runner: "llamacpp", ModelID: "org/wanted"}},
+			map[string]inference.DeployConfig{"box": {Runner: "llamacpp", ModelID: "org/wanted"}},
 			nil),
 	})
 
@@ -1023,7 +1023,7 @@ func TestWakeOffWithNoMatchingSource(t *testing.T) {
 	cfg.WakePolicy = fleet.WakeOff
 	h := New(cfg, "", Options{
 		ConfigFor: cfgForOf(t,
-			map[string]remote.DeployConfig{"box": {Runner: "llamacpp", ModelID: "org/something-else"}},
+			map[string]inference.DeployConfig{"box": {Runner: "llamacpp", ModelID: "org/something-else"}},
 			nil),
 	})
 	resp, body := post(t, h, "", `{"model":"org/wanted"}`)
@@ -1041,7 +1041,7 @@ func TestNothingCanServeNamesEveryRefusal(t *testing.T) {
 	cfg := fleetOf(t, []string{"a", "b"}, a, b)
 	h := New(cfg, "", Options{
 		ConfigFor: cfgForOf(t,
-			map[string]remote.DeployConfig{"a": {Runner: "llamacpp", ModelID: "org/other"}},
+			map[string]inference.DeployConfig{"a": {Runner: "llamacpp", ModelID: "org/other"}},
 			map[string]string{"b": "node \"b\" names no Spinloop source: no `file` field, no alias, no subdirectory"},
 		),
 	})
@@ -1123,7 +1123,7 @@ func TestRequestWaitsForAStartingEngine(t *testing.T) {
 	cfg := fleetOf(t, []string{"box"}, node)
 	h := New(cfg, "", Options{
 		ConfigFor: cfgForOf(t,
-			map[string]remote.DeployConfig{"box": {Runner: "llamacpp", ModelID: "org/wanted"}},
+			map[string]inference.DeployConfig{"box": {Runner: "llamacpp", ModelID: "org/wanted"}},
 			nil),
 	})
 
@@ -1151,7 +1151,7 @@ func TestAStartingEngineIsWaitedForRatherThanWakingAnother(t *testing.T) {
 	spare := newFakeNode(t, string(daemon.StateIdle), "")
 	cfg := fleetOf(t, []string{"loading", "spare"}, starting, spare)
 	h := New(cfg, "", Options{
-		ConfigFor: cfgForOf(t, map[string]remote.DeployConfig{
+		ConfigFor: cfgForOf(t, map[string]inference.DeployConfig{
 			"loading": {Runner: "llamacpp", ModelID: "org/wanted"},
 			"spare":   {Runner: "llamacpp", ModelID: "org/wanted"},
 		}, nil),
@@ -1179,7 +1179,7 @@ func TestStartingEngineThatNeverAnswersFailsNamingTheNode(t *testing.T) {
 	cfg := fleetOf(t, []string{"box"}, node)
 	h := New(cfg, "", Options{
 		ConfigFor: cfgForOf(t,
-			map[string]remote.DeployConfig{"box": {Runner: "llamacpp", ModelID: "org/wanted"}},
+			map[string]inference.DeployConfig{"box": {Runner: "llamacpp", ModelID: "org/wanted"}},
 			nil),
 	})
 

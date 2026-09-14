@@ -16,7 +16,7 @@ import (
 	"github.com/spinloop-ai/spinloop/internal/daemon"
 	"github.com/spinloop-ai/spinloop/internal/fleet"
 	"github.com/spinloop-ai/spinloop/internal/gateway"
-	"github.com/spinloop-ai/spinloop/internal/remote"
+	"github.com/spinloop-ai/spinloop/internal/inference"
 )
 
 // The integration suite stands the real gateway up on loopback against fake
@@ -298,7 +298,7 @@ func TestIntegration_ItemsTakeTheNodeTheFleetShapes(t *testing.T) {
 		t.Parallel()
 		stop := newFakeNode(t, string(daemon.StateStopped), "")
 		fleetBase := "nodes:\n" + nodeEntry("stop", addrOf(stop.srv), map[string]string{"gpu": "a100"})
-		cfgFor := fleet.ConstantConfig(remote.DeployConfig{ModelID: "org/wake-model"}, nil)
+		cfgFor := fleet.ConstantConfig(inference.DeployConfig{ModelID: "org/wake-model"}, nil)
 
 		t.Run("wake on: the item runs against the wakeable model", func(t *testing.T) {
 			t.Parallel()

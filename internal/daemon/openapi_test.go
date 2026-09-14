@@ -10,8 +10,8 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/spinloop-ai/spinloop/internal/inference"
 	"github.com/spinloop-ai/spinloop/internal/metrics"
-	"github.com/spinloop-ai/spinloop/internal/remote"
 )
 
 // The control API has consumers that are not people — the control-plane
@@ -49,7 +49,7 @@ func schemaFor() map[string]any {
 		"MemoryStat":     metrics.MemoryStat{},
 		"HistorySample":  metrics.HistorySample{},
 		"HistoryGPU":     metrics.HistoryGPU{},
-		"DeployConfig":   remote.DeployConfig{},
+		"DeployConfig":   inference.DeployConfig{},
 	}
 }
 

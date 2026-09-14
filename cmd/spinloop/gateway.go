@@ -18,7 +18,7 @@ import (
 
 	"github.com/spinloop-ai/spinloop/internal/fleet"
 	"github.com/spinloop-ai/spinloop/internal/gateway"
-	"github.com/spinloop-ai/spinloop/internal/remote"
+	"github.com/spinloop-ai/spinloop/internal/inference"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -161,17 +161,17 @@ func newGatewayServer(fleetPath, listen, apiToken, apiTokenFile string) (*http.S
 	// The gateway is the client that wakes a node, so it resolves what each
 	// node runs the way `spinloop fleet start` does: the node's own source,
 	// never a config invented for the request.
-	cfgFor := func(entry fleet.NodeConfig) (remote.DeployConfig, error) {
+	cfgFor := func(entry fleet.NodeConfig) (inference.DeployConfig, error) {
 		arg, _, err := resolveNodeSpinloop(entry, cfg.Dir)
 		if err != nil {
-			return remote.DeployConfig{}, err
+			return inference.DeployConfig{}, err
 		}
 		sel, path, err := readSpinloop("the Spinloop of node "+entry.Name, arg)
 		if err != nil {
-			return remote.DeployConfig{}, err
+			return inference.DeployConfig{}, err
 		}
 		if err := applySpinloopEnv(sel, path); err != nil {
-			return remote.DeployConfig{}, err
+			return inference.DeployConfig{}, err
 		}
 		return deployConfigForNode(sel, path)
 	}

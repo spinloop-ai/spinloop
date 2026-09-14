@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/spinloop-ai/spinloop/internal/daemon"
+	"github.com/spinloop-ai/spinloop/internal/inference"
 	"github.com/spinloop-ai/spinloop/internal/metrics"
 	"github.com/spinloop-ai/spinloop/internal/remote"
 )
@@ -92,7 +93,7 @@ func (n *remoteNode) StartWithProgress(ctx context.Context, report func(StartPha
 // StartWith is how a router wakes a node to serve something. A remote environment
 // is not woken: what it serves is set by `spinloop remote deploy`, a heavier flow
 // (provisioning, weight seeding, ingress) that a node start must not conflate.
-func (n *remoteNode) StartWith(ctx context.Context, dc *remote.DeployConfig, engineKey string) (daemon.StatusResponse, error) {
+func (n *remoteNode) StartWith(ctx context.Context, dc *inference.DeployConfig, engineKey string) (daemon.StatusResponse, error) {
 	_ = dc
 	_ = engineKey
 	return daemon.StatusResponse{}, fmt.Errorf(

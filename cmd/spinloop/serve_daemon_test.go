@@ -18,7 +18,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spinloop-ai/spinloop/internal/daemon"
-	"github.com/spinloop-ai/spinloop/internal/remote"
+	"github.com/spinloop-ai/spinloop/internal/inference"
 )
 
 // stubEngineDaemon points llamaServerBinary at a long-running script that
@@ -938,7 +938,7 @@ func TestArgvFromDeployConfigVllm(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	argv, err := argvFromDeployConfig(engine, remote.DeployConfig{
+	argv, err := argvFromDeployConfig(engine, inference.DeployConfig{
 		Runner:          "vllm",
 		ModelID:         "/opt/llm/model",
 		ContextSize:     32768,
@@ -969,7 +969,7 @@ func TestArgvFromDeployConfigLlamacppScalesContext(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	argv, err := argvFromDeployConfig(engine, remote.DeployConfig{
+	argv, err := argvFromDeployConfig(engine, inference.DeployConfig{
 		Runner:      "llamacpp",
 		ModelID:     "/opt/llm/model.gguf",
 		ContextSize: 128000,
@@ -996,7 +996,7 @@ func TestArgvFromDeployConfigParallelWithoutContext(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	argv, err := argvFromDeployConfig(engine, remote.DeployConfig{
+	argv, err := argvFromDeployConfig(engine, inference.DeployConfig{
 		Runner:   "llamacpp",
 		ModelID:  "/opt/llm/model.gguf",
 		Parallel: 2,
@@ -1021,7 +1021,7 @@ func TestArgvFromDeployConfigVllmParallel(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	argv, err := argvFromDeployConfig(engine, remote.DeployConfig{
+	argv, err := argvFromDeployConfig(engine, inference.DeployConfig{
 		Runner:      "vllm",
 		ModelID:     "/opt/llm/model",
 		ContextSize: 32768,
@@ -1663,7 +1663,7 @@ func TestDaemonToken(t *testing.T) {
 // key-file option is refused, because the alternative is a literal argument
 // every local user can read.
 func TestEngineKeyArgs(t *testing.T) {
-	args, err := engineKeyArgs(&remote.DeployConfig{Runner: "llamacpp"}, "/state/key")
+	args, err := engineKeyArgs(&inference.DeployConfig{Runner: "llamacpp"}, "/state/key")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1671,7 +1671,7 @@ func TestEngineKeyArgs(t *testing.T) {
 		t.Errorf("args = %v", args)
 	}
 
-	if _, err := engineKeyArgs(&remote.DeployConfig{Runner: "vllm"}, "/state/key"); err == nil {
+	if _, err := engineKeyArgs(&inference.DeployConfig{Runner: "vllm"}, "/state/key"); err == nil {
 		t.Error("an engine with no key-file option should be refused")
 	} else if !strings.Contains(err.Error(), "command line") {
 		t.Errorf("the refusal should say why, got: %v", err)

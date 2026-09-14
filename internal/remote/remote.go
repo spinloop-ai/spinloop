@@ -25,6 +25,7 @@ import (
 	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	"github.com/aws/smithy-go"
 
+	"github.com/spinloop-ai/spinloop/internal/inference"
 	"github.com/spinloop-ai/spinloop/internal/metrics"
 )
 
@@ -234,41 +235,6 @@ type Response struct {
 	Error       string `json:"error"`
 }
 
-// DeployConfig is what the deploy Lambda accepts: the runner-neutral
-// description of WHAT to serve, derived from a Spinloop. Deliberately no
-// weights prefix — the Lambda derives the S3 layout itself, and seeds the
-// weights when they are not there yet, so this stays a statement of intent.
-type DeployConfig struct {
-	Runner      string `json:"runner"`
-	ModelID     string `json:"modelId"`
-	Quant       string `json:"quant"`
-	ContextSize int    `json:"contextSize"`
-	// Parallel is the number of concurrent request slots the engine should
-	// run with, translated into the runner's own flag the same way a local
-	// `spinloop serve` would — including scaling ContextSize for a llamacpp
-	// runner, since llama.cpp divides its ctx-size budget across slots. Zero
-	// means unset: no parallelism flag, ContextSize unscaled.
-	Parallel        int      `json:"parallel,omitempty"`
-	ServedModelName string   `json:"servedModelName"`
-	ServeArgs       []string `json:"serveArgs"`
-	// Companions names extra files from the model's own Hugging Face repo that
-	// the engine loads beside the weights, keyed by role ("draft", "mmproj").
-	// Values are bare filenames within that repo, never paths. Omitted when
-	// empty, so a deployment naming none sends exactly what it always did.
-	Companions map[string]string `json:"companions,omitempty"`
-	// SpinloopVersion pins the spinloop release the instance's boot installs.
-	// Empty means the boot installs the latest published release. Omitted
-	// when empty, so an unpinned deploy sends exactly what it always did.
-	SpinloopVersion string `json:"spinloopVersion,omitempty"`
-	// InstanceType is the EC2 instance type the environment's instances launch
-	// as. Empty means launch as the control plane's default type. It is a
-	// property of the deployment, stored in the deploy config and read back on
-	// the next fresh launch — a re-wake of a stopped instance keeps the type it
-	// was launched with. Omitted when empty, so an untyped deploy sends exactly
-	// what it always did.
-	InstanceType string `json:"instanceType,omitempty"`
-}
-
 // instanceTypePattern is the shape of an EC2 instance type: a lowercase family
 // and size separated by a single dot. The family may be hyphenated, as in
 // u7i-6tb and mac2-m2; the size is lowercase alphanumerics (xlarge, 112xlarge,
@@ -301,13 +267,13 @@ func IsInstanceType(value string) bool {
 // omitted entirely when empty, so a control plane that predates it sees the
 // body it always saw. The reply's APIKeyAction says what happened to the
 // secret — the action, never the value.
-func Deploy(ctx context.Context, cfg Config, dc DeployConfig, allowedCidr string, reseed bool, apiKey string) (*Response, error) {
+func Deploy(ctx context.Context, cfg Config, dc inference.DeployConfig, allowedCidr string, reseed bool, apiKey string) (*Response, error) {
 	if cfg.DeployURL == "" {
 		return nil, fmt.Errorf(
 			"no deploy_url configured: add the remote/ deployment's DeployUrl output to the remote config (or set SPINLOOP_REMOTE_DEPLOY_URL)")
 	}
 	body, err := json.Marshal(struct {
-		DeployConfig
+		inference.DeployConfig
 		AllowedCidr string `json:"allowedCidr,omitempty"`
 		Reseed      bool   `json:"reseed,omitempty"`
 		APIKey      string `json:"apiKey,omitempty"`

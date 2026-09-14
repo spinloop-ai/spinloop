@@ -26,8 +26,8 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"github.com/spinloop-ai/spinloop/internal/daemon"
+	"github.com/spinloop-ai/spinloop/internal/inference"
 	"github.com/spinloop-ai/spinloop/internal/metrics"
-	"github.com/spinloop-ai/spinloop/internal/remote"
 	"github.com/spinloop-ai/spinloop/internal/spinloop"
 )
 
@@ -144,7 +144,7 @@ func runDaemonCommand(args []string, apiAddr, apiToken, apiTokenFile, logLevel s
 		Logger:         logger,
 		Version:        version,
 	}
-	d.BuildArgv = func(dc *remote.DeployConfig) ([]string, error) {
+	d.BuildArgv = func(dc *inference.DeployConfig) ([]string, error) {
 		if dc == nil {
 			return nil, fmt.Errorf(
 				"nothing to serve: no deploy config has been pushed to this daemon.\n" +
@@ -255,7 +255,7 @@ func startSupervisedForeground(sel spinloop.Selection, spinloopPath string, engi
 	d := &daemon.Daemon{
 		Sup: sup,
 		Dir: stateDir,
-		BuildArgv: func(*remote.DeployConfig) ([]string, error) {
+		BuildArgv: func(*inference.DeployConfig) ([]string, error) {
 			return nil, fmt.Errorf("the engine is foreground-managed by this serve; restart `spinloop serve` to change it")
 		},
 		ValidateConfig: validateDeployConfig,
@@ -399,7 +399,7 @@ func daemonToken(literal, file string) (string, error) {
 // the config's model, alias and context go through the same per-engine param
 // mapping a Spinloop's would, and its serveArgs — the preset already resolved
 // by the pusher — are appended as-is.
-func argvFromDeployConfig(engine serveEngine, dc remote.DeployConfig) ([]string, error) {
+func argvFromDeployConfig(engine serveEngine, dc inference.DeployConfig) ([]string, error) {
 	model := dc.ModelID
 	if dc.Quant != "" {
 		model += ":" + dc.Quant
@@ -424,7 +424,7 @@ func argvFromDeployConfig(engine serveEngine, dc remote.DeployConfig) ([]string,
 // validateDeployConfig rejects a pushed deploy config this host cannot serve:
 // a runner that is not a local engine, or a model-less config for an engine
 // that needs one.
-func validateDeployConfig(dc remote.DeployConfig) error {
+func validateDeployConfig(dc inference.DeployConfig) error {
 	engine, err := engineFor(dc.Runner)
 	if err != nil {
 		return err
@@ -479,7 +479,7 @@ func scrapeTargetFor(engine serveEngine, baseURL string, argv []string) metrics.
 // engine at the file the daemon wrote. An engine with no key-file option is
 // refused rather than gated with a literal argument: a command line is readable
 // by every local user, which is the population the key exists to exclude.
-func engineKeyArgs(dc *remote.DeployConfig, keyPath string) ([]string, error) {
+func engineKeyArgs(dc *inference.DeployConfig, keyPath string) ([]string, error) {
 	if dc == nil {
 		return nil, fmt.Errorf("cannot gate an engine without knowing which one it is")
 	}

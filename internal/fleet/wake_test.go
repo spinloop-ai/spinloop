@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/spinloop-ai/spinloop/internal/daemon"
+	"github.com/spinloop-ai/spinloop/internal/inference"
 	"github.com/spinloop-ai/spinloop/internal/remote"
 )
 
@@ -38,7 +39,7 @@ type fakeNode struct {
 	// started records whether a start was accepted.
 	started bool
 	// pushed is the deploy config the start carried.
-	pushed *remote.DeployConfig
+	pushed *inference.DeployConfig
 	// pushedKey is the engine key the start carried.
 	pushedKey string
 
@@ -162,7 +163,7 @@ func TestWakeStartsAnIdleNode(t *testing.T) {
 	shortWake(t)
 	node := newFakeNode(t, string(daemon.StateIdle), "")
 	cfg := fleetOf(t, []string{"box"}, node)
-	dc := remote.DeployConfig{Runner: "llamacpp", ModelID: "qwen3-27b"}
+	dc := inference.DeployConfig{Runner: "llamacpp", ModelID: "qwen3-27b"}
 
 	choice, err := cfg.Wake(context.Background(), Want{Model: "qwen3-27b"}, ConstantConfig(dc, nil), statusOf(t, cfg), nil)
 	if err != nil {
@@ -190,7 +191,7 @@ func TestWakeSkipsANodeThatRefusesTheConfig(t *testing.T) {
 	cfg := fleetOf(t, []string{"wrong-box", "right-box"}, refuses, accepts)
 
 	choice, err := cfg.Wake(context.Background(), Want{Model: "m"},
-		ConstantConfig(remote.DeployConfig{Runner: "llamacpp", ModelID: "m"}, nil), statusOf(t, cfg), nil)
+		ConstantConfig(inference.DeployConfig{Runner: "llamacpp", ModelID: "m"}, nil), statusOf(t, cfg), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -208,7 +209,7 @@ func TestWakeReportsEveryRefusal(t *testing.T) {
 	cfg := fleetOf(t, []string{"a", "b"}, a, b)
 
 	_, err := cfg.Wake(context.Background(), Want{Model: "m"},
-		ConstantConfig(remote.DeployConfig{Runner: "vllm", ModelID: "m"}, nil), statusOf(t, cfg), nil)
+		ConstantConfig(inference.DeployConfig{Runner: "vllm", ModelID: "m"}, nil), statusOf(t, cfg), nil)
 	if err == nil {
 		t.Fatal("expected a failure when every node refuses")
 	}
@@ -231,7 +232,7 @@ func TestWakeWaitsForTheEngineToAnswer(t *testing.T) {
 
 	start := time.Now()
 	choice, err := cfg.Wake(context.Background(), Want{Model: "m"},
-		ConstantConfig(remote.DeployConfig{Runner: "llamacpp", ModelID: "m"}, nil), statusOf(t, cfg), log)
+		ConstantConfig(inference.DeployConfig{Runner: "llamacpp", ModelID: "m"}, nil), statusOf(t, cfg), log)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -256,7 +257,7 @@ func TestWakeTimesOutWithoutStopping(t *testing.T) {
 	cfg := fleetOf(t, []string{"stuck"}, node)
 
 	_, err := cfg.Wake(context.Background(), Want{Model: "m"},
-		ConstantConfig(remote.DeployConfig{Runner: "llamacpp", ModelID: "m"}, nil), statusOf(t, cfg), nil)
+		ConstantConfig(inference.DeployConfig{Runner: "llamacpp", ModelID: "m"}, nil), statusOf(t, cfg), nil)
 	if err == nil {
 		t.Fatal("expected a timeout")
 	}
@@ -290,7 +291,7 @@ func TestWakeLosingTheRaceUsesTheNode(t *testing.T) {
 		Status:  daemon.StatusResponse{State: string(daemon.StateIdle)},
 	}}
 	choice, err := cfg.Wake(context.Background(), Want{Model: "qwen3-27b"},
-		ConstantConfig(remote.DeployConfig{Runner: "llamacpp", ModelID: "qwen3-27b"}, nil), stale, nil)
+		ConstantConfig(inference.DeployConfig{Runner: "llamacpp", ModelID: "qwen3-27b"}, nil), stale, nil)
 	if err != nil {
 		t.Fatalf("losing the race should not fail the launch: %v", err)
 	}
@@ -306,7 +307,7 @@ func TestWakeNeverDisplacesARunningEngine(t *testing.T) {
 	cfg := fleetOf(t, []string{"busy"}, busy)
 
 	_, err := cfg.Wake(context.Background(), Want{Model: "mine"},
-		ConstantConfig(remote.DeployConfig{Runner: "llamacpp", ModelID: "mine"}, nil), statusOf(t, cfg), nil)
+		ConstantConfig(inference.DeployConfig{Runner: "llamacpp", ModelID: "mine"}, nil), statusOf(t, cfg), nil)
 	if err == nil {
 		t.Fatal("expected a failure rather than a restart")
 	}
@@ -329,7 +330,7 @@ func TestWakePrefersANodeThatAlreadyHasTheModel(t *testing.T) {
 	cfg := fleetOf(t, []string{"cold", "warm"}, cold, warm)
 
 	choice, err := cfg.Wake(context.Background(), Want{Model: "qwen3-27b"},
-		ConstantConfig(remote.DeployConfig{Runner: "llamacpp", ModelID: "qwen3-27b"}, nil), statusOf(t, cfg), nil)
+		ConstantConfig(inference.DeployConfig{Runner: "llamacpp", ModelID: "qwen3-27b"}, nil), statusOf(t, cfg), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -354,7 +355,7 @@ func TestWakeGatesTheEngineWithTheClientsKey(t *testing.T) {
 	cfg.Nodes[0].EngineTokenEnv = "BOX_ENGINE_KEY"
 
 	choice, err := cfg.Wake(context.Background(), Want{Model: "m"},
-		ConstantConfig(remote.DeployConfig{Runner: "llamacpp", ModelID: "m"}, nil), statusOf(t, cfg), nil)
+		ConstantConfig(inference.DeployConfig{Runner: "llamacpp", ModelID: "m"}, nil), statusOf(t, cfg), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -376,7 +377,7 @@ func TestWakeWithoutAKeyIsUngated(t *testing.T) {
 	cfg := fleetOf(t, []string{"box"}, node)
 
 	choice, err := cfg.Wake(context.Background(), Want{Model: "m"},
-		ConstantConfig(remote.DeployConfig{Runner: "llamacpp", ModelID: "m"}, nil), statusOf(t, cfg), nil)
+		ConstantConfig(inference.DeployConfig{Runner: "llamacpp", ModelID: "m"}, nil), statusOf(t, cfg), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -398,7 +399,7 @@ func TestRemoteRefusesToBeWoken(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = n.StartWith(context.Background(), &remote.DeployConfig{Runner: "llamacpp", ModelID: "m"}, "sk-key")
+	_, err = n.StartWith(context.Background(), &inference.DeployConfig{Runner: "llamacpp", ModelID: "m"}, "sk-key")
 	if err == nil || !strings.Contains(err.Error(), "not a node to be woken") {
 		t.Errorf("want the remote refusal, got %v", err)
 	}
@@ -423,11 +424,11 @@ func TestWakeTakesPerCandidateConfigs(t *testing.T) {
 	b := newFakeNode(t, string(daemon.StateIdle), "")
 	cfg := fleetOf(t, []string{"a", "b"}, a, b)
 
-	cfgFor := func(entry NodeConfig) (remote.DeployConfig, error) {
+	cfgFor := func(entry NodeConfig) (inference.DeployConfig, error) {
 		if entry.Name == "a" {
-			return remote.DeployConfig{}, fmt.Errorf("node %q names no Spinloop source", entry.Name)
+			return inference.DeployConfig{}, fmt.Errorf("node %q names no Spinloop source", entry.Name)
 		}
-		return remote.DeployConfig{Runner: "llamacpp", ModelID: "m"}, nil
+		return inference.DeployConfig{Runner: "llamacpp", ModelID: "m"}, nil
 	}
 	choice, err := cfg.Wake(context.Background(), Want{Model: "m"}, cfgFor, statusOf(t, cfg), nil)
 	if err != nil {
@@ -461,7 +462,7 @@ func TestWakeWaitsForARacedNodeToAnswer(t *testing.T) {
 	}}
 	start := time.Now()
 	choice, err := cfg.Wake(context.Background(), Want{Model: "qwen3-27b"},
-		ConstantConfig(remote.DeployConfig{Runner: "llamacpp", ModelID: "qwen3-27b"}, nil), stale, nil)
+		ConstantConfig(inference.DeployConfig{Runner: "llamacpp", ModelID: "qwen3-27b"}, nil), stale, nil)
 	if err != nil {
 		t.Fatalf("losing the race should not fail the launch: %v", err)
 	}
@@ -483,7 +484,7 @@ func TestWakeTrustsTheDaemonReadinessReading(t *testing.T) {
 	cfg := fleetOf(t, []string{"box"}, node)
 
 	choice, err := cfg.Wake(context.Background(), Want{Model: "m"},
-		ConstantConfig(remote.DeployConfig{Runner: "llamacpp", ModelID: "m"}, nil), statusOf(t, cfg), nil)
+		ConstantConfig(inference.DeployConfig{Runner: "llamacpp", ModelID: "m"}, nil), statusOf(t, cfg), nil)
 	if err != nil {
 		t.Fatalf("the daemon's own readiness reading should have been enough: %v", err)
 	}
@@ -500,7 +501,7 @@ func TestWakeFailsOnAnUnresolvableKey(t *testing.T) {
 	cfg.Nodes[0].EngineTokenEnv = "NOWHERE_ENGINE_KEY"
 
 	_, err := cfg.Wake(context.Background(), Want{Model: "m"},
-		ConstantConfig(remote.DeployConfig{Runner: "llamacpp", ModelID: "m"}, nil), statusOf(t, cfg), nil)
+		ConstantConfig(inference.DeployConfig{Runner: "llamacpp", ModelID: "m"}, nil), statusOf(t, cfg), nil)
 	if err == nil {
 		t.Fatal("expected a failure")
 	}

@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/spinloop-ai/spinloop/internal/daemon"
-	"github.com/spinloop-ai/spinloop/internal/remote"
+	"github.com/spinloop-ai/spinloop/internal/inference"
 )
 
 // WakeTimeout bounds waiting for a woken node's engine to answer. A cold node
@@ -36,13 +36,13 @@ type Waker func(format string, args ...any)
 // Spinloop describes what any node should start — while the gateway resolves
 // each node's own Spinloop source, so different nodes may describe different
 // engines.
-type ConfigFor func(entry NodeConfig) (remote.DeployConfig, error)
+type ConfigFor func(entry NodeConfig) (inference.DeployConfig, error)
 
 // ConstantConfig adapts one deploy config, already resolved, to a per-candidate
 // resolver. The launch path uses it: its Spinloop describes what any node would
 // start.
-func ConstantConfig(dc remote.DeployConfig, err error) ConfigFor {
-	return func(NodeConfig) (remote.DeployConfig, error) { return dc, err }
+func ConstantConfig(dc inference.DeployConfig, err error) ConfigFor {
+	return func(NodeConfig) (inference.DeployConfig, error) { return dc, err }
 }
 
 // configResolver resolves each candidate's deploy config at most once per wake,
@@ -51,15 +51,15 @@ func ConstantConfig(dc remote.DeployConfig, err error) ConfigFor {
 // twice per candidate: once to order them, once to start them.
 type configResolver struct {
 	fn   ConfigFor
-	dcs  map[string]remote.DeployConfig
+	dcs  map[string]inference.DeployConfig
 	errs map[string]error
 }
 
 func newConfigResolver(fn ConfigFor) *configResolver {
-	return &configResolver{fn: fn, dcs: map[string]remote.DeployConfig{}, errs: map[string]error{}}
+	return &configResolver{fn: fn, dcs: map[string]inference.DeployConfig{}, errs: map[string]error{}}
 }
 
-func (r *configResolver) config(entry NodeConfig) (remote.DeployConfig, error) {
+func (r *configResolver) config(entry NodeConfig) (inference.DeployConfig, error) {
 	if err, ok := r.errs[entry.Name]; ok {
 		return r.dcs[entry.Name], err
 	}

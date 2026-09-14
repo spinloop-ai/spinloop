@@ -9,8 +9,8 @@ import (
 
 	"github.com/spinloop-ai/spinloop/internal/daemon"
 	"github.com/spinloop-ai/spinloop/internal/fleet"
+	"github.com/spinloop-ai/spinloop/internal/inference"
 	"github.com/spinloop-ai/spinloop/internal/metrics"
-	"github.com/spinloop-ai/spinloop/internal/remote"
 )
 
 // keeperDashNode wraps the fake with the keep capability: a node the dashboard's
@@ -43,7 +43,7 @@ func (n *keeperDashNode) Start(ctx context.Context) (daemon.StatusResponse, erro
 	return n.f.Start(ctx)
 }
 
-func (n *keeperDashNode) StartWith(ctx context.Context, dc *remote.DeployConfig, engineKey string) (daemon.StatusResponse, error) {
+func (n *keeperDashNode) StartWith(ctx context.Context, dc *inference.DeployConfig, engineKey string) (daemon.StatusResponse, error) {
 	return n.f.StartWith(ctx, dc, engineKey)
 }
 

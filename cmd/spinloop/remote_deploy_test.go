@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/spinloop-ai/spinloop/internal/inference"
 	"github.com/spinloop-ai/spinloop/internal/remote"
 )
 
@@ -50,7 +51,7 @@ spec-type        = draft-mtp
 spec-draft-n-max = 2
 `
 
-func deployConfigFrom(t *testing.T, spinloopBody, presetBody string) remote.DeployConfig {
+func deployConfigFrom(t *testing.T, spinloopBody, presetBody string) inference.DeployConfig {
 	t.Helper()
 	path := writeDeploySpinloop(t, spinloopBody, presetBody)
 	sel, _, err := readSpinloop("test", path)
@@ -346,7 +347,7 @@ func TestRemoteDeploy_PostsTheConfigAndRegisters(t *testing.T) {
 	stubAWSEnv(t)
 
 	var got struct {
-		remote.DeployConfig
+		inference.DeployConfig
 		AllowedCidr string `json:"allowedCidr"`
 	}
 	var gotMethod, gotAuth, gotEnv string
@@ -543,7 +544,7 @@ func TestRemoteDeploy_SpinloopVersion(t *testing.T) {
 		isolateConfig(t)
 		stubAWSEnv(t)
 
-		var got remote.DeployConfig
+		var got inference.DeployConfig
 		var gotRaw []byte
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			gotRaw, _ = io.ReadAll(r.Body)
@@ -632,7 +633,7 @@ func TestRemoteDeploy_InstanceType(t *testing.T) {
 		isolateConfig(t)
 		stubAWSEnv(t)
 
-		var got remote.DeployConfig
+		var got inference.DeployConfig
 		var gotRaw []byte
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			gotRaw, _ = io.ReadAll(r.Body)

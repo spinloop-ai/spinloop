@@ -18,8 +18,8 @@ import (
 	"github.com/muesli/termenv"
 	"github.com/spinloop-ai/spinloop/internal/daemon"
 	"github.com/spinloop-ai/spinloop/internal/fleet"
+	"github.com/spinloop-ai/spinloop/internal/inference"
 	"github.com/spinloop-ai/spinloop/internal/metrics"
-	"github.com/spinloop-ai/spinloop/internal/remote"
 )
 
 // fakeDashNode is one in-memory fleet node: Start and Stop flip its state and
@@ -117,7 +117,7 @@ func (n plainDashNode) Start(ctx context.Context) (daemon.StatusResponse, error)
 	return n.f.Start(ctx)
 }
 
-func (n plainDashNode) StartWith(ctx context.Context, dc *remote.DeployConfig, engineKey string) (daemon.StatusResponse, error) {
+func (n plainDashNode) StartWith(ctx context.Context, dc *inference.DeployConfig, engineKey string) (daemon.StatusResponse, error) {
 	return n.f.StartWith(ctx, dc, engineKey)
 }
 
@@ -146,7 +146,7 @@ func (f *fakeDashNode) StartWithProgress(ctx context.Context, report func(fleet.
 	return f.Start(ctx)
 }
 
-func (f *fakeDashNode) StartWith(ctx context.Context, dc *remote.DeployConfig, engineKey string) (daemon.StatusResponse, error) {
+func (f *fakeDashNode) StartWith(ctx context.Context, dc *inference.DeployConfig, engineKey string) (daemon.StatusResponse, error) {
 	return daemon.StatusResponse{}, errors.New("not driven by the dashboard")
 }
 

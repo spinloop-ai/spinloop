@@ -10,15 +10,16 @@ import (
 	"sync"
 	"time"
 
+	"github.com/spinloop-ai/spinloop/internal/config"
+	"github.com/spinloop-ai/spinloop/internal/inference"
 	"github.com/spinloop-ai/spinloop/internal/metrics"
-	"github.com/spinloop-ai/spinloop/internal/remote"
 )
 
 // StateDir is where a daemon's own state lives: the stored deploy config and
 // the engine log. One daemon per machine is the working assumption (a second
 // one fails to bind the API port), so the directory is unkeyed.
 func StateDir() (string, error) {
-	home, err := remote.ConfigHome()
+	home, err := config.Dir()
 	if err != nil {
 		return "", err
 	}
@@ -36,14 +37,14 @@ type Daemon struct {
 	Dir string
 	// BuildArgv turns the source of what to serve into the engine command.
 	// dc is the stored deploy config, or nil to serve from the Spinloop.
-	BuildArgv func(dc *remote.DeployConfig) ([]string, error)
+	BuildArgv func(dc *inference.DeployConfig) ([]string, error)
 	// EngineKeyArgs turns the path of the written key file into the
 	// arguments that gate this engine, or an error when the engine has no
 	// way to be gated by a file. Supplied by the CLI, which owns engine
 	// flag spellings; nil means no engine here can be gated.
-	EngineKeyArgs func(dc *remote.DeployConfig, keyPath string) ([]string, error)
+	EngineKeyArgs func(dc *inference.DeployConfig, keyPath string) ([]string, error)
 	// ValidateConfig rejects a pushed deploy config this host cannot serve.
-	ValidateConfig func(remote.DeployConfig) error
+	ValidateConfig func(inference.DeployConfig) error
 	// Collector gathers system stats; nil skips them.
 	Collector *metrics.Collector
 	// SampleInterval is how often SampleActivity reads the engine's
@@ -138,7 +139,7 @@ func (d *Daemon) configPath() string {
 
 // StoredConfig reads the persisted deploy config; nil with no error when none
 // has ever been pushed.
-func (d *Daemon) StoredConfig() (*remote.DeployConfig, error) {
+func (d *Daemon) StoredConfig() (*inference.DeployConfig, error) {
 	data, err := os.ReadFile(d.configPath())
 	if os.IsNotExist(err) {
 		return nil, nil
@@ -146,7 +147,7 @@ func (d *Daemon) StoredConfig() (*remote.DeployConfig, error) {
 	if err != nil {
 		return nil, err
 	}
-	var dc remote.DeployConfig
+	var dc inference.DeployConfig
 	if err := json.Unmarshal(data, &dc); err != nil {
 		return nil, fmt.Errorf("parsing %s: %w", d.configPath(), err)
 	}
@@ -156,7 +157,7 @@ func (d *Daemon) StoredConfig() (*remote.DeployConfig, error) {
 // Push validates and persists a deploy config, which subsequent starts serve.
 // A running engine is deliberately untouched — the config takes effect on the
 // next start. The file is 0600: serve args can carry sensitive flags.
-func (d *Daemon) Push(dc remote.DeployConfig) error {
+func (d *Daemon) Push(dc inference.DeployConfig) error {
 	if d.ValidateConfig != nil {
 		if err := d.ValidateConfig(dc); err != nil {
 			return err
@@ -180,7 +181,7 @@ func (d *Daemon) Push(dc remote.DeployConfig) error {
 // engine is gated with. One definition so the client that sends it and the
 // daemon that reads it cannot drift.
 type StartRequest struct {
-	remote.DeployConfig
+	inference.DeployConfig
 	// EngineAPIKey gates the engine. It is supplied by the caller — a node
 	// sources no key of its own — and travels with the config it
 	// accompanies: a start carrying a config and no key opens the engine,
