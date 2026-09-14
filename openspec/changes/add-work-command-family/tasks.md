@@ -23,5 +23,5 @@
 
 ## 4. Docs
 
-- [ ] 4.1 `docs/commands/work.md`: the family's usage — the file it works, the flags, the refusals, the hand-off to a running orchestrator
-- [ ] 4.2 `docs/README.md` and `docs/work-items.md`: the pointer to the family
+- [x] 4.1 `docs/commands/work.md`: the family's usage — the file it works, the flags, the refusals, the hand-off to a running orchestrator
+- [x] 4.2 `docs/README.md` and `docs/work-items.md`: the pointer to the family
