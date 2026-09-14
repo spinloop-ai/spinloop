@@ -83,7 +83,7 @@
 - [x] 5.1 Run `openspec validate --strict gateway-start-remote-nodes` (or
       the store-scoped form if applicable) and fix any reported issues in
       the delta specs.
-- [ ] 5.2 Update `docs/` and `README.md` fleet/gateway documentation, if any
+- [x] 5.2 Update `docs/` and `README.md` fleet/gateway documentation, if any
       describes the current "remote nodes are never woken" behaviour or the
       fleet-wide-only `wake` setting, to reflect the per-node override and
       remote wake support (handled by `/docs-update` after implementation).
