@@ -175,7 +175,7 @@ against its URL, when the Spinloop itself was fetched from one — so the pair
 can travel together either way. `PRESET` may also be an absolute URL of its
 own, fetched only when `serve` builds the command, never merely because the
 Spinloop was read. See [Fetching a Spinloop from a
-URL](../spinloop-file.md#fetching-an-spinloop-from-a-url).
+URL](../spinloop-file.md#fetching-a-spinloop-from-a-url).
 
 ## oMLX
 

@@ -32,7 +32,7 @@ the two environments — so none of them declares a `file` field in
 the same way, and win over the subdirectory; an explicit `file` field can
 point anywhere else again, which is what
 [`examples/fleet-docker`](../fleet-docker/) uses instead. See
-[`spinloop fleet`](../../docs/commands/fleet.md#a-nodes-spinloop-source) for
+[the fleet file](../../docs/fleet-file.md#a-nodes-spinloop-source) for
 the full resolution order.
 
 ```sh
@@ -62,4 +62,5 @@ and the rest of the fleet still shows.
 
 - [`examples/fleet`](../fleet/README.md) — a fleet of daemons only
 - [`examples/fleet-remote`](../fleet-remote/README.md) — a fleet of remote environments only
-- [`spinloop fleet`](../../docs/commands/fleet.md) — the fleet file, its node kinds, and routing
+- [`spinloop fleet`](../../docs/commands/fleet.md) — the commands over these nodes
+- [The fleet file](../../docs/fleet-file.md) — the file's format, node kinds, and routing

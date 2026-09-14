@@ -151,5 +151,5 @@ Two details that are easy to get wrong, and matter:
 
 - [`examples/fleet-docker/`](../fleet-docker/) — a plain fleet, no gateway
 - [`docs/commands/gateway.md`](../../docs/commands/gateway.md)
-- [`docs/commands/fleet.md`](../../docs/commands/fleet.md#the-gateway-section) — the `gateway` section
+- [The fleet file's `gateway` section](../../docs/fleet-file.md#gateway)
 - [HTTP Control API](../../docs/http-api.md)

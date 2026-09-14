@@ -30,7 +30,7 @@ spinloop harness apply team-default
 ```
 
 It is stored and resolved just like a local one — see
-[Fetching a Spinloop from a URL](../spinloop-file.md#fetching-an-spinloop-from-a-url).
+[Fetching a Spinloop from a URL](../spinloop-file.md#fetching-a-spinloop-from-a-url).
 
 ## Naming one for the whole shell
 

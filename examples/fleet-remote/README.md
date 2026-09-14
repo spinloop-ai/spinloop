@@ -52,7 +52,7 @@ would resolve the same way, and win over the subdirectory if both existed —
 or a `file` field can point anywhere else entirely, which is what
 [`examples/fleet-docker`](../fleet-docker/) uses to reuse one Spinloop
 (`client/Spinloop`) whose name matches neither node that runs it. See
-[`spinloop fleet`](../../docs/commands/fleet.md#a-nodes-spinloop-source) for
+[the fleet file](../../docs/fleet-file.md#a-nodes-spinloop-source) for
 the full resolution order.
 
 ### 3. Observe from anywhere
@@ -72,5 +72,6 @@ fleet still renders.
 
 ## See also
 
-- [`spinloop fleet`](../../docs/commands/fleet.md) — the fleet file, its node kinds, and routing
+- [`spinloop fleet`](../../docs/commands/fleet.md) — the commands over these nodes
+- [The fleet file](../../docs/fleet-file.md) — the file's format, node kinds, and routing
 - [`spinloop remote`](../../docs/commands/remote.md) — the environments these nodes drive
