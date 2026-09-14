@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -105,6 +106,8 @@ func (w *WorkList) run(ctx context.Context, cfg Config) error {
 	for {
 		w.reap()
 
+		suppressed := w.consumeAborts()
+
 		topo, err = cfg.Topologist.Topology(ctx)
 		if err != nil {
 			if ctx.Err() != nil {
@@ -121,7 +124,7 @@ func (w *WorkList) run(ctx context.Context, cfg Config) error {
 			return err
 		}
 
-		w.pass(topo)
+		w.pass(topo, suppressed)
 
 		w.save()
 
@@ -156,14 +159,69 @@ func (w *WorkList) refreshItems() error {
 	return nil
 }
 
+// consumeAborts takes up every marker standing beside the file: the marked
+// item's agent stopped the way a clean interrupt stops it — the record and
+// the flight gone, the state saved, the stop, the grace, the hard end — and
+// the marker removed when the child has ended, the id returned so the pass
+// that took it up does not re-admit it. A marker for an item not in flight
+// is taken up alone: the ask is consumed, and nothing else changes.
+func (w *WorkList) consumeAborts() map[string]bool {
+	ids, err := AbortsPending(w.itemsPath)
+	if err != nil {
+		w.log.Error("reading the abort markers", slog.String("error", err.Error()))
+		return nil
+	}
+	suppressed := map[string]bool{}
+	for _, id := range ids {
+		w.mu.Lock()
+		fl, ok := w.detachLocked(id)
+		w.mu.Unlock()
+		if ok {
+			fl.child.Stop()
+			select {
+			case <-fl.done:
+			case <-time.After(stopGrace):
+				fl.child.Kill()
+				<-fl.done
+			}
+			suppressed[id] = true
+		}
+		os.Remove(filepath.Join(abortsDirFor(w.itemsPath), id))
+	}
+	return suppressed
+}
+
+// pruneLocked drops a record the file no longer carries and that is not in
+// flight: the file is the set of items the run works, and a record that
+// outlived its item would stand in the state, refusing the id's re-add. The
+// caller holds the lock.
+func (w *WorkList) pruneLocked() {
+	for id := range w.records {
+		if _, running := w.inflight[id]; running {
+			continue
+		}
+		if !w.carries(id) {
+			delete(w.records, id)
+			w.log.Info("record dropped, the file no longer carries the item",
+				slog.String("item", id))
+		}
+	}
+}
+
 // pass admits the backlog against the topology: the match, the limits, and
 // the launch, the record the item takes as it goes in flight. It holds the
 // lock across the launch, so the API's operations — an add, a remove, an
-// abort — never interleave a launch mid-way.
-func (w *WorkList) pass(topo Topology) {
+// abort — never interleave a launch mid-way. suppressed is the ids this pass
+// took up from an abort marker: the take-out is not undone on the same pass,
+// and the item is eligible on the next.
+func (w *WorkList) pass(topo Topology, suppressed map[string]bool) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	w.pruneLocked()
 	for _, item := range sortedForAdmission(w.items) {
+		if suppressed[item.ID] {
+			continue // the pass that took the marker up does not re-admit it
+		}
 		if st, recorded := w.records[item.ID]; recorded && (st.State == StateDone || st.State == StateFailed) {
 			continue // a finished end stands: no retry on its own
 		}
@@ -325,22 +383,7 @@ func (w *WorkList) killFlights() {
 func (w *WorkList) List() []ItemView {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	out := make([]ItemView, 0, len(w.items))
-	for _, it := range w.items {
-		v := ItemView{
-			ID: it.ID, Instructions: it.Instructions, Dir: it.Dir,
-			Tags: it.Tags, Priority: it.Priority, State: StateBacklog,
-		}
-		if st, ok := w.records[it.ID]; ok {
-			v.State = st.State
-			v.Node = st.Node
-			v.Why = st.Why
-			v.StartedAt = st.StartedAt
-			v.EndedAt = st.EndedAt
-		}
-		out = append(out, v)
-	}
-	return out
+	return Join(w.items, w.records)
 }
 
 // Log is one item's kept agent output: the output's bytes as text, and ok
@@ -445,7 +488,7 @@ func (w *WorkList) Remove(id string) error {
 // item and its state.
 func (w *WorkList) Abort(id string) error {
 	w.mu.Lock()
-	fl, ok := w.inflight[id]
+	fl, ok := w.detachLocked(id)
 	if !ok {
 		state := ""
 		if r, recorded := w.records[id]; recorded {
@@ -461,12 +504,6 @@ func (w *WorkList) Abort(id string) error {
 		w.mu.Unlock()
 		return &errConflict{msg: fmt.Sprintf("item %q is not running: it is %s", id, state)}
 	}
-	delete(w.inflight, id)
-	delete(w.records, id)
-	w.saveLocked()
-	w.log.Info("item aborted",
-		slog.String("item", id),
-		slog.String("node", fl.node.Name))
 	w.mu.Unlock()
 
 	fl.child.Stop()
@@ -477,6 +514,24 @@ func (w *WorkList) Abort(id string) error {
 		<-fl.done
 	}
 	return nil
+}
+
+// detachLocked removes the in-flight flight and its record and saves the
+// state, the caller holding the lock: ok false where the id is not in
+// flight. The API's abort and the marker's consumption both take the item
+// out this way, and the stop of the child goes on after the lock is free.
+func (w *WorkList) detachLocked(id string) (*flight, bool) {
+	fl, ok := w.inflight[id]
+	if !ok {
+		return nil, false
+	}
+	delete(w.inflight, id)
+	delete(w.records, id)
+	w.saveLocked()
+	w.log.Info("item aborted",
+		slog.String("item", id),
+		slog.String("node", fl.node.Name))
+	return fl, true
 }
 
 // carries reports whether the items view holds the id, the caller holding
@@ -498,6 +553,12 @@ func writeItemsFile(path string, items []fileItem) error {
 	if err != nil {
 		return fmt.Errorf("writing the work items file %s: %v", path, err)
 	}
+	return writeItemsFileData(path, data)
+}
+
+// writeItemsFileData writes the file's bytes, atomically: a torn write must
+// never leave the run's re-read holding a half file.
+func writeItemsFileData(path string, data []byte) error {
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, data, 0o600); err != nil {
 		return fmt.Errorf("writing the work items file %s: %v", path, err)
