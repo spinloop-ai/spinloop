@@ -62,6 +62,7 @@ Four words carry the whole tool:
 | [`spinloop fleet`](commands/fleet.md) | Observe and drive the engines on every machine you run, and launch your agent against them |
 | [`spinloop gateway`](commands/gateway.md) | Serve the fleet under one OpenAI-compatible endpoint |
 | [`spinloop orchestrator`](commands/orchestrator.md) | Work a backlog of items against the fleet, at the fleet's declared pace |
+| [`spinloop work`](commands/work.md) | Work the work items file from the shell: add, list, abort, remove |
 | [`spinloop remote`](commands/remote.md) | Run the model on a cloud GPU that stops when you do |
 | [`spinloop hf`](commands/hf.md) | Write a `Spinloop` for a Hugging Face model, from its page reference |
 | [`spinloop harness`](commands/harness.md) | Configure the agent (add, remove, apply, unapply, show, export), launch it (open), and set the default (config) |

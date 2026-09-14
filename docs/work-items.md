@@ -76,11 +76,16 @@ file: a second one for the same file is refused while the first holds its lock.
 
 ## Adding work items
 
-1. Append an item to the file — `id`, `instructions`, `dir`, and tags or
-   priority where the work wants them.
-2. Nothing else. A running orchestrator re-reads the file when it changes,
-   and the new item enters the backlog on the next pass, ranked by its
-   priority.
+Append an item to the file — by hand, or with
+[`spinloop work add`](commands/work.md), which takes the item's fields as
+flags, applies the file's validation, and leaves the file a valid items file:
+
+```sh
+spinloop work add --id fix-parser --instructions "fix the failing tests" --dir ./parser
+```
+
+Nothing else. A running orchestrator re-reads the file when it changes, and
+the new item enters the backlog on the next pass, ranked by its priority.
 
 An item's `id` is its identity for life: the state beside the file keeps one
 record per `id`. To change what a finished item does, change its `instructions`
@@ -110,6 +115,14 @@ the state, and the orchestrator moves on to the next. Read the state and the
 item's log to see what went wrong; fix the item and give it a new `id` to work
 it again.
 
+From the shell, the [`spinloop work`](commands/work.md) family works this
+backlog: `work list` reports every item with its state — the file and the
+state read together, a dash where a value is absent; `work abort <id>` stops a
+running item and puts it back in the backlog; `work remove <id>` takes an item
+out of the file, its state, and its log. The commands work the file and the
+state beside it whether or not the orchestrator is running, and a running
+orchestrator picks each change up on its next pass.
+
 ## Stopping and restarting
 
 Interrupt the orchestrator (Ctrl-C) and it stops its running agents cleanly:
@@ -130,5 +143,7 @@ giving only the gateway's address.
 
 - [`spinloop orchestrator`](commands/orchestrator.md) — the full command reference, and
   the [work list API](commands/orchestrator.md#the-work-list-api) a client works the backlog through
+- [`spinloop work`](commands/work.md) — the backlog worked from the shell: add, list,
+  abort, remove
 - [The fleet file](commands/fleet.md) — tags, concurrency, and waking
 - [The gateway](commands/gateway.md) — the front door the orchestrator reads and routes through

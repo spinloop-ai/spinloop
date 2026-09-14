@@ -52,6 +52,22 @@ type Store interface {
 	Close()
 }
 
+// The files the state keeps beside one items file, named from the items
+// path alone, so the run and a command beside the file reach the same ones.
+
+func stateFileFor(itemsPath string) string { return itemsPath + ".state.json" }
+
+func lockFileFor(itemsPath string) string { return itemsPath + ".lock" }
+
+func logDirFor(itemsPath string) string { return itemsPath + ".logs" }
+
+func abortsDirFor(itemsPath string) string { return itemsPath + ".aborts" }
+
+// LogPathFor is where one item's kept output stands beside the items file.
+func LogPathFor(itemsPath, id string) string {
+	return filepath.Join(logDirFor(itemsPath), id+".log")
+}
+
 // fileStore is the state beside one items file: the state file, the log
 // directory, and the lock.
 type fileStore struct {
@@ -66,8 +82,8 @@ type fileStore struct {
 // recovery a restart owes — an item the state left running is recorded
 // failed, naming the interruption, and is not re-run.
 func OpenStore(itemsPath string) (Store, error) {
-	statePath := itemsPath + ".state.json"
-	lockPath := itemsPath + ".lock"
+	statePath := stateFileFor(itemsPath)
+	lockPath := lockFileFor(itemsPath)
 
 	pid, err := takeLock(lockPath)
 	if err != nil {
@@ -75,7 +91,7 @@ func OpenStore(itemsPath string) (Store, error) {
 	}
 	s := &fileStore{
 		statePath: statePath,
-		logsDir:   itemsPath + ".logs",
+		logsDir:   logDirFor(itemsPath),
 		lockPath:  lockPath,
 		pid:       pid,
 	}
@@ -151,10 +167,56 @@ func (s *fileStore) dropLock() {
 	os.Remove(s.lockPath)
 }
 
+// LoadStateFile reads the record beside the items file without taking the
+// lock and without the recovery a start performs: a command beside the file
+// reads what is there, and a record left running stands until a start makes
+// it failed. An absent file is an empty record.
+func LoadStateFile(itemsPath string) (map[string]ItemState, error) {
+	return readStateFile(stateFileFor(itemsPath))
+}
+
+// SaveStateFile writes the record beside the items file, atomically, without
+// taking the lock: the command's write, the way the run's save is one — a
+// torn write must never leave a restart unsure which items were running.
+func SaveStateFile(itemsPath string, items map[string]ItemState) error {
+	if items == nil {
+		items = map[string]ItemState{}
+	}
+	return writeStateFile(stateFileFor(itemsPath), stateFile{Items: items})
+}
+
+// LockStatus reports the lock's holder and whether the holder is alive, an
+// absent lock being no holder: the read-only check a command beside the file
+// makes before it waits on a run, the liveness the run's takeover judges by.
+func LockStatus(itemsPath string) (pid int, live bool, err error) {
+	data, err := os.ReadFile(lockFileFor(itemsPath))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, false, nil
+		}
+		return 0, false, fmt.Errorf("reading the lock beside the work items file: %v", err)
+	}
+	if _, err := fmt.Sscanf(string(data), "%d", &pid); err != nil {
+		return 0, false, fmt.Errorf("the lock beside the work items file is not a pid: %v", err)
+	}
+	return pid, alive(pid), nil
+}
+
 // Load reads the record, an absent file being an empty one.
 func (s *fileStore) Load() (map[string]ItemState, error) {
+	return readStateFile(s.statePath)
+}
+
+// save writes the record as the file's state, atomically.
+func (s *fileStore) save(sf stateFile) error {
+	return writeStateFile(s.statePath, sf)
+}
+
+// readStateFile reads the record at the state's path, an absent file being
+// an empty one.
+func readStateFile(path string) (map[string]ItemState, error) {
 	var sf stateFile
-	data, err := os.ReadFile(s.statePath)
+	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return map[string]ItemState{}, nil
@@ -170,18 +232,18 @@ func (s *fileStore) Load() (map[string]ItemState, error) {
 	return sf.Items, nil
 }
 
-// save writes the record as the file's state, atomically: a torn write must
-// never leave a restart unsure which items were running.
-func (s *fileStore) save(sf stateFile) error {
+// writeStateFile writes the record to the state's path, atomically: a torn
+// write must never leave a restart unsure which items were running.
+func writeStateFile(path string, sf stateFile) error {
 	data, err := json.MarshalIndent(sf, "", "  ")
 	if err != nil {
 		return err
 	}
-	tmp := s.statePath + ".tmp"
+	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, data, 0o600); err != nil {
 		return err
 	}
-	if err := os.Rename(tmp, s.statePath); err != nil {
+	if err := os.Rename(tmp, path); err != nil {
 		os.Remove(tmp)
 		return err
 	}

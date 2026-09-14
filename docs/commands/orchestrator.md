@@ -76,6 +76,7 @@ work.yaml            the items
 work.yaml.state.json the record: one entry per item that is running or has ended
 work.yaml.lock       what keeps a second orchestrator off the file
 work.yaml.logs/      one log per item, its agent's output
+work.yaml.aborts/    the abort markers a work command leaves, while they stand
 ```
 
 The state holds each item's `running`/`done`/`failed` record — the node a

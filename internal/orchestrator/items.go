@@ -99,21 +99,28 @@ func ParseItems(data []byte) ([]Item, error) {
 // checkItem is the validation one item's fields pass: a present id,
 // instructions, and working directory, and tags that are well-formed key
 // =value pairs, no key named twice. The file's parse applies it, and the
-// work list API's add applies the same.
+// work list API's add and the work add command apply the same.
 func checkItem(f fileItem) error {
-	if f.Instructions == "" {
-		return fmt.Errorf("item %q has no instructions", f.ID)
+	return validateItemFields(f.ID, f.Instructions, f.Dir, f.Tags)
+}
+
+// validateItemFields is the fields' validation, the item's form agnostic:
+// the instructions and working directory present, and the tags that are
+// well-formed key=value pairs, no key named twice.
+func validateItemFields(id, instructions, dir string, tags []string) error {
+	if instructions == "" {
+		return fmt.Errorf("item %q has no instructions", id)
 	}
-	if f.Dir == "" {
-		return fmt.Errorf("item %q has no working directory", f.ID)
+	if dir == "" {
+		return fmt.Errorf("item %q has no working directory", id)
 	}
-	for _, tag := range f.Tags {
+	for _, tag := range tags {
 		if _, _, ok := fleet.SplitTag(tag); !ok {
-			return fmt.Errorf("item %q's tag %q is not a key=value pair", f.ID, tag)
+			return fmt.Errorf("item %q's tag %q is not a key=value pair", id, tag)
 		}
 	}
-	if keys := duplicateTagKeys(f.Tags); keys != "" {
-		return fmt.Errorf("item %q names the tag key%s more than once", f.ID, keys)
+	if keys := duplicateTagKeys(tags); keys != "" {
+		return fmt.Errorf("item %q names the tag key%s more than once", id, keys)
 	}
 	return nil
 }
