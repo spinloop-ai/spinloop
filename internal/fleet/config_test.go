@@ -708,6 +708,43 @@ gateway:
 	}
 }
 
+// The gateway's token resolves the way the file's tokens do: the
+// environment first, then the .env beside the file.
+func TestGatewayToken(t *testing.T) {
+	path := writeFleet(t, `
+nodes:
+  - name: studio
+    host: studio.local
+gateway:
+  url: https://gw.example.com
+  tokenEnv: GW_TOKEN
+`, "GW_TOKEN=from-dotenv")
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Falls back to the .env beside the file.
+	t.Setenv("GW_TOKEN", "")
+	if tok, err := cfg.GatewayToken("GW_TOKEN"); err != nil || tok != "from-dotenv" {
+		t.Errorf("GatewayToken = %q, %v; want from-dotenv", tok, err)
+	}
+
+	// An exported value wins over the .env.
+	t.Setenv("GW_TOKEN", "from-env")
+	if tok, err := cfg.GatewayToken("GW_TOKEN"); err != nil || tok != "from-env" {
+		t.Errorf("GatewayToken = %q, %v; want from-env (environment beats .env)", tok, err)
+	}
+
+	// Set nowhere: the error names the variable and the file's .env.
+	t.Setenv("GW_TOKEN", "")
+	os.Remove(filepath.Join(filepath.Dir(path), ".env"))
+	if _, err := cfg.GatewayToken("GW_TOKEN"); err == nil ||
+		!strings.Contains(err.Error(), "GW_TOKEN") || !strings.Contains(err.Error(), "fleet.yaml") {
+		t.Errorf("an unset gateway token should fail naming the variable and the file, got %v", err)
+	}
+}
+
 // No section: the accessor says so, and the file behaves as it always has.
 func TestNoGatewaySection(t *testing.T) {
 	path := writeFleet(t, `

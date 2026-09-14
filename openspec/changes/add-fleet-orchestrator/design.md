@@ -70,7 +70,7 @@ file, and the dispatch loop live in `internal/orchestrator` as an
 loop is unit-testable against a fake topology the same way the fleet client
 is tested against a fake node.
 
-### The gateway serves the topology at a read endpoint; the orchestrator holds no fleet file
+### The gateway serves the topology at a read endpoint; the run holds no fleet file
 
 `GET /v1/fleet` on the gateway, behind its caller authentication, answers
 with the nodes (name, kind, tags, state, served model and name, readiness,
@@ -84,6 +84,14 @@ fan-out (the same two-second cache `/v1/models` reads), the per-node source
 resolution the model listing performs, and the fleet file's new fields. The
 orchestrator polls it on its tick; the gateway's cache keeps the poll cheap
 and the orchestrator's view consistent with the one the gateway routes on.
+
+The command reads the fleet file only where the operator names no gateway
+flag: for the section's address, the section's token variable where the
+token flag was not given, and the token's value through the file's own
+chain — the environment first, then the `.env` beside the file, the way
+every other secret this file references resolves. Nothing past that crosses
+into the run — the file is a pointer to the front door, not a copy of what
+is behind it.
 
 Alternatives, both rejected: the orchestrator holding its own fleet file and
 driving `internal/fleet` directly (a second copy of the topology, and the

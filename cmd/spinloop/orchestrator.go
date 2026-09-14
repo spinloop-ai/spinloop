@@ -11,7 +11,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -25,7 +24,7 @@ import (
 )
 
 func orchestratorCmd() *cobra.Command {
-	var gatewayAddr, itemsPath, tokenEnv, harnessName, logLevel string
+	var gatewayAddr, fleetPath, itemsPath, tokenEnv, harnessName, logLevel string
 	var createItemDirs bool
 	c := &cobra.Command{
 		Use:   "orchestrator",
@@ -39,8 +38,10 @@ gateway. It runs in the foreground, the way spinloop gateway does: the
 signal is the only exit, and a clean interrupt puts its in-flight items
 back in the backlog, none lost, none run twice.
 
-It takes no fleet file: the gateway is its only view of the fleet, and it
-holds no node token and no engine key. The items file is a list of items,
+It reads the fleet file, where there is one, only to find the gateway: its
+address, and the section's token variable where no flag names one. The
+gateway is the run's only view of the fleet, and it holds no node token and
+no engine key. The items file is a list of items,
 each with an id, the instructions its agent is given, and the directory
 the agent works in:
 
@@ -57,13 +58,20 @@ that has ended is not run again on a restart.`,
 		SilenceUsage:  true,
 		RunE: func(c *cobra.Command, args []string) error {
 			resolve(c)
-			return runOrchestratorCommand(gatewayAddr, itemsPath, tokenEnv, harnessName, logLevel, createItemDirs)
+			gateway, tokenVar, err := orchestratorGateway(c, gatewayAddr, fleetPath, tokenEnv)
+			if err != nil {
+				return err
+			}
+			return runOrchestratorCommand(gateway, itemsPath, tokenVar, harnessName, logLevel, createItemDirs)
 		},
 	}
+
 	fs := c.Flags()
-	fs.StringVar(&gatewayAddr, "gateway", "", "the address of the fleet's gateway")
+	fs.StringVar(&gatewayAddr, "gateway", "", "the address of a fleet's gateway (default: the fleet file's gateway section, where no flag is given)")
+	fs.StringVarP(&fleetPath, "fleet", "f", "", fleetFileUsage)
+	compRegister(c, "fleet", compFiles)
 	fs.StringVar(&itemsPath, "items", "./work.yaml", "the work items file to work")
-	fs.StringVar(&tokenEnv, "token-env", fleet.DefaultGatewayTokenEnv, "the environment variable holding the gateway's bearer token")
+	fs.StringVar(&tokenEnv, "token-env", fleet.DefaultGatewayTokenEnv, "the environment variable holding the gateway's bearer token (default: the fleet file's section, where the gateway comes from it and no flag is given)")
 	fs.StringVarP(&harnessName, "harness", "H", "", "which harness to run the agents with")
 	fs.StringVar(&logLevel, "log-level", "", logLevelUsage)
 	fs.BoolVar(&createItemDirs, "create-item-dirs", false, "create an item's working directory if it does not exist")
@@ -76,18 +84,49 @@ that has ended is not run again on a restart.`,
 // cmdOrchestrator runs the command through the tree — the seam the suite calls.
 func cmdOrchestrator(args []string) error { return execCmd(orchestratorCmd(), args) }
 
+// orchestratorGateway resolves the gateway the run works against and its
+// bearer token: an explicit --gateway wins outright, its token read from the
+// variable the token flag names; where it is not given, the fleet file — the
+// one --fleet names, or ./fleet.yaml — must name a gateway in its section,
+// and the token's variable is the flag's where the flag was given, the
+// section's otherwise, the value read the way the file reads one: the
+// environment first, then the .env beside the file.
+func orchestratorGateway(c *cobra.Command, gatewayAddr, fleetPath, tokenEnv string) (string, string, error) {
+	if gatewayAddr != "" {
+		token := os.Getenv(tokenEnv)
+		if token == "" {
+			return "", "", fmt.Errorf("the gateway %s needs its bearer token in %s, which is not set", gatewayAddr, tokenEnv)
+		}
+		return gatewayAddr, token, nil
+	}
+	path := fleetPath
+	if path == "" {
+		path = fleet.DefaultFile
+	}
+	cfg, err := fleet.Resolve(fleetPath)
+	if err != nil {
+		return "", "", fmt.Errorf("no gateway named: set --gateway, or keep a fleet file with a gateway section — %v", err)
+	}
+	gw, ok := cfg.GatewaySection()
+	if !ok {
+		return "", "", fmt.Errorf("no gateway named: the fleet file %s has no gateway section — set --gateway, or give it one", path)
+	}
+	tokenVar := gw.TokenEnv
+	if c.Flags().Changed("token-env") {
+		tokenVar = tokenEnv
+	}
+	token, err := cfg.GatewayToken(tokenVar)
+	if err != nil {
+		return "", "", err
+	}
+	return gw.URL, token, nil
+}
+
 // runOrchestratorCommand is the body of `spinloop orchestrator`: the checks a
 // startup owes — the gateway named, its token resolvable, the harness able to
 // run an item, the items file a list of items — and then the loop, held
 // until the signal ends it.
-func runOrchestratorCommand(gatewayAddr, itemsPath, tokenEnv, harnessName, logLevel string, createItemDirs bool) error {
-	if gatewayAddr == "" {
-		return errors.New("--gateway is required: the address of the fleet's gateway")
-	}
-	token := os.Getenv(tokenEnv)
-	if token == "" {
-		return fmt.Errorf("the gateway %s needs its bearer token in %s, which is not set", gatewayAddr, tokenEnv)
-	}
+func runOrchestratorCommand(gatewayAddr, itemsPath, token, harnessName, logLevel string, createItemDirs bool) error {
 	h, _, err := harness.Resolve(harnessName)
 	if err != nil {
 		return err

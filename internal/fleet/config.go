@@ -546,7 +546,7 @@ func (c *Config) Names() []string {
 // configuration error, reported against that node rather than surfacing later
 // as an authentication failure.
 func (c *Config) Token(n NodeConfig) (string, error) {
-	return c.resolveTokenEnv(n, n.TokenEnv)
+	return c.resolveTokenEnv(fmt.Sprintf("node %q", n.Name), n.TokenEnv)
 }
 
 // EngineToken resolves the key a node's engine requires, from the variable the
@@ -555,7 +555,7 @@ func (c *Config) Token(n NodeConfig) (string, error) {
 // it is referenced and resolved identically, so neither is ever written in the
 // fleet file.
 func (c *Config) EngineToken(n NodeConfig) (string, error) {
-	return c.resolveTokenEnv(n, n.EngineTokenEnv)
+	return c.resolveTokenEnv(fmt.Sprintf("node %q", n.Name), n.EngineTokenEnv)
 }
 
 // RemoteEngineToken resolves the key a remote node's engine requires: the
@@ -573,16 +573,24 @@ func (c *Config) RemoteEngineToken(n NodeConfig) (string, error) {
 			"node %q is a remote environment, so its engine key must be set: name the variable holding it, in this node's `engineTokenEnv` or the file's fleet-wide `apiKeyEnv` (%s)",
 			n.Name, c.Path)
 	}
-	return c.resolveTokenEnv(n, name)
+	return c.resolveTokenEnv(fmt.Sprintf("node %q", n.Name), name)
 }
 
-// resolveTokenEnv reads one of a node's token references: the process
+// GatewayToken resolves the gateway's bearer token from the named variable:
+// the process environment first, then the .env beside the fleet file — the
+// precedence spinloop uses everywhere, so an exported value wins and the .env
+// only fills a gap.
+func (c *Config) GatewayToken(name string) (string, error) {
+	return c.resolveTokenEnv("the gateway", name)
+}
+
+// resolveTokenEnv reads one of the file's token references: the process
 // environment first, then the .env beside the fleet file — the precedence
 // spinloop uses everywhere, so an exported value wins and the .env only fills a
-// gap. A node naming no variable needs no token. A node naming one that is set
-// nowhere is a configuration error, reported against that node rather than
-// surfacing later as an authentication failure.
-func (c *Config) resolveTokenEnv(n NodeConfig, name string) (string, error) {
+// gap. A reference naming no variable needs no token. One naming a variable
+// that is set nowhere is a configuration error, reported against its owner
+// rather than surfacing later as an authentication failure.
+func (c *Config) resolveTokenEnv(who, name string) (string, error) {
 	if name == "" {
 		return "", nil
 	}
@@ -597,6 +605,6 @@ func (c *Config) resolveTokenEnv(n NodeConfig, name string) (string, error) {
 		return v, nil
 	}
 	return "", fmt.Errorf(
-		"%s is not set (node %q): export it, or put it in the .env beside %s",
-		name, n.Name, c.Path)
+		"%s is not set (%s): export it, or put it in the .env beside %s",
+		name, who, c.Path)
 }

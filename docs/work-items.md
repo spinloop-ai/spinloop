@@ -4,8 +4,8 @@ Give the fleet a file of work items, and `spinloop orchestrator` works them
 at the pace the fleet allows: each admitted item runs as a one-shot coding
 agent — its inference going through the [fleet's gateway](commands/gateway.md) —
 and its outcome is recorded beside the file. The orchestrator takes the
-fleet's shape from the gateway, so it needs no fleet file and no node
-credentials of its own.
+fleet's shape from the gateway; it reads the fleet file, where there is one,
+only to find that gateway, and holds no node credentials of its own.
 
 ## What it takes
 
@@ -16,8 +16,11 @@ Three things, all described on their own pages:
   declares its [concurrency limits](commands/fleet.md#concurrency), how much
   work the fleet may hold in flight at once
 - A [gateway](commands/gateway.md) in front of that fleet, which is how the
-  orchestrator sees the nodes and how each agent's requests reach them
-- The gateway's token, in an environment variable
+  orchestrator sees the nodes and how each agent's requests reach them —
+  named to it by `--gateway`, or by the fleet file's gateway section where no
+  flag is given
+- The gateway's token, in an environment variable — or the `.env` beside the
+  fleet file, where the gateway comes from that file
 
 ## The items file
 
@@ -57,6 +60,13 @@ the fault.
 ```sh
 export OPENAI_API_KEY=the-gateway-token
 spinloop orchestrator --gateway http://127.0.0.1:4100 --items ./work.yaml
+```
+
+Where the fleet file's [gateway section](commands/fleet.md#gateway) names the gateway
+— and you run from the directory the file lives in — the flag stands down:
+
+```sh
+spinloop orchestrator --items ./work.yaml
 ```
 
 It reads the fleet's topology, admits as many backlog items as the fleet's
@@ -104,8 +114,9 @@ file left off. An orchestrator that dies uncleanly leaves its items marked
 It never starts or stops a node — a stopped node is offered to an item only
 where the fleet's [wake policy](commands/fleet.md#waking) says a request may
 start it, and it is the gateway that does the starting. It does not re-run an
-item that has ended, finished or failed, and it holds no fleet file and no
-node credentials: the gateway is its only view of the fleet.
+item that has ended, finished or failed, and its run holds no node
+credentials: the gateway is its only view of the fleet, the fleet file
+giving only the gateway's address.
 
 ## Where next
 

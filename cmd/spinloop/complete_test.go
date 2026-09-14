@@ -404,6 +404,11 @@ func TestComplete_FlagValues(t *testing.T) {
 	if _, directive := complete(t, "harness", "-f", ""); directive != directiveFile {
 		t.Errorf("harness -f should complete paths, got %q", directive)
 	}
+	// The orchestrator's fleet flag completes paths, the way every fleet file
+	// does.
+	if _, directive := complete(t, "orchestrator", "--fleet", ""); directive != directiveFile {
+		t.Errorf("orchestrator --fleet should complete paths, got %q", directive)
+	}
 	if got, _ := complete(t, "completion", ""); !hasAll(got, "bash", "zsh", "powershell") {
 		t.Errorf("shells missing from %v", got)
 	}

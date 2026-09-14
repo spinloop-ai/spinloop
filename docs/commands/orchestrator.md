@@ -8,9 +8,10 @@ as a one-shot agent of the [active harness](harness.md) in the item's own
 directory — the agent's inference going through that same gateway.
 
 ```sh
+spinloop orchestrator
 spinloop orchestrator --gateway http://gateway.internal:4000
 spinloop orchestrator --gateway http://gateway.internal:4000 --items ./work.yaml
-spinloop orchestrator --gateway http://gateway.internal:4000 -H pi
+spinloop orchestrator --fleet ./fleet.yaml -H pi
 ```
 
 It runs in the foreground, the way [`spinloop gateway`](gateway.md) does: the
@@ -18,10 +19,16 @@ signal is the only exit, and a clean interrupt stops its agents and puts their
 items back in the backlog — none lost, none run twice. An item that has ended
 is not run again on a restart.
 
-It takes no fleet file: the gateway is its only view of the fleet, and it holds
-no node token and no engine key. What it holds is one credential — the
-gateway's bearer token, from the environment variable `--token-env` names
-(`OPENAI_API_KEY` by default) — and that token reaches each agent as its key.
+Where no `--gateway` is given, it reads the [fleet file](fleet.md) — the one
+`--fleet` names, or `./fleet.yaml` — for the gateway's address and the
+section's token variable, and nothing else: the gateway is the run's only view
+of the fleet, and it holds no node token and no engine key. What it holds is
+one credential — the gateway's bearer token, from the environment variable
+`--token-env` names, or the section's `tokenEnv` where the gateway comes from
+the file and no flag is given (`OPENAI_API_KEY` by default); where the
+gateway comes from the file, the value is read the way the file reads its
+secrets — the environment first, then the `.env` beside it — and that token
+reaches each agent as its key.
 
 ## The items file
 
@@ -100,7 +107,8 @@ stopped node is an option only where the fleet file
   topology with the model the fleet would start it with, and an item may be
   admitted against it — the engine is started by the fleet's own machinery,
   the same as a gateway request would.
-- It holds no fleet file and no node credential. The topology is its whole
+- The run holds no fleet file and no node credential: the file, where read,
+  gives the gateway's address and nothing else. The topology is its whole
   view, and a gateway that stops answering ends the run, naming the gateway —
   the items are safe in the file and the state, and a restarted run picks
   them up.
@@ -114,10 +122,11 @@ stopped node is an option only where the fleet file
 
 | Flag | Meaning |
 | ---- | ------- |
-| `--gateway <address>` | The fleet's gateway — required. The topology, and the agents' inference, both go through it |
+| `--gateway <address>` | The fleet's gateway; where not given, the fleet file's gateway section supplies it. The topology, and the agents' inference, both go through it |
+| `-f`, `--fleet <path>` | The fleet file to find the gateway in, where `--gateway` is not given (default `./fleet.yaml`) |
 | `--items <path>` | The work items file (default `./work.yaml`) |
 | `--create-item-dirs` | Create an item's working directory if it does not exist (default off) |
-| `--token-env <variable>` | The environment variable holding the gateway's bearer token (default `OPENAI_API_KEY`) |
+| `--token-env <variable>` | The environment variable holding the gateway's bearer token (default `OPENAI_API_KEY`, or the fleet file's section where the gateway comes from it and no flag is given; the value, on that path, also from the `.env` beside the file) |
 | `-H`, `--harness <name>` | Which harness to run the agents with (default the resolved one) |
 | `--log-level` | `debug`, `info`, `warn`, or `error` — overrides `SPINLOOP_LOG_LEVEL` (default `info`) |
 

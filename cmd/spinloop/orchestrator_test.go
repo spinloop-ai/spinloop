@@ -29,6 +29,7 @@ func TestOrchestratorHelpReadsPerTheCliConventions(t *testing.T) {
 		"./work.yaml",
 		"--token-env",
 		"OPENAI_API_KEY",
+		"-f, --fleet",
 		"-H, --harness",
 		"--create-item-dirs",
 	} {
@@ -38,15 +39,123 @@ func TestOrchestratorHelpReadsPerTheCliConventions(t *testing.T) {
 	}
 }
 
-// No gateway named is refused before anything is resolved.
-func TestCmdOrchestrator_WithoutAGatewayNamesTheFlag(t *testing.T) {
+// Neither a flag nor a file names a gateway: the refusal names both ways to
+// give one, before anything is resolved.
+func TestCmdOrchestrator_NeitherFlagNorFileNamesBothWays(t *testing.T) {
 	isolateConfig(t)
 	dir := t.TempDir()
 	t.Chdir(dir)
 	mustWrite(t, "work.yaml", "- id: a\n  instructions: do\n  dir: .\n")
 	err := cmdOrchestrator(nil)
-	if err == nil || !strings.Contains(err.Error(), "--gateway") {
-		t.Errorf("a run with no gateway should fail naming the flag, got %v", err)
+	if err == nil {
+		t.Fatal("a run with no gateway should fail")
+	}
+	for _, want := range []string{"--gateway", "fleet.yaml"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the refusal should name %q, got %v", want, err)
+		}
+	}
+}
+
+// A fleet file with no gateway section is refused, naming the file.
+func TestCmdOrchestrator_AFleetFileWithoutAGatewaySectionNamesIt(t *testing.T) {
+	isolateConfig(t)
+	node := newRoutableNode(t, "qwen3-27b", true, 300)
+	dir := t.TempDir()
+	t.Chdir(dir)
+	fleetFileIn(t, dir, "nodes:\n"+node.entry("gpu-box"))
+	mustWrite(t, "work.yaml", "- id: a\n  instructions: do\n  dir: .\n")
+	err := cmdOrchestrator(nil)
+	if err == nil || !strings.Contains(err.Error(), "fleet.yaml") || !strings.Contains(err.Error(), "--gateway") {
+		t.Errorf("a file without a gateway section should fail naming the file and the flag, got %v", err)
+	}
+}
+
+// The section's token variable is honoured where the token flag was not
+// given, and an explicit flag wins over the section.
+func TestCmdOrchestrator_TheSectionsTokenVariableIsHonoured(t *testing.T) {
+	isolateConfig(t)
+	node := newRoutableNode(t, "qwen3-27b", true, 300)
+	dir := t.TempDir()
+	t.Chdir(dir)
+	fleetFileIn(t, dir, "gateway:\n  name: the-fleet\n  url: http://gw:4000\n  tokenEnv: ORCH_FILE_TOKEN\nnodes:\n"+node.entry("gpu-box"))
+	mustWrite(t, "work.yaml", "- id: a\n  instructions: do\n  dir: .\n")
+	t.Setenv("ORCH_FILE_TOKEN", "")
+	t.Setenv("GW_ORCH_TOKEN", "")
+	t.Setenv("OPENAI_API_KEY", "")
+
+	err := cmdOrchestrator(nil)
+	if err == nil || !strings.Contains(err.Error(), "ORCH_FILE_TOKEN") {
+		t.Errorf("without a token flag the section's variable should be in force, got %v", err)
+	}
+	err = cmdOrchestrator([]string{"--token-env", "GW_ORCH_TOKEN"})
+	if err == nil || !strings.Contains(err.Error(), "GW_ORCH_TOKEN") {
+		t.Errorf("an explicit token flag should win over the section, got %v", err)
+	}
+}
+
+// The fleet file in the working directory names the gateway: with no
+// gateway flag, the run works against the section's address, and the banner
+// names it. The token sits only in the .env beside the file, the way a
+// gateway-routed launch reads it. The item names a tag no node carries, so
+// nothing is launched.
+func TestCmdOrchestrator_AFleetFileNamesTheGateway(t *testing.T) {
+	isolateConfig(t)
+	t.Setenv("ORCH_FILE_TOKEN", "")
+	t.Setenv("OPENAI_API_KEY", "")
+	node := newRoutableNode(t, "qwen3-27b", true, 300)
+	dir := t.TempDir()
+	t.Chdir(dir)
+	fleetFileIn(t, dir, "nodes:\n"+node.entry("gpu-box"))
+	mustWrite(t, filepath.Join(dir, ".env"), "ORCH_FILE_TOKEN=the-token\n")
+	mustWrite(t, "work.yaml", "- id: a\n  instructions: do\n  dir: .\n  tags:\n    - gpu=a100\n")
+
+	srv, ln, err := newGatewayServer("", "127.0.0.1:0", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	go srv.Serve(ln)
+	// The file names the gateway the server just bound, so the command finds
+	// it without a flag.
+	fleetFileIn(t, dir, "gateway:\n  name: the-fleet\n  url: http://"+ln.Addr().String()+"\n  tokenEnv: ORCH_FILE_TOKEN\nnodes:\n"+node.entry("gpu-box"))
+
+	stdout := filepath.Join(t.TempDir(), "stdout")
+	f, err := os.Create(stdout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := os.Stdout
+	os.Stdout = f
+	t.Cleanup(func() {
+		os.Stdout = old
+		f.Close()
+	})
+
+	done := make(chan error, 1)
+	go func() { done <- cmdOrchestrator(nil) }()
+
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		data, _ := os.ReadFile(stdout)
+		if strings.Contains(string(data), "in the backlog") {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	data, _ := os.ReadFile(stdout)
+	if !strings.Contains(string(data), "http://"+ln.Addr().String()) || !strings.Contains(string(data), "in the backlog") {
+		t.Fatalf("the banner should name the gateway the fleet file gave, got:\n%s", data)
+	}
+
+	interruptSelf(t)
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("the interrupt should end the run without an error, got %v", err)
+		}
+	case <-time.After(15 * time.Second):
+		t.Fatal("the interrupt did not end the run")
 	}
 }
 
