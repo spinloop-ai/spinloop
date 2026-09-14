@@ -3,7 +3,7 @@
 Work a backlog of items against a [fleet](fleet.md) at a pace the fleet can
 absorb. The orchestrator holds the backlog, reads the fleet's topology from
 the fleet's [gateway](gateway.md), admits an item while the fleet's declared
-[concurrency](fleet.md#concurrency) limits allow, and runs each admitted item
+[concurrency](../fleet-file.md#concurrency) limits allow, and runs each admitted item
 as a one-shot agent of the [active harness](harness.md) in the item's own
 directory — the agent's inference going through that same gateway.
 
@@ -59,7 +59,7 @@ directory the agent works in:
   `--create-item-dirs`, the orchestrator creates a missing directory instead.
 - **`priority`** — an integer, higher first; items of one rank go in file
   order.
-- **`tags`** — `key=value` pairs naming the [tags](fleet.md#tags) of the nodes
+- **`tags`** — `key=value` pairs naming the [tags](../fleet-file.md#tags) of the nodes
   the item may run on. Every pair must be a tag the node carries; an item with
   no tags may run anywhere. An item nothing matches waits — the fleet may
   change — rather than failing.
@@ -164,7 +164,7 @@ an item matches a node only where every tag it names is one the node carries;
 a node already running and answering is offered before a node the run would
 have to start, and among a tier the fleet file's `prefer` ranks them. A
 stopped node is an option only where the fleet file
-[wakes](fleet.md#waking).
+[wakes](../fleet-file.md#waking).
 
 ## What it does not do
 
@@ -180,7 +180,7 @@ stopped node is an option only where the fleet file
 - It never re-runs an ended item. `done` stands, and a `failed` one —
   including the ones a crash left in flight — stands.
 - It is not the fleet's scheduler. The limits it works to are the fleet
-  file's declared [concurrency](fleet.md#concurrency); it measures nothing and
+  file's declared [concurrency](../fleet-file.md#concurrency); it measures nothing and
   estimates no load.
 
 ## Flags

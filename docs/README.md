@@ -29,6 +29,8 @@ Four words carry the whole tool:
 
 - [Getting started](getting-started.md) — the end-to-end flow
 - [The `Spinloop` file](spinloop-file.md) — syntax and examples
+- [The `fleet.yaml` file](fleet-file.md) — the file a fleet is built from:
+  its nodes, its token references, and what it refuses
 - [Running on a cloud GPU](commands/remote.md) — the same Spinloop, on a
   machine that stops when you do
 - [The HTTP control API](http-api.md) — driving a supervised engine over
@@ -84,7 +86,7 @@ including the `SPINLOOP_REMOTE_*` overrides:
 | `SPINLOOP_BASE_URL` | Overrides any provider's API base URL (`--base-url`/`-u` beats it) |
 | `SPINLOOP_API_TOKEN` | Bearer token for the daemon [control API](http-api.md) |
 | `SPINLOOP_LOG_LEVEL` | How much `spinloop daemon`/`spinloop serve` record — `debug`, `info` (default), `warn`, `error` (`--log-level` beats it) |
-| *(named by `tokenEnv`)* | A [fleet](commands/fleet.md) node's bearer token — `fleet.yaml` names the variable, never the value |
+| *(named by `tokenEnv`)* | A fleet node's bearer token — the [fleet file](fleet-file.md#tokens) names the variable, never the value |
 | `DEEPSEEK_API_KEY`, `OPENAI_API_KEY`, … | Provider API keys — `spinloop provider list` shows which each provider reads |
 | `OLLAMA_BASE_URL`, `LLAMACPP_BASE_URL`, `OMLX_BASE_URL`, `VLLM_BASE_URL`, `MTPLX_BASE_URL`, `OPENAI_BASE_URL` | Per-provider endpoint overrides |
 | `AWS_REGION` | Region for AWS Bedrock |

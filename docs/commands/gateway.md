@@ -32,7 +32,7 @@ side.
 
 ## Pointing an agent at it
 
-A [`gateway` section](fleet.md#gateway) in the fleet file names the address and
+A [`gateway` section](../fleet-file.md#gateway) in the fleet file names the address and
 the variable holding the token. A launch routed through that file — `spinloop
 harness open -f` or `spinloop code -f` — is pointed at the gateway rather than
 a node: the section's address is the agent's base URL (with the OpenAI-
@@ -93,7 +93,7 @@ once in a short window, so a poll of the models list is cheap.
 A completion request is answered by the fleet's own selection: a node already
 running the model wins, ranked by the fleet file's `prefer` with fleet-file
 order breaking ties. A node whose engine is bound to loopback without an
-[`engine` override](fleet.md#where-a-nodes-engine-answers) is never selected,
+[`engine` override](../fleet-file.md#where-a-nodes-engine-answers) is never selected,
 and when it is the only match the failure says so rather than holding the
 request until the wake timeout.
 
@@ -111,12 +111,12 @@ the node.
 `GET /v1/fleet` answers with the fleet as it is now: the same cached fan-out
 the model listing reads, joined with the file's claims about each node and its
 fleet-level settings. Each node's entry carries its name, kind,
-[tags](fleet.md#tags), state, what it serves (the served name where a running
+[tags](../fleet-file.md#tags), state, what it serves (the served name where a running
 engine reports one, else the model id), whether it has answered its own health
 check, when it last did work — and, for a node that is not running, the model
 a request would start it with, where its own source describes one and the
-file's [wake policy](fleet.md#waking) allows it. The file's `wake` and
-`prefer` settings and its [concurrency](fleet.md#concurrency) limits ride
+file's [wake policy](../fleet-file.md#waking) allows it. The file's `wake` and
+`prefer` settings and its [concurrency](../fleet-file.md#concurrency) limits ride
 along, each absent where the file declares none. A node that does not answer
 is reported in its place — the way the fleet's own views report it — rather
 than failing the whole reply.
@@ -128,7 +128,7 @@ of the fleet: the orchestrator takes no fleet file of its own.
 ### Waking a node
 
 When no running node serves the model and the fleet file's
-[`wake`](fleet.md#waking) setting allows it, the gateway starts a node with
+[`wake`](../fleet-file.md#waking) setting allows it, the gateway starts a node with
 the config that node's own Spinloop source resolves to — only nodes whose
 source describes the requested model are candidates, and a node whose stored
 config already matches is tried first — and holds the request until the engine
