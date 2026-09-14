@@ -26,6 +26,17 @@ func deadPID(t *testing.T) int {
 	return pid
 }
 
+// rewriteLock replaces the lock file's content atomically, by renaming a
+// freshly written temp file over it, so a poller reading the lock
+// concurrently never observes a truncated or empty file.
+func rewriteLock(path string, pid int) error {
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, []byte(itoa(pid)), 0o600); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
+}
+
 // runWork works the work command group the way the binary does, the output
 // kept for the test to read: the stdout the command wrote, and its error.
 func runWork(t *testing.T, args ...string) (string, error) {
@@ -316,7 +327,7 @@ func TestWorkRemove_TheWaitComesBackWhereTheRunIsLive(t *testing.T) {
 	// wait on, and it comes back when the state agrees.
 	go func() {
 		time.Sleep(300 * time.Millisecond)
-		os.WriteFile(path+".state.json", []byte(`{"items":{}}`), 0o600)
+		orchestrator.SaveStateFile(path, map[string]orchestrator.ItemState{})
 	}()
 
 	tick := workWaitTick
@@ -366,7 +377,7 @@ func TestAwaitAbort_TheRunDiesWhileTheWaitIsPending(t *testing.T) {
 	// The run dies a moment out: its lock goes stale.
 	go func() {
 		time.Sleep(100 * time.Millisecond)
-		os.WriteFile(path+".lock", []byte(itoa(dead)), 0o600)
+		rewriteLock(path+".lock", dead)
 	}()
 
 	bound, tick := workWaitBound, workWaitTick
@@ -411,7 +422,7 @@ func TestAwaitRecordGone_TheRunDiesAndTheCommandWritesTheFinalWord(t *testing.T)
 	// The run dies a moment out: its lock goes stale, the record standing.
 	go func() {
 		time.Sleep(100 * time.Millisecond)
-		os.WriteFile(path+".lock", []byte(itoa(dead)), 0o600)
+		rewriteLock(path+".lock", dead)
 	}()
 
 	bound, tick := workWaitBound, workWaitTick
