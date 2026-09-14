@@ -447,6 +447,25 @@ func TestStatusFromRemoteServingFacts(t *testing.T) {
 	}
 }
 
+// statusFromRemote maps the control plane's own health check onto Ready the
+// way a local daemon's reading is reported, so a router waiting for a
+// remote engine to answer trusts it instead of a raw TCP probe — which can
+// succeed well before the model has finished loading.
+func TestStatusFromRemoteMapsHealthyOntoReady(t *testing.T) {
+	if got := statusFromRemote(remote.Response{State: "running", Healthy: boolPtr(true)}); got.Ready != "ready" {
+		t.Errorf("healthy=true should map to Ready=%q, got %q", "ready", got.Ready)
+	}
+	if got := statusFromRemote(remote.Response{State: "running", Healthy: boolPtr(false)}); got.Ready != "not-ready" {
+		t.Errorf("healthy=false should map to Ready=%q, got %q", "not-ready", got.Ready)
+	}
+	// No healthy reading at all — an older control plane, or the branch
+	// where the SSM agent is not yet reachable — leaves Ready empty rather
+	// than claiming either answer.
+	if got := statusFromRemote(remote.Response{State: "running"}); got.Ready != "" {
+		t.Errorf("an absent healthy reading should leave Ready empty, got %q", got.Ready)
+	}
+}
+
 // statusFromRemote carries a running environment's engine address — the
 // control plane's published base url — as the engine's host, so routing can
 // reach it the way it reaches any node. A stopped or undeployed environment

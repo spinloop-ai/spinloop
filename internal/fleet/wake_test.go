@@ -30,13 +30,17 @@ type fakeNode struct {
 	startStatus int
 	// engineDelay is how long after starting before the engine listens.
 	engineDelay time.Duration
-	// ready, when set, is what /v1/status reports for `ready`.
-	ready bool
+	// ready, when set (daemon.ReadyYes or daemon.ReadyNo), is what
+	// /v1/status reports for `ready`; empty reports no reading at all.
+	ready string
 	// noEngine keeps the engine's listener down even after an accepted start:
 	// readiness can only come from the daemon's own reading.
 	noEngine bool
 	// started records whether a start was accepted.
 	started bool
+	// startCalls counts every /v1/start request received, accepted or
+	// refused — unlike started, which only says whether the last one was.
+	startCalls int
 	// pushed is the deploy config the start carried.
 	pushed *inference.DeployConfig
 	// pushedKey is the engine key the start carried.
@@ -68,8 +72,8 @@ func newFakeNode(t *testing.T, state, model string) *fakeNode {
 		resp := daemon.StatusResponse{State: f.state, Model: f.model}
 		if f.state == string(daemon.StateRunning) {
 			resp.Engine = &daemon.EngineEndpoint{Port: f.enginePort}
-			if f.ready {
-				resp.Ready = "ready"
+			if f.ready != "" {
+				resp.Ready = f.ready
 			}
 		}
 		json.NewEncoder(w).Encode(resp)
@@ -77,6 +81,7 @@ func newFakeNode(t *testing.T, state, model string) *fakeNode {
 	mux.HandleFunc("/v1/start", func(w http.ResponseWriter, r *http.Request) {
 		f.mu.Lock()
 		defer f.mu.Unlock()
+		f.startCalls++
 		if f.startErr != "" {
 			status := f.startStatus
 			if status == 0 {
@@ -334,6 +339,47 @@ func TestWakeTimesOutWithoutStopping(t *testing.T) {
 	}
 }
 
+// Two Wake calls racing to wake the same node coalesce into one actual
+// start. This fixture's own /v1/start does not itself reject a concurrent
+// call the way a real daemon's supervisor mutex does — unlike a daemon
+// node, a remote environment's control plane has no such guard at all — so
+// without wakeSingleflight both calls would reach StartWith and each start
+// their own engine (or, for a remote node, each launch their own instance).
+func TestWakeCoalescesConcurrentCallsForTheSameNode(t *testing.T) {
+	shortWake(t)
+	node := newFakeNode(t, string(daemon.StateIdle), "")
+	node.engineDelay = 100 * time.Millisecond
+	cfg := fleetOf(t, []string{"box"}, node)
+	cfgFor := ConstantConfig(inference.DeployConfig{Runner: "llamacpp", ModelID: "m"}, nil)
+	results := statusOf(t, cfg)
+
+	var wg sync.WaitGroup
+	choices := make([]*Choice, 2)
+	errs := make([]error, 2)
+	for i := range 2 {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			choices[i], errs[i] = cfg.Wake(context.Background(), Want{Model: "m"}, cfgFor, results, nil)
+		}(i)
+	}
+	wg.Wait()
+
+	for i, err := range errs {
+		if err != nil {
+			t.Fatalf("call %d: %v", i, err)
+		}
+	}
+	if choices[0].Node.Name != "box" || choices[1].Node.Name != "box" {
+		t.Errorf("both calls should land on the same node, got %q and %q", choices[0].Node.Name, choices[1].Node.Name)
+	}
+	node.mu.Lock()
+	defer node.mu.Unlock()
+	if node.startCalls != 1 {
+		t.Errorf("the node's /v1/start was called %d times, want exactly 1 — the second wake should have joined the first rather than starting its own", node.startCalls)
+	}
+}
+
 // Losing the race to another client is another route to the same place.
 func TestWakeLosingTheRaceUsesTheNode(t *testing.T) {
 	shortWake(t)
@@ -538,6 +584,83 @@ func TestWakeStartsADeployedRemoteNode(t *testing.T) {
 	}
 }
 
+// A remote node's wake waits for the control plane's own health check to
+// say ready, not just for its port to accept a connection: this fake
+// reports running-but-unhealthy for a stretch after boot, the way an engine
+// that has opened its port but is still loading weights does, before
+// flipping healthy. The bug this guards against would have returned as
+// soon as the port opened.
+func TestWakeWaitsForARemoteEngineToBecomeHealthy(t *testing.T) {
+	shortWake(t)
+	stubAWSCreds(t)
+	const unhealthyFor = 150 * time.Millisecond
+
+	var (
+		mu        sync.Mutex
+		engine    net.Listener
+		healthyAt time.Time
+	)
+	statusBody := func() string {
+		mu.Lock()
+		defer mu.Unlock()
+		if engine == nil {
+			return `{"state":"stopped"}`
+		}
+		healthy := time.Now().After(healthyAt)
+		return fmt.Sprintf(
+			`{"state":"running","healthy":%t,"runner":"llamacpp","modelId":"org/m","servedName":"m","base_url":"http://%s/v1"}`,
+			healthy, engine.Addr())
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(statusBody()))
+	})
+	mux.HandleFunc("POST /", func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		ln, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			mu.Unlock()
+			t.Fatal(err)
+		}
+		engine = ln
+		healthyAt = time.Now().Add(unhealthyFor)
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `{"state":"ready","healthy":true,"runner":"llamacpp","modelId":"org/m","servedName":"m","base_url":"http://%s/v1"}`, ln.Addr())
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(func() {
+		srv.Close()
+		mu.Lock()
+		defer mu.Unlock()
+		if engine != nil {
+			engine.Close()
+		}
+	})
+	registerRemoteEnv(t, "cloud", srv.URL, srv.URL)
+
+	path := writeFleet(t, "nodes:\n  - name: cloud\n    kind: remote\n", "")
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	results := statusOf(t, cfg)
+
+	cfgFor := ConstantConfig(inference.DeployConfig{Runner: "llamacpp", ModelID: "org/m", ServedModelName: "m"}, nil)
+	start := time.Now()
+	choice, err := cfg.Wake(context.Background(), Want{Model: "org/m"}, cfgFor, results, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if time.Since(start) < unhealthyFor {
+		t.Error("wake returned before the control plane reported the engine healthy — an open TCP port alone must not be trusted")
+	}
+	if choice.Node.Name != "cloud" {
+		t.Errorf("chose %q, want cloud", choice.Node.Name)
+	}
+}
+
 // engineUpAfter makes the "engine" of a node started by someone else come
 // listening after d: the node already reports running, so the engine's delay
 // is not the start's.
@@ -612,7 +735,7 @@ func TestWakeWaitsForARacedNodeToAnswer(t *testing.T) {
 func TestWakeTrustsTheDaemonReadinessReading(t *testing.T) {
 	shortWake(t)
 	node := newFakeNode(t, string(daemon.StateIdle), "")
-	node.ready = true
+	node.ready = daemon.ReadyYes
 	node.noEngine = true // the probe could never succeed; only the reading could
 	cfg := fleetOf(t, []string{"box"}, node)
 
@@ -623,6 +746,32 @@ func TestWakeTrustsTheDaemonReadinessReading(t *testing.T) {
 	}
 	if choice.Node.Name != "box" {
 		t.Errorf("chose %q", choice.Node.Name)
+	}
+}
+
+// An explicit "not ready" reading is trusted too, and is not second-guessed
+// by a successful TCP probe: a runner's port can accept a connection well
+// before it can answer a request — llama.cpp and vLLM both open it early
+// and answer their own health check with a 503 while still loading — so an
+// engine that says it is not ready must not be waved through because
+// something merely answers on its port.
+func TestWakeDoesNotTrustTheProbeOverAnExplicitNotReadyReading(t *testing.T) {
+	shortWake(t)
+	node := newFakeNode(t, string(daemon.StateIdle), "")
+	node.ready = daemon.ReadyNo
+	// engineDelay defaults to 0, so the "engine" starts listening almost
+	// immediately — the TCP probe alone would say ready straight away. The
+	// bug this guards against is exactly that probe overriding a reading
+	// that already says no.
+	cfg := fleetOf(t, []string{"box"}, node)
+
+	_, err := cfg.Wake(context.Background(), Want{Model: "m"},
+		ConstantConfig(inference.DeployConfig{Runner: "llamacpp", ModelID: "m"}, nil), statusOf(t, cfg), nil)
+	if err == nil {
+		t.Fatal("expected a timeout: the reading never says ready")
+	}
+	if !strings.Contains(err.Error(), "box") {
+		t.Errorf("message should name the node, got: %v", err)
 	}
 }
 

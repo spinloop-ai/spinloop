@@ -165,6 +165,83 @@ individually) and reads directly off the node it affects rather than adding
 a second global switch whose interaction with the first has to be
 documented separately.
 
+### Coalescing concurrent wakes
+
+Found running this against a real fleet: two requests landed on the gateway
+within half a second of each other, both wanting the same model nothing was
+serving, and both logged "Waking dev-4...". A daemon node's control API
+would have turned the loser into a joiner via its own `409` — that race was
+never actually a problem for a daemon node, so the original design (see the
+now-corrected risk note above) assumed a remote environment's conflict would
+present the same way and left it alone. It does not: `remote/lambda/start`'s
+only de-duplication is a `DescribeInstances` tag lookup, which is eventually
+consistent right after a `RunInstances` call, so two `wake()` invocations
+close enough together can each miss the other's not-yet-visible instance and
+each launch one — a real double-billed launch, not a cosmetic double log
+line, and never surfaced as an error either side could catch: the Lambda
+doesn't propagate a failed on-instance daemon start as anything a caller
+would recognise as a conflict.
+
+Fixed with a `golang.org/x/sync/singleflight.Group`, keyed by the fleet
+file's path alongside the node's name, wrapping exactly the "start (or join)
+and wait for ready" step inside `Wake`'s per-candidate loop — the same step
+the daemon's `409` used to make redundant for daemon nodes and now makes
+redundant for every node kind uniformly. Two concurrent calls for the same
+node share one call to `startAndWait`; only the first actually starts
+anything, and both receive its result. The shared call runs on its own
+`context.Background()`, not either caller's request context: whichever
+caller happened to be first must not have the wait cut short by its own
+request being cancelled while another caller is still waiting on the same
+node, and `waitReady` already bounds the wait by `WakeTimeout` on its own
+regardless of context.
+
+A fatal outcome (the engine started, or was found already running, but
+never answered) has to reach every caller sharing that result the same way
+a non-fatal refusal does not: the former must not be retried against another
+candidate — the engine is left running — while the latter should let each
+caller's own loop move on to its own next candidate. `startAndWait` signals
+this with a `*fatalWakeError` wrapper so `Wake`'s loop, after `Do` returns,
+can tell the two apart without singleflight itself needing to know anything
+about wake-specific semantics.
+
+Rejected alternative: fix the race in the remote Lambda instead (a
+DynamoDB-backed idempotency lock, or Lambda reserved concurrency of 1 per
+environment). Rejected for this change — it would need a coordinated
+`remote/` CDK redeploy per environment, which this PR cannot cause on its
+own, whereas the Go-side fix closes the gap for every already-deployed
+environment the moment the gateway binary updates. A control-plane-side lock
+would still be worth doing eventually, as defence in depth against a
+caller outside this gateway process (a second gateway instance, a direct
+script) racing the same environment — out of scope here.
+
+### Trusting a real readiness signal over an open port
+
+Found once dev-4 actually booted: the gateway routed a request to it while
+the model was still loading, and the request failed. `waitReady` was built
+to prefer a real readiness reading over a raw TCP probe — the probe only
+checks that a port accepts a connection, which both llama.cpp and vLLM do
+before they can answer a request — but its `if status.Ready ==
+daemon.ReadyYes { return }` fell through to the probe for *everything else*,
+including an explicit `ReadyNo`, not only "no reading landed". A daemon node
+rarely surfaces this: its own reading is almost always populated one way or
+the other by the time a caller asks. A remote node's `Ready` was *always*
+empty going into this fix, for an unrelated reason — `statusFromRemote`
+never mapped the control plane's own `healthy` field (the same `/health`
+check, already relayed on a running remote view) onto it at all — so every
+remote wake fell through to the probe by construction, making the gap
+certain rather than occasional. Fixing the mapping without also fixing the
+fallthrough would have made the gap visible without closing it: a properly
+populated `ReadyNo` would still have lost to a successful probe.
+
+Both are fixed together: `statusFromRemote` now maps `Healthy` onto `Ready`
+the way a local daemon's own check is reported, and `waitReady` branches on
+`Ready` three ways — `ReadyYes` returns, `ReadyNo` waits without probing,
+and only an empty reading falls back to the probe, matching what the
+existing routing check for an already-running node (`select.go`'s
+`running()`, which already treated `ReadyNo` correctly) established was the
+right rule. No design alternative was considered here — this was a
+correctness bug against the design's own stated intent, not a choice.
+
 ## Risks / Trade-offs
 
 - [A remote candidate's resolved config is stale by up to `wakeableModels`'
@@ -183,10 +260,11 @@ documented separately.
 - [A second place (`node.wake`) now decides whether a node wakes, which
   could confuse debugging] → Mitigation: refusal and topology text names
   which setting decided it.
-- [Remote's `isAlreadyRunning` race handling in `wake.go` was written and
-  tested against a daemon's `409` and error text; a remote start's conflict
-  may not present the same way] → Mitigation: out of scope for this change
-  — worst case a race is reported as a refusal rather than adopted gracefully,
-  which is a missed optimisation, not incorrect behaviour, and matches how
-  a remote node's races are already handled everywhere else in the fleet
-  package today.
+- [Two requests racing to wake the same remote node could each miss the
+  other's not-yet-visible instance in the control plane's eventually
+  consistent instance lookup, launching two — this was flagged here as
+  "out of scope, worst case a missed optimisation" on the assumption that a
+  remote start's conflict would surface as a refusal the way a daemon's 409
+  does; it does not (see "Coalescing concurrent wakes" below), so this was
+  wrong and had to be fixed rather than accepted] → Mitigation: see
+  "Coalescing concurrent wakes".

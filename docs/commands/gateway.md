@@ -150,8 +150,13 @@ one whose stored config already matches is tried first:
 The wait is bounded by `--wake-timeout` (default 5m); a timeout fails the
 request saying so and leaves the engine running, so a slow load — or, for a
 remote node, a slow boot — is not thrown away. Concurrent requests for the
-same model wake at most one engine: a request that loses the start to an
-"already running" answer takes the node the other one started.
+same model wake at most one engine: the gateway coalesces two requests
+racing to wake the same node into a single start, so a request that arrives
+mid-wake joins the one already under way rather than starting a second
+engine of its own — a daemon node's control API would refuse the second
+start anyway, but a remote environment's control plane does not, so this is
+what keeps a burst of requests from booting (and billing for) more than one
+instance.
 
 A request nothing is serving fails without starting anything, naming the node
 and the `spinloop fleet start <node>` command that would start it, when no

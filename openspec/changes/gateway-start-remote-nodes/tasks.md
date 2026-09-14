@@ -141,3 +141,84 @@ state (and fails outright when there is none to read) — the same source
       reply carries none — model id only).
 - [x] 7.4 Re-run `go test ./... -cover` and `gofmt -l .` to confirm the fix
       and its test changes are clean.
+
+## 8. Bug fix: coalesce concurrent wakes of the same node
+
+Found immediately after 7's fix, still against the same real fleet: two
+gateway log lines, "Waking dev-4 to serve X..." twice inside half a second,
+for what was one orchestrator dispatch. A daemon node's control API turns a
+racing second start into a `409` the loser joins rather than repeats — that
+race was never actually a problem for a daemon node. A remote environment's
+control plane has no equivalent: its instance lookup is eventually
+consistent right after a launch, so two wakes racing within that window can
+each miss the other's not-yet-visible instance and each launch one — a real
+double-billed EC2 launch, not a cosmetic duplicate log line.
+
+- [x] 8.1 Add `golang.org/x/sync/singleflight` (`go get
+      golang.org/x/sync@v0.16.0` — pinned to the version already resolvable
+      in the dependency graph, then `go mod tidy`, taking care the `go`
+      directive in `go.mod` does not get bumped as a side effect).
+- [x] 8.2 In `internal/fleet/wake.go`, add a package-level
+      `wakeSingleflight singleflight.Group` keyed by `fleet.Path + node
+      name`, and extract the "start (or join a race) and wait for ready"
+      step of `Wake`'s per-candidate loop into `Config.startAndWait`, called
+      through `wakeSingleflight.Do` so concurrent callers for the same node
+      share one call. Run the shared call on `context.Background()`, not
+      any one caller's request context, so one caller's cancelled request
+      cannot cut short another caller still waiting on the same node.
+      Signal a fatal outcome (engine started or found already running, but
+      never answered — must not be retried elsewhere) through a
+      `*fatalWakeError` wrapper the loop checks after `Do` returns, keeping
+      that wake-specific distinction out of singleflight's own contract.
+      Verify with a test asserting a fake node's `/v1/start` is called
+      exactly once when two `Wake` calls race for it — the fake does not
+      itself reject a concurrent start the way a real daemon does, so this
+      only passes with the coalescing in place.
+- [x] 8.3 Update the `fleet-gateway` delta spec's "Waking a node for a
+      request" requirement and its concurrent-wake scenarios,
+      `docs/commands/gateway.md`, and `design.md` to describe the
+      coalescing as a property of every node kind, not something a daemon's
+      `409` happens to provide.
+- [x] 8.4 Re-run `go test ./... -cover -race` (at least for
+      `internal/fleet` and `internal/gateway`) and `gofmt -l .`.
+
+## 9. Bug fix: a remote wake trusted an open port over "still loading"
+
+Found once dev-4 finally booted: the gateway routed a request to it and the
+launched agent's own request failed with "Loading model" — the engine's
+process was up and its port was accepting connections, but the model had
+not finished loading. Two bugs compounded:
+
+- `statusFromRemote` (`internal/fleet/remote_node.go`) never mapped the
+  control plane's own `healthy` reading (`remote.Response.Healthy` — the
+  same `/health` check, excluding the 503 an engine answers while loading,
+  that a running remote view already surfaces) onto `daemon.StatusResponse
+  .Ready`, so a remote node's readiness was always unknown to `waitReady`.
+- `waitReady` (`internal/fleet/wake.go`) treated any `Ready` value short of
+  `ReadyYes` — including an explicit `ReadyNo`, not just "no reading yet" —
+  as a reason to fall back to a raw TCP probe, which only checks that the
+  port accepts a connection. Both llama.cpp and vLLM open their port before
+  they can serve a request, so the probe returns true during exactly the
+  window `ReadyNo` exists to describe — the probe was second-guessing a
+  reading that had already answered. This affected a `kind: daemon` node
+  too, wherever its own reading said `ReadyNo`; it was simply never hit
+  before dev-4 made the remote gap likely on every cold wake, since a
+  remote node's `Ready` was always empty and so always fell through.
+  `internal/fleet/select.go`'s ordinary routing (an already-running node)
+  already got this right — only `waitReady`'s wake-time polling had the bug.
+
+- [x] 9.1 Map `resp.Healthy` onto `Ready` in `statusFromRemote`
+      (`internal/fleet/remote_node.go`): `true` to `daemon.ReadyYes`,
+      `false` to `daemon.ReadyNo`, `nil` (no reading landed) left empty.
+      Verify with a unit test covering all three.
+- [x] 9.2 In `waitReady`, branch on `status.Ready` three ways instead of a
+      single `== ReadyYes` check with everything else falling through to
+      the TCP probe: `ReadyYes` returns immediately, `ReadyNo` waits without
+      probing, and only an empty reading (no convention to trust) falls
+      back to the probe. Verify with a test where a node reports `ReadyNo`
+      while its engine's port already answers, asserting `Wake` does not
+      return until the reading itself changes (here: times out, since it
+      never does) — and a second test carrying this through the full
+      remote path: a fake control plane reporting running-but-unhealthy for
+      a stretch after boot, asserting the wake takes at least that long.
+- [x] 9.3 Re-run `go test ./... -cover -race` and `gofmt -l .`.

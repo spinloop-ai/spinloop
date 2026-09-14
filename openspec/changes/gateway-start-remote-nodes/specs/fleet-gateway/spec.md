@@ -119,8 +119,13 @@ boot — is not thrown away.
 
 When several requests ask for a model nothing is serving at once, the gateway
 SHALL start at most one engine per node and answer every request from it: the
-first request's wait is the wait the rest join. A node another request woke
-first SHALL be used the same way, and only once its engine answers.
+first request's wait is the wait the rest join, regardless of the node's
+kind. A daemon node's own control API refuses a second concurrent start on
+its own, but a remote environment's control plane does not, so the gateway
+SHALL NOT rely on that alone: two requests racing to wake the same node
+SHALL be coalesced before either reaches the node, not just reconciled after
+one of them answers. A node another request woke first SHALL be used the
+same way, and only once its engine answers.
 
 A request for a model nothing is serving, and for which waking is not allowed
 on any node that names it, SHALL fail without starting anything, naming the
@@ -171,6 +176,13 @@ rather than trying to start a node with nothing.
   node's source describes it
 - **THEN** that node is started once, and both requests are answered from the
   same engine
+
+#### Scenario: Concurrent cold requests share one remote wake
+
+- **WHEN** two requests arrive at once for a model nothing is serving, and one
+  remote node's stats reply reports it is deployed to serve it
+- **THEN** that environment's instance is started once, not once per request,
+  and both requests are answered once its engine answers
 
 #### Scenario: A woken engine takes the gateway's key
 

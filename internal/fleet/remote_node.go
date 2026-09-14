@@ -183,6 +183,16 @@ func (n *remoteNode) Logs(ctx context.Context, offset int64, limit int) (daemon.
 // routing resolves a remote node's address the way it resolves any node's.
 // Absent (a stopped or undeployed environment reports none) means no engine
 // address, exactly as the parts would be.
+//
+// Healthy is the control plane's own readiness reading — the same health
+// check (hitting the engine's /health, excluding the 503 it answers while
+// still loading weights) a running remote view already carries — mapped
+// onto Ready the way a local daemon's own reading is, so a router waiting
+// for a remote engine to answer trusts this instead of falling back to
+// whether its port merely accepts a connection, which it can do well before
+// the model has loaded. Absent (an older control plane, or the SSM agent
+// not yet reachable) leaves Ready empty, the same "no reading yet" a local
+// daemon reports before its own first check lands.
 func statusFromRemote(resp remote.Response) daemon.StatusResponse {
 	s := daemon.StatusResponse{
 		State:        resp.State,
@@ -191,6 +201,13 @@ func statusFromRemote(resp remote.Response) daemon.StatusResponse {
 		ServedName:   resp.ServedName,
 		LastActiveAt: resp.LastActiveAt,
 		IdleSeconds:  resp.IdleSeconds,
+	}
+	if resp.Healthy != nil {
+		if *resp.Healthy {
+			s.Ready = daemon.ReadyYes
+		} else {
+			s.Ready = daemon.ReadyNo
+		}
 	}
 	if u, err := url.Parse(resp.BaseURL); resp.BaseURL != "" && err == nil && u.Host != "" {
 		port, _ := strconv.Atoi(u.Port())
