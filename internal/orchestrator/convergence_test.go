@@ -240,7 +240,7 @@ func TestLoop_ANewPassTakesUpTheMarker(t *testing.T) {
 	}
 
 	for time.Now().Before(deadline) {
-		if rec.launchCount() >= 2 {
+		if rec.launchCount() >= 2 && readState(t, path).Items["a"].State == StateRunning {
 			break
 		}
 		time.Sleep(2 * time.Millisecond)
