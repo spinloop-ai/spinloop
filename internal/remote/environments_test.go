@@ -3,6 +3,7 @@ package remote
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -96,7 +97,7 @@ func TestSaveEnvironment(t *testing.T) {
 		t.Errorf("remote.json mode = %v, want 0600", fi.Mode().Perm())
 	}
 	// Round-trips through the loader, environment identifier included.
-	got, err := LoadConfigFile(must1(EnvConfigPath("prod")), func(string) string { return "" })
+	got, err := LoadEnvironment("prod", func(string) string { return "" })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,38 +114,61 @@ func TestSaveEnvironment(t *testing.T) {
 	}
 }
 
-func TestLoadDefault(t *testing.T) {
+func TestLoadEnvironment_ByName(t *testing.T) {
 	getenv := func(string) string { return "" }
 	cfg := `{"start_url":"https://s","stop_url":"https://x","region":"eu-west-1"}`
 
-	t.Run("default environment", func(t *testing.T) {
+	t.Run("reads the named environment", func(t *testing.T) {
 		t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 		writeEnv(t, "default", cfg)
-		got, err := LoadDefault(getenv)
+		got, err := LoadEnvironment("default", getenv)
 		if err != nil || got.StartURL != "https://s" {
-			t.Fatalf("default env: %+v, %v", got, err)
+			t.Fatalf("named env: %+v, %v", got, err)
 		}
 	})
 
-	t.Run("legacy file fallback", func(t *testing.T) {
+	// The superseded path is not a second place an environment can live: a
+	// file there is simply not read, whatever it holds.
+	t.Run("a file at the superseded path is not read", func(t *testing.T) {
 		home := t.TempDir()
 		t.Setenv("XDG_CONFIG_HOME", home)
-		if err := os.MkdirAll(filepath.Dir(must1(ConfigPath())), 0o700); err != nil {
+		legacy := filepath.Join(home, "spinloop", "remote.json")
+		if err := os.MkdirAll(filepath.Dir(legacy), 0o700); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(must1(ConfigPath()), []byte(cfg), 0o600); err != nil {
+		if err := os.WriteFile(legacy, []byte(cfg), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		got, err := LoadDefault(getenv)
-		if err != nil || got.Region != "eu-west-1" {
-			t.Fatalf("legacy fallback: %+v, %v", got, err)
+		if _, err := LoadEnvironment("default", getenv); err == nil {
+			t.Fatal("the superseded path must not configure an environment")
 		}
 	})
 
-	t.Run("neither present reports where to put it", func(t *testing.T) {
+	t.Run("nothing present reports where to put it", func(t *testing.T) {
 		t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-		if _, err := LoadDefault(getenv); err == nil {
-			t.Fatal("expected an error naming the default environment")
+		_, err := LoadEnvironment("default", getenv)
+		if err == nil {
+			t.Fatal("expected an error naming the environment's path")
+		}
+		if !strings.Contains(err.Error(), "remotes/default/remote.json") {
+			t.Errorf("the failure should name the registry path, got %v", err)
+		}
+	})
+
+	// The documented no-file workflow: the overrides carry the configuration,
+	// and the name carries the identifier the control calls need.
+	t.Run("overrides configure a named environment with no file", func(t *testing.T) {
+		t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+		got, err := LoadEnvironment("ci", envMap(map[string]string{
+			"SPINLOOP_REMOTE_START_URL": "https://s",
+			"SPINLOOP_REMOTE_STOP_URL":  "https://x",
+			"SPINLOOP_REMOTE_REGION":    "eu-west-1",
+		}))
+		if err != nil {
+			t.Fatalf("overrides should configure it: %v", err)
+		}
+		if got.Environment != "ci" {
+			t.Errorf("Environment = %q, want the name given", got.Environment)
 		}
 	})
 }

@@ -17,7 +17,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -69,57 +68,35 @@ type Config struct {
 	Environment string `json:"environment"`
 }
 
-// ConfigPath returns the path of the legacy per-user remote config file,
-// alongside spinloop's own config in the same directory. The environments
-// registry (see environments.go) supersedes it; it is still read as the
-// fallback for the default environment.
-func ConfigPath() (string, error) {
-	home, err := ConfigHome()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(home, "remote.json"), nil
-}
-
-// LoadConfig reads the per-user config file and applies environment overrides
-// (SPINLOOP_REMOTE_START_URL, SPINLOOP_REMOTE_STOP_URL, SPINLOOP_REMOTE_REGION; the
-// region also falls back to AWS_REGION and then to the region embedded in the
-// Function URL host). A missing file is fine — env vars alone can carry the
-// config. getenv is injectable for tests.
-func LoadConfig(getenv func(string) string) (Config, error) {
-	path, err := ConfigPath()
+// LoadEnvironment reads a named environment's configuration: the remote.json
+// in its registry directory, with the SPINLOOP_REMOTE_* overrides applied on
+// top. It is the only way an environment is resolved — there is no path
+// outside the registry, and no name that resolves by a different rule.
+//
+// A name with no file is not a failure on its own: the overrides may carry a
+// complete configuration, which is how the remote commands run on a machine
+// with nothing on disk. In that case the name is the environment identifier
+// the control calls carry, since a configuration assembled from variables has
+// no file to take one from. Where the overrides are incomplete too,
+// finishConfig fails naming the registry path to create.
+func LoadEnvironment(name string, getenv func(string) string) (Config, error) {
+	path, err := EnvConfigPath(name)
 	if err != nil {
 		return Config{}, err
 	}
 	var cfg Config
 	data, err := os.ReadFile(path)
-	if err == nil {
+	switch {
+	case err == nil:
 		if err := json.Unmarshal(data, &cfg); err != nil {
 			return Config{}, fmt.Errorf("parsing %s: %w", path, err)
 		}
-	} else if !os.IsNotExist(err) {
+	case os.IsNotExist(err):
+		// No file: the overrides may still configure it, and the name is what
+		// tells the shared Lambdas which instance they are acting on.
+		cfg.Environment = name
+	default:
 		return Config{}, err
-	}
-	return finishConfig(cfg, getenv, path)
-}
-
-// LoadConfigFile reads a registered environment's remote.json — the file
-// named by an environment in the per-user registry — then applies the same
-// environment overrides as LoadConfig. Unlike LoadConfig, the file must
-// exist: it was asked for by name.
-func LoadConfigFile(path string, getenv func(string) string) (Config, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return Config{}, fmt.Errorf(
-				"remote config %s does not exist: run `spinloop remote deploy` to create and register the environment",
-				path)
-		}
-		return Config{}, err
-	}
-	var cfg Config
-	if err := json.Unmarshal(data, &cfg); err != nil {
-		return Config{}, fmt.Errorf("parsing %s: %w", path, err)
 	}
 	return finishConfig(cfg, getenv, path)
 }

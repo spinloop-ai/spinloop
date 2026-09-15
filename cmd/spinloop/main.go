@@ -235,7 +235,7 @@ func applySelection(sel spinloop.Selection, h harness.Harness, spinloopPath, env
 			}
 			return err
 		}
-		cfg, err := remote.LoadConfigFile(envPath, viperGetenv())
+		cfg, err := remote.LoadEnvironment(envName, viperGetenv())
 		if err != nil {
 			return err
 		}
@@ -1624,7 +1624,7 @@ func fetchRemoteEnv(sel spinloop.Selection, envName string, resolve func(string)
 	}
 	// The call crosses the network, and a cold control plane is not instant.
 	fmt.Fprintf(os.Stderr, "Fetching the endpoint's environment from %s...\n", envName)
-	cfg, err := remote.LoadConfigFile(envPath, viperGetenv())
+	cfg, err := remote.LoadEnvironment(envName, viperGetenv())
 	if err == nil {
 		ctx, cancel := context.WithTimeout(context.Background(), remoteEnvTimeout)
 		defer cancel()

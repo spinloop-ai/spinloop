@@ -29,10 +29,11 @@ func stubAWSEnv(t *testing.T) {
 	t.Setenv("AWS_EC2_METADATA_DISABLED", "true")
 }
 
-// writeRemoteConfig stores a remote config pointing at the test server.
+// writeRemoteConfig registers the `default` environment pointing at the test
+// server — the registry is the only place a configuration is read from.
 func writeRemoteConfig(t *testing.T, serverURL string) {
 	t.Helper()
-	path := must1(remote.ConfigPath())
+	path := must1(remote.EnvConfigPath("default"))
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -68,8 +69,20 @@ func TestRemoteDispatch(t *testing.T) {
 
 func TestRemote_Unconfigured(t *testing.T) {
 	isolateConfig(t)
-	for _, sub := range []string{"start", "restart", "stop", "status"} { // deploy needs a Spinloop, covered separately
-		if err := run([]string{"remote", sub}); err == nil || !strings.Contains(err.Error(), "not configured") {
+	// deploy needs a Spinloop, covered separately.
+	subs := []string{"start", "restart", "stop", "metrics"}
+	// Naming no environment is its own failure: these commands act on one
+	// instance, and an instance nobody named is not one to act on.
+	for _, sub := range subs {
+		err := run([]string{"remote", sub})
+		if err == nil || !strings.Contains(err.Error(), "pass --env") {
+			t.Errorf("remote %s with no environment should name the flag, got %v", sub, err)
+		}
+	}
+	// Naming one that has no configuration explains the setup.
+	for _, sub := range subs {
+		err := run([]string{"remote", sub, "--env", "default"})
+		if err == nil || !strings.Contains(err.Error(), "not configured") {
 			t.Errorf("remote %s without config should explain setup, got %v", sub, err)
 		}
 	}
@@ -86,7 +99,7 @@ func TestRemoteStart_PrintsExports(t *testing.T) {
 	writeRemoteConfig(t, server.URL)
 
 	out := captureStdout(t, func() {
-		if err := cmdRemoteStart([]string{"--print-env"}); err != nil {
+		if err := cmdRemoteStart([]string{"--env", "default", "--print-env"}); err != nil {
 			t.Errorf("cmdRemoteStart: %v", err)
 		}
 	})
@@ -108,7 +121,7 @@ func TestRemoteStart_NoExportsWithoutFlag(t *testing.T) {
 	writeRemoteConfig(t, server.URL)
 
 	out := captureStdout(t, func() {
-		if err := cmdRemoteStart(nil); err != nil {
+		if err := cmdRemoteStart([]string{"--env", "default"}); err != nil {
 			t.Errorf("cmdRemoteStart: %v", err)
 		}
 	})
@@ -163,7 +176,7 @@ func TestRemoteEnv_PrintsExports(t *testing.T) {
 	writeRemoteConfig(t, server.URL)
 
 	out := captureStdout(t, func() {
-		if err := cmdRemoteEnv(nil); err != nil {
+		if err := cmdRemoteEnv([]string{"--env", "default"}); err != nil {
 			t.Errorf("cmdRemoteEnv: %v", err)
 		}
 	})
@@ -184,7 +197,7 @@ func TestRemoteStatus_PrintsState(t *testing.T) {
 	writeRemoteConfig(t, server.URL)
 
 	out := captureStdout(t, func() {
-		if err := cmdRemoteStatus(nil); err != nil {
+		if err := cmdRemoteStatus([]string{"--env", "default"}); err != nil {
 			t.Errorf("cmdRemoteStatus: %v", err)
 		}
 	})
@@ -210,7 +223,7 @@ func TestRemoteStatus_PrintsVersion(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	path := must1(remote.ConfigPath())
+	path := must1(remote.EnvConfigPath("default"))
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -229,7 +242,7 @@ func TestRemoteStatus_PrintsVersion(t *testing.T) {
 	}
 
 	out := captureStdout(t, func() {
-		if err := cmdRemoteStatus(nil); err != nil {
+		if err := cmdRemoteStatus([]string{"--env", "default"}); err != nil {
 			t.Errorf("cmdRemoteStatus: %v", err)
 		}
 	})
@@ -252,7 +265,7 @@ func TestRemoteStop_PrintsState(t *testing.T) {
 	writeRemoteConfig(t, server.URL)
 
 	out := captureStdout(t, func() {
-		if err := cmdRemoteStop(nil); err != nil {
+		if err := cmdRemoteStop([]string{"--env", "default"}); err != nil {
 			t.Errorf("cmdRemoteStop: %v", err)
 		}
 	})
@@ -277,7 +290,7 @@ func TestRemotePause_PrintsState(t *testing.T) {
 	writeRemoteConfig(t, server.URL)
 
 	out := captureStdout(t, func() {
-		if err := cmdRemotePause(nil); err != nil {
+		if err := cmdRemotePause([]string{"--env", "default"}); err != nil {
 			t.Errorf("cmdRemotePause: %v", err)
 		}
 	})
@@ -323,7 +336,7 @@ func TestRemoteRestart_Flow(t *testing.T) {
 	writeRemoteConfig(t, server.URL)
 
 	out := captureStdout(t, func() {
-		if err := run([]string{"remote", "restart"}); err != nil {
+		if err := run([]string{"remote", "restart", "--env", "default"}); err != nil {
 			t.Errorf("remote restart: %v", err)
 		}
 	})
@@ -351,7 +364,7 @@ func TestRemoteRestart_ForceFlag(t *testing.T) {
 			writeRemoteConfig(t, server.URL)
 
 			out := captureStdout(t, func() {
-				if err := cmdRemoteRestart([]string{flag}); err != nil {
+				if err := cmdRemoteRestart([]string{"--env", "default", flag}); err != nil {
 					t.Errorf("remote restart %s: %v", flag, err)
 				}
 			})
@@ -379,7 +392,7 @@ func TestRemoteRestart_TimeoutFlag(t *testing.T) {
 	writeRemoteConfig(t, server.URL)
 
 	out := captureStdout(t, func() {
-		if err := cmdRemoteRestart([]string{"--timeout", "5m"}); err != nil {
+		if err := cmdRemoteRestart([]string{"--env", "default", "--timeout", "5m"}); err != nil {
 			t.Errorf("remote restart --timeout: %v", err)
 		}
 	})
@@ -400,7 +413,7 @@ func TestRemoteRestart_AlreadyStoppedBehavesAsStart(t *testing.T) {
 	writeRemoteConfig(t, server.URL)
 
 	out := captureStdout(t, func() {
-		if err := cmdRemoteRestart(nil); err != nil {
+		if err := cmdRemoteRestart([]string{"--env", "default"}); err != nil {
 			t.Errorf("remote restart on a stopped environment: %v", err)
 		}
 	})
@@ -436,7 +449,7 @@ func TestRemoteRestart_StatusFailureDoesNotGate(t *testing.T) {
 
 	out := captureStdout(t, func() {
 		errOut := captureStderr(t, func() {
-			if err := cmdRemoteRestart(nil); err != nil {
+			if err := cmdRemoteRestart([]string{"--env", "default"}); err != nil {
 				t.Errorf("remote restart after a failed status check: %v", err)
 			}
 		})
@@ -467,7 +480,7 @@ func TestRemoteRestart_WakeFailureReportsRecovery(t *testing.T) {
 	defer server.Close()
 	writeRemoteConfig(t, server.URL)
 
-	err := cmdRemoteRestart(nil)
+	err := cmdRemoteRestart([]string{"--env", "default"})
 	if err == nil {
 		t.Fatal("expected a wake failure error")
 	}
@@ -513,7 +526,7 @@ func TestRemote_SpinloopDiscovery(t *testing.T) {
 	}
 
 	out := captureStdout(t, func() {
-		if err := cmdRemoteStatus(nil); err != nil {
+		if err := cmdRemoteStatus([]string{"--env", "default"}); err != nil {
 			t.Errorf("cmdRemoteStatus: %v", err)
 		}
 	})
@@ -532,7 +545,7 @@ func TestRemote_ExplicitSpinloopDoesNotNameAnEnvironment(t *testing.T) {
 	if err := os.WriteFile("Spinloop", []byte("PROVIDER ollama\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	err := cmdRemoteStatus([]string{"Spinloop"})
+	err := cmdRemoteStatus([]string{"--env", "default", "Spinloop"})
 	if err == nil || !strings.Contains(err.Error(), "remote is not configured") {
 		t.Errorf("want the not-configured error, got %v", err)
 	}
@@ -553,7 +566,7 @@ func TestRemote_SpinloopFallsBackToTheUserConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := captureStdout(t, func() {
-		if err := cmdRemoteStatus(nil); err != nil {
+		if err := cmdRemoteStatus([]string{"--env", "default"}); err != nil {
 			t.Errorf("cmdRemoteStatus: %v", err)
 		}
 	})
@@ -580,7 +593,7 @@ func TestRemote_IgnoresLowercaseSpinloopFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := captureStdout(t, func() {
-		if err := cmdRemoteStatus(nil); err != nil {
+		if err := cmdRemoteStatus([]string{"--env", "default"}); err != nil {
 			t.Errorf("cmdRemoteStatus: %v", err)
 		}
 	})
@@ -625,7 +638,7 @@ func TestRemoteMetrics_Running(t *testing.T) {
 	t.Setenv("SPINLOOP_REMOTE_STATS_URL", server.URL)
 
 	out := captureStdout(t, func() {
-		if err := cmdRemoteMetrics([]string{"--format=table"}); err != nil {
+		if err := cmdRemoteMetrics([]string{"--env", "default", "--format=table"}); err != nil {
 			t.Errorf("cmdRemoteMetrics: %v", err)
 		}
 	})
@@ -669,7 +682,7 @@ func TestRemoteMetrics_Stopped(t *testing.T) {
 	t.Setenv("SPINLOOP_REMOTE_STATS_URL", server.URL)
 
 	out := captureStdout(t, func() {
-		if err := cmdRemoteMetrics([]string{"--format=table"}); err != nil {
+		if err := cmdRemoteMetrics([]string{"--env", "default", "--format=table"}); err != nil {
 			t.Errorf("cmdRemoteMetrics: %v", err)
 		}
 	})
@@ -698,7 +711,7 @@ func TestRemoteMetrics_WithErrors(t *testing.T) {
 	t.Setenv("SPINLOOP_REMOTE_STATS_URL", server.URL)
 
 	errOut := captureStderr(t, func() {
-		if err := cmdRemoteMetrics(nil); err != nil {
+		if err := cmdRemoteMetrics([]string{"--env", "default"}); err != nil {
 			t.Errorf("cmdRemoteMetrics: %v", err)
 		}
 	})
@@ -733,7 +746,7 @@ func TestRemoteMetrics_DefaultFormat(t *testing.T) {
 	t.Setenv("SPINLOOP_REMOTE_STATS_URL", server.URL)
 
 	out := captureStdout(t, func() {
-		if err := cmdRemoteMetrics(nil); err != nil {
+		if err := cmdRemoteMetrics([]string{"--env", "default"}); err != nil {
 			t.Errorf("cmdRemoteMetrics: %v", err)
 		}
 	})
@@ -770,7 +783,7 @@ func TestRemoteMetrics_JsonFormat(t *testing.T) {
 	t.Setenv("SPINLOOP_REMOTE_STATS_URL", server.URL)
 
 	out := captureStdout(t, func() {
-		if err := cmdRemoteMetrics([]string{"--format=json"}); err != nil {
+		if err := cmdRemoteMetrics([]string{"--env", "default", "--format=json"}); err != nil {
 			t.Errorf("cmdRemoteMetrics: %v", err)
 		}
 	})
@@ -807,7 +820,7 @@ func TestRemoteMetrics_JsonFormatWithCost(t *testing.T) {
 	t.Setenv("SPINLOOP_REMOTE_STATS_URL", server.URL)
 
 	out := captureStdout(t, func() {
-		if err := cmdRemoteMetrics([]string{"--format=json", "--cost"}); err != nil {
+		if err := cmdRemoteMetrics([]string{"--env", "default", "--format=json", "--cost"}); err != nil {
 			t.Errorf("cmdRemoteMetrics: %v", err)
 		}
 	})
@@ -825,7 +838,7 @@ func TestRemoteMetrics_InvalidFormat(t *testing.T) {
 	stubAWSEnv(t)
 	writeRemoteConfig(t, "http://localhost:0")
 
-	err := cmdRemoteMetrics([]string{"--format=csv"})
+	err := cmdRemoteMetrics([]string{"--env", "default", "--format=csv"})
 	if err == nil || !strings.Contains(err.Error(), "format") {
 		t.Errorf("expected format error, got %v", err)
 	}
@@ -855,7 +868,7 @@ func TestRemoteMetrics_BarFormat(t *testing.T) {
 	t.Setenv("SPINLOOP_REMOTE_STATS_URL", server.URL)
 
 	out := captureStdout(t, func() {
-		err := cmdRemoteMetrics([]string{"--format=bar"})
+		err := cmdRemoteMetrics([]string{"--env", "default", "--format=bar"})
 		if err != nil {
 			t.Errorf("bar format failed: %v", err)
 		}
@@ -900,7 +913,7 @@ func TestRemoteMetrics_BarFormatStopped(t *testing.T) {
 	t.Setenv("SPINLOOP_REMOTE_STATS_URL", server.URL)
 
 	out := captureStdout(t, func() {
-		err := cmdRemoteMetrics([]string{"--format=bar"})
+		err := cmdRemoteMetrics([]string{"--env", "default", "--format=bar"})
 		if err != nil {
 			t.Errorf("bar format failed: %v", err)
 		}
@@ -976,7 +989,7 @@ func TestRemoteMetrics_WatchMode(t *testing.T) {
 	defer func() { metricsWatchInterval = oldInterval }()
 
 	out := captureStdout(t, func() {
-		err := cmdRemoteMetrics([]string{"--watch", "--format=table"})
+		err := cmdRemoteMetrics([]string{"--env", "default", "--watch", "--format=table"})
 		// Expects error from the 3rd call.
 		if err == nil {
 			t.Error("watch should exit with error when server fails")
@@ -1016,7 +1029,7 @@ func TestRemoteMetrics_WatchShortFlag(t *testing.T) {
 	defer func() { metricsWatchInterval = oldInterval }()
 
 	out := captureStdout(t, func() {
-		err := cmdRemoteMetrics([]string{"-w", "--format=table"})
+		err := cmdRemoteMetrics([]string{"--env", "default", "-w", "--format=table"})
 		if err == nil {
 			t.Error("-w should exit with error when server fails")
 		}
@@ -1048,7 +1061,7 @@ func TestRemoteMetrics_MultiGPU(t *testing.T) {
 	t.Setenv("SPINLOOP_REMOTE_STATS_URL", server.URL)
 
 	out := captureStdout(t, func() {
-		if err := cmdRemoteMetrics([]string{"--format=table"}); err != nil {
+		if err := cmdRemoteMetrics([]string{"--env", "default", "--format=table"}); err != nil {
 			t.Errorf("cmdRemoteMetrics: %v", err)
 		}
 	})
@@ -1071,7 +1084,7 @@ func TestRemoteMetrics_JsonStopped(t *testing.T) {
 	t.Setenv("SPINLOOP_REMOTE_STATS_URL", server.URL)
 
 	out := captureStdout(t, func() {
-		if err := cmdRemoteMetrics([]string{"--format=json"}); err != nil {
+		if err := cmdRemoteMetrics([]string{"--env", "default", "--format=json"}); err != nil {
 			t.Errorf("cmdRemoteMetrics: %v", err)
 		}
 	})
@@ -1101,7 +1114,7 @@ func TestRemoteMetrics_JsonWithErrors(t *testing.T) {
 	t.Setenv("SPINLOOP_REMOTE_STATS_URL", server.URL)
 
 	out := captureStdout(t, func() {
-		if err := cmdRemoteMetrics([]string{"--format=json"}); err != nil {
+		if err := cmdRemoteMetrics([]string{"--env", "default", "--format=json"}); err != nil {
 			t.Errorf("cmdRemoteMetrics: %v", err)
 		}
 	})
@@ -1147,7 +1160,7 @@ func TestRemoteStart_ProbeSucceedsNoWarning(t *testing.T) {
 	writeRemoteConfig(t, server.URL)
 
 	stderr := captureStderr(t, func() {
-		if err := cmdRemoteStart(nil); err != nil {
+		if err := cmdRemoteStart([]string{"--env", "default"}); err != nil {
 			t.Errorf("cmdRemoteStart: %v", err)
 		}
 	})
@@ -1178,7 +1191,7 @@ func TestRemoteStart_ProbeFailsWarns(t *testing.T) {
 	writeRemoteConfig(t, server.URL)
 
 	errOut := captureStderr(t, func() {
-		err := cmdRemoteStart(nil)
+		err := cmdRemoteStart([]string{"--env", "default"})
 		if err != nil {
 			t.Fatalf("start should exit 0 after a probe warning, got %v", err)
 		}
@@ -1214,7 +1227,7 @@ func TestRemoteStart_ProbeFailsIPDetectFails(t *testing.T) {
 	writeRemoteConfig(t, server.URL)
 
 	errOut := captureStderr(t, func() {
-		err := cmdRemoteStart(nil)
+		err := cmdRemoteStart([]string{"--env", "default"})
 		if err != nil {
 			t.Fatalf("start should exit 0 even when probe and IP detection both fail, got %v", err)
 		}
@@ -1256,7 +1269,7 @@ func TestRemoteMetrics_WatchBuffersBeforeClear(t *testing.T) {
 	defer func() { metricsWatchInterval = oldInterval }()
 
 	out := captureStdout(t, func() {
-		cmdRemoteMetrics([]string{"--watch", "--format=table"})
+		cmdRemoteMetrics([]string{"--env", "default", "--watch", "--format=table"})
 	})
 
 	// The clear-screen escape sequence.
@@ -1309,7 +1322,7 @@ func TestRemoteKeep_PrintsDeadline(t *testing.T) {
 	writeRemoteConfig(t, server.URL)
 
 	// Also need to write the update URL.
-	path := must1(remote.ConfigPath())
+	path := must1(remote.EnvConfigPath("default"))
 	data := must1(os.ReadFile(path))
 	var cfg remote.Config
 	json.Unmarshal(data, &cfg)
@@ -1317,7 +1330,7 @@ func TestRemoteKeep_PrintsDeadline(t *testing.T) {
 	os.WriteFile(path, must1(json.Marshal(cfg)), 0o600)
 
 	out := captureStdout(t, func() {
-		if err := cmdRemoteKeep([]string{"4h"}); err != nil {
+		if err := cmdRemoteKeep([]string{"--env", "default", "4h"}); err != nil {
 			t.Errorf("cmdRemoteKeep: %v", err)
 		}
 	})
@@ -1328,7 +1341,7 @@ func TestRemoteKeep_PrintsDeadline(t *testing.T) {
 
 // TestRemoteKeep_MissingDuration fails.
 func TestRemoteKeep_MissingDuration(t *testing.T) {
-	err := cmdRemoteKeep(nil)
+	err := cmdRemoteKeep([]string{"--env", "default"})
 	if err == nil || !strings.Contains(err.Error(), "usage") {
 		t.Errorf("expected usage error, got %v", err)
 	}
@@ -1336,7 +1349,7 @@ func TestRemoteKeep_MissingDuration(t *testing.T) {
 
 // TestRemoteKeep_InvalidDuration fails.
 func TestRemoteKeep_InvalidDuration(t *testing.T) {
-	err := cmdRemoteKeep([]string{"4hours"})
+	err := cmdRemoteKeep([]string{"--env", "default", "4hours"})
 	if err == nil || !strings.Contains(err.Error(), "invalid duration") {
 		t.Errorf("expected duration parse error, got %v", err)
 	}
@@ -1357,7 +1370,7 @@ func TestRemoteStart_KeepFlag(t *testing.T) {
 
 	// Probe reachability will fail, but that's stderr and doesn't affect the test.
 	out := captureStdout(t, func() {
-		cmdRemoteStart([]string{"--keep", "2h"})
+		cmdRemoteStart([]string{"--env", "default", "--keep", "2h"})
 	})
 	// The keep deadline should be reported on stderr (via progress).
 	// We can check that the request included the retainUntil parameter.

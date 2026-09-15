@@ -853,7 +853,7 @@ func TestRemoteStart_ReportsProgressWhileWaiting(t *testing.T) {
 	writeRemoteConfig(t, server.URL)
 
 	stderr := captureStderr(t, func() {
-		if err := cmdRemoteStart(nil); err != nil {
+		if err := cmdRemoteStart([]string{"--env", "default"}); err != nil {
 			t.Errorf("cmdRemoteStart: %v", err)
 		}
 	})
@@ -1022,7 +1022,7 @@ func TestRemoteStart_HeartbeatTracksTheCapacityWaitEnding(t *testing.T) {
 	writeRemoteConfig(t, server.URL)
 
 	stderr := captureStderr(t, func() {
-		if err := cmdRemoteStart(nil); err != nil {
+		if err := cmdRemoteStart([]string{"--env", "default"}); err != nil {
 			t.Fatalf("cmdRemoteStart: %v", err)
 		}
 	})
@@ -1069,7 +1069,7 @@ func TestRemoteStart_TimeoutShorthand(t *testing.T) {
 	defer func() { os.Stderr = oldStderr; w.Close() }()
 
 	done := make(chan error, 1)
-	go func() { done <- cmdRemoteStart([]string{"-t", "80ms"}) }()
+	go func() { done <- cmdRemoteStart([]string{"--env", "default", "-t", "80ms"}) }()
 	select {
 	case err := <-done:
 		if err == nil {
@@ -1093,7 +1093,7 @@ func TestRemoteStart_StdoutCarriesOnlyTheResult(t *testing.T) {
 	writeRemoteConfig(t, server.URL)
 
 	out := captureStdout(t, func() {
-		if err := cmdRemoteStart([]string{"--print-env"}); err != nil {
+		if err := cmdRemoteStart([]string{"--env", "default", "--print-env"}); err != nil {
 			t.Errorf("cmdRemoteStart: %v", err)
 		}
 	})

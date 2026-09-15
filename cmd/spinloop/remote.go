@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"maps"
@@ -93,7 +94,7 @@ func applySpinloopEnv(sel spinloop.Selection, spinloopPath string) error {
 
 // envFlagUsage is the --env flag's help text on every remote subcommand that
 // acts on one environment.
-const envFlagUsage = "the registered environment to act on (defaults to the default environment)"
+const envFlagUsage = "the registered environment to act on (required)"
 
 // resolveRemoteConfig loads the remote config a subcommand acts on. The --env
 // flag names an environment in the per-user registry, read from
@@ -125,23 +126,34 @@ func resolveRemoteConfig(envName, spinloopArg string) (remote.Config, error) {
 			return remote.Config{}, err
 		}
 	}
-	if envName != "" {
-		if !remote.IsEnvName(envName) {
-			return remote.Config{}, fmt.Errorf("%q is not an environment name: an environment name is a plain identifier, with no path", envName)
-		}
-		path, err := remote.EnvConfigPath(envName)
-		if err != nil {
-			return remote.Config{}, err
-		}
-		if _, err := os.Stat(path); err != nil {
-			if os.IsNotExist(err) {
-				return remote.Config{}, fmt.Errorf("environment %q is not registered: run `spinloop remote deploy --env %q` to create it", envName, envName)
-			}
-			return remote.Config{}, err
-		}
-		return remote.LoadConfigFile(path, viperGetenv())
+	if envName == "" {
+		return remote.Config{}, errNoEnvironment()
 	}
-	return remote.LoadDefault(viperGetenv())
+	if !remote.IsEnvName(envName) {
+		return remote.Config{}, fmt.Errorf("%q is not an environment name: an environment name is a plain identifier, with no path", envName)
+	}
+	return remote.LoadEnvironment(envName, viperGetenv())
+}
+
+// errNoEnvironment is what a remote subcommand fails with when it names no
+// environment. There is no environment to fall back to: several of these
+// subcommands change the state of a cloud instance, and one nobody named is
+// not one to start, stop or terminate. The registered names are listed, so the
+// next thing to type is in the error rather than a directory listing away.
+func errNoEnvironment() error {
+	var b strings.Builder
+	b.WriteString("no environment named: pass --env <name>")
+	envs, err := remote.ListEnvironments()
+	if err != nil || len(envs) == 0 {
+		b.WriteString(" (none registered yet — `spinloop remote deploy --env <name>` creates one)")
+		return errors.New(b.String())
+	}
+	names := make([]string, len(envs))
+	for i, e := range envs {
+		names[i] = e.Name
+	}
+	fmt.Fprintf(&b, " (registered: %s)", strings.Join(names, ", "))
+	return errors.New(b.String())
 }
 
 // defaultSpinloopNamed reports whether there is a default Spinloop for readSpinloop

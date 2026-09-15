@@ -832,7 +832,7 @@ func TestEnvAlias_ReachesRemote(t *testing.T) {
 	t.Chdir(t.TempDir()) // no ./Spinloop, so only the variable can find it
 	t.Setenv("SPINLOOP_ALIAS", "q3")
 
-	if err := cmdRemoteStop(nil); err != nil {
+	if err := cmdRemoteStop([]string{"--env", "default"}); err != nil {
 		t.Fatalf("cmdRemoteStop with SPINLOOP_ALIAS: %v", err)
 	}
 	select {
@@ -879,7 +879,7 @@ func TestEnvAlias_RemoteFailsRatherThanFallingBack(t *testing.T) {
 	t.Chdir(t.TempDir())
 	t.Setenv("SPINLOOP_ALIAS", "nope")
 
-	err := cmdRemoteStop(nil)
+	err := cmdRemoteStop([]string{"--env", "default"})
 	if err == nil {
 		t.Fatal("expected an error for an unregistered SPINLOOP_ALIAS")
 	}
@@ -903,7 +903,7 @@ func TestEnvAlias_RemoteFallsBackWithoutREMOTE(t *testing.T) {
 	t.Chdir(t.TempDir())
 	t.Setenv("SPINLOOP_ALIAS", "q3")
 
-	err := cmdRemoteStop(nil)
+	err := cmdRemoteStop([]string{"--env", "default"})
 	if err == nil {
 		t.Fatal("expected an error: there is no default endpoint config either")
 	}

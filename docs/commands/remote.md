@@ -130,11 +130,14 @@ deployment state per-user and per-machine: two projects name two environments
 without clobbering, and the Spinloop carries none of the URLs at all.
 `spinloop remote deploy` registers an environment for you; you can also
 create one by hand. A name is a plain identifier — `--env ./remote.json` fails,
-saying an environment name has no path. With no flag, a command uses the
-`default` environment (`~/.config/spinloop/remotes/default/remote.json`), so it
-works from anywhere. An existing `~/.config/spinloop/remote.json` from before
-the registry is still read as the default; move it to
-`remotes/default/remote.json` when convenient.
+saying an environment name has no path.
+
+**`--env` is required.** There is no environment a command falls back to: half
+of these subcommands start, stop or terminate a cloud instance, and an instance
+nobody named is not one to act on. A command given no `--env` fails naming the
+flag and listing the environments you have registered, so the next thing to
+type is in the error. `default` is an ordinary name — call an environment that
+if you like, and pass `--env default` to use it.
 
 A command may also be given a Spinloop path (or a [registered
 alias](alias.md), or a URL): its `ENV` lines and the `.env` beside it are read
