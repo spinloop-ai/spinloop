@@ -25,7 +25,7 @@ Run `serve` on a terminal and the engine runs under a full-screen view rather
 than forwarding its output: the engine's **metrics** above, its **log** below,
 and a footer naming the keys the view answers to.
 
-- **Metrics** — the same facts the fleet dashboard's node detail screen shows
+- **Metrics** — the same facts the dashboard's node detail screen shows
   for the same engine: state and uptime, what is served, last active, and the
   resource series — CPU, RAM, and each GPU's utilisation and memory — with
   every series drawn in both formats at once, each on one line: a gauge of
@@ -407,7 +407,7 @@ Records are graded, which is what makes the level worth setting:
 | `warn` | Only rejected requests (401, a bad cursor), a slow shutdown escalating to a kill, and crashes |
 | `error` | Only crashes, failed starts, and requests that failed inside spinloop |
 
-`--log-level warn` is the setting for a node a fleet polls: a `fleet status`
+`--log-level warn` is the setting for a node a fleet polls: a `status`
 refresh every few seconds is a request each, and at the default level polling is
 quiet. `--log-level debug` is how to see the routine traffic; at `warn` the
 polling disappears and a wrong token still shows up.

@@ -128,7 +128,7 @@ container_state() {
 }
 
 #######################################
-# Dump what the containers are doing, for a wait that timed out. `fleet status`
+# Dump what the containers are doing, for a wait that timed out. `status`
 # only reports that a port refused the connection; whether the container is
 # even up, and what its daemon said on the way down, is the part worth having.
 # Globals:
@@ -177,7 +177,7 @@ fleet_with_stderr() {
 #######################################
 node_state() {
   local name="$1"
-  fleet status | awk -v n="${name}" '$1 == n {print $2}'
+  status | awk -v n="${name}" '$1 == n {print $2}'
 }
 
 #######################################
@@ -195,13 +195,13 @@ wait_for_fleet() {
     # a `grep -q` that matches and exits first can leave the pipeline
     # reporting the writer's SIGPIPE, which reads here as "nothing
     # unreachable" — the opposite of what was found.
-    if [[ "$(fleet status)" != *unreachable* ]]; then
+    if [[ "$(status)" != *unreachable* ]]; then
       return 0
     fi
     sleep 2
   done
   echo "Error: the fleet did not become reachable in ${READY_TIMEOUT_SECS}s" >&2
-  fleet status >&2 || true
+  status >&2 || true
   diagnose_fleet
   return 1
 }
@@ -297,7 +297,7 @@ cleanup() {
     echo
     echo "Stack left running (--keep). Try:"
     echo "  cd ${HERE} && set -a && . ./.env && set +a"
-    echo "  spinloop fleet status --fleet ${HERE}/fleet.yaml"
+    echo "  spinloop status --fleet ${HERE}/fleet.yaml"
     echo "Tear down with: docker compose -f ${HERE}/compose.yaml down -v"
     return
   fi
@@ -329,14 +329,14 @@ test_untold_node_cannot_start() {
 test_cold_start() {
   echo "Cold start: a usable fleet with nothing running"
   local out
-  out="$(fleet status)"
+  out="$(status)"
   assert_contains "status lists studio" "${out}" "studio"
   assert_contains "status lists gpu-box" "${out}" "gpu-box"
   assert_contains "status lists laptop" "${out}" "laptop"
   assert_equals "studio is idle before anything is started" \
     "$(node_state studio)" "idle"
   # A fleet where nothing runs is still a working view, not an error.
-  fleet status >/dev/null
+  status >/dev/null
   assert_equals "status succeeds with nothing running" "$?" "0"
 }
 
@@ -537,12 +537,12 @@ test_unreachable_node() {
   compose stop laptop
 
   local out
-  out="$(fleet status)"
+  out="$(status)"
   assert_contains "the stopped node reads unreachable" "${out}" "unreachable"
   assert_contains "a reason is shown" "${out}" "connect"
   assert_contains "other nodes still report" "${out}" "gpu-box"
   # The whole point: one bad node must not fail the command.
-  fleet status >/dev/null
+  status >/dev/null
   assert_equals "status still succeeds" "$?" "0"
 
   restart_node laptop || true
@@ -554,7 +554,7 @@ test_unreachable_node() {
 test_unauthorized() {
   echo "A rejected token is distinguished from an unreachable node"
   local out
-  out="$(FLEET_TOKEN=definitely-not-the-token fleet status)"
+  out="$(FLEET_TOKEN=definitely-not-the-token status)"
   assert_contains "a bad token reads unauthorized" "${out}" "unauthorized"
   assert_not_contains "a bad token is not reported as unreachable" \
     "$(echo "${out}" | grep '^studio')" "unreachable"

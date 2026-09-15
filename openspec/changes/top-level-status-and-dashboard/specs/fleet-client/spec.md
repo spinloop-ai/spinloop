@@ -4,7 +4,9 @@
 
 `spinloop status` SHALL query every node in the resolved target and render one row per node: the node name, its engine state (`idle`/`running`/`stopped`/`crashed`), what it is serving (runner and model when known), the spinloop version of the daemon on that node, and its reachability. Nodes SHALL be queried concurrently so the command's latency is that of the slowest reachable node, not their sum.
 
-The target SHALL resolve as it does for every other command that acts on a fleet — a named environment, a named fleet file, or the working directory's fleet file — so one environment, a fleet, and a fleet holding that same environment are all read by the one command. A cloud environment SHALL additionally report the endpoint's health and its address, which a daemon node does not carry; a target that reports neither SHALL omit them rather than render them empty.
+The target SHALL resolve as it does for every other command that acts on a fleet — a named environment, a named fleet file, or the working directory's fleet file — so one environment, a fleet, and a fleet holding that same environment are all read by the one command, rendered identically however the target was named.
+
+A node's health SHALL be reported as the readiness mark every node carries, so a cloud environment whose endpoint is unhealthy reads the same as a daemon node whose engine has not answered its health check. A field only one node kind fills — an endpoint's address, a retention deadline — SHALL NOT be a column of a table meant to be scanned one row per node.
 
 A node SHALL also report how long it has been since its engine last did work, taken from the activity its daemon tracks — "which of my nodes is doing nothing?" is a question a fleet view exists to answer, and the daemon already knows. That figure SHALL NOT be labelled in a way that collides with the `idle` engine state, which means something different. A node whose daemon reports no activity yet SHALL omit the figure rather than imply an engine has sat unused since it started.
 
@@ -16,8 +18,15 @@ A node SHALL also report how long it has been since its engine last did work, ta
 #### Scenario: A named environment is read by the same command
 
 - **WHEN** `spinloop status --env prod` runs
-- **THEN** that environment's state, health and address are reported, and no
-  fleet file is required
+- **THEN** that environment's row is rendered with no fleet file required, and
+  it reads the same as the row for the same environment named in a fleet file
+
+#### Scenario: An unhealthy endpoint reads as not ready
+
+- **WHEN** `spinloop status --env prod` runs and the control plane reports the
+  endpoint unhealthy
+- **THEN** the row carries the same not-ready mark a daemon node carries when
+  its engine has not answered its health check
 
 #### Scenario: A node reports how long since it last did work
 

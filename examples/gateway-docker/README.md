@@ -20,7 +20,7 @@ curl -X POST -H "Authorization: Bearer $GATEWAY_TOKEN" \
   http://127.0.0.1:4000/v1/chat/completions
 
 # and the fleet underneath it, the way spinloop fleet drives any fleet
-spinloop fleet status --fleet ./fleet.yaml
+spinloop status --fleet ./fleet.yaml
 spinloop fleet start node-b --fleet ./fleet.yaml
 ```
 

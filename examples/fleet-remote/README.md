@@ -60,7 +60,7 @@ the full resolution order.
 From any machine your AWS credentials reach:
 
 ```sh
-spinloop fleet status        # one row per environment
+spinloop status        # one row per environment
 spinloop fleet metrics -w    # a live dashboard
 spinloop fleet start qwen    # wake a sleeping environment from zero
 spinloop fleet stop qwen     # scale it back down

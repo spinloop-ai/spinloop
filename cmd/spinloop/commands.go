@@ -74,6 +74,8 @@ has been.`,
 		unaliasCmd(),
 		serveCmd(),
 		upCmd(),
+		statusCmd(),
+		dashboardCmd(),
 		codeCmd(),
 		daemonCmd(),
 		gatewayCmd(),
@@ -344,7 +346,9 @@ func groupArgs(c *cobra.Command, args []string) error {
 // of movedTopLevelCommands: the same signpost, for a spelling that was two
 // words rather than one.
 var movedSubcommands = map[string]string{
-	"fleet harness": "code --fleet <path>",
+	"fleet harness":   "code --fleet <path>",
+	"fleet status":    "status",
+	"fleet dashboard": "dashboard",
 }
 
 // fleetCmd builds the fleet parent and its subcommands. The parent does
@@ -366,10 +370,8 @@ error — only a problem with the fleet file itself fails a command.`,
 		RunE:          groupFallback,
 	}
 	fleet.AddCommand(
-		fleetStatusCmd(),
 		fleetMetricsCmd(),
 		fleetLogsCmd(),
-		fleetDashboardCmd(),
 		fleetRouteCmd(),
 		fleetStartCmd(),
 		fleetStopCmd(),
@@ -389,6 +391,7 @@ the same Spinloop. The endpoint's URLs come from the Spinloop's REMOTE — a bar
 name selects an environment under ~/.config/spinloop/remotes/<name>/, a path
 names a file — falling back to the default environment. Each subcommand's
 --help says what that step does.`,
+		Args:          groupArgs,
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		RunE:          groupFallback,

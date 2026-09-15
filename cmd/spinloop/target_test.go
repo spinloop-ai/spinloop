@@ -127,8 +127,8 @@ func TestResolveFleetTargetUnregisteredEnv(t *testing.T) {
 	if err == nil {
 		t.Fatal("want an error")
 	}
-	if !strings.Contains(err.Error(), "is not registered") {
-		t.Errorf("error %q does not say the environment is unregistered", err)
+	if !strings.Contains(err.Error(), "remotes/nope/remote.json") {
+		t.Errorf("error %q does not name the environment's registry path", err)
 	}
 }
 
@@ -197,7 +197,7 @@ func TestFleetCommandsCompleteEnv(t *testing.T) {
 	})
 	t.Chdir(t.TempDir())
 
-	for _, sub := range []string{"status", "metrics", "logs", "dashboard", "start", "stop", "deploy", "route"} {
+	for _, sub := range []string{"metrics", "logs", "start", "stop", "deploy", "route"} {
 		t.Run(sub, func(t *testing.T) {
 			got, _ := complete(t, "fleet", sub, "--env", "")
 			want := map[string]bool{"prod": false, "staging": false}
@@ -233,7 +233,7 @@ func TestFleetStatusEnvMatchesAOneNodeFile(t *testing.T) {
 	// Named by a fleet file holding exactly that node.
 	writeFleetFile(t, "nodes:\n  - name: prod\n    kind: remote\n")
 	fromFile := captureStdout(t, func() {
-		if err := cmdFleet([]string{"status"}); err != nil {
+		if err := cmdStatus(nil); err != nil {
 			t.Errorf("fleet status returned %v", err)
 		}
 	})
@@ -241,7 +241,7 @@ func TestFleetStatusEnvMatchesAOneNodeFile(t *testing.T) {
 	// Named by the flag, from a directory holding no fleet file at all.
 	t.Chdir(t.TempDir())
 	fromEnv := captureStdout(t, func() {
-		if err := cmdFleet([]string{"status", "--env", "prod"}); err != nil {
+		if err := cmdStatus([]string{"--env", "prod"}); err != nil {
 			t.Errorf("fleet status --env returned %v", err)
 		}
 	})
@@ -270,7 +270,7 @@ func TestFleetStatusEnvNeedsNoFleetFile(t *testing.T) {
 	t.Chdir(t.TempDir())
 
 	out := captureStdout(t, func() {
-		if err := cmdFleet([]string{"status", "--env", "prod"}); err != nil {
+		if err := cmdStatus([]string{"--env", "prod"}); err != nil {
 			t.Errorf("fleet status --env returned %v", err)
 		}
 	})
@@ -291,7 +291,7 @@ func TestFleetStatusRefusesEnvAndFleet(t *testing.T) {
 	})
 	writeFleetFile(t, oneNodeFleetBody)
 
-	err := cmdFleet([]string{"status", "--env", "prod", "--fleet", "fleet.yaml"})
+	err := cmdStatus([]string{"--env", "prod", "--fleet", "fleet.yaml"})
 	if err == nil {
 		t.Fatal("want an error")
 	}

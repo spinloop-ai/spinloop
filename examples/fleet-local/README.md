@@ -90,7 +90,7 @@ Leave it running — under `launchd` or `systemd` for real use, or just in a
 terminal to try it. Then, from this directory:
 
 ```sh
-spinloop fleet status        # local: idle
+spinloop status        # local: idle
 spinloop fleet route         # which node a launch would pick, changing nothing
 spinloop harness open -O     # wear ./Spinloop, route, wake if needed, launch
 ```

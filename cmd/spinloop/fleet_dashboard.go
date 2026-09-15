@@ -11,51 +11,9 @@ import (
 	"os"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/spf13/cobra"
 	"github.com/spinloop-ai/spinloop/internal/fleet"
 	"golang.org/x/term"
 )
-
-// fleetDashboardCmd builds the `fleet dashboard` subcommand.
-func fleetDashboardCmd() *cobra.Command {
-	var path, envName string
-	c := &cobra.Command{
-		Use:   "dashboard",
-		Short: "watch the fleet in an interactive tiled view",
-		Long: `An interactive live view of the fleet: a tile per node, each drawing
-what the gauge format of fleet metrics prints — state, what it serves, the
-resource gauges, the token counters — repainted on an interval.
-
-The view is read-only apart from four keys: s starts the selected node, k
-keeps a remote environment for a duration you type — it asks how long,
-pre-filled with 4h, and reports the deadline the control plane set when the
-keep is done — a abandons a start still in flight on it (the wait ends, the
-node is free again — a wake the cloud is carrying goes on), x stops it after
-a confirmation. The arrow keys move the selection, r forces a refresh, q or
-Ctrl+C leaves. The keep key shows only for a node that can be kept — a remote
-environment — and a kept environment's tile and detail view carry its
-deadline beside the last-active line, whatever the engine's state.
-
-A node that cannot be reached is still a tile, showing why, and a node whose
-token reference is unresolvable holds its reason for the life of the view.
-The board needs a terminal; to stream the metrics into a pipe, use fleet
-metrics --watch instead.`,
-		Args:          cobra.ArbitraryArgs,
-		SilenceErrors: true,
-		SilenceUsage:  true,
-		RunE: func(c *cobra.Command, _ []string) error {
-			resolve(c)
-			return runFleetDashboard(fleetTarget{envName: envName, fleetPath: path})
-		},
-	}
-	fs := c.Flags()
-	fs.StringVarP(&path, "fleet", "f", "", fleetFileUsage)
-	fs.StringVar(&envName, "env", "", envFlagTargetUsage)
-	c.ValidArgsFunction = noPositionals
-	compRegister(c, "fleet", compFiles)
-	compRegister(c, "env", compEnvs)
-	return c
-}
 
 // runFleetDashboard opens the view. The terminal check comes first — before
 // the fleet file is even read — so a piped invocation fails the same way

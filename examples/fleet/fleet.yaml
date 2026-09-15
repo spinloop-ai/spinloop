@@ -1,6 +1,6 @@
 # A fleet: the machines running `spinloop daemon`, and how to reach each one.
 #
-#   spinloop fleet status      # one row per node
+#   spinloop status      # one row per node
 #   spinloop fleet metrics -w  # a live dashboard
 #
 # This file holds no secrets. A node that needs a bearer token names the

@@ -5,16 +5,21 @@ Observe and drive every engine you run, from one place. Each machine runs
 `fleet.yaml` names them, and `spinloop fleet` fans out over their control APIs.
 
 ```sh
-spinloop fleet status          # one row per node: state and what it serves
-spinloop fleet metrics         # each node's engine + system metrics
-spinloop fleet metrics -w      # the same, redrawn in place until interrupted
-spinloop fleet dashboard       # the interactive tiled view — watch it, drive it
+spinloop status                  # one row per node: state and what it serves
+spinloop dashboard               # the interactive tiled view — watch it, drive it
+spinloop fleet metrics           # each node's engine + system metrics
+spinloop fleet metrics -w        # the same, redrawn in place until interrupted
 spinloop fleet route my-spinloop # which node a harness launch would pick
-spinloop fleet start gpu-box   # start one or more nodes' engines
-spinloop fleet start --all     # start every node in the fleet
-spinloop fleet stop gpu-box    # stop one or more nodes' engines
-spinloop fleet deploy --all    # create every kind: remote node's AWS environment
+spinloop fleet start gpu-box     # start one or more nodes' engines
+spinloop fleet start --all       # start every node in the fleet
+spinloop fleet stop gpu-box      # stop one or more nodes' engines
+spinloop fleet deploy --all      # create every kind: remote node's AWS environment
 ```
+
+[`spinloop status`](status.md) and [`spinloop dashboard`](dashboard.md) are
+top-level commands, not part of this group: they read whatever target you name
+— a fleet file, or a single registered environment — so there is one command
+for "what is running", however it is configured.
 
 A fleet is also where [`spinloop harness open`](harness.md#launching-against-your-fleet)
 sends an agent: a launch routed through a fleet file picks a node and launches
@@ -41,8 +46,8 @@ A registered environment and a one-node fleet file naming it describe the same
 thing, so `--env` lets you skip writing the file:
 
 ```sh
-spinloop fleet status --env qwen      # the same row a one-node fleet file gives
-spinloop fleet dashboard --env qwen   # the tiled view, on one environment
+spinloop status --env qwen      # the same row a one-node fleet file gives
+spinloop dashboard --env qwen   # the tiled view, on one environment
 spinloop fleet logs --env qwen        # its engine's log
 ```
 
@@ -66,7 +71,7 @@ you can see all of this working before setting up a single machine:
 cd examples/fleet-docker && cp .env.example .env
 docker compose up -d --build
 set -a && . ./.env && set +a
-spinloop fleet status --fleet ./fleet.yaml
+spinloop status --fleet ./fleet.yaml
 ```
 
 ## `fleet.yaml`
@@ -203,7 +208,7 @@ config-less start once this field exists. A `kind: remote` node's `start` is
 unaffected by any of this: what it serves is fixed at deploy time, not pushed
 at start time.
 
-This does not apply to `spinloop fleet dashboard`'s `s` key, which still
+This does not apply to `spinloop dashboard`'s `s` key, which still
 starts the selected node with a plain start, whatever the CLI's `fleet start`
 would resolve for it.
 
@@ -469,7 +474,7 @@ silently missing whatever was down:
 
 ## The dashboard
 
-`spinloop fleet dashboard` is that same board as a live view: one tile per
+`spinloop dashboard` is that same board as a live view: one tile per
 node, repainted in place, each drawing exactly what `fleet metrics`' gauge
 format prints for the node — state and uptime, what it serves, the CPU/GPU/RAM
 gauges, the token counters — so the view and the one-shot command never
@@ -480,8 +485,8 @@ is down is a tile that says why, and a node whose token reference resolves to
 nothing holds that reason for the life of the view:
 
 ```sh
-spinloop fleet dashboard                # ./fleet.yaml
-spinloop fleet dashboard --fleet f.yaml # another fleet file
+spinloop dashboard                # ./fleet.yaml
+spinloop dashboard --fleet f.yaml # another fleet file
 ```
 
 | Key | Does |
@@ -538,7 +543,7 @@ the control plane set and the node is re-read at once, which is what brings
 the relative `keep for …` figure onto the tile and detail screen at the node's
 next round rather than waiting out its full cadence.
 
-Everything else in the view is `fleet status`/`metrics`/`logs` in place — it
+Everything else in the view is `status`/`metrics`/`logs` in place — it
 is read-only apart from those four action keys. It needs a real terminal: a
 piped run is refused, and it says so by way of `fleet metrics --watch`, which
 is the streamable surface.
@@ -552,7 +557,7 @@ keys the view answers to. `Esc` closes it and returns to the grid with the
 same node still selected.
 
 ```sh
-spinloop fleet dashboard
+spinloop dashboard
 # select a node, press Enter for its full metrics and log, Esc to go back
 ```
 
@@ -576,7 +581,7 @@ poll that simply ran late.
 ## Logs
 
 `spinloop fleet logs` prints what your engines actually said — the answer to the
-question `fleet status` raises when it reports a node as `crashed`.
+question `status` raises when it reports a node as `crashed`.
 
 ```sh
 spinloop fleet logs              # the tail of every node's engine log

@@ -19,7 +19,7 @@ automatically since the subdirectory's name matches the node's), so
 
 ```sh
 cp .env.example .env    # fill in the fleet's shared token
-spinloop fleet status
+spinloop status
 spinloop fleet metrics -w
 spinloop fleet start gpu-box
 ```

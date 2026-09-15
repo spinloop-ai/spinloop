@@ -30,9 +30,9 @@ this change mechanical and gives that design its own review.
   the way the fleet commands do — `--env <name>`, `--fleet <path>`, or the
   working directory's `fleet.yaml` — and renders exactly as its fleet-scoped
   spelling does today.
-- **BREAKING** `spinloop fleet status`, `spinloop fleet dashboard` and
-  `spinloop remote status` are removed. Each fails naming the command that
-  replaced it, the way a moved command already does.
+- **BREAKING** `spinloop fleet status` and `spinloop fleet dashboard` are
+  removed. Each fails naming the command that replaced it, the way a moved
+  command already does.
 - **BREAKING** With no target resolvable — no `--env`, no `--fleet`, no
   `./fleet.yaml` — the verbs fail rather than looking for an engine on this
   machine. `spinloop serve` already shows the engine it runs, and a machine
@@ -40,9 +40,15 @@ this change mechanical and gives that design its own review.
   fleet file. The failure names all three ways to give a target, which today's
   message does not: it offers only `--fleet` and creating a file, though
   `--env` has been a target since it landed.
-- What `remote status` reported that a node's status does not carry — the
-  endpoint's health and its address — is carried into the top-level verb, so
-  nothing an operator could see is lost with the command.
+- `spinloop remote status` is **not** removed here. It does three things a
+  fan-out cannot: it makes a second control call for the version, it applies a
+  Spinloop's `ENV` instructions before resolving, and it renders the endpoint's
+  address and retention deadline. `remote metrics` does the same three, so the
+  design for carrying them belongs to the change that moves `metrics` and
+  `logs` — solving it once for all of them beats solving it twice. Until then
+  `spinloop status --env <name>` and `spinloop remote status --env <name>`
+  coexist, as `--env` and `--fleet` did through the change that introduced
+  them.
 - `fleet` keeps `route`, `start`, `stop`, `deploy`, `metrics` and `logs`;
   `remote` keeps everything else it has. Only `status` and `dashboard` move
   here.
@@ -61,11 +67,6 @@ this change mechanical and gives that design its own review.
 - `fleet-config`: target resolution is stated for the top-level verbs as well
   as the fleet group, and the failure with no target names all three ways to
   give one.
-- `remote-endpoint`: the `remote` group no longer has a `status` subcommand,
-  and what that subcommand reported — state, health, last-active — is reported
-  by the top-level `status` against the same environment.
-- `remote-version-reporting`: the version an environment reports is read
-  through the top-level `status` rather than `remote status`.
 
 ## Impact
 
@@ -73,12 +74,8 @@ this change mechanical and gives that design its own review.
   root, resolving through the existing `resolveFleetTarget`.
 - `cmd/spinloop/fleet.go`, `fleet_dashboard.go`: lose their command wrappers,
   keep their renderers and the dashboard model.
-- `cmd/spinloop/remote.go`: loses `remoteStatusCmd` and `runRemoteStatus`; the
-  health and address facts it rendered move into the shared status view.
 - `cmd/spinloop/commands.go`: the two verbs registered, the two fleet
-  subcommands unregistered, and the moved spellings signposted — `fleet
-  status`, `fleet dashboard` and `remote status` each naming their
-  replacement.
+  subcommands unregistered, and both moved spellings signposted.
 - `internal/fleet/config.go`: the no-target failure names `--env` too.
 - `docs/commands/`: pages for the two verbs; `fleet.md` and `remote.md` point
   at them.

@@ -37,36 +37,6 @@ func cmdFleet(args []string) error {
 // fleetFileFlag is the --fleet flag's help, shared by every fleet subcommand.
 const fleetFileUsage = "path to the fleet file (default ./fleet.yaml)"
 
-// fleetStatusCmd reports every node's engine state, one row per node. A node
-// that cannot be reached is a row, not a failure: the rest of the fleet still
-// renders and the command still succeeds.
-func fleetStatusCmd() *cobra.Command {
-	var path, envName string
-	c := &cobra.Command{
-		Use:           "status",
-		Short:         "report every node's engine state",
-		Args:          cobra.ArbitraryArgs,
-		SilenceErrors: true,
-		SilenceUsage:  true,
-		RunE: func(c *cobra.Command, _ []string) error {
-			resolve(c)
-			cfg, err := resolveFleetTarget(fleetTarget{envName: envName, fleetPath: path})
-			if err != nil {
-				return err
-			}
-			results := cfg.FanOut(context.Background(), fleet.StatusCall)
-			renderFleetStatus(os.Stdout, results)
-			return nil
-		},
-	}
-	c.Flags().StringVarP(&path, "fleet", "f", "", fleetFileUsage)
-	c.Flags().StringVar(&envName, "env", "", envFlagTargetUsage)
-	c.ValidArgsFunction = noPositionals
-	compRegister(c, "fleet", compFiles)
-	compRegister(c, "env", compEnvs)
-	return c
-}
-
 // renderFleetStatus writes the status table: node, state, what it serves, and
 // the reason when a node did not answer.
 func renderFleetStatus(w io.Writer, results []fleet.NodeResult) {
