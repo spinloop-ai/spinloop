@@ -76,29 +76,30 @@ file: a second one for the same file is refused while the first holds its lock.
 
 ## Adding work items
 
-Append an item to the file — by hand, or with
-[`spinloop work add`](commands/work.md), which takes the item's fields as
-flags, applies the file's validation, and leaves the file a valid items file:
+Append an item to the file, by hand: a running orchestrator re-reads the file
+when it changes, and the new item enters the backlog on the next pass, ranked
+by its priority. Or, against a running orchestrator, with
+[`spinloop work add`](commands/work.md) — the item's fields as flags, sent to
+the [work list API](commands/orchestrator.md#the-work-list-api) the run
+serves, which applies the file's validation on them:
 
 ```sh
-spinloop work add --id fix-parser --instructions "fix the failing tests" --dir ./parser
+spinloop work add --url http://127.0.0.1:4010 --id fix-parser \
+  --instructions "fix the failing tests" --dir ./parser
 ```
-
-Nothing else. A running orchestrator re-reads the file when it changes, and
-the new item enters the backlog on the next pass, ranked by its priority.
 
 An item's `id` is its identity for life: the state beside the file keeps one
 record per `id`. To change what a finished item does, change its `instructions`
 and `dir` — the record is kept, so the orchestrator will not work it again.
 To make it run once more, give it a new `id`.
 
-While a run is working, the same additions go over the [work list
-API](commands/orchestrator.md#the-work-list-api) — `POST /v1/items` against
-the address the run prints — and an item the API adds is worked on the run's
-next pass, like any item the file carries. The API is also how a client
-watches the backlog move and acts on it: the list with each item's state, an
-item's kept output, a removal of an item the operator no longer wants, and an
-abort of one that is running.
+While a run is working, the run's view of the items is the source of truth,
+and `spinloop work add` is that addition over the API — an item the run adds
+is worked on its next pass, like any item the file carries. The API is also
+how a client watches the backlog move and acts on it: the list with each
+item's state, an item's kept output, a removal of an item the operator no
+longer wants, and an abort of one that is running —
+[`spinloop work`](commands/work.md) being that client from the shell.
 
 ## Managing the backlog
 
@@ -115,13 +116,13 @@ the state, and the orchestrator moves on to the next. Read the state and the
 item's log to see what went wrong; fix the item and give it a new `id` to work
 it again.
 
-From the shell, the [`spinloop work`](commands/work.md) family works this
-backlog: `work list` reports every item with its state — the file and the
-state read together, a dash where a value is absent; `work abort <id>` stops a
-running item and puts it back in the backlog; `work remove <id>` takes an item
-out of the file, its state, and its log. The commands work the file and the
-state beside it whether or not the orchestrator is running, and a running
-orchestrator picks each change up on its next pass.
+From the shell, the [`spinloop work`](commands/work.md) family drives this
+backlog through the run's [work list API](commands/orchestrator.md#the-work-list-api):
+`work list` reports every item with its state — one plain line per item, a
+dash where a value is absent; `work abort <id>` stops a running item and puts
+it back in the backlog; `work remove <id>` takes an item out of the file, its
+state, and its log. The commands name the API's address with `--url` and
+present its token, and a refusal reads the way the API states it.
 
 ## Stopping and restarting
 
@@ -143,7 +144,7 @@ giving only the gateway's address.
 
 - [`spinloop orchestrator`](commands/orchestrator.md) — the full command reference, and
   the [work list API](commands/orchestrator.md#the-work-list-api) a client works the backlog through
-- [`spinloop work`](commands/work.md) — the backlog worked from the shell: add, list,
-  abort, remove
+- [`spinloop work`](commands/work.md) — the backlog driven from the shell,
+  through the run's work list API: add, list, abort, remove
 - [The fleet file](commands/fleet.md) — tags, concurrency, and waking
 - [The gateway](commands/gateway.md) — the front door the orchestrator reads and routes through

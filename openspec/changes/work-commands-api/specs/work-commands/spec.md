@@ -1,0 +1,200 @@
+## REMOVED Requirements
+
+### Requirement: The work command group
+
+**Reason**: The commands no longer work the items file beside an orchestrator;
+they call the work list API the run serves. The file-working group is replaced
+by the work list client group added in this change.
+
+**Migration**: Point each command at the run with `--url <address>` and present
+the API's token (`--api-token`, `--api-token-file`, or `SPINLOOP_API_TOKEN`);
+drop `--items`.
+
+### Requirement: Adding an item
+
+**Reason**: Replaced by the work list client add added in this change.
+
+**Migration**: `work add` now POSTs the item's fields to the run's add path;
+name the run with `--url` and present the API's token.
+
+### Requirement: Listing the work
+
+**Reason**: Replaced by the work list client list added in this change.
+
+**Migration**: `work list` now reads the run's list path; name the run with
+`--url` and present the API's token.
+
+### Requirement: Aborting an item
+
+**Reason**: Replaced by the work list client abort added in this change.
+
+**Migration**: `work abort <id>` now calls the run's abort path, which stops the
+item and answers; name the run with `--url` and present the API's token.
+
+### Requirement: Removing an item
+
+**Reason**: Replaced by the work list client remove added in this change.
+
+**Migration**: `work remove <id>` now calls the run's remove path, which takes
+the item out and answers; name the run with `--url` and present the API's token.
+
+## ADDED Requirements
+
+### Requirement: The work commands as work list clients
+
+`spinloop work` SHALL be a top-level command group with the subcommands add,
+list, abort and remove, each a client of the orchestrator's work list API. Every
+subcommand SHALL take a `--url` flag naming the API's base address, and SHALL
+present the API's token as a bearer on every request it makes — resolved from
+`--api-token`, else `--api-token-file`, else the `SPINLOOP_API_TOKEN`
+environment variable, two of the flags given at once being a refusal naming
+both. A subcommand that names no `--url` SHALL fail before it calls the API,
+naming the flag. The commands SHALL be clients of the API alone: they SHALL NOT
+read or write the items file, the state, or the logs directly, and SHALL NOT
+take any lock beside them.
+
+#### Scenario: The API's address is named
+
+- **WHEN** the operator runs a work command naming the API's address with
+  `--url`
+- **THEN** it calls that API, presenting the token as a bearer
+
+#### Scenario: No address is named
+
+- **WHEN** the operator runs a work command with no `--url`
+- **THEN** it fails, naming the `--url` flag, and calls no API
+
+#### Scenario: Two token flags at once
+
+- **WHEN** the operator gives both `--api-token` and `--api-token-file`
+- **THEN** the command fails, naming both flags, and calls no API
+
+#### Scenario: The token comes from the environment
+
+- **WHEN** the operator names the API's address, sets no token flag, and the
+  `SPINLOOP_API_TOKEN` environment is set
+- **THEN** the command presents that value as the bearer
+
+### Requirement: Adding an item through the work list API
+
+`spinloop work add` SHALL take the item's fields from flags — its id, its
+instructions, its working directory, its tags, repeatable, and its numeric
+priority — and send them to the API's add path as the item to add. The API
+applies the items file's validation on the fields and its own refusals, and the
+command SHALL report the API's answer: where the API refuses, the command SHALL
+fail naming the refusal the way the API states it — a field the validation
+rejects, an id the file already carries, or an id the state has recorded done or
+failed — and where the API accepts, the command SHALL say the item is added. The
+command SHALL NOT itself check the file or the state: the API is the one that
+holds them.
+
+#### Scenario: An item's fields come from flags
+
+- **WHEN** the operator runs add naming an id, instructions, a working
+  directory, two tags, and a priority
+- **THEN** the command sends the item to the API with those fields
+
+#### Scenario: A field the validation refuses
+
+- **WHEN** the operator runs add with no working directory, or a tag that is
+  not a `key=value` pair
+- **THEN** the API refuses, and the command fails naming the item and the fault
+
+#### Scenario: An id the file already has
+
+- **WHEN** the operator runs add with an id the items file carries
+- **THEN** the API refuses, and the command fails naming the id
+
+#### Scenario: An id the state has recorded ended
+
+- **WHEN** the operator runs add with an id the state beside the file has
+  recorded done or failed
+- **THEN** the API refuses, naming the record, and the command fails saying so
+
+#### Scenario: An accepted item is reported
+
+- **WHEN** the operator runs add and the API accepts the item
+- **THEN** the command says the item is added
+
+### Requirement: Listing the work from the work list API
+
+`spinloop work list` SHALL read the API's list and show every item the run holds
+with its record, in the file's order: each item's id, its state — backlog,
+running, done or failed — the node a running item runs on, and when it started
+and ended. An item with no record SHALL show as backlog. The command's output
+SHALL be plain lines a program can consume, one per item, and decoration SHALL
+be drawn only where there is a terminal to draw it on. `ls` SHALL be an alias of
+list.
+
+#### Scenario: Every item shows its state
+
+- **WHEN** the API's list carries items the run records running, done, failed
+  and not at all
+- **THEN** the list shows them, in the file's order, running with its node and
+  start, done and failed with their ends, and the unrecorded one backlog
+
+#### Scenario: A piped run gets plain lines
+
+- **WHEN** the operator pipes the list into another program
+- **THEN** the pipe carries one plain line per item, in order, with no
+  decoration
+
+#### Scenario: The alias works
+
+- **WHEN** the operator runs `spinloop work ls`
+- **THEN** it lists the work, the way `spinloop work list` does
+
+### Requirement: Aborting an item through the work list API
+
+`spinloop work abort` SHALL take an item's id and call the API's abort path for
+it, which stops the item's agent the way the run stops one on a clean interrupt
+and puts the item back in the backlog. Only a running item SHALL be abortable:
+the API refuses where the item is not running, naming the item and its state,
+and where the file does not carry the id, naming it, and the command SHALL
+report the API's answer. The command SHALL NOT itself mark the item for abort or
+wait for a run to take a change in: the API's call is the whole ask, and it
+answers once the item is stopped.
+
+#### Scenario: A running item is stopped
+
+- **WHEN** the orchestrator is running an item, and the operator aborts it
+- **THEN** the API stops the item's agent and puts it back in the backlog, and
+  the command says the item is stopped
+
+#### Scenario: An item that is not running is refused
+
+- **WHEN** the operator aborts an item the run records backlog, done or failed
+- **THEN** the API refuses, naming the item and its state, and the command
+  fails saying so
+
+#### Scenario: An id the file does not carry
+
+- **WHEN** the operator aborts an id the items file does not carry
+- **THEN** the API refuses, naming the id, and the command fails naming it
+
+### Requirement: Removing an item through the work list API
+
+`spinloop work remove` SHALL take an item's id and call the API's remove path
+for it, which takes the item out of the work list: the items file, its record,
+and its kept output. A running item SHALL be refused, naming the item and the
+abort that goes first, and an id the file does not carry SHALL be refused,
+naming it, and the command SHALL report the API's answer. The command SHALL NOT
+itself edit the file, the state, or the logs, or wait for a run to take a change
+in: the API's call is the whole ask, and it answers once the item is out.
+
+#### Scenario: An item is removed
+
+- **WHEN** the operator removes an item that is backlog, done or failed
+- **THEN** the API takes it out of the work list, and the command says the item
+  is removed
+
+#### Scenario: A running item is refused
+
+- **WHEN** the operator removes an item the run records running
+- **THEN** the API refuses, naming the item and that it aborts first, and the
+  command fails saying so
+
+#### Scenario: An id the file does not carry
+
+- **WHEN** the operator removes an id the items file does not carry
+- **THEN** the API refuses, naming the id, and the command fails naming it
