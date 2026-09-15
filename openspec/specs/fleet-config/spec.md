@@ -49,12 +49,19 @@ loopback-only daemon).
 
 ### Requirement: Fleet file resolution
 
-The `spinloop fleet` commands SHALL resolve the fleet they act on from the
+Every command that acts on a fleet — the `spinloop fleet` group, and the
+top-level verbs that read one — SHALL resolve the fleet the same way, from the
 flags given: `--env <name>` names a single registered cloud environment,
 `--fleet <path>` names a fleet file, and with neither the fleet file is
-`./fleet.yaml` in the working directory. A missing fleet file when one is
-required SHALL fail with a message naming the expected path and how to create
-one.
+`./fleet.yaml` in the working directory. One rule serves every such command, so
+a target means the same thing wherever it is given.
+
+Where no target resolves — no `--env`, no `--fleet`, and no fleet file at the
+expected path — the command SHALL fail naming every way to give one: the
+expected path, `--fleet <path>`, and `--env <name>`. It SHALL NOT look for an
+engine on the machine it is running on. A local engine is already shown by the
+command that runs it, and a machine whose engines are to be read this way names
+them in a fleet file like any other.
 
 `--env` and `--fleet` SHALL NOT both be given: each names where the model is
 served from, so a command stating both SHALL fail naming both rather than
@@ -138,6 +145,21 @@ one thing across the group.
 - **WHEN** `spinloop fleet status --env ./remote.json` runs
 - **THEN** it fails saying an environment name is a plain identifier with no
   path
+
+#### Scenario: No target at all names every way to give one
+
+- **WHEN** a command that acts on a fleet runs with no `--env`, no `--fleet`,
+  and no fleet file at the expected path
+- **THEN** it fails naming the expected path, `--fleet <path>` and
+  `--env <name>`, and contacts nothing
+
+#### Scenario: No engine on this machine is looked for
+
+- **WHEN** a read verb runs with no target resolvable on a machine that is
+  running an engine with its control API up
+- **THEN** it fails as above rather than reporting that engine: a local engine
+  is read through the command that runs it, or by naming the machine in a fleet
+  file
 
 ### Requirement: Per-node engine endpoint
 

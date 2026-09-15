@@ -83,7 +83,7 @@ func TestForEnvironmentRejects(t *testing.T) {
 		{"a nested path", "envs/prod", "plain identifier"},
 		{"a json file", "prod.json", "plain identifier"},
 		{"empty", "", "plain identifier"},
-		{"unregistered", "nope", "is not registered"},
+		{"unregistered", "nope", "remotes/nope/remote.json"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -98,16 +98,16 @@ func TestForEnvironmentRejects(t *testing.T) {
 	}
 }
 
-// An unregistered environment names how to create it, so the message is a
-// repair rather than a report.
+// An environment that resolves to nothing fails naming the file to create, so
+// the message is a repair rather than a report.
 func TestForEnvironmentUnregisteredNamesTheFix(t *testing.T) {
 	t.Setenv("SPINLOOP_CONFIG_DIR", t.TempDir())
 	_, err := ForEnvironment("nope")
 	if err == nil {
 		t.Fatal("want an error")
 	}
-	if !strings.Contains(err.Error(), "spinloop remote deploy --env") {
-		t.Errorf("error %q does not name how to create the environment", err)
+	if !strings.Contains(err.Error(), "remotes/nope/remote.json") {
+		t.Errorf("error %q does not name the environment's registry path", err)
 	}
 }
 

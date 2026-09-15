@@ -48,7 +48,7 @@ remote`](../../docs/commands/remote.md) — just one command for both.
 ### 3. Observe the whole fleet
 
 ```sh
-spinloop fleet status        # one row per node: the machine and the environments
+spinloop status        # one row per node: the machine and the environments
 spinloop fleet metrics -w    # a live dashboard
 spinloop fleet start qwen    # wake a sleeping environment from zero
 spinloop fleet stop gpu-box  # stop the machine's engine

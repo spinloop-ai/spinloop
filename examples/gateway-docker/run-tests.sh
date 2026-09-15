@@ -158,6 +158,18 @@ fleet() {
 }
 
 #######################################
+# `spinloop status` against this example's fleet file. status is a top-level
+# verb rather than a fleet subcommand, so it needs its own wrapper.
+# Globals:
+#   SPINLOOP_BIN, HERE
+# Outputs:
+#   The command's stdout; stderr is discarded so assertions read cleanly.
+#######################################
+status() {
+  "${SPINLOOP_BIN}" status --fleet "${HERE}/fleet.yaml" 2>/dev/null
+}
+
+#######################################
 # As fleet(), but merging stderr — for assertions about error messages.
 # Globals:
 #   SPINLOOP_BIN, HERE
@@ -173,7 +185,7 @@ fleet_with_stderr() {
 #######################################
 node_state() {
   local name="$1"
-  fleet status | awk -v n="${name}" '$1 == n {print $2}'
+  status | awk -v n="${name}" '$1 == n {print $2}'
 }
 
 #######################################
@@ -238,13 +250,13 @@ wait_for_fleet() {
     # a `grep -q` that matches and exits first can leave the pipeline
     # reporting the writer's SIGPIPE, which reads here as "nothing
     # unreachable" — the opposite of what was found.
-    if [[ "$(fleet status)" != *unreachable* ]]; then
+    if [[ "$(status)" != *unreachable* ]]; then
       return 0
     fi
     sleep 2
   done
   echo "Error: the fleet did not become reachable in ${READY_TIMEOUT_SECS}s" >&2
-  fleet status >&2 || true
+  status >&2 || true
   diagnose_fleet
   return 1
 }
@@ -374,7 +386,7 @@ test_suggested_start_works() {
   else
     fail "fleet start node-a brings it up" "running" "$(node_state node-a)"
   fi
-  assert_contains "status shows what it serves" "$(fleet status)" "fake-model"
+  assert_contains "status shows what it serves" "$(status)" "fake-model"
 }
 
 #######################################

@@ -215,13 +215,20 @@ also name the endpoint's own base URL; it SHALL be optional, since no control
 call needs it, and a configuration without it SHALL remain valid.
 
 A `remote` subcommand SHALL select which environment's configuration it uses
-with its `--env <name>` flag: the value is a registered environment's name, and
-the configuration is read from that environment's `remote.json` in the per-user
-registry (see the Remote Environments specification). A `--env` value that names
-an environment with no registered configuration SHALL fail saying the
-environment is not registered and how to create it. When no `--env` flag is
-given, the `default` environment SHALL be used, so the command works outside
-any project.
+with its `--env <name>` flag, and the flag SHALL be required: the value is a
+registered environment's name, and the configuration is read from that
+environment's `remote.json` in the per-user registry (see the Remote
+Environments specification). A `--env` value that names an environment with no
+registered configuration, and no complete configuration in the environment
+variables, SHALL fail saying the environment is not registered and how to
+create it.
+
+A subcommand given no `--env` SHALL fail naming the flag and listing the
+registered environments, and SHALL act on nothing. There is no environment a
+command falls back to: several of these subcommands change the state of a
+cloud instance, and an instance nobody named is not one to start, stop or
+terminate. The name `default` is an ordinary environment name, carrying no
+special meaning.
 
 The Spinloop a subcommand is given as an argument SHALL NOT select an
 environment; it SHALL be read only for its `ENV` instructions and the `.env`
@@ -265,6 +272,25 @@ it.
   URL, and a `remote` subcommand runs
 - **THEN** the subcommand works as it always has, since the endpoint reports its
   own address in the replies to `start` and `status`
+
+#### Scenario: A command with no environment names the flag
+
+- **WHEN** the user runs a `remote` subcommand with no `--env`
+- **THEN** it fails naming `--env` and listing the registered environments,
+  and contacts nothing
+
+#### Scenario: An instance is never stopped without being named
+
+- **WHEN** the user runs `spinloop remote stop` with no `--env`, with an
+  environment named `default` registered
+- **THEN** nothing is stopped: the command fails naming the flag, and
+  `default` is not assumed
+
+#### Scenario: default is an ordinary name
+
+- **WHEN** the user runs a `remote` subcommand with `--env default` and that
+  environment is registered
+- **THEN** it acts on that environment, exactly as it would for any other name
 
 ### Requirement: Authenticated control requests
 

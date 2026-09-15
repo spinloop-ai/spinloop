@@ -12,7 +12,7 @@ docker compose up -d --build
 # from this directory, with the token exported
 set -a && . ./.env && set +a
 
-spinloop fleet status --fleet ./fleet.yaml
+spinloop status --fleet ./fleet.yaml
 spinloop fleet start studio --fleet ./fleet.yaml
 spinloop fleet metrics -w --fleet ./fleet.yaml
 ```
@@ -75,15 +75,15 @@ spinloop harness open ./client/Spinloop --fleet ./fleet.yaml
 
 # A node that goes away: the row degrades, the rest keep reporting, exit 0.
 docker compose stop gpu-box
-spinloop fleet status --fleet ./fleet.yaml
+spinloop status --fleet ./fleet.yaml
 
 # A wrong token reads `unauthorized`, not `unreachable` — the boxes are up,
 # the credential is wrong.
-FLEET_TOKEN=nope spinloop fleet status --fleet ./fleet.yaml
+FLEET_TOKEN=nope spinloop status --fleet ./fleet.yaml
 
 # Kill an engine and watch the node report `crashed`, then bring it back.
 docker compose exec studio sh -c 'kill -9 $(pgrep imposter-go)'
-spinloop fleet status --fleet ./fleet.yaml
+spinloop status --fleet ./fleet.yaml
 spinloop fleet start studio --fleet ./fleet.yaml
 ```
 

@@ -59,7 +59,9 @@ Four words carry the whole tool:
 | [`spinloop up`](commands/up.md) | Start the engine this directory holds: the fleet, or the `Spinloop`'s server |
 | [`spinloop code`](commands/code.md) | Launch the active harness — a one-word shortcut for `spinloop harness open` |
 | [`spinloop daemon`](commands/serve.md#the-control-api---api-and-spinloop-daemon) | Supervise an engine over the [control API](http-api.md) |
-| [`spinloop fleet`](commands/fleet.md) | Observe and drive the engines on every machine you run, and launch your agent against them |
+| [`spinloop status`](commands/status.md) | What every engine you run is doing, one row each — a fleet, or one environment |
+| [`spinloop dashboard`](commands/dashboard.md) | The live tiled view of the same, with the keys to drive it |
+| [`spinloop fleet`](commands/fleet.md) | Drive the engines on every machine you run: start, stop, deploy, route |
 | [`spinloop gateway`](commands/gateway.md) | Serve the fleet under one OpenAI-compatible endpoint |
 | [`spinloop orchestrator`](commands/orchestrator.md) | Work a backlog of items against the fleet, at the fleet's declared pace |
 | [`spinloop work`](commands/work.md) | Work the work items file from the shell: add, list, abort, remove |

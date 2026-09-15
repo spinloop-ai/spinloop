@@ -106,7 +106,7 @@ func twoNodeFleet(t *testing.T, state string) *httptest.Server {
 func TestCmdFleetStatusRendersEveryNode(t *testing.T) {
 	twoNodeFleet(t, "running")
 	out := captureStdout(t, func() {
-		if err := cmdFleet([]string{"status"}); err != nil {
+		if err := cmdStatus(nil); err != nil {
 			// One unreachable node must not fail the command.
 			t.Errorf("fleet status returned %v", err)
 		}
@@ -133,7 +133,7 @@ func TestCmdFleetStatusShowsVersion(t *testing.T) {
 		"nodes:\n  - name: node\n    host: %s\n    port: %d\n",
 		host, port))
 	out := captureStdout(t, func() {
-		if err := cmdFleet([]string{"status"}); err != nil {
+		if err := cmdStatus(nil); err != nil {
 			t.Error(err)
 		}
 	})
@@ -628,7 +628,7 @@ func TestCmdFleetUnknownNodeNamesTheKnownOnes(t *testing.T) {
 
 func TestCmdFleetMissingFileNamesThePath(t *testing.T) {
 	t.Chdir(t.TempDir())
-	err := cmdFleet([]string{"status"})
+	err := cmdStatus(nil)
 	if err == nil {
 		t.Fatal("missing fleet file accepted")
 	}
@@ -649,7 +649,7 @@ func TestCmdFleetExplicitPath(t *testing.T) {
 	// Somewhere else entirely, so only --fleet can find it.
 	t.Chdir(t.TempDir())
 	out := captureStdout(t, func() {
-		if err := cmdFleet([]string{"status", "--fleet", path}); err != nil {
+		if err := cmdStatus([]string{"--fleet", path}); err != nil {
 			t.Error(err)
 		}
 	})
@@ -672,7 +672,7 @@ func TestCmdFleetExplicitPathShortForm(t *testing.T) {
 	// Somewhere else entirely, so only -f can find it.
 	t.Chdir(t.TempDir())
 	out := captureStdout(t, func() {
-		if err := cmdFleet([]string{"status", "-f", path}); err != nil {
+		if err := cmdStatus([]string{"-f", path}); err != nil {
 			t.Error(err)
 		}
 	})
@@ -687,7 +687,9 @@ func TestFleetFlagShortForm(t *testing.T) {
 	isolateConfig(t)
 	root := newRootCmd()
 	fleet := commandUnder(t, root, "fleet")
-	for _, name := range []string{"status", "metrics", "start", "stop", "deploy", "route", "dashboard"} {
+	// status and dashboard are top-level verbs now; the rest still hang off
+	// the group, and every one of them offers -f for the fleet file.
+	for _, name := range []string{"metrics", "start", "stop", "deploy", "route"} {
 		sub := commandUnder(t, fleet, name)
 		f := sub.Flags().Lookup("fleet")
 		if f == nil {
@@ -786,7 +788,7 @@ func TestCmdFleetStatusShowsIdleTime(t *testing.T) {
 	writeFleetFile(t, fmt.Sprintf("nodes:\n  - name: busy\n    host: %s\n    port: %d\n", host, port))
 
 	out := captureStdout(t, func() {
-		if err := cmdFleet([]string{"status"}); err != nil {
+		if err := cmdStatus(nil); err != nil {
 			t.Error(err)
 		}
 	})
@@ -810,7 +812,7 @@ func TestCmdFleetStatusOmitsIdleWithoutActivity(t *testing.T) {
 	writeFleetFile(t, fmt.Sprintf("nodes:\n  - name: fresh\n    host: %s\n    port: %d\n", host, port))
 
 	out := captureStdout(t, func() {
-		if err := cmdFleet([]string{"status"}); err != nil {
+		if err := cmdStatus(nil); err != nil {
 			t.Error(err)
 		}
 	})

@@ -3,7 +3,7 @@
 #
 #   cp .env.example .env
 #   docker compose up -d --build
-#   spinloop fleet status
+#   spinloop status
 #   spinloop fleet metrics -w
 #
 # Every node carries the fleet's shared token: the daemon refuses to listen on

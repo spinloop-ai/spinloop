@@ -63,14 +63,14 @@ want one — starting when you ask, and still up for your next session.
 spinloop daemon   # ready on :4242; no model runs until you ask
 
 # on the machine you work at — fleet.yaml names the nodes
-spinloop fleet status                  # one row per node: state, and what it serves
-spinloop fleet dashboard               # the same fleet, as a board you leave open
+spinloop status                  # one row per node: state, and what it serves
+spinloop dashboard               # the same fleet, as a board you leave open
 ```
 
 Start the whole fleet with `spinloop up` or just one with `spinloop fleet start gpu-box` — this gets you the model from step 1 running on a machine across the room, or over Tailscale.
 
 <p align="center">
-  <img src="docs/img/fleet_dashboard.png" alt="The spinloop fleet dashboard: four nodes serving Qwen3.8-27B under llama.cpp, and a fifth cloud node not yet deployed" width="900">
+  <img src="docs/img/fleet_dashboard.png" alt="The spinloop dashboard: four nodes serving Qwen3.8-27B under llama.cpp, and a fifth cloud node not yet deployed" width="900">
 </p>
 
 > In this screenshot, five nodes are configured and four are up, each serving the same
@@ -537,8 +537,8 @@ that node's model needs a key of its own, name it with `engineTokenEnv`: driving
 a machine and talking to the model on it are separate credentials.
 
 ```sh
-spinloop fleet status          # one row per node: state and what it serves
-spinloop fleet dashboard       # the interactive tiled view — watch it, drive it
+spinloop status          # one row per node: state and what it serves
+spinloop dashboard       # the interactive tiled view — watch it, drive it
 spinloop fleet start gpu-box   # start one node's engine
 ```
 
@@ -596,7 +596,7 @@ engine — in about a minute:
 cd examples/fleet-docker && cp .env.example .env
 docker compose up -d --build
 set -a && . ./.env && set +a
-spinloop fleet status --fleet ./fleet.yaml
+spinloop status --fleet ./fleet.yaml
 ```
 
 Only one machine? A fleet of one is still worth it —

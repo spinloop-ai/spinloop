@@ -380,7 +380,7 @@ func Load(path string) (*Config, error) {
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, fmt.Errorf(
-				"no fleet file at %s: create one listing your nodes, or pass --fleet <path>", path)
+				"no fleet at %s: create one listing your nodes, or name a target — --fleet <path> for a file, --env <name> for a registered environment", path)
 		}
 		return nil, err
 	}
@@ -435,15 +435,10 @@ func ForEnvironment(name string) (*Config, error) {
 		return nil, fmt.Errorf(
 			"%q is not an environment name: an environment name is a plain identifier, with no path", name)
 	}
-	path, err := remote.EnvConfigPath(name)
-	if err != nil {
-		return nil, err
-	}
-	if _, err := os.Stat(path); err != nil {
-		if os.IsNotExist(err) {
-			return nil, fmt.Errorf(
-				"environment %q is not registered: run `spinloop remote deploy --env %q` to create it", name, name)
-		}
+	// Loading it is the check: every environment resolves the one way, by
+	// name, and a name that resolves to nothing fails here rather than at the
+	// first control call.
+	if _, err := remote.LoadEnvironment(name, os.Getenv); err != nil {
 		return nil, err
 	}
 	cfg := &Config{Nodes: []NodeConfig{{Name: name, Kind: KindRemote}}}

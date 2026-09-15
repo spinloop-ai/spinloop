@@ -2205,7 +2205,7 @@ func TestDashProgramStartsAndStopsANode(t *testing.T) {
 // the command that carries the same data into a pipe.
 func TestFleetDashboardRefusesPipedOutput(t *testing.T) {
 	captureStdout(t, func() {
-		err := cmdFleet([]string{"dashboard"})
+		err := cmdDashboard(nil)
 		if err == nil {
 			t.Fatal("dashboard ran without a terminal")
 		}
