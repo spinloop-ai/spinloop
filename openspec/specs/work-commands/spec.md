@@ -1,9 +1,9 @@
 ## Purpose
 
-Work the work items file and the state the orchestrator keeps beside it from
-the shell — add an item, read the backlog, stop a running item, remove an
-item — whether or not the orchestrator is running, the file beside it being
-the whole hand-off.
+Work the items of a running orchestrator from the shell — add an item, read
+the backlog, stop a running item, remove an item — as a client of the
+orchestrator's work list API: the commands name the API's address, present its
+token, and the run's view of the items is the source of truth.
 
 ## Requirements
 
