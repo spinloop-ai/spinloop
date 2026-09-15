@@ -33,11 +33,15 @@ from the environment or a `.env` beside the Spinloop — never written into an
 | `SPINLOOP_REMOTE_REGION` | Override the AWS region (else `AWS_REGION`, else the region in the Function URL host). |
 | `SPINLOOP_REMOTE_PACKAGE_MANAGER` | Pin the package manager (`pnpm`/`npm`) `spinloop remote bootstrap` and `bake` use. |
 
-These let the remote commands run without a `remote.json` on disk — the
-config can come entirely from the environment. `spinloop remote logs` is the
-exception: it needs the environment's name to find its log streams, and that
-comes only from the config, so it wants a registered environment (or a Spinloop
-naming one) rather than environment variables alone.
+These let the remote commands run without a `remote.json` on disk — the config
+can come entirely from the environment. `--env <name>` is still required, and
+on this path the name you give *is* the environment identifier the control
+plane acts on, since there is no file to take one from:
+
+```sh
+SPINLOOP_REMOTE_START_URL=... SPINLOOP_REMOTE_STOP_URL=... SPINLOOP_REMOTE_REGION=... \
+  spinloop remote start --env ci
+```
 
 ## Standard variables spinloop honours
 

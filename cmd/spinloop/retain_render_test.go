@@ -58,7 +58,7 @@ func TestRemoteMetricsBarKeepsOnTheActiveLine(t *testing.T) {
 	}`)
 
 	out := captureStdout(t, func() {
-		if err := cmdRemoteMetrics([]string{"--format=bar"}); err != nil {
+		if err := cmdRemoteMetrics([]string{"--env", "default", "--format=bar"}); err != nil {
 			t.Fatalf("cmdRemoteMetrics: %v", err)
 		}
 	})
@@ -89,7 +89,7 @@ func TestRemoteMetricsTableKeepsOnTheActiveRow(t *testing.T) {
 	}`)
 
 	out := captureStdout(t, func() {
-		if err := cmdRemoteMetrics([]string{"--format=table"}); err != nil {
+		if err := cmdRemoteMetrics([]string{"--env", "default", "--format=table"}); err != nil {
 			t.Fatalf("cmdRemoteMetrics: %v", err)
 		}
 	})
@@ -123,7 +123,7 @@ func TestKeepDurationRendersRelatively(t *testing.T) {
 				"retainUntil": "`+deadline+`"
 			}`)
 			out := captureStdout(t, func() {
-				if err := cmdRemoteMetrics([]string{"--format=bar"}); err != nil {
+				if err := cmdRemoteMetrics([]string{"--env", "default", "--format=bar"}); err != nil {
 					t.Fatalf("cmdRemoteMetrics: %v", err)
 				}
 			})
@@ -149,7 +149,7 @@ func TestRemoteMetricsStoppedKeptStillShowsKeep(t *testing.T) {
 				"retainUntil": "`+deadline+`"
 			}`)
 			out := captureStdout(t, func() {
-				if err := cmdRemoteMetrics([]string{"--format=" + format}); err != nil {
+				if err := cmdRemoteMetrics([]string{"--env", "default", "--format=" + format}); err != nil {
 					t.Fatalf("cmdRemoteMetrics: %v", err)
 				}
 			})
@@ -173,7 +173,7 @@ func TestRemoteMetricsOmitsKeepWhenAbsent(t *testing.T) {
 				"idleSeconds": 125
 			}`)
 			out := captureStdout(t, func() {
-				if err := cmdRemoteMetrics([]string{"--format=" + format}); err != nil {
+				if err := cmdRemoteMetrics([]string{"--env", "default", "--format=" + format}); err != nil {
 					t.Fatalf("cmdRemoteMetrics: %v", err)
 				}
 			})

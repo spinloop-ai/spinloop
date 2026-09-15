@@ -128,12 +128,9 @@ func (n *daemonNode) Logs(ctx context.Context, offset int64, limit int) (daemon.
 // row rather than a blanked view.
 func (c *Config) NewNode(entry NodeConfig) (Node, error) {
 	if entry.Kind == KindRemote {
-		// The node's name is the registered environment's key.
-		path, err := remote.EnvConfigPath(entry.Name)
-		if err != nil {
-			return nil, err
-		}
-		cfg, err := remote.LoadConfigFile(path, os.Getenv)
+		// The node's name is the registered environment's key, and every
+		// environment resolves the one way: by name, from the registry.
+		cfg, err := remote.LoadEnvironment(entry.Name, os.Getenv)
 		if err != nil {
 			return nil, err
 		}

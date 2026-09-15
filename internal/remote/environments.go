@@ -2,7 +2,6 @@ package remote
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -129,35 +128,4 @@ func SaveEnvironment(name string, cfg Config) error {
 		return err
 	}
 	return os.WriteFile(filepath.Join(dir, "remote.json"), append(data, '\n'), 0o600)
-}
-
-// LoadDefault loads the remote config used when no Spinloop names an environment:
-// the `default` environment, falling back to the legacy single per-user file
-// (~/.config/spinloop/remote.json) for setups that predate the registry. As with
-// LoadConfig a missing file is not fatal — environment variables alone may carry
-// the config — and finishConfig reports where to put it otherwise.
-func LoadDefault(getenv func(string) string) (Config, error) {
-	defaultPath, err := EnvConfigPath("default")
-	if err != nil {
-		return Config{}, err
-	}
-	legacyPath, err := ConfigPath()
-	if err != nil {
-		return Config{}, err
-	}
-	for _, path := range []string{defaultPath, legacyPath} {
-		data, err := os.ReadFile(path)
-		if err != nil {
-			if os.IsNotExist(err) {
-				continue
-			}
-			return Config{}, err
-		}
-		var cfg Config
-		if err := json.Unmarshal(data, &cfg); err != nil {
-			return Config{}, fmt.Errorf("parsing %s: %w", path, err)
-		}
-		return finishConfig(cfg, getenv, path)
-	}
-	return finishConfig(Config{}, getenv, defaultPath)
 }

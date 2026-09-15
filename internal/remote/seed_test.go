@@ -296,7 +296,7 @@ func TestConfig_CarriesTheSeedURL(t *testing.T) {
 		StartURL: "http://start", StopURL: "http://stop",
 		SeedURL: "http://seed", Region: "eu-west-1",
 	})
-	cfg, err := LoadConfig(func(string) string { return "" })
+	cfg, err := LoadEnvironment("default", func(string) string { return "" })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -308,7 +308,7 @@ func TestConfig_CarriesTheSeedURL(t *testing.T) {
 func TestConfig_SeedURLOverride(t *testing.T) {
 	isolateConfig(t)
 	writeConfig(t, Config{StartURL: "http://start", StopURL: "http://stop", Region: "eu-west-1"})
-	cfg, err := LoadConfig(func(k string) string {
+	cfg, err := LoadEnvironment("default", func(k string) string {
 		if k == "SPINLOOP_REMOTE_SEED_URL" {
 			return "http://override"
 		}
@@ -388,7 +388,7 @@ func TestControlPlaneFromOutputs_RejectsAStackMissingTheControlURLs(t *testing.T
 func TestConfig_LoadsWithoutASeedURL(t *testing.T) {
 	isolateConfig(t)
 	writeConfig(t, Config{StartURL: "http://start", StopURL: "http://stop", Region: "eu-west-1"})
-	cfg, err := LoadConfig(func(string) string { return "" })
+	cfg, err := LoadEnvironment("default", func(string) string { return "" })
 	if err != nil {
 		t.Fatalf("a config without seed_url must still load: %v", err)
 	}

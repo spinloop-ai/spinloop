@@ -42,9 +42,11 @@ func stubAWSEnv(t *testing.T) {
 	t.Setenv("AWS_EC2_METADATA_DISABLED", "true")
 }
 
+// writeConfig registers the `default` environment, which is where a
+// configuration lives now that no path outside the registry is read.
 func writeConfig(t *testing.T, cfg Config) {
 	t.Helper()
-	path := must1(ConfigPath())
+	path := must1(EnvConfigPath("default"))
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -63,13 +65,6 @@ func envMap(m map[string]string) func(string) string {
 	return func(k string) string { return m[k] }
 }
 
-func TestConfigPath(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", "/tmp/xdg")
-	if got, want := must1(ConfigPath()), "/tmp/xdg/spinloop/remote.json"; got != want {
-		t.Errorf("ConfigPath() = %q, want %q", got, want)
-	}
-}
-
 func TestLoadConfig_FromFile(t *testing.T) {
 	isolateConfig(t)
 	writeConfig(t, Config{
@@ -77,7 +72,7 @@ func TestLoadConfig_FromFile(t *testing.T) {
 		StopURL:  "https://stop.example/",
 		Region:   "eu-west-1",
 	})
-	cfg, err := LoadConfig(noEnv)
+	cfg, err := LoadEnvironment("default", noEnv)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +84,7 @@ func TestLoadConfig_FromFile(t *testing.T) {
 func TestLoadConfig_EnvOverrides(t *testing.T) {
 	isolateConfig(t)
 	writeConfig(t, Config{StartURL: "https://old/", StopURL: "https://old-stop/", Region: "us-east-1"})
-	cfg, err := LoadConfig(envMap(map[string]string{
+	cfg, err := LoadEnvironment("default", envMap(map[string]string{
 		"SPINLOOP_REMOTE_START_URL": "https://new/",
 		"SPINLOOP_REMOTE_REGION":    "eu-west-2",
 	}))
@@ -113,7 +108,7 @@ func TestLoadConfig_RegionDerivedFromURL(t *testing.T) {
 		StartURL: "https://abc123.lambda-url.eu-west-1.on.aws/",
 		StopURL:  "https://def456.lambda-url.eu-west-1.on.aws/",
 	})
-	cfg, err := LoadConfig(noEnv)
+	cfg, err := LoadEnvironment("default", noEnv)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,7 +119,7 @@ func TestLoadConfig_RegionDerivedFromURL(t *testing.T) {
 
 func TestLoadConfig_Unconfigured(t *testing.T) {
 	isolateConfig(t)
-	_, err := LoadConfig(noEnv)
+	_, err := LoadEnvironment("default", noEnv)
 	if err == nil || !strings.Contains(err.Error(), "not configured") {
 		t.Errorf("expected a not-configured error, got %v", err)
 	}
@@ -133,7 +128,7 @@ func TestLoadConfig_Unconfigured(t *testing.T) {
 func TestLoadConfig_NoRegion(t *testing.T) {
 	isolateConfig(t)
 	writeConfig(t, Config{StartURL: "https://start.example/", StopURL: "https://stop.example/"})
-	_, err := LoadConfig(noEnv)
+	_, err := LoadEnvironment("default", noEnv)
 	if err == nil || !strings.Contains(err.Error(), "region") {
 		t.Errorf("expected a region error, got %v", err)
 	}
@@ -1181,13 +1176,20 @@ func TestStart_ExpiredCredentials(t *testing.T) {
 	}
 }
 
-func TestLoadConfigFile(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "remote.json")
-	content := `{"start_url":"https://start.example/","stop_url":"https://stop.example/","region":"eu-west-1"}`
-	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+// An environment resolves by name, from the registry, with the overrides
+// applied on top of whatever the file holds.
+func TestLoadEnvironment(t *testing.T) {
+	isolateConfig(t)
+	if err := SaveEnvironment("prod", Config{
+		StartURL:    "https://start.example/",
+		StopURL:     "https://stop.example/",
+		Region:      "eu-west-1",
+		Environment: "prod",
+	}); err != nil {
 		t.Fatal(err)
 	}
-	cfg, err := LoadConfigFile(path, noEnv)
+
+	cfg, err := LoadEnvironment("prod", noEnv)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1195,7 +1197,7 @@ func TestLoadConfigFile(t *testing.T) {
 		t.Errorf("unexpected config: %+v", cfg)
 	}
 
-	cfg, err = LoadConfigFile(path, envMap(map[string]string{"SPINLOOP_REMOTE_REGION": "eu-west-2"}))
+	cfg, err = LoadEnvironment("prod", envMap(map[string]string{"SPINLOOP_REMOTE_REGION": "eu-west-2"}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1204,10 +1206,16 @@ func TestLoadConfigFile(t *testing.T) {
 	}
 }
 
-func TestLoadConfigFile_Missing(t *testing.T) {
-	_, err := LoadConfigFile(filepath.Join(t.TempDir(), "remote.json"), noEnv)
-	if err == nil || !strings.Contains(err.Error(), "does not exist") {
-		t.Errorf("expected a does-not-exist error, got %v", err)
+// A name with no file and no overrides fails naming the registry path to
+// create, rather than a path the user never chose.
+func TestLoadEnvironment_Missing(t *testing.T) {
+	isolateConfig(t)
+	_, err := LoadEnvironment("nosuchenv", noEnv)
+	if err == nil {
+		t.Fatal("expected a not-configured error")
+	}
+	if !strings.Contains(err.Error(), "remotes/nosuchenv/remote.json") {
+		t.Errorf("the failure should name the environment's registry path, got %v", err)
 	}
 }
 
@@ -1383,7 +1391,7 @@ func TestEnv_NoEnvURL(t *testing.T) {
 func TestLoadConfig_EnvURLOverride(t *testing.T) {
 	isolateConfig(t)
 	writeConfig(t, Config{StartURL: "https://start/", StopURL: "https://stop/", EnvURL: "https://old-env/", Region: "eu-west-1"})
-	cfg, err := LoadConfig(envMap(map[string]string{
+	cfg, err := LoadEnvironment("default", envMap(map[string]string{
 		"SPINLOOP_REMOTE_ENV_URL": "https://new-env/",
 	}))
 	if err != nil {

@@ -48,7 +48,7 @@ func TestRemoteMetricsBarShowsLastActive(t *testing.T) {
 	statsServer(t, runningWithActivity)
 
 	out := captureStdout(t, func() {
-		if err := cmdRemoteMetrics([]string{"--format=bar"}); err != nil {
+		if err := cmdRemoteMetrics([]string{"--env", "default", "--format=bar"}); err != nil {
 			t.Fatalf("cmdRemoteMetrics: %v", err)
 		}
 	})
@@ -69,7 +69,7 @@ func TestRemoteMetricsTableShowsLastActive(t *testing.T) {
 	statsServer(t, runningWithActivity)
 
 	out := captureStdout(t, func() {
-		if err := cmdRemoteMetrics([]string{"--format=table"}); err != nil {
+		if err := cmdRemoteMetrics([]string{"--env", "default", "--format=table"}); err != nil {
 			t.Fatalf("cmdRemoteMetrics: %v", err)
 		}
 	})
@@ -86,7 +86,7 @@ func TestRemoteMetricsJSONCarriesLastActive(t *testing.T) {
 	statsServer(t, runningWithActivity)
 
 	out := captureStdout(t, func() {
-		if err := cmdRemoteMetrics([]string{"--format=json"}); err != nil {
+		if err := cmdRemoteMetrics([]string{"--env", "default", "--format=json"}); err != nil {
 			t.Fatalf("cmdRemoteMetrics: %v", err)
 		}
 	})
@@ -124,7 +124,7 @@ func TestRemoteMetricsStoppedStillShowsLastActive(t *testing.T) {
 	} {
 		t.Run(format, func(t *testing.T) {
 			out := captureStdout(t, func() {
-				if err := cmdRemoteMetrics([]string{"--format=" + format}); err != nil {
+				if err := cmdRemoteMetrics([]string{"--env", "default", "--format=" + format}); err != nil {
 					t.Fatalf("cmdRemoteMetrics: %v", err)
 				}
 			})
@@ -154,7 +154,7 @@ func TestLastActiveZeroIdleStillRenders(t *testing.T) {
 	} {
 		t.Run(format, func(t *testing.T) {
 			out := captureStdout(t, func() {
-				if err := cmdRemoteMetrics([]string{"--format=" + format}); err != nil {
+				if err := cmdRemoteMetrics([]string{"--env", "default", "--format=" + format}); err != nil {
 					t.Fatalf("cmdRemoteMetrics: %v", err)
 				}
 			})
@@ -176,7 +176,7 @@ func TestLastActiveOmittedWithoutATimestamp(t *testing.T) {
 	for _, format := range []string{"bar", "table"} {
 		t.Run(format, func(t *testing.T) {
 			out := captureStdout(t, func() {
-				if err := cmdRemoteMetrics([]string{"--format=" + format}); err != nil {
+				if err := cmdRemoteMetrics([]string{"--env", "default", "--format=" + format}); err != nil {
 					t.Fatalf("cmdRemoteMetrics: %v", err)
 				}
 			})
@@ -215,7 +215,7 @@ func TestRemoteStatusShowsLastActive(t *testing.T) {
 	}`)
 
 	out := captureStdout(t, func() {
-		if err := cmdRemoteStatus(nil); err != nil {
+		if err := cmdRemoteStatus([]string{"--env", "default"}); err != nil {
 			t.Fatalf("cmdRemoteStatus: %v", err)
 		}
 	})
@@ -234,7 +234,7 @@ func TestRemoteStatusZeroIdleStillRenders(t *testing.T) {
 	statusServer(t, `{"state": "running", "healthy": true, "lastActiveAt": "2026-08-10T10:00:00Z"}`)
 
 	out := captureStdout(t, func() {
-		if err := cmdRemoteStatus(nil); err != nil {
+		if err := cmdRemoteStatus([]string{"--env", "default"}); err != nil {
 			t.Fatalf("cmdRemoteStatus: %v", err)
 		}
 	})
@@ -249,7 +249,7 @@ func TestRemoteStatusOmitsLastActiveWhenAbsent(t *testing.T) {
 	statusServer(t, `{"state": "stopped", "healthy": false}`)
 
 	out := captureStdout(t, func() {
-		if err := cmdRemoteStatus(nil); err != nil {
+		if err := cmdRemoteStatus([]string{"--env", "default"}); err != nil {
 			t.Fatalf("cmdRemoteStatus: %v", err)
 		}
 	})

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/spinloop-ai/spinloop/internal/config"
 	"github.com/spinloop-ai/spinloop/internal/remote"
 )
 
@@ -67,7 +68,7 @@ func TestRemote_DefaultEnvironment(t *testing.T) {
 
 	t.Chdir(t.TempDir()) // no ./Spinloop here
 	out := captureStdout(t, func() {
-		if err := cmdRemoteStatus(nil); err != nil {
+		if err := cmdRemoteStatus([]string{"--env", "default"}); err != nil {
 			t.Errorf("status via default env: %v", err)
 		}
 	})
@@ -76,28 +77,29 @@ func TestRemote_DefaultEnvironment(t *testing.T) {
 	}
 }
 
-// A pre-existing ~/.config/spinloop/remote.json is read as the default env.
-func TestRemote_LegacyFileReadThrough(t *testing.T) {
+// A file at the superseded path configures nothing: no path outside the
+// registry is read for any name.
+func TestRemote_SupersededFileIsNotRead(t *testing.T) {
 	isolateConfig(t)
 	stubAWSEnv(t)
 	server := stateServer(t)
 	defer server.Close()
 
 	data, _ := json.Marshal(remote.Config{StartURL: server.URL, StopURL: server.URL, Region: "eu-west-1"})
-	if err := os.MkdirAll(filepath.Dir(must1(remote.ConfigPath())), 0o700); err != nil {
+	home := must1(config.Dir())
+	if err := os.MkdirAll(home, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(must1(remote.ConfigPath()), data, 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(home, "remote.json"), data, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	t.Chdir(t.TempDir())
-	out := captureStdout(t, func() {
-		if err := cmdRemoteStatus(nil); err != nil {
-			t.Errorf("status via legacy file: %v", err)
-		}
-	})
-	if !strings.Contains(out, "state: running") {
-		t.Errorf("legacy remote.json should be read as default, got:\n%s", out)
+	err := cmdRemoteMetrics([]string{"--env", "default"})
+	if err == nil {
+		t.Fatal("the superseded file must not configure an environment")
+	}
+	if !strings.Contains(err.Error(), "remotes/default/remote.json") {
+		t.Errorf("the failure should name the registry path, got %v", err)
 	}
 }
 
