@@ -155,6 +155,18 @@ fleet() {
 }
 
 #######################################
+# `spinloop status` against this example's fleet file. status is a top-level
+# verb rather than a fleet subcommand, so it needs its own wrapper.
+# Globals:
+#   SPINLOOP_BIN, HERE
+# Outputs:
+#   The command's stdout; stderr is discarded so assertions read cleanly.
+#######################################
+status() {
+  "${SPINLOOP_BIN}" status --fleet "${HERE}/fleet.yaml" 2>/dev/null
+}
+
+#######################################
 # As fleet(), but merging stderr — for assertions about error messages, which
 # the CLI writes to stderr.
 # Globals:

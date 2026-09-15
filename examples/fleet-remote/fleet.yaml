@@ -1,6 +1,6 @@
 # A fleet of `spinloop remote` environments, observed like machines.
 #
-#   spinloop status        # one row per environment: state and what it serves
+#   spinloop status                # one row per environment: state and what it serves
 #   spinloop fleet metrics -w    # a live dashboard
 #   spinloop fleet deploy --all  # create both environments from this file
 #
