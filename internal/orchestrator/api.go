@@ -16,6 +16,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/spinloop-ai/spinloop/internal/daemon"
 )
@@ -95,7 +96,8 @@ func loopbackAddr(addr string) bool {
 }
 
 // ServeHTTP is the work list API's whole surface: the paths it serves, a
-// health check that touches no file, and a 404 that names the rest.
+// health check that touches no file, and a 404 that names the rest — every
+// call logged with its outcome once the response is complete.
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var handler http.HandlerFunc
 	switch {
@@ -118,7 +120,55 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			handler = h.notFound(r)
 		}
 	}
-	h.authenticate(handler)(w, r)
+
+	start := time.Now()
+	rec := &statusRecorder{ResponseWriter: w}
+	h.authenticate(handler)(rec, r)
+	status := rec.status
+	if status == 0 {
+		// A handler that wrote nothing at all still replied 200.
+		status = http.StatusOK
+	}
+	h.log.Log(r.Context(), levelForStatus(status), "work list api call",
+		slog.String("method", r.Method),
+		// RequestURI carries the item id for /v1/items/{id} paths, and any
+		// query — the work list API takes none, so there is nothing there to
+		// leak.
+		slog.String("path", r.URL.RequestURI()),
+		slog.Int("status", status),
+		slog.Duration("duration", time.Since(start)),
+		slog.String("remote", r.RemoteAddr),
+	)
+}
+
+// statusRecorder wraps a ResponseWriter to capture the status a handler
+// answered with, so the call log can report the outcome — a refusal or a
+// success alike — after the handler has already written it.
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (r *statusRecorder) WriteHeader(status int) {
+	if r.status == 0 {
+		r.status = status
+	}
+	r.ResponseWriter.WriteHeader(status)
+}
+
+// levelForStatus grades a call log by outcome: a refusal the caller could
+// have avoided is a warning, a fault on the orchestrator's side an error,
+// and a call that simply answers is debug — quiet at the default level, and
+// available where an operator turns it up.
+func levelForStatus(status int) slog.Level {
+	switch {
+	case status >= 500:
+		return slog.LevelError
+	case status >= 400:
+		return slog.LevelWarn
+	default:
+		return slog.LevelDebug
+	}
 }
 
 // itemPath pulls the id — and the action, where the path carries one — out
@@ -248,7 +298,6 @@ func (h *Handler) handleRemove(id string) http.HandlerFunc {
 			writeError(w, apiStatus(err), err)
 			return
 		}
-		h.log.Info("item removed", slog.String("item", id))
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "id": id})
 	}
 }
@@ -262,7 +311,6 @@ func (h *Handler) handleAbort(id string) http.HandlerFunc {
 			writeError(w, apiStatus(err), err)
 			return
 		}
-		h.log.Info("item aborted", slog.String("item", id))
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "id": id})
 	}
 }
