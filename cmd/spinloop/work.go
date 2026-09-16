@@ -231,8 +231,12 @@ colour is drawn only where there is a terminal to draw it on.`,
 			}
 			tty := term.IsTerminal(int(os.Stdout.Fd()))
 			w := cmd.OutOrStdout()
-			for _, v := range out.Data {
-				fmt.Fprintln(w, workListLine(v, tty))
+			if tty {
+				fmt.Fprint(w, workListTable(out.Data))
+			} else {
+				for _, v := range out.Data {
+					fmt.Fprintln(w, workListLine(v, false))
+				}
 			}
 			return nil
 		},
@@ -242,33 +246,74 @@ colour is drawn only where there is a terminal to draw it on.`,
 	return c
 }
 
-// workListLine is one item's line: the columns a program can split, the
-// state colour where the output is a terminal and plain elsewhere.
+// workListLine is one item's line: the columns a program can split, tab
+// separated for a program to consume off a terminal.
 func workListLine(v orchestrator.ItemView, tty bool) string {
-	node := v.Node
+	node, started, ended := workListDashed(v)
+	return v.ID + "\t" + workListColouredState(v.State, tty) + "\t" + node + "\t" + started + "\t" + ended
+}
+
+// workListDashed is an item's node, start and end, each "-" where absent.
+func workListDashed(v orchestrator.ItemView) (node, started, ended string) {
+	node, started, ended = v.Node, v.StartedAt, v.EndedAt
 	if node == "" {
 		node = "-"
 	}
-	started := v.StartedAt
 	if started == "" {
 		started = "-"
 	}
-	ended := v.EndedAt
 	if ended == "" {
 		ended = "-"
 	}
-	state := v.State
-	if tty {
-		switch v.State {
-		case orchestrator.StateDone:
-			state = ansiGreen + v.State + ansiReset
-		case orchestrator.StateFailed:
-			state = ansiRed + v.State + ansiReset
-		case orchestrator.StateRunning:
-			state = ansiYellow + v.State + ansiReset
-		}
+	return node, started, ended
+}
+
+// workListColouredState is a state in its colour where tty, plain otherwise.
+func workListColouredState(state string, tty bool) string {
+	if !tty {
+		return state
 	}
-	return v.ID + "\t" + state + "\t" + node + "\t" + started + "\t" + ended
+	switch state {
+	case orchestrator.StateDone:
+		return ansiGreen + state + ansiReset
+	case orchestrator.StateFailed:
+		return ansiRed + state + ansiReset
+	case orchestrator.StateRunning:
+		return ansiYellow + state + ansiReset
+	default:
+		return state
+	}
+}
+
+// workListTable is the work list as a table for a terminal: each column as
+// wide as its widest value, so a long id does not throw the rest of the row
+// out of line the way a fixed terminal tab stop would.
+func workListTable(items []orchestrator.ItemView) string {
+	var idW, stateW, nodeW, startedW int
+	rows := make([][5]string, len(items))
+	for i, v := range items {
+		node, started, ended := workListDashed(v)
+		rows[i] = [5]string{v.ID, v.State, node, started, ended}
+		idW = max(idW, len(v.ID))
+		stateW = max(stateW, len(v.State))
+		nodeW = max(nodeW, len(node))
+		startedW = max(startedW, len(started))
+	}
+	var b strings.Builder
+	for _, r := range rows {
+		id, state, node, started, ended := r[0], r[1], r[2], r[3], r[4]
+		b.WriteString(id)
+		b.WriteString(strings.Repeat(" ", idW-len(id)+2))
+		b.WriteString(workListColouredState(state, true))
+		b.WriteString(strings.Repeat(" ", stateW-len(state)+2))
+		b.WriteString(node)
+		b.WriteString(strings.Repeat(" ", nodeW-len(node)+2))
+		b.WriteString(started)
+		b.WriteString(strings.Repeat(" ", startedW-len(started)+2))
+		b.WriteString(ended)
+		b.WriteByte('\n')
+	}
+	return b.String()
 }
 
 // workAbortCmd builds `work abort`.

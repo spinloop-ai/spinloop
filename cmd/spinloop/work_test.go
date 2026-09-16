@@ -275,6 +275,39 @@ func TestWorkListLine_TheStateColourWhereThereIsATerminal(t *testing.T) {
 	}
 }
 
+func TestWorkListTable_LongIDsStayAligned(t *testing.T) {
+	items := []orchestrator.ItemView{
+		orchestratorItemView("describe-fleet-yaml", "done", "dev-4", "", "2026-09-14T08:36:17Z"),
+		orchestratorItemView("a", "backlog", "", "", ""),
+		orchestratorItemView("mark-fleet-yaml-pr-ready2", "running", "dev-1", "2026-09-14T21:42:23Z", ""),
+	}
+	table := workListTable(items)
+	lines := strings.Split(strings.TrimRight(table, "\n"), "\n")
+	if len(lines) != len(items) {
+		t.Fatalf("one line per item:\n%s", table)
+	}
+	// Strip the state's colour codes before measuring: the column widths are
+	// computed on the plain text, so the visible columns must line up once
+	// the codes are gone.
+	strip := strings.NewReplacer(ansiGreen, "", ansiRed, "", ansiYellow, "", ansiReset, "")
+	nodeCol := -1
+	for i, line := range lines {
+		plain := strip.Replace(line)
+		idx := strings.Index(plain, "dev-") // the node column, present on 2 of 3 rows
+		if idx == -1 {
+			continue
+		}
+		if nodeCol == -1 {
+			nodeCol = idx
+		} else if idx != nodeCol {
+			t.Errorf("row %d: node column starts at %d, want %d (long id threw the table out of line):\n%s", i, idx, nodeCol, table)
+		}
+	}
+	if nodeCol == -1 {
+		t.Fatalf("no row carried a node to check alignment against:\n%s", table)
+	}
+}
+
 func TestWork_NoURLFailsBeforeTheCall(t *testing.T) {
 	_, got := workAPIStub(t, http.StatusOK, map[string]any{"ok": true})
 	_, err := runWork(t, "add", "--id", "a", "--instructions", "do", "--dir", ".")
