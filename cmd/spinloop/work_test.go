@@ -1,41 +1,18 @@
 package main
 
 import (
-	"fmt"
+	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
+	"github.com/spinloop-ai/spinloop/internal/daemon"
 	"github.com/spinloop-ai/spinloop/internal/orchestrator"
 )
-
-// deadPID is a pid no process carries: a process started and waited on.
-func deadPID(t *testing.T) int {
-	t.Helper()
-	cmd := exec.Command("true")
-	if err := cmd.Start(); err != nil {
-		t.Fatal(err)
-	}
-	pid := cmd.Process.Pid
-	if err := cmd.Wait(); err != nil {
-		t.Fatal(err)
-	}
-	return pid
-}
-
-// rewriteLock replaces the lock file's content atomically, by renaming a
-// freshly written temp file over it, so a poller reading the lock
-// concurrently never observes a truncated or empty file.
-func rewriteLock(path string, pid int) error {
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, []byte(itoa(pid)), 0o600); err != nil {
-		return err
-	}
-	return os.Rename(tmp, path)
-}
 
 // runWork works the work command group the way the binary does, the output
 // kept for the test to read: the stdout the command wrote, and its error.
@@ -57,85 +34,196 @@ func runWork(t *testing.T, args ...string) (string, error) {
 	return string(data), err
 }
 
-// workFileIn writes a work items file and its state into a fresh directory.
-func workFileIn(t *testing.T, items, state string) string {
-	t.Helper()
-	dir := t.TempDir()
-	path := filepath.Join(dir, "work.yaml")
-	mustWrite(t, path, items)
-	if state != "" {
-		mustWrite(t, path+".state.json", state)
-	}
-	return path
+// workAPIRequest is one request as the work list API stub records it.
+type workAPIRequest struct {
+	method string
+	path   string
+	bearer string
+	body   []byte
 }
 
-func TestWorkAdd_AppendsTheItem(t *testing.T) {
-	path := workFileIn(t, "- id: a\n  instructions: do a\n  dir: .\n", "")
-	out, err := runWork(t, "add", "--items", path, "--id", "b", "--instructions", "do b", "--dir", ".")
+// workAPIStub stands in for the orchestrator's work list API for a test: it
+// records the request it sees, and answers the way the test says.
+func workAPIStub(t *testing.T, status int, reply any) (string, *workAPIRequest) {
+	t.Helper()
+	got := &workAPIRequest{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got.method = r.Method
+		got.path = r.URL.Path
+		got.bearer = r.Header.Get("Authorization")
+		got.body, _ = io.ReadAll(r.Body)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
+		if reply != nil {
+			json.NewEncoder(w).Encode(reply)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv.URL, got
+}
+
+// workAPIErrorReply is the shape the work list API's refusals take.
+func workAPIErrorReply(message string) any {
+	return map[string]any{"error": map[string]any{"message": message, "type": "orchestrator_error"}}
+}
+
+func TestWorkRequest_SendsTheBearerAndSurfacesTheRefusal(t *testing.T) {
+	base, got := workAPIStub(t, http.StatusConflict,
+		workAPIErrorReply(`the items file already carries an item with id "a"`))
+	_, err := workRequest(base, "sekret", http.MethodPost, "/v1/items", nil)
+	if err == nil || !strings.Contains(err.Error(), `already carries an item with id "a"`) {
+		t.Fatalf("the API's refusal is the command's error: %v", err)
+	}
+	if got.method != "POST" || got.path != "/v1/items" {
+		t.Errorf("the request goes to the API's path: %s %s", got.method, got.path)
+	}
+	if got.bearer != "Bearer sekret" {
+		t.Errorf("the token goes as a bearer: %q", got.bearer)
+	}
+}
+
+func TestWorkRequest_NoTokenIsNoBearer(t *testing.T) {
+	base, got := workAPIStub(t, http.StatusOK, map[string]any{"ok": true})
+	if _, err := workRequest(base, "", http.MethodGet, "/v1/items", nil); err != nil {
+		t.Fatal(err)
+	}
+	if got.bearer != "" {
+		t.Errorf("no token, no bearer: %q", got.bearer)
+	}
+}
+
+func TestWorkRequest_AnAnswerWithoutAMessageNamesTheStatus(t *testing.T) {
+	base, _ := workAPIStub(t, http.StatusInternalServerError, nil)
+	if _, err := workRequest(base, "", http.MethodGet, "/v1/items", nil); err == nil ||
+		!strings.Contains(err.Error(), "answered 500") {
+		t.Errorf("an answer without a message names the status and the address: %v", err)
+	}
+}
+
+func TestWorkAdd_SendsTheFieldsAndReportsTheAdd(t *testing.T) {
+	base, got := workAPIStub(t, http.StatusCreated, map[string]any{"object": "item", "id": "b"})
+	out, err := runWork(t, "add", "--url", base,
+		"--id", "b", "--instructions", "do b", "--dir", ".",
+		"--tag", "kind=gpu", "--tag", "org=me", "--priority", "3")
 	if err != nil {
 		t.Fatalf("the add: %v (out %s)", err, out)
 	}
 	if !strings.Contains(out, `item "b" added`) {
 		t.Errorf("the add reports the item: %s", out)
 	}
-	data, _ := os.ReadFile(path)
-	if !strings.Contains(string(data), "id: a") || !strings.Contains(string(data), "id: b") {
-		t.Errorf("both items stand in the file:\n%s", data)
+	if got.method != "POST" || got.path != "/v1/items" {
+		t.Errorf("the item goes to the API's add path: %s %s", got.method, got.path)
+	}
+	var body workAddBody
+	if err := json.Unmarshal(got.body, &body); err != nil {
+		t.Fatalf("the add sends a JSON item: %v\n%s", err, got.body)
+	}
+	if body.ID != "b" || body.Instructions != "do b" || body.Dir != "." ||
+		len(body.Tags) != 2 || body.Tags[0] != "kind=gpu" || body.Tags[1] != "org=me" || body.Priority != 3 {
+		t.Errorf("the fields go as the API takes them: %+v", body)
 	}
 }
 
-func TestWorkAdd_CreatesAMissingFile(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "work.yaml")
-	if _, err := runWork(t, "add", "--items", path, "--id", "a", "--instructions", "do", "--dir", "."); err != nil {
-		t.Fatal(err)
+func TestWorkAdd_TheRefusalsReadTheWayTheAPIStatesThem(t *testing.T) {
+	base, _ := workAPIStub(t, http.StatusConflict,
+		workAPIErrorReply(`the items file already carries an item with id "a"`))
+	_, err := runWork(t, "add", "--url", base, "--id", "a", "--instructions", "again", "--dir", ".")
+	if err == nil || !strings.Contains(err.Error(), `already carries an item with id "a"`) {
+		t.Errorf("an id the file carries is refused, the way the API states it: %v", err)
 	}
-	data, err := os.ReadFile(path)
+
+	base, _ = workAPIStub(t, http.StatusConflict,
+		workAPIErrorReply(`item "a" is recorded done: an ended item is not added again`))
+	_, err = runWork(t, "add", "--url", base, "--id", "a", "--instructions", "again", "--dir", ".")
+	if err == nil || !strings.Contains(err.Error(), "an ended item is not added again") {
+		t.Errorf("an ended id is refused, naming the record: %v", err)
+	}
+
+	base, _ = workAPIStub(t, http.StatusBadRequest,
+		workAPIErrorReply(`item "a" has no working directory`))
+	_, err = runWork(t, "add", "--url", base, "--id", "a", "--instructions", "do")
+	if err == nil || !strings.Contains(err.Error(), "has no working directory") {
+		t.Errorf("a field the validation refuses is refused, naming the fault: %v", err)
+	}
+}
+
+func TestWorkRemove_CallsTheRemovePathAndReports(t *testing.T) {
+	base, got := workAPIStub(t, http.StatusOK, map[string]any{"ok": true, "id": "a"})
+	out, err := runWork(t, "remove", "a", "--url", base)
 	if err != nil {
-		t.Fatalf("the missing file is created: %v", err)
+		t.Fatalf("the remove: %v (out %s)", err, out)
 	}
-	if !strings.Contains(string(data), "id: a") {
-		t.Errorf("the created file carries the item:\n%s", data)
+	if !strings.Contains(out, `item "a" removed`) {
+		t.Errorf("the remove reports the item: %s", out)
+	}
+	if got.method != "DELETE" || got.path != "/v1/items/a" {
+		t.Errorf("the remove calls the API's remove path for the id: %s %s", got.method, got.path)
 	}
 }
 
-func TestWorkAdd_Refusals(t *testing.T) {
-	_, err := runWork(t, "add", "--items", workFileIn(t, "", ""), "--instructions", "do", "--dir", ".")
-	if err == nil || !strings.Contains(err.Error(), "--id") {
-		t.Errorf("an add with no id is refused, naming the flag: %v", err)
+func TestWorkRemove_TheRefusalsReadTheWayTheAPIStatesThem(t *testing.T) {
+	base, _ := workAPIStub(t, http.StatusConflict,
+		workAPIErrorReply(`item "a" is running: abort it first, then remove it`))
+	_, err := runWork(t, "remove", "a", "--url", base)
+	if err == nil || !strings.Contains(err.Error(), "abort it first") {
+		t.Errorf("a running item is refused, naming the abort that goes first: %v", err)
 	}
 
-	path := workFileIn(t, "- id: a\n  instructions: do a\n  dir: .\n", "")
-	_, err = runWork(t, "add", "--items", path, "--id", "a", "--instructions", "again", "--dir", ".")
-	if err == nil || !strings.Contains(err.Error(), `id "a"`) {
-		t.Errorf("an id the file carries is refused, naming it: %v", err)
+	base, _ = workAPIStub(t, http.StatusNotFound,
+		workAPIErrorReply(`the items file carries no item with id "b"`))
+	_, err = runWork(t, "remove", "b", "--url", base)
+	if err == nil || !strings.Contains(err.Error(), `no item with id "b"`) {
+		t.Errorf("an id the file does not carry is refused, naming it: %v", err)
+	}
+}
+
+func TestWorkAbort_CallsTheAbortPathAndReports(t *testing.T) {
+	base, got := workAPIStub(t, http.StatusOK, map[string]any{"ok": true, "id": "a"})
+	out, err := runWork(t, "abort", "a", "--url", base)
+	if err != nil {
+		t.Fatalf("the abort: %v (out %s)", err, out)
+	}
+	if !strings.Contains(out, "back in the backlog") {
+		t.Errorf("the abort reports the item stopped: %s", out)
+	}
+	if got.method != "POST" || got.path != "/v1/items/a/abort" {
+		t.Errorf("the abort calls the API's abort path for the id: %s %s", got.method, got.path)
+	}
+}
+
+func TestWorkAbort_TheRefusalsReadTheWayTheAPIStatesThem(t *testing.T) {
+	base, _ := workAPIStub(t, http.StatusConflict,
+		workAPIErrorReply(`item "a" is not running: it is backlog`))
+	_, err := runWork(t, "abort", "a", "--url", base)
+	if err == nil || !strings.Contains(err.Error(), "it is backlog") {
+		t.Errorf("a not-running item is refused, naming its state: %v", err)
 	}
 
-	// The id out of the file, its ended record in the state: the state's
-	// refusal, not the file's.
-	ended := workFileIn(t, "- id: b\n  instructions: do b\n  dir: .\n",
-		`{"items":{"a":{"state":"done","node":"n","endedAt":"2026-09-14T00:00:00Z"}}}`)
-	_, err = runWork(t, "add", "--items", ended, "--id", "a", "--instructions", "again", "--dir", ".")
-	if err == nil || !strings.Contains(err.Error(), "done") {
-		t.Errorf("an id the state records done is refused, naming the record: %v", err)
+	base, _ = workAPIStub(t, http.StatusNotFound,
+		workAPIErrorReply(`the items file carries no item with id "b"`))
+	_, err = runWork(t, "abort", "b", "--url", base)
+	if err == nil || !strings.Contains(err.Error(), `no item with id "b"`) {
+		t.Errorf("an id the file does not carry is refused, naming it: %v", err)
 	}
 }
 
 func TestWorkList_PlainLinesInFileOrder(t *testing.T) {
-	state := `{"items":{` +
-		`"b":{"state":"running","node":"n","startedAt":"2026-09-14T00:00:00Z"},` +
-		`"c":{"state":"done","node":"n","startedAt":"2026-09-14T00:00:00Z","endedAt":"2026-09-14T00:01:00Z"},` +
-		`"d":{"state":"failed","why":"it failed","endedAt":"2026-09-14T00:02:00Z"}}}`
-	path := workFileIn(t,
-		"- id: a\n  instructions: do a\n  dir: .\n"+
-			"- id: b\n  instructions: do b\n  dir: .\n"+
-			"- id: c\n  instructions: do c\n  dir: .\n"+
-			"- id: d\n  instructions: do d\n  dir: .\n",
-		state)
-
-	out, err := runWork(t, "list", "--items", path)
+	reply := map[string]any{"object": "list", "data": []any{
+		map[string]any{"id": "a", "instructions": "do a", "dir": ".", "state": "backlog"},
+		map[string]any{"id": "b", "instructions": "do b", "dir": ".", "state": "running",
+			"node": "n", "startedAt": "2026-09-14T00:00:00Z"},
+		map[string]any{"id": "c", "instructions": "do c", "dir": ".", "state": "done",
+			"node": "n", "startedAt": "2026-09-14T00:00:00Z", "endedAt": "2026-09-14T00:01:00Z"},
+		map[string]any{"id": "d", "instructions": "do d", "dir": ".", "state": "failed",
+			"why": "it failed", "endedAt": "2026-09-14T00:02:00Z"},
+	}}
+	base, got := workAPIStub(t, http.StatusOK, reply)
+	out, err := runWork(t, "list", "--url", base)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if got.method != "GET" || got.path != "/v1/items" {
+		t.Errorf("the list reads the API's list path: %s %s", got.method, got.path)
 	}
 	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
 	if len(lines) != 4 {
@@ -159,27 +247,9 @@ func TestWorkList_PlainLinesInFileOrder(t *testing.T) {
 	}
 
 	// The alias works the same list.
-	out, err = runWork(t, "ls", "--items", path)
+	out, err = runWork(t, "ls", "--url", base)
 	if err != nil || !strings.HasPrefix(out, "a\tbacklog") {
 		t.Errorf("the ls alias is the list: %v\n%s", err, out)
-	}
-}
-
-func TestWorkList_NoStateFileEverythingIsBacklog(t *testing.T) {
-	path := workFileIn(t, "- id: a\n  instructions: do a\n  dir: .\n", "")
-	out, err := runWork(t, "list", "--items", path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.HasPrefix(out, "a\tbacklog\t-\t-\t-\n") {
-		t.Errorf("no state file, everything backlog:\n%s", out)
-	}
-}
-
-func TestWorkList_MissingFileIsANamedError(t *testing.T) {
-	_, err := runWork(t, "list", "--items", filepath.Join(t.TempDir(), "work.yaml"))
-	if err == nil || !strings.Contains(err.Error(), "no work items file") {
-		t.Errorf("a missing file is refused, naming it: %v", err)
 	}
 }
 
@@ -205,236 +275,95 @@ func TestWorkListLine_TheStateColourWhereThereIsATerminal(t *testing.T) {
 	}
 }
 
-func TestWorkAbort_Refusals(t *testing.T) {
-	missing := workFileIn(t, "- id: a\n  instructions: do a\n  dir: .\n", "")
-	_, err := runWork(t, "abort", "b", "--items", missing)
-	if err == nil || !strings.Contains(err.Error(), `no item with id "b"`) {
-		t.Errorf("an id the file does not carry is refused, naming it: %v", err)
+func TestWorkListTable_LongIDsStayAligned(t *testing.T) {
+	items := []orchestrator.ItemView{
+		orchestratorItemView("describe-fleet-yaml", "done", "dev-4", "", "2026-09-14T08:36:17Z"),
+		orchestratorItemView("a", "backlog", "", "", ""),
+		orchestratorItemView("mark-fleet-yaml-pr-ready2", "running", "dev-1", "2026-09-14T21:42:23Z", ""),
 	}
-
-	backlog := workFileIn(t, "- id: a\n  instructions: do a\n  dir: .\n", "")
-	_, err = runWork(t, "abort", "a", "--items", backlog)
-	if err == nil || !strings.Contains(err.Error(), "it is backlog") {
-		t.Errorf("a backlog item is refused, naming its state: %v", err)
+	table := workListTable(items)
+	lines := strings.Split(strings.TrimRight(table, "\n"), "\n")
+	if len(lines) != len(items)+1 {
+		t.Fatalf("one line per item, plus the heading row:\n%s", table)
 	}
-
-	done := workFileIn(t, "- id: a\n  instructions: do a\n  dir: .\n",
-		`{"items":{"a":{"state":"done","node":"n","endedAt":"2026-09-14T00:00:00Z"}}}`)
-	_, err = runWork(t, "abort", "a", "--items", done)
-	if err == nil || !strings.Contains(err.Error(), "it is done") {
-		t.Errorf("a done item is refused, naming its state: %v", err)
+	if !strings.Contains(lines[0], "ID") || !strings.Contains(lines[0], "STATE") ||
+		!strings.Contains(lines[0], "NODE") || !strings.Contains(lines[0], "STARTED") || !strings.Contains(lines[0], "ENDED") {
+		t.Errorf("the table opens with a heading row naming the columns:\n%s", lines[0])
 	}
-
-	// A running record with no orchestrator holding the lock: nothing is
-	// running, and the command says so — the record stands for the next start.
-	running := workFileIn(t, "- id: a\n  instructions: do a\n  dir: .\n",
-		`{"items":{"a":{"state":"running","node":"n","startedAt":"2026-09-14T00:00:00Z"}}}`)
-	_, err = runWork(t, "abort", "a", "--items", running)
-	if err == nil || !strings.Contains(err.Error(), "no orchestrator is running") {
-		t.Errorf("no live lock, nothing is running, and the command says so: %v", err)
+	// Strip the state's colour codes before measuring: the column widths are
+	// computed on the plain text, so the visible columns must line up once
+	// the codes are gone.
+	strip := strings.NewReplacer(ansiGreen, "", ansiRed, "", ansiYellow, "", ansiGrey, "", ansiReset, "")
+	nodeCol := -1
+	for i, line := range lines[1:] {
+		plain := strip.Replace(line)
+		idx := strings.Index(plain, "dev-") // the node column, present on 2 of 3 rows
+		if idx == -1 {
+			continue
+		}
+		if nodeCol == -1 {
+			nodeCol = idx
+		} else if idx != nodeCol {
+			t.Errorf("row %d: node column starts at %d, want %d (long id threw the table out of line):\n%s", i, idx, nodeCol, table)
+		}
 	}
-}
-
-func TestWorkAbort_TheMarkerGoesInAndTheWaitComesBack(t *testing.T) {
-	running := workFileIn(t, "- id: a\n  instructions: do a\n  dir: .\n",
-		`{"items":{"a":{"state":"running","node":"n","startedAt":"2026-09-14T00:00:00Z"}}}`)
-	// The orchestrator's lock, held by this process: the wait has a run to
-	// wait on.
-	if err := os.WriteFile(running+".lock", []byte(itoa(os.Getpid())), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	// The run's take-up, a moment out: the record goes, then the marker.
-	marker := filepath.Join(running+".aborts", "a")
-	go func() {
-		time.Sleep(300 * time.Millisecond)
-		os.WriteFile(running+".state.json", []byte(`{"items":{}}`), 0o600)
-		os.Remove(marker)
-	}()
-
-	tick := workWaitTick
-	workWaitTick = 5 * time.Millisecond
-	defer func() { workWaitTick = tick }()
-
-	out, err := runWork(t, "abort", "a", "--items", running)
-	if err != nil {
-		t.Fatalf("the abort: %v (out %s)", err, out)
-	}
-	if !strings.Contains(out, "back in the backlog") {
-		t.Errorf("the wait comes back with the item's state: %s", out)
-	}
-	if _, err := os.Stat(marker); !os.IsNotExist(err) {
-		t.Errorf("the marker is taken up, none standing: %v", err)
+	if nodeCol == -1 {
+		t.Fatalf("no row carried a node to check alignment against:\n%s", table)
 	}
 }
 
-func TestWorkRemove_TakesTheItemOut(t *testing.T) {
-	log := workFileIn(t,
-		"- id: a\n  instructions: do a\n  dir: .\n"+
-			"- id: b\n  instructions: do b\n  dir: .\n",
-		`{"items":{"a":{"state":"done","node":"n","endedAt":"2026-09-14T00:00:00Z"}}}`)
-	logDir := log + ".logs"
-	if err := os.MkdirAll(logDir, 0o700); err != nil {
-		t.Fatal(err)
+func TestWork_NoURLFailsBeforeTheCall(t *testing.T) {
+	_, got := workAPIStub(t, http.StatusOK, map[string]any{"ok": true})
+	_, err := runWork(t, "add", "--id", "a", "--instructions", "do", "--dir", ".")
+	if err == nil || !strings.Contains(err.Error(), "--url") {
+		t.Errorf("no --url, the command fails naming the flag: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(logDir, "a.log"), []byte("the output"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	_, err := runWork(t, "remove", "a", "--items", log)
-	if err != nil {
-		t.Fatal(err)
-	}
-	items, err := orchestratorLoadItems(log)
-	if err != nil {
-		t.Fatalf("the file is a valid items file after the removal: %v", err)
-	}
-	if len(items) != 1 || items[0].ID != "b" {
-		t.Errorf("the item is out of the file, the rest stands: %+v", items)
-	}
-	if _, err := os.Stat(filepath.Join(logDir, "a.log")); !os.IsNotExist(err) {
-		t.Errorf("the kept output goes with the item: %v", err)
-	}
-	state, _ := os.ReadFile(log + ".state.json")
-	if strings.Contains(string(state), `"a"`) {
-		t.Errorf("the record is out of the state:\n%s", state)
+	if got.method != "" {
+		t.Errorf("no address, no call: the stub saw %s %s", got.method, got.path)
 	}
 }
 
-func TestWorkRemove_Refusals(t *testing.T) {
-	missing := workFileIn(t, "- id: a\n  instructions: do a\n  dir: .\n", "")
-	_, err := runWork(t, "remove", "b", "--items", missing)
-	if err == nil || !strings.Contains(err.Error(), `no item with id "b"`) {
-		t.Errorf("an id the file does not carry is refused, naming it: %v", err)
-	}
-
-	running := workFileIn(t, "- id: a\n  instructions: do a\n  dir: .\n",
-		`{"items":{"a":{"state":"running","node":"n","startedAt":"2026-09-14T00:00:00Z"}}}`)
-	_, err = runWork(t, "remove", "a", "--items", running)
-	if err == nil || !strings.Contains(err.Error(), "abort it first") {
-		t.Errorf("a running item is refused, naming the abort that goes first: %v", err)
+func TestWork_TwoTokenFlagsAtOnceIsARefusal(t *testing.T) {
+	_, err := runWork(t, "list", "--url", "http://127.0.0.1:1",
+		"--api-token", "one", "--api-token-file", filepath.Join(t.TempDir(), "token"))
+	if err == nil || !strings.Contains(err.Error(), "--api-token") || !strings.Contains(err.Error(), "--api-token-file") {
+		t.Errorf("two token flags at once is a refusal, naming both: %v", err)
 	}
 }
 
-func TestWorkRemove_TheWaitComesBackWhereTheRunIsLive(t *testing.T) {
-	path := workFileIn(t,
-		"- id: a\n  instructions: do a\n  dir: .\n"+
-			"- id: b\n  instructions: do b\n  dir: .\n",
-		`{"items":{"a":{"state":"done","node":"n","endedAt":"2026-09-14T00:00:00Z"}}}`)
-	if err := os.WriteFile(path+".lock", []byte(itoa(os.Getpid())), 0o600); err != nil {
+func TestWork_TheTokenComesFromTheEnvironment(t *testing.T) {
+	base, got := workAPIStub(t, http.StatusOK, map[string]any{"object": "list", "data": []any{}})
+	t.Setenv(daemon.TokenEnvVar, "sekret")
+	if _, err := runWork(t, "list", "--url", base); err != nil {
 		t.Fatal(err)
 	}
-	// The run's pass drops the record a moment out: the wait has a run to
-	// wait on, and it comes back when the state agrees.
-	go func() {
-		time.Sleep(300 * time.Millisecond)
-		orchestrator.SaveStateFile(path, map[string]orchestrator.ItemState{})
-	}()
-
-	tick := workWaitTick
-	workWaitTick = 5 * time.Millisecond
-	defer func() { workWaitTick = tick }()
-
-	out, err := runWork(t, "remove", "a", "--items", path)
-	if err != nil {
-		t.Fatalf("the remove: %v (out %s)", err, out)
-	}
-	if !strings.Contains(out, `item "a" removed`) {
-		t.Errorf("the remove reports the item: %s", out)
+	if got.bearer != "Bearer sekret" {
+		t.Errorf("the environment's token goes as the bearer: %q", got.bearer)
 	}
 }
 
-func TestAwaitAbort_TheBoundRunsOutFirst(t *testing.T) {
-	path := workFileIn(t, "- id: a\n  instructions: do a\n  dir: .\n",
-		`{"items":{"a":{"state":"running","node":"n","startedAt":"2026-09-14T00:00:00Z"}}}`)
-	if err := os.WriteFile(path+".lock", []byte(itoa(os.Getpid())), 0o600); err != nil {
+func TestWork_TheTokenComesFromTheFile(t *testing.T) {
+	base, got := workAPIStub(t, http.StatusOK, map[string]any{"object": "list", "data": []any{}})
+	t.Setenv(daemon.TokenEnvVar, "")
+	path := filepath.Join(t.TempDir(), "token")
+	if err := os.WriteFile(path, []byte("filetok\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := orchestrator.RequestAbort(path, "a"); err != nil {
+	if _, err := runWork(t, "list", "--url", base, "--api-token-file", path); err != nil {
 		t.Fatal(err)
 	}
-
-	bound, tick := workWaitBound, workWaitTick
-	workWaitBound, workWaitTick = 100*time.Millisecond, 5*time.Millisecond
-	defer func() { workWaitBound, workWaitTick = bound, tick }()
-
-	// The marker stands, the holder stays live, and no run takes it up.
-	if err := awaitAbort(path, "a", os.Getpid()); err == nil ||
-		!strings.Contains(err.Error(), "still pending") || !strings.Contains(err.Error(), `abort of "a"`) {
-		t.Errorf("the bound runs out, naming the item and the ask: %v", err)
+	if got.bearer != "Bearer filetok" {
+		t.Errorf("the file's token, trimmed, goes as the bearer: %q", got.bearer)
 	}
 }
 
-func TestAwaitAbort_TheRunDiesWhileTheWaitIsPending(t *testing.T) {
-	path := workFileIn(t, "- id: a\n  instructions: do a\n  dir: .\n",
-		`{"items":{"a":{"state":"running","node":"n","startedAt":"2026-09-14T00:00:00Z"}}}`)
-	dead := deadPID(t)
-	if err := os.WriteFile(path+".lock", []byte(itoa(os.Getpid())), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := orchestrator.RequestAbort(path, "a"); err != nil {
-		t.Fatal(err)
-	}
-	// The run dies a moment out: its lock goes stale.
-	go func() {
-		time.Sleep(100 * time.Millisecond)
-		rewriteLock(path+".lock", dead)
-	}()
-
-	bound, tick := workWaitBound, workWaitTick
-	workWaitBound, workWaitTick = 5*time.Second, 5*time.Millisecond
-	defer func() { workWaitBound, workWaitTick = bound, tick }()
-
-	err := awaitAbort(path, "a", os.Getpid())
-	if err == nil || !strings.Contains(err.Error(), "stopped while the abort of \"a\" was pending") {
-		t.Errorf("the dead run is reported, naming the item: %v", err)
-	}
-	// The marker stands: the ask was never taken up.
-	if _, err := os.Stat(filepath.Join(path+".aborts", "a")); err != nil {
-		t.Errorf("the marker stands beside the file: %v", err)
-	}
-}
-
-func TestAwaitRecordGone_TheBoundRunsOutFirst(t *testing.T) {
-	path := workFileIn(t, "- id: b\n  instructions: do b\n  dir: .\n",
-		`{"items":{"a":{"state":"done","node":"n","endedAt":"2026-09-14T00:00:00Z"}}}`)
-	if err := os.WriteFile(path+".lock", []byte(itoa(os.Getpid())), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	bound, tick := workWaitBound, workWaitTick
-	workWaitBound, workWaitTick = 100*time.Millisecond, 5*time.Millisecond
-	defer func() { workWaitBound, workWaitTick = bound, tick }()
-
-	// The record stands, the holder stays live, and no run drops it.
-	if err := awaitRecordGone(path, "a"); err == nil ||
-		!strings.Contains(err.Error(), "still records") || !strings.Contains(err.Error(), `"a"`) {
-		t.Errorf("the bound runs out, naming the item: %v", err)
-	}
-}
-
-func TestAwaitRecordGone_TheRunDiesAndTheCommandWritesTheFinalWord(t *testing.T) {
-	path := workFileIn(t, "- id: b\n  instructions: do b\n  dir: .\n",
-		`{"items":{"a":{"state":"done","node":"n","endedAt":"2026-09-14T00:00:00Z"}}}`)
-	dead := deadPID(t)
-	if err := os.WriteFile(path+".lock", []byte(itoa(os.Getpid())), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	// The run dies a moment out: its lock goes stale, the record standing.
-	go func() {
-		time.Sleep(100 * time.Millisecond)
-		rewriteLock(path+".lock", dead)
-	}()
-
-	bound, tick := workWaitBound, workWaitTick
-	workWaitBound, workWaitTick = 5*time.Second, 5*time.Millisecond
-	defer func() { workWaitBound, workWaitTick = bound, tick }()
-
-	if err := awaitRecordGone(path, "a"); err != nil {
-		t.Fatalf("the dead run is no fault: the command writes the final word: %v", err)
-	}
-	state, _ := os.ReadFile(path + ".state.json")
-	if strings.Contains(string(state), `"a"`) {
-		t.Errorf("the command's own write is the final word, the record gone:\n%s", state)
+func TestWork_TheRefusedBearerIsReported(t *testing.T) {
+	base, _ := workAPIStub(t, http.StatusUnauthorized,
+		workAPIErrorReply("missing or invalid bearer token"))
+	t.Setenv(daemon.TokenEnvVar, "")
+	_, err := runWork(t, "list", "--url", base)
+	if err == nil || !strings.Contains(err.Error(), "missing or invalid bearer token") {
+		t.Errorf("the API's refusal is the command's error: %v", err)
 	}
 }
 
@@ -442,11 +371,3 @@ func TestAwaitRecordGone_TheRunDiesAndTheCommandWritesTheFinalWord(t *testing.T)
 func orchestratorItemView(id, state, node, started, ended string) orchestrator.ItemView {
 	return orchestrator.ItemView{ID: id, State: state, Node: node, StartedAt: started, EndedAt: ended}
 }
-
-// orchestratorLoadItems reads an items file the way the commands do.
-func orchestratorLoadItems(path string) ([]orchestrator.Item, error) {
-	return orchestrator.LoadItems(path)
-}
-
-// itoa renders a pid the way the lock file carries it.
-func itoa(n int) string { return fmt.Sprintf("%d", n) }

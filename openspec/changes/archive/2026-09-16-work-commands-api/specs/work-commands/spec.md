@@ -1,11 +1,44 @@
-## Purpose
+## REMOVED Requirements
 
-Work the items of a running orchestrator from the shell — add an item, read
-the backlog, stop a running item, remove an item — as a client of the
-orchestrator's work list API: the commands name the API's address, present its
-token, and the run's view of the items is the source of truth.
+### Requirement: The work command group
 
-## Requirements
+**Reason**: The commands no longer work the items file beside an orchestrator;
+they call the work list API the run serves. The file-working group is replaced
+by the work list client group added in this change.
+
+**Migration**: Point each command at the run with `--url <address>` and present
+the API's token (`--api-token`, `--api-token-file`, or `SPINLOOP_API_TOKEN`);
+drop `--items`.
+
+### Requirement: Adding an item
+
+**Reason**: Replaced by the work list client add added in this change.
+
+**Migration**: `work add` now POSTs the item's fields to the run's add path;
+name the run with `--url` and present the API's token.
+
+### Requirement: Listing the work
+
+**Reason**: Replaced by the work list client list added in this change.
+
+**Migration**: `work list` now reads the run's list path; name the run with
+`--url` and present the API's token.
+
+### Requirement: Aborting an item
+
+**Reason**: Replaced by the work list client abort added in this change.
+
+**Migration**: `work abort <id>` now calls the run's abort path, which stops the
+item and answers; name the run with `--url` and present the API's token.
+
+### Requirement: Removing an item
+
+**Reason**: Replaced by the work list client remove added in this change.
+
+**Migration**: `work remove <id>` now calls the run's remove path, which takes
+the item out and answers; name the run with `--url` and present the API's token.
+
+## ADDED Requirements
 
 ### Requirement: The work commands as work list clients
 
@@ -90,10 +123,8 @@ with its record, in the file's order: each item's id, its state — backlog,
 running, done or failed — the node a running item runs on, and when it started
 and ended. An item with no record SHALL show as backlog. The command's output
 SHALL be plain lines a program can consume, one per item, and decoration SHALL
-be drawn only where there is a terminal to draw it on: there, the columns
-SHALL line up as a table, each column as wide as its widest value including
-the heading, and the table SHALL open with a heading row naming the columns.
-`ls` SHALL be an alias of list.
+be drawn only where there is a terminal to draw it on. `ls` SHALL be an alias of
+list.
 
 #### Scenario: Every item shows its state
 
@@ -107,13 +138,6 @@ the heading, and the table SHALL open with a heading row naming the columns.
 - **WHEN** the operator pipes the list into another program
 - **THEN** the pipe carries one plain line per item, in order, with no
   decoration
-
-#### Scenario: A terminal gets a heading and aligned columns
-
-- **WHEN** the operator runs list on a terminal, and an item's id is longer
-  than a value already shown in that column
-- **THEN** the table opens with a heading row naming the columns, and every
-  row's columns still line up under it
 
 #### Scenario: The alias works
 

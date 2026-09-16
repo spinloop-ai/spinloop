@@ -122,6 +122,59 @@ func TestConsumeAborts_TheGraceRunsOutAndTheHardEndComes(t *testing.T) {
 	wl.reap()
 }
 
+// TestAPIAbort_APassMidStopDoesNotRelaunch is the API's abort, not the
+// marker's: the old agent takes a moment past the polite signal to actually
+// end, and a pass landing in that moment must not launch a second agent into
+// the same item while the first is still on its way out.
+func TestAPIAbort_APassMidStopDoesNotRelaunch(t *testing.T) {
+	topo := Topology{Wake: true, Nodes: []Node{runningNode("n", "org/m", nil)}}
+	h := &fakeHarness{name: "opencode", bin: "unused"}
+	child := &stubbornChild{release: make(chan struct{})}
+	rec := &launchRecorder{factory: func(bin string, args []string, dir, logPath string, env []string) (Child, error) {
+		return child, nil
+	}}
+	wl, _ := workListWithLoop(t, h, rec, itemsFile(itemSpec{id: "a", dir: t.TempDir()}))
+
+	wl.pass(topo, nil)
+	if rec.launchCount() != 1 {
+		t.Fatalf("the item is in flight before the abort: %d launches", rec.launchCount())
+	}
+
+	done := make(chan error, 1)
+	go func() { done <- wl.Abort("a") }()
+
+	// Give Abort a moment to detach the item — inflight and its record both
+	// gone — before the old agent has actually ended.
+	deadline := time.Now().Add(time.Second)
+	for {
+		wl.mu.Lock()
+		_, running := wl.inflight["a"]
+		wl.mu.Unlock()
+		if !running {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the abort never detached the item")
+		}
+		time.Sleep(time.Millisecond)
+	}
+
+	wl.pass(topo, nil)
+	if rec.launchCount() != 1 {
+		t.Errorf("a pass while the old agent is still stopping must not relaunch: %d launches", rec.launchCount())
+	}
+
+	close(child.release) // the old agent finally ends
+	if err := <-done; err != nil {
+		t.Fatalf("abort: %v", err)
+	}
+
+	wl.pass(topo, nil)
+	if rec.launchCount() != 2 {
+		t.Errorf("once the old agent has ended, the next pass admits it again: %d launches", rec.launchCount())
+	}
+}
+
 // TestPrune_AnInFlightItemTheFileLetGoKeepsItsRecord: the file lets go of an
 // item that is running, the agent runs to its end, and the record goes with
 // it out of the state once it is no longer in flight.

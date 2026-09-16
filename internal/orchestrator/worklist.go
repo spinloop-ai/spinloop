@@ -41,6 +41,17 @@ type WorkList struct {
 	inflight map[string]*flight
 	results  chan result
 
+	// stopping holds the id of an item the API's Abort has detached and is
+	// waiting on: the agent is asked to stop, and stopping it can outlast
+	// the request. Detaching drops the item from inflight and records
+	// immediately (finish must not overwrite the abort's outcome once the
+	// old agent's wait resolves), which would otherwise leave it looking
+	// like free backlog to a pass mid-stop. stopping holds the id out of
+	// admission until the wait Abort is already doing resolves, so a pass
+	// cannot launch a second agent into the same directory while the first
+	// is still exiting.
+	stopping map[string]bool
+
 	// lastMod and lastSize are the items file's mtime and size the last
 	// read saw: a change to either is a re-read.
 	lastMod  time.Time
@@ -72,6 +83,7 @@ func NewWorkList(itemsPath string, store Store, dispatch *Dispatcher, gateway st
 		records:   records,
 		inflight:  map[string]*flight{},
 		results:   make(chan result),
+		stopping:  map[string]bool{},
 	}
 	if fi, err := os.Stat(itemsPath); err == nil {
 		wl.lastMod, wl.lastSize = fi.ModTime(), fi.Size()
@@ -227,6 +239,9 @@ func (w *WorkList) pass(topo Topology, suppressed map[string]bool) {
 		}
 		if _, running := w.inflight[item.ID]; running {
 			continue
+		}
+		if w.stopping[item.ID] {
+			continue // an abort detached this item, and its old agent has not exited yet
 		}
 		nodes := Match(item, topo)
 		if len(nodes) == 0 {
@@ -504,6 +519,7 @@ func (w *WorkList) Abort(id string) error {
 		w.mu.Unlock()
 		return &errConflict{msg: fmt.Sprintf("item %q is not running: it is %s", id, state)}
 	}
+	w.stopping[id] = true
 	w.mu.Unlock()
 
 	fl.child.Stop()
@@ -513,6 +529,10 @@ func (w *WorkList) Abort(id string) error {
 		fl.child.Kill()
 		<-fl.done
 	}
+
+	w.mu.Lock()
+	delete(w.stopping, id)
+	w.mu.Unlock()
 	return nil
 }
 

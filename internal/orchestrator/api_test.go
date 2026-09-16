@@ -1,10 +1,12 @@
 package orchestrator
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -622,6 +624,41 @@ func TestWorkList_TheLoopAndTheAPIShareOneState(t *testing.T) {
 	// The first item, the file's own, was worked too.
 	if stateOf("a") != StateDone {
 		t.Errorf("the file's own item is worked, got %q", stateOf("a"))
+	}
+}
+
+// --- the call log -------------------------------------------------------
+
+// TestAPI_EveryCallIsLoggedWithItsOutcome checks that a call the API accepts
+// and a call it refuses both leave a record naming the method, the path —
+// carrying the item's id where the path does — and the status the caller
+// was answered with.
+func TestAPI_EveryCallIsLoggedWithItsOutcome(t *testing.T) {
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	wl, _, _ := testWorkList(t, itemsFile(itemSpec{id: "a", instr: "do a", dir: "./a"}), nil)
+	srv := httptest.NewServer(NewHandler(wl, "", logger))
+	defer srv.Close()
+
+	// A call the API accepts.
+	code, _, raw := apiGet(t, srv, "", "/v1/items")
+	if code != http.StatusOK {
+		t.Fatalf("the list is answered: %d: %s", code, raw)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "method=GET") || !strings.Contains(out, "path=/v1/items") || !strings.Contains(out, "status=200") {
+		t.Errorf("a served call is logged naming the method, path and status, got:\n%s", out)
+	}
+
+	// A call the API refuses, naming the item in the path.
+	buf.Reset()
+	code, raw = apiDo(t, srv, "", http.MethodDelete, "/v1/items/ghost", "")
+	if code != http.StatusNotFound {
+		t.Fatalf("removing an absent id is refused: %d: %s", code, raw)
+	}
+	out = buf.String()
+	if !strings.Contains(out, "method=DELETE") || !strings.Contains(out, "path=/v1/items/ghost") || !strings.Contains(out, "status=404") {
+		t.Errorf("a refused call is logged naming the method, path and status, got:\n%s", out)
 	}
 }
 

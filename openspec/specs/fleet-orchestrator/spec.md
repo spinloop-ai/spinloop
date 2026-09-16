@@ -136,6 +136,11 @@ listens on an address that is not loopback, every request SHALL present the
 run's API token or be refused; where it listens on loopback, a request MAY
 present no token and be served.
 
+The orchestrator SHALL log every call the API answers, once the answer is
+complete: the method, the path, the status the caller was given, and how
+long the call took. A refusal or a fault SHALL be visible in the run's own
+log at its default level, not only in the caller's reply.
+
 #### Scenario: The run's view answers the list
 
 - **WHEN** the run's loop admits an item and a request reads the list
