@@ -129,7 +129,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// A handler that wrote nothing at all still replied 200.
 		status = http.StatusOK
 	}
-	h.log.Log(r.Context(), levelForStatus(status), "work list api call",
+	h.log.Log(r.Context(), levelForStatus(status), "api call",
 		slog.String("method", r.Method),
 		// RequestURI carries the item id for /v1/items/{id} paths, and any
 		// query — the work list API takes none, so there is nothing there to
@@ -267,7 +267,6 @@ func (h *Handler) handleAdd(w http.ResponseWriter, r *http.Request) {
 		writeError(w, apiStatus(err), err)
 		return
 	}
-	h.log.Info("item added", slog.String("item", item.ID))
 	writeJSON(w, http.StatusCreated, map[string]any{"object": "item", "id": item.ID})
 }
 
