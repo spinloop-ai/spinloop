@@ -285,11 +285,15 @@ func workListColouredState(state string, tty bool) string {
 	}
 }
 
-// workListTable is the work list as a table for a terminal: each column as
-// wide as its widest value, so a long id does not throw the rest of the row
-// out of line the way a fixed terminal tab stop would.
+// workListHeadings names the table's columns, in column order.
+var workListHeadings = [5]string{"ID", "STATE", "NODE", "STARTED", "ENDED"}
+
+// workListTable is the work list as a table for a terminal: a heading row,
+// then each column as wide as its widest value — the heading included — so a
+// long id does not throw the rest of the row out of line the way a fixed
+// terminal tab stop would.
 func workListTable(items []orchestrator.ItemView) string {
-	var idW, stateW, nodeW, startedW int
+	idW, stateW, nodeW, startedW := len(workListHeadings[0]), len(workListHeadings[1]), len(workListHeadings[2]), len(workListHeadings[3])
 	rows := make([][5]string, len(items))
 	for i, v := range items {
 		node, started, ended := workListDashed(v)
@@ -300,6 +304,19 @@ func workListTable(items []orchestrator.ItemView) string {
 		startedW = max(startedW, len(started))
 	}
 	var b strings.Builder
+	h := workListHeadings
+	b.WriteString(ansiGrey)
+	b.WriteString(h[0])
+	b.WriteString(strings.Repeat(" ", idW-len(h[0])+2))
+	b.WriteString(h[1])
+	b.WriteString(strings.Repeat(" ", stateW-len(h[1])+2))
+	b.WriteString(h[2])
+	b.WriteString(strings.Repeat(" ", nodeW-len(h[2])+2))
+	b.WriteString(h[3])
+	b.WriteString(strings.Repeat(" ", startedW-len(h[3])+2))
+	b.WriteString(h[4])
+	b.WriteString(ansiReset)
+	b.WriteByte('\n')
 	for _, r := range rows {
 		id, state, node, started, ended := r[0], r[1], r[2], r[3], r[4]
 		b.WriteString(id)

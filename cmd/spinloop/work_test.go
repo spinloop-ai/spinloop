@@ -283,15 +283,19 @@ func TestWorkListTable_LongIDsStayAligned(t *testing.T) {
 	}
 	table := workListTable(items)
 	lines := strings.Split(strings.TrimRight(table, "\n"), "\n")
-	if len(lines) != len(items) {
-		t.Fatalf("one line per item:\n%s", table)
+	if len(lines) != len(items)+1 {
+		t.Fatalf("one line per item, plus the heading row:\n%s", table)
+	}
+	if !strings.Contains(lines[0], "ID") || !strings.Contains(lines[0], "STATE") ||
+		!strings.Contains(lines[0], "NODE") || !strings.Contains(lines[0], "STARTED") || !strings.Contains(lines[0], "ENDED") {
+		t.Errorf("the table opens with a heading row naming the columns:\n%s", lines[0])
 	}
 	// Strip the state's colour codes before measuring: the column widths are
 	// computed on the plain text, so the visible columns must line up once
 	// the codes are gone.
-	strip := strings.NewReplacer(ansiGreen, "", ansiRed, "", ansiYellow, "", ansiReset, "")
+	strip := strings.NewReplacer(ansiGreen, "", ansiRed, "", ansiYellow, "", ansiGrey, "", ansiReset, "")
 	nodeCol := -1
-	for i, line := range lines {
+	for i, line := range lines[1:] {
 		plain := strip.Replace(line)
 		idx := strings.Index(plain, "dev-") // the node column, present on 2 of 3 rows
 		if idx == -1 {
