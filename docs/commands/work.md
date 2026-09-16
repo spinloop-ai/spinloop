@@ -45,6 +45,8 @@ and the command reports its answer: a refusal reads the way the API states it.
 
 ## Listing the work
 
+Piped or redirected:
+
 ```sh
 spinloop work list --url http://127.0.0.1:4010
 # a           backlog   -       -               -
@@ -53,13 +55,26 @@ spinloop work list --url http://127.0.0.1:4010
 # d           failed    -       -               2026-09-14T08:00:00Z
 ```
 
+On a terminal, a heading row and the columns aligned:
+
+```sh
+spinloop work list --url http://127.0.0.1:4010
+# ID  STATE    NODE  STARTED               ENDED
+# a   backlog  -     -                     -
+# b   running  n     2026-09-14T10:00:00Z  -
+# c   done     n     2026-09-14T09:00:00Z  2026-09-14T09:30:00Z
+# d   failed   -     -                     2026-09-14T08:00:00Z
+```
+
 Every item in the work list with its record, in the file's order: the id, its
 state — `backlog`, `running`, `done` or `failed` — the node a running item is
-on, and when it started and ended. One plain line per item, a dash where a
-value is absent, so a program can split the columns. An item with no record is
-`backlog`. The list reads the work list API the orchestrator serves — the run's
-view of the items, the source of truth; the state colour is drawn only where
-there is a terminal to draw it on. `spinloop work ls` is the same list.
+on, and when it started and ended. Piped or redirected, one plain line per
+item, a dash where a value is absent, so a program can split the columns; on a
+terminal, the columns line up as a table instead, each as wide as its widest
+value — the heading included — and the state in its colour. An item with no
+record is `backlog`. The list reads the work list API the orchestrator serves
+— the run's view of the items, the source of truth. `spinloop work ls` is the
+same list.
 
 ## Aborting an item
 
