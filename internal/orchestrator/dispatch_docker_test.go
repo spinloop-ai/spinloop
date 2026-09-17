@@ -114,7 +114,7 @@ func TestDockerLaunch_BuildsTheExpectedInvocation(t *testing.T) {
 		"-e OPENAI_API_KEY=the-token",
 		"-e FOO=bar",
 		"spinloop/agent:test",
-		"opencode run -m spinloop-orchestrator-gpu-1/org/model fix it",
+		"opencode run -m spinloop-orchestrator-gpu-1/org/model --auto fix it",
 	} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("the invocation should carry %q, got:\n%s", want, joined)

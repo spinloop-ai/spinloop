@@ -709,6 +709,7 @@ func TestDispatch_RunsTheAgentOneShotInTheItemsDirectory(t *testing.T) {
 		"arg:run",
 		"arg:-m",
 		"arg:spinloop-orchestrator-gpu-a/org/model",
+		"arg:--auto",
 		"arg:fix the parser",
 		"key:the-token",
 	} {

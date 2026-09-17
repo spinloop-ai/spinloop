@@ -172,6 +172,12 @@ gateway's OpenAI-compatible address as the base URL — its address plus `/v1`
 where it names none — and the gateway's token as the key. A
 harness with no single-task form — lucinate — is refused at startup, naming it.
 
+opencode's launch carries `--auto`: with no terminal for a permission prompt
+to reach, one otherwise blocks the item forever, or is auto-rejected off a
+terminal, silently stopping the agent from doing the item's own work. Every
+one-shot launch trusts every tool the item's instructions call for — there is
+no way, at dispatch time, to know which ones it will need.
+
 The node an item takes is the fleet's own routing, read through the gateway:
 an item matches a node only where every tag it names is one the node carries;
 a node already running and answering is offered before a node the run would

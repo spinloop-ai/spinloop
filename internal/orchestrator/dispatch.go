@@ -43,7 +43,13 @@ func HasOneShotForm(harnessName string) bool {
 // naming it.
 var oneShot = map[string]func(providerKey, model, instructions string) []string{
 	"opencode": func(key, model, instructions string) []string {
-		return []string{"run", "-m", key + "/" + model, instructions}
+		// --auto: with no terminal to answer one, a permission prompt
+		// opencode raises otherwise blocks forever, or — off a terminal —
+		// is auto-rejected, which silently stops the agent from doing the
+		// item's own work rather than failing loudly. There is no
+		// dispatch-time way to know which tools an item's instructions
+		// will need, so every one-shot launch trusts them all.
+		return []string{"run", "-m", key + "/" + model, "--auto", instructions}
 	},
 	"pi": func(key, model, instructions string) []string {
 		return []string{"--print", "--model", key + "/" + model, instructions}
