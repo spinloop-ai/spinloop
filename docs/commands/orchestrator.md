@@ -204,6 +204,11 @@ whole run — not per node, not per item:
   image to run, defaulting to `ghcr.io/spinloop-ai/agent:<spinloop's own
   version>` — the image built alongside that release.
 
+[`harness.yaml`](#harnessyaml-environment-and-lifecycle-scripts) can also
+name the backend, with `dispatch:` — useful for keeping the choice with
+the rest of an item's environment rather than in a wrapper script that
+adds the flag. An explicit `--dispatch` on the command line wins over it.
+
 Stopping an item — an abort, or the run's own clean interrupt — stops
 either the same way: the polite signal first, then, where the grace runs
 out, the hard end. See [`images/agent/README.md`](../../images/agent/README.md)
@@ -217,6 +222,7 @@ found beside the items file by default, or named with
 `--harness-config <path>`. Where neither is present, nothing changes.
 
 ```yaml
+dispatch: docker
 env:
   GH_TOKEN: ghp_...
   SOME_TOOL_FLAG: "1"
@@ -227,6 +233,9 @@ shutdown: |
   echo "item finished" >> /tmp/agent-activity.log
 ```
 
+- **`dispatch`** — the backend the run uses, `bare` or `docker`, the way
+  `--dispatch` does. An explicit `--dispatch` wins over it; where the flag
+  is not given, this is the run's choice.
 - **`env`** — a map added to every launch's environment, under either
   backend. An entry naming the same variable the gateway's token is
   presented under is refused, naming it, before the command works an item.

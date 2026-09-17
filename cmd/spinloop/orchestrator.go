@@ -82,7 +82,7 @@ without a separate call to spinloop work list.`,
 			if err != nil {
 				return err
 			}
-			return runOrchestratorCommand(gateway, itemsPath, tokenVar, harnessName, logLevel, createItemDirs, listenAddr, apiToken, apiTokenFile, dispatchBackend, dispatchImage, harnessConfigPath)
+			return runOrchestratorCommand(gateway, itemsPath, tokenVar, harnessName, logLevel, createItemDirs, listenAddr, apiToken, apiTokenFile, dispatchBackend, c.Flags().Changed("dispatch"), dispatchImage, harnessConfigPath)
 		},
 	}
 
@@ -106,6 +106,7 @@ without a separate call to spinloop work list.`,
 	compRegister(c, "harness", compHarnessNames)
 	compRegister(c, "log-level", compLogLevel)
 	compRegister(c, "dispatch", compDispatchBackends)
+	compRegister(c, "harness-config", compFiles)
 	return c
 }
 
@@ -169,7 +170,7 @@ func orchestratorListenAddr(listen string, listenExplicit, loopback bool) (strin
 // and then the work list API standing before the run's first pass, the way
 // the gateway has its handler in before a signal can arrive, held until the
 // signal ends the run and the server goes down with it.
-func runOrchestratorCommand(gatewayAddr, itemsPath, token, harnessName, logLevel string, createItemDirs bool, listenAddr, apiToken, apiTokenFile, dispatchBackend, dispatchImage, harnessConfigPath string) error {
+func runOrchestratorCommand(gatewayAddr, itemsPath, token, harnessName, logLevel string, createItemDirs bool, listenAddr, apiToken, apiTokenFile, dispatchBackend string, dispatchChanged bool, dispatchImage, harnessConfigPath string) error {
 	h, _, err := harness.Resolve(harnessName)
 	if err != nil {
 		return err
@@ -203,8 +204,16 @@ func runOrchestratorCommand(gatewayAddr, itemsPath, token, harnessName, logLevel
 		return err
 	}
 
+	// --dispatch, given explicitly, wins outright; otherwise harness.yaml's
+	// own dispatch: is the run's choice, and the flag's default ("bare")
+	// only where neither says anything.
+	backend, backendSource := dispatchBackend, "--dispatch"
+	if !dispatchChanged && hc.Dispatch != "" {
+		backend, backendSource = hc.Dispatch, "harness.yaml's dispatch"
+	}
+
 	var dispatch orchestrator.Launcher
-	switch dispatchBackend {
+	switch backend {
 	case "", "bare":
 		dispatch = orchestrator.NewDispatcher(h, gatewayAddr, token, createItemDirs).WithHarnessConfig(hc)
 	case "docker":
@@ -217,7 +226,7 @@ func runOrchestratorCommand(gatewayAddr, itemsPath, token, harnessName, logLevel
 		}
 		dispatch = orchestrator.NewDockerLauncher(h, gatewayAddr, token, image, itemsPath, createItemDirs).WithHarnessConfig(hc)
 	default:
-		return fmt.Errorf("unknown --dispatch %q: expected bare or docker", dispatchBackend)
+		return fmt.Errorf("unknown %s %q: expected bare or docker", backendSource, backend)
 	}
 
 	store, err := orchestrator.OpenStore(itemsPath)

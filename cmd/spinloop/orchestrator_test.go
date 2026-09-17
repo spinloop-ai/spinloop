@@ -565,6 +565,43 @@ func TestCmdOrchestrator_AnUnrecognisedDispatchBackendNamesIt(t *testing.T) {
 	}
 }
 
+// harness.yaml's dispatch: is the run's choice where --dispatch is not
+// given: naming a value the command does not recognise stops it, naming
+// harness.yaml's own field rather than the flag.
+func TestCmdOrchestrator_HarnessYamlDispatchIsUsedWhenFlagNotGiven(t *testing.T) {
+	isolateConfig(t)
+	t.Setenv("OPENAI_API_KEY", "the-token")
+	dir := t.TempDir()
+	t.Chdir(dir)
+	mustWrite(t, "work.yaml", "- id: a\n  instructions: do\n  dir: .\n")
+	mustWrite(t, "harness.yaml", "dispatch: vm\n")
+	err := cmdOrchestrator([]string{"--gateway", "http://gw:4000", "-l"})
+	if err == nil {
+		t.Fatal("an unrecognised harness.yaml dispatch should stop the command")
+	}
+	if !strings.Contains(err.Error(), "harness.yaml") || !strings.Contains(err.Error(), "vm") {
+		t.Errorf("the failure should name harness.yaml's own field and the value, got %v", err)
+	}
+}
+
+// An explicit --dispatch wins over harness.yaml's dispatch:, even where
+// harness.yaml names a value the command would otherwise refuse.
+func TestCmdOrchestrator_ExplicitDispatchFlagWinsOverHarnessYaml(t *testing.T) {
+	isolateConfig(t)
+	t.Setenv("OPENAI_API_KEY", "the-token")
+	dir := t.TempDir()
+	t.Chdir(dir)
+	mustWrite(t, "work.yaml", "- id: a\n  instructions: do\n  dir: .\n")
+	mustWrite(t, "harness.yaml", "dispatch: vm\n")
+	// bare, explicitly, reaches the (unreachable) gateway's own failure —
+	// not harness.yaml's unrecognised value, which --dispatch bare never
+	// consults.
+	err := cmdOrchestrator([]string{"--gateway", "http://127.0.0.1:1", "-l", "--dispatch", "bare"})
+	if err == nil || !strings.Contains(err.Error(), "http://127.0.0.1:1") {
+		t.Errorf("an explicit --dispatch should win over harness.yaml's, got %v", err)
+	}
+}
+
 // --dispatch docker checks the daemon once, at startup: an unreachable one
 // stops the command before it works an item, naming the fix.
 func TestCmdOrchestrator_DispatchDockerChecksTheDaemonAtStartup(t *testing.T) {

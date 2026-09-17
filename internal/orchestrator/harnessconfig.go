@@ -16,9 +16,13 @@ import (
 // "Configuring the harness with harness.yaml" and "The startup and
 // shutdown scripts" requirements.
 type HarnessConfig struct {
-	Env      map[string]string `yaml:"env"`
-	Startup  string            `yaml:"startup"`
-	Shutdown string            `yaml:"shutdown"`
+	Env map[string]string `yaml:"env"`
+	// Dispatch names the backend the run uses — "bare" or "docker" — the
+	// way --dispatch does. An explicit --dispatch wins over it; where the
+	// flag is not given, this is the run's choice.
+	Dispatch string `yaml:"dispatch"`
+	Startup  string `yaml:"startup"`
+	Shutdown string `yaml:"shutdown"`
 }
 
 // hasLifecycle reports whether hc names a startup or shutdown script — the
