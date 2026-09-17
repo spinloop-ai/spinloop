@@ -32,7 +32,7 @@ type WorkList struct {
 
 	itemsPath string
 	store     Store
-	dispatch  *Dispatcher
+	dispatch  Launcher
 	gateway   string
 	log       *slog.Logger
 
@@ -61,7 +61,7 @@ type WorkList struct {
 // NewWorkList reads the work a run works from: the items file's items, the
 // record the store keeps, and the file's last-modified facts the re-read
 // checks against. The store's lock is the one it took opening.
-func NewWorkList(itemsPath string, store Store, dispatch *Dispatcher, gateway string, log *slog.Logger) (*WorkList, error) {
+func NewWorkList(itemsPath string, store Store, dispatch Launcher, gateway string, log *slog.Logger) (*WorkList, error) {
 	if log == nil {
 		log = slog.New(slog.DiscardHandler)
 	}
@@ -493,6 +493,10 @@ func (w *WorkList) Remove(id string) error {
 	w.log.Info("item removed", slog.String("item", id))
 	// The kept output goes with it; an item that wrote none has no file.
 	os.Remove(w.store.LogPath(id))
+	// The docker backend's scoped config goes with it too; a bare-backend
+	// item, or one the docker backend never launched, has no directory —
+	// RemoveAll of one that is not there is a silent no-op.
+	os.RemoveAll(ConfigDirFor(w.itemsPath, id))
 	return nil
 }
 

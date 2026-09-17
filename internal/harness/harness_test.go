@@ -1,9 +1,11 @@
 package harness
 
 import (
+	"encoding/json"
 	"github.com/spinloop-ai/spinloop/internal/catalog"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -308,6 +310,64 @@ func TestOpencodeApplyStateRemove(t *testing.T) {
 	}
 }
 
+// TestOpencodeRenderProviderConfig checks that RenderProviderConfig's bytes
+// carry the same provider block Apply would write, and that rendering
+// touches nothing at ConfigPath() — the host's real config stays absent
+// until Apply itself is the one that writes it.
+func TestOpencodeRenderProviderConfig(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	cat, err := catalog.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, _ := Lookup("opencode")
+	renderer, ok := h.(ConfigRenderer)
+	if !ok {
+		t.Fatal("opencode should implement ConfigRenderer")
+	}
+	resolve := func(k string) string {
+		if k == "DEEPSEEK_API_KEY" {
+			return "sk-or-v1-test"
+		}
+		return ""
+	}
+	sel := spinloop.Selection{Provider: "openrouter", Model: "deepseek/deepseek-v4-pro"}
+
+	configFile, err := h.ConfigPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	rendered, err := renderer.RenderProviderConfig(cat.Providers["openrouter"], sel, resolve)
+	if err != nil {
+		t.Fatalf("RenderProviderConfig: %v", err)
+	}
+	if _, err := os.Stat(configFile); !os.IsNotExist(err) {
+		t.Errorf("rendering should not touch the host's config, got %v", err)
+	}
+
+	if _, err := h.Apply(cat.Providers["openrouter"], sel, 0, 0, true, resolve); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	applied, err := os.ReadFile(configFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var renderedRoot, appliedRoot map[string]any
+	if err := json.Unmarshal(rendered, &renderedRoot); err != nil {
+		t.Fatalf("rendered bytes are not valid JSON: %v", err)
+	}
+	if err := json.Unmarshal(applied, &appliedRoot); err != nil {
+		t.Fatalf("applied bytes are not valid JSON: %v", err)
+	}
+	renderedProvider := renderedRoot["provider"].(map[string]any)["openrouter"]
+	appliedProvider := appliedRoot["provider"].(map[string]any)["openrouter"]
+	if !reflect.DeepEqual(renderedProvider, appliedProvider) {
+		t.Errorf("rendered provider block = %+v, want the same as Apply's %+v", renderedProvider, appliedProvider)
+	}
+}
+
 // TestOpencodeApplyWithContextSize verifies that context and output limits are
 // propagated through the adapter into the opencode config and readable back.
 func TestOpencodeApplyWithContextSize(t *testing.T) {
@@ -473,6 +533,64 @@ func TestPiApplyStateRemove(t *testing.T) {
 	n, err := h.Remove("openrouter", nil)
 	if err != nil || n != 1 {
 		t.Fatalf("Remove = %d, %v; want 1, nil", n, err)
+	}
+}
+
+// TestPiRenderProviderConfig checks that RenderProviderConfig's bytes carry
+// the same provider Apply would write, and that rendering touches nothing
+// at ConfigPath().
+func TestPiRenderProviderConfig(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+
+	cat, err := catalog.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, _ := Lookup("pi")
+	renderer, ok := h.(ConfigRenderer)
+	if !ok {
+		t.Fatal("pi should implement ConfigRenderer")
+	}
+	resolve := func(k string) string {
+		if k == "DEEPSEEK_API_KEY" {
+			return "sk-or-v1-test"
+		}
+		return ""
+	}
+	sel := spinloop.Selection{Provider: "openrouter", Model: "deepseek/deepseek-v4-pro"}
+
+	configFile, err := h.ConfigPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	rendered, err := renderer.RenderProviderConfig(cat.Providers["openrouter"], sel, resolve)
+	if err != nil {
+		t.Fatalf("RenderProviderConfig: %v", err)
+	}
+	if _, err := os.Stat(configFile); !os.IsNotExist(err) {
+		t.Errorf("rendering should not touch the host's config, got %v", err)
+	}
+
+	if _, err := h.Apply(cat.Providers["openrouter"], sel, 0, 0, true, resolve); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	applied, err := os.ReadFile(configFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var renderedRoot, appliedRoot map[string]any
+	if err := json.Unmarshal(rendered, &renderedRoot); err != nil {
+		t.Fatalf("rendered bytes are not valid JSON: %v", err)
+	}
+	if err := json.Unmarshal(applied, &appliedRoot); err != nil {
+		t.Fatalf("applied bytes are not valid JSON: %v", err)
+	}
+	renderedProvider := renderedRoot["providers"].(map[string]any)["openrouter"]
+	appliedProvider := appliedRoot["providers"].(map[string]any)["openrouter"]
+	if !reflect.DeepEqual(renderedProvider, appliedProvider) {
+		t.Errorf("rendered provider = %+v, want the same as Apply's %+v", renderedProvider, appliedProvider)
 	}
 }
 

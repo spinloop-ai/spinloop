@@ -446,6 +446,30 @@ func TestAPI_ARemovalTakesTheItemItsRecordAndItsOutput(t *testing.T) {
 	}
 }
 
+// TestAPI_ARemovalTakesTheDockerBackendsScopedConfigToo checks that a
+// removal takes the docker backend's per-launch config directory out with
+// the item's kept output — the same cleanup, one more directory.
+func TestAPI_ARemovalTakesTheDockerBackendsScopedConfigToo(t *testing.T) {
+	wl, _, path := testWorkList(t, itemsFile(itemSpec{id: "a", instr: "do a", dir: "./a"}), nil)
+	configDir := ConfigDirFor(path, "a")
+	if err := os.MkdirAll(configDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(configDir, "opencode.json"), []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	srv := workListServer(t, wl, "")
+	defer srv.Close()
+
+	code, raw := apiDo(t, srv, "", http.MethodDelete, "/v1/items/a", "")
+	if code != http.StatusOK {
+		t.Fatalf("a removal the work list accepts is answered, got %d: %s", code, raw)
+	}
+	if _, err := os.Stat(configDir); !os.IsNotExist(err) {
+		t.Errorf("the docker backend's scoped config directory should be gone with the item, got %v", err)
+	}
+}
+
 func TestAPI_ARemovalItCannotMakeIsRefused(t *testing.T) {
 	wl, _, _ := testWorkList(t, itemsFile(itemSpec{id: "a", instr: "do a", dir: "./a"}),
 		func(s *memStore) {

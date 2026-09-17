@@ -76,6 +76,7 @@ work.yaml            the items
 work.yaml.state.json the record: one entry per item that is running or has ended
 work.yaml.lock       what keeps a second orchestrator off the file
 work.yaml.logs/      one log per item, its agent's output
+work.yaml.logs/.config/  under --dispatch docker: one item's scoped config, while it runs
 work.yaml.aborts/    the abort markers left beside the file, while they stand
 ```
 
@@ -178,6 +179,63 @@ have to start, and among a tier the fleet file's `prefer` ranks them. A
 stopped node is an option only where the fleet file
 [wakes](fleet.md#waking).
 
+### Where an item's agent runs: `--dispatch`
+
+`--dispatch` chooses how an admitted item's agent actually runs, for the
+whole run — not per node, not per item:
+
+- **`bare`** (the default) — a process on the orchestrator's own host, in
+  its own process group, the harness's config the host's own — exactly
+  what running spinloop directly has always done.
+- **`docker`** — a container from the official spinloop agent image
+  (opencode, Pi and `gh`), on the host's network, so a gateway bound to
+  loopback is reachable the same way it is from a bare process. The
+  container mounts the item's directory as its workspace and a config
+  scoped to that one launch alone — never the host's own harness
+  config — carrying just the provider this launch needs. `docker version`
+  is checked once, at startup: an unreachable daemon stops the command
+  before it works an item, naming the fix. `--dispatch-image` names the
+  image to run, defaulting to `ghcr.io/spinloop-ai/agent:<spinloop's own
+  version>` — the image built alongside that release.
+
+Stopping an item — an abort, or the run's own clean interrupt — stops
+either the same way: the polite signal first, then, where the grace runs
+out, the hard end. See [`images/agent/README.md`](../../images/agent/README.md)
+for what the official image carries.
+
+## `harness.yaml`: environment and lifecycle scripts
+
+Beyond the fleet file and the flags, an operator can shape the environment
+an item's agent runs in without building a new image: `harness.yaml`,
+found beside the items file by default, or named with
+`--harness-config <path>`. Where neither is present, nothing changes.
+
+```yaml
+env:
+  GH_TOKEN: ghp_...
+  SOME_TOOL_FLAG: "1"
+startup: |
+  git config --global user.email "agent@example.com"
+  git config --global user.name "Agent"
+shutdown: |
+  echo "item finished" >> /tmp/agent-activity.log
+```
+
+- **`env`** — a map added to every launch's environment, under either
+  backend. An entry naming the same variable the gateway's token is
+  presented under is refused, naming it, before the command works an item.
+- **`startup`** — a shell script run before the harness, in the item's
+  directory (bare) or the container's workspace (docker), under the
+  launch's full environment. A startup script that exits non-zero fails
+  the item, naming the script, before the harness ever runs.
+- **`shutdown`** — a shell script run once the harness has ended —
+  cleanly, failed, or aborted alike — provided a startup script ran at
+  all. An abort's own answer waits for it, bound by the same grace the
+  harness's own stop already has.
+
+Both scripts' output joins the harness's own in the item's kept log, in
+the order they ran: startup's, then the harness's, then shutdown's.
+
 ## What it does not do
 
 - It does not start or stop anything on a node. A stopped node appears in the
@@ -210,6 +268,9 @@ stopped node is an option only where the fleet file
 | `--api-token <value>` | The work list API's bearer token |
 | `-H`, `--harness <name>` | Which harness to run the agents with (default the resolved one) |
 | `--log-level` | `debug`, `info`, `warn`, or `error` — overrides `SPINLOOP_LOG_LEVEL` (default `info`) |
+| `--dispatch <backend>` | How an admitted item's agent runs: `bare` (default) or `docker` |
+| `--dispatch-image <ref>` | The agent image the docker backend runs (default `ghcr.io/spinloop-ai/agent:<spinloop's version>`); only meaningful with `--dispatch docker` |
+| `--harness-config <path>` | The `harness.yaml` to read (default: one beside the items file, where it exists) |
 
 ## See also
 

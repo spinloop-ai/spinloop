@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 
@@ -61,11 +62,20 @@ type Child interface {
 	Kill()
 }
 
-// Dispatcher launches admitted items as one-shot agents: it verifies the
-// item's directory, applies the node's provider into the harness config,
-// and runs the active harness in its single-task form in the item's
-// directory, the agent's output kept per item beside the items file.
-type Dispatcher struct {
+// Launcher starts an admitted item's harness and returns the Child that
+// tracks it: what the loop holds on to, reaps, and stops. Each backend
+// chooses how and where that process actually runs — a bare host process,
+// a container — behind the one method; everything above it (admission,
+// matching, abort, state) works the same regardless.
+type Launcher interface {
+	Launch(item Item, node Node, logPath string) (Child, error)
+}
+
+// dispatchConfig is what every launcher backend needs to resolve a launch
+// plan: the harness, the gateway a launch's inference points at, the
+// token the harness's own bearer needs, and whether a missing item
+// directory is created rather than failing the item.
+type dispatchConfig struct {
 	h       harness.Harness
 	gateway string // the gateway's address
 	token   string // the gateway's token, resolved by the caller
@@ -73,6 +83,102 @@ type Dispatcher struct {
 	// createItemDirs makes a missing item directory get created rather than
 	// failing the item.
 	createItemDirs bool
+
+	// harnessConfig is harness.yaml's own: env added to every launch, and
+	// the startup/shutdown scripts wrapping it. Its env has already been
+	// checked against the token's own variable (CheckHarnessEnvCollision)
+	// before the run ever admits an item, so resolvePlan's caller does not
+	// check it again per launch.
+	harnessConfig HarnessConfig
+}
+
+// launchPlan is what every backend needs before it diverges into how the
+// process actually runs: the args a one-shot harness runs with, the
+// catalogue provider its config carries, and the selection that provider
+// is written under.
+type launchPlan struct {
+	args     []string
+	provider *catalog.Provider
+	sel      spinloop.Selection
+}
+
+// resolvePlan checks the item's directory (creating it where cfg allows),
+// resolves the harness's one-shot form and the node's model, and builds
+// the catalogue provider and selection a launch's config is written
+// under. A failure names the item and the cause — a missing directory, a
+// harness without a single-task form — and the caller records it failed
+// rather than retrying it.
+func (cfg dispatchConfig) resolvePlan(item Item, node Node) (launchPlan, error) {
+	if fi, err := os.Stat(item.Dir); err != nil || !fi.IsDir() {
+		if !cfg.createItemDirs {
+			return launchPlan{}, fmt.Errorf("item %q's working directory %s does not exist", item.ID, item.Dir)
+		}
+		if err := os.MkdirAll(item.Dir, 0o755); err != nil {
+			return launchPlan{}, fmt.Errorf("item %q's working directory %s: creating it: %v", item.ID, item.Dir, err)
+		}
+	}
+	form, ok := oneShot[cfg.h.Name()]
+	if !ok {
+		return launchPlan{}, fmt.Errorf("the %q harness has no single-task form the orchestrator can run", cfg.h.Name())
+	}
+	model := node.ModelName()
+	if model == "" {
+		return launchPlan{}, fmt.Errorf("node %s reports no model to run item %q against", node.Name, item.ID)
+	}
+
+	cat, err := catalog.LoadFrom(catalog.ResolveCatalogPath(""))
+	if err != nil {
+		return launchPlan{}, err
+	}
+	p := cat.Providers[plumbingProvider]
+	if p == nil {
+		return launchPlan{}, fmt.Errorf("the catalogue names no %q provider for the dispatch", plumbingProvider)
+	}
+	sel := spinloop.Selection{
+		Provider: providerKey(node),
+		Model:    model,
+		// The agent's address for the gateway is the OpenAI-compatible
+		// prefix the way a gateway-routed launch gives it: a gateway at
+		// http://gw:4000 is handed to the agent as http://gw:4000/v1.
+		BaseURL:     fleet.EndpointBaseURL(cfg.gateway),
+		DisplayName: "Spinloop fleet (" + node.Name + ")",
+	}
+	return launchPlan{args: form(providerKey(node), model, item.Instructions), provider: p, sel: sel}, nil
+}
+
+// sortedEnvPairs returns m as NAME=VALUE pairs in a stable, sorted order —
+// deterministic for a test to assert on, unlike a bare map range.
+func sortedEnvPairs(m map[string]string) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	out := make([]string, 0, len(keys))
+	for _, k := range keys {
+		out = append(out, k+"="+m[k])
+	}
+	return out
+}
+
+// providerEnv is the token's own entry (where the provider takes one) and
+// harness.yaml's env, as NAME=VALUE pairs — what a launch that starts from
+// nothing (the docker backend's container) needs in full; the bare
+// backend adds these to its inherited host environment instead.
+func (cfg dispatchConfig) providerEnv(plan launchPlan) []string {
+	var out []string
+	if plan.provider.APIKeyEnv != "" {
+		out = append(out, plan.provider.APIKeyEnv+"="+cfg.token)
+	}
+	return append(out, sortedEnvPairs(cfg.harnessConfig.Env)...)
+}
+
+// Dispatcher is the bare-process Launcher: it applies the node's provider
+// into the harness's own host config, and runs the active harness in its
+// single-task form in the item's directory, the agent's output kept per
+// item beside the items file.
+type Dispatcher struct {
+	dispatchConfig
 
 	mu sync.Mutex // serialises the applies into the shared harness config
 
@@ -84,74 +190,60 @@ type Dispatcher struct {
 // gateway, holding the token its caller presents. Where createItemDirs is
 // set, a missing item directory is created rather than failing the item.
 func NewDispatcher(h harness.Harness, gateway, token string, createItemDirs bool) *Dispatcher {
-	d := &Dispatcher{h: h, gateway: gateway, token: token, createItemDirs: createItemDirs}
+	d := &Dispatcher{dispatchConfig: dispatchConfig{h: h, gateway: gateway, token: token, createItemDirs: createItemDirs}}
 	d.start = startChild
 	return d
 }
 
-// Launch runs the item against the node. A failure names the item and the
-// cause — a missing directory, a harness without a single-task form, an
-// apply the harness refused — and the caller records it failed rather than
-// retrying it.
-func (d *Dispatcher) Launch(item Item, node Node, logPath string) (Child, error) {
-	if fi, err := os.Stat(item.Dir); err != nil || !fi.IsDir() {
-		if !d.createItemDirs {
-			return nil, fmt.Errorf("item %q's working directory %s does not exist", item.ID, item.Dir)
-		}
-		if err := os.MkdirAll(item.Dir, 0o755); err != nil {
-			return nil, fmt.Errorf("item %q's working directory %s: creating it: %v", item.ID, item.Dir, err)
-		}
-	}
-	form, ok := oneShot[d.h.Name()]
-	if !ok {
-		return nil, fmt.Errorf("the %q harness has no single-task form the orchestrator can run", d.h.Name())
-	}
-	model := node.ModelName()
-	if model == "" {
-		return nil, fmt.Errorf("node %s reports no model to run item %q against", node.Name, item.ID)
-	}
+// WithHarnessConfig sets harness.yaml's own config — its env, and the
+// startup/shutdown scripts a launch runs under. Unset (the zero value)
+// means no harness.yaml at all: every launch proceeds exactly as it did
+// before this existed.
+func (d *Dispatcher) WithHarnessConfig(hc HarnessConfig) *Dispatcher {
+	d.harnessConfig = hc
+	return d
+}
 
-	cat, err := catalog.LoadFrom(catalog.ResolveCatalogPath(""))
+// Launch runs the item against the node as a bare process. A failure names
+// the item and the cause — a missing directory, a harness without a
+// single-task form, an apply the harness refused — and the caller records
+// it failed rather than retrying it.
+func (d *Dispatcher) Launch(item Item, node Node, logPath string) (Child, error) {
+	plan, err := d.resolvePlan(item, node)
 	if err != nil {
 		return nil, err
-	}
-	p := cat.Providers[plumbingProvider]
-	if p == nil {
-		return nil, fmt.Errorf("the catalogue names no %q provider for the dispatch", plumbingProvider)
 	}
 	resolve := func(name string) string {
 		// The config carries the variable's name, never the token's value:
 		// the value reaches the agent through its environment.
-		if name == p.APIKeyEnv {
+		if name == plan.provider.APIKeyEnv {
 			return d.token
 		}
 		return os.Getenv(name)
 	}
-	sel := spinloop.Selection{
-		Provider: providerKey(node),
-		Model:    model,
-		// The agent's address for the gateway is the OpenAI-compatible
-		// prefix the way a gateway-routed launch gives it: a gateway at
-		// http://gw:4000 is handed to the agent as http://gw:4000/v1.
-		BaseURL:     fleet.EndpointBaseURL(d.gateway),
-		DisplayName: "Spinloop fleet (" + node.Name + ")",
-	}
 	// Under the lock, with the exec inside it: the next dispatch's apply
 	// must not rewrite this node's block before this agent has read it.
 	d.mu.Lock()
-	_, err = d.h.Apply(p, sel, 0, 0, false, resolve)
+	_, err = d.h.Apply(plan.provider, plan.sel, 0, 0, false, resolve)
 	d.mu.Unlock()
 	if err != nil {
 		return nil, fmt.Errorf("applying node %s's provider for item %q: %v", node.Name, item.ID, err)
 	}
 
 	var env []string
-	if p.APIKeyEnv != "" && os.Getenv(p.APIKeyEnv) == "" {
-		env = append(os.Environ(), p.APIKeyEnv+"="+d.token)
+	if plan.provider.APIKeyEnv != "" && os.Getenv(plan.provider.APIKeyEnv) == "" {
+		env = append(os.Environ(), plan.provider.APIKeyEnv+"="+d.token)
 	} else {
 		env = os.Environ()
 	}
-	return d.start(d.h.Command(), form(providerKey(node), model, item.Instructions), item.Dir, logPath, env)
+	env = append(env, sortedEnvPairs(d.harnessConfig.Env)...)
+
+	bin, args, extraEnv := wrapCommand(d.h.Command(), plan.args, d.harnessConfig)
+	child, err := d.start(bin, args, item.Dir, logPath, append(env, extraEnv...))
+	if err != nil {
+		return nil, err
+	}
+	return wrapChild(child, d.harnessConfig), nil
 }
 
 // startChild begins the agent as this process's child: its own process

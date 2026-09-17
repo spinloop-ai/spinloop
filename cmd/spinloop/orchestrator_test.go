@@ -543,3 +543,86 @@ func TestCmdOrchestrator_StartupShowsARestartsRecoveredState(t *testing.T) {
 		t.Fatal("the interrupt did not end the run")
 	}
 }
+
+// An unrecognised --dispatch stops the command before it works an item,
+// naming the flag, the value, and the accepted set.
+func TestCmdOrchestrator_AnUnrecognisedDispatchBackendNamesIt(t *testing.T) {
+	isolateConfig(t)
+	t.Setenv("OPENAI_API_KEY", "the-token")
+	dir := t.TempDir()
+	t.Chdir(dir)
+	mustWrite(t, "work.yaml", "- id: a\n  instructions: do\n  dir: .\n")
+	err := cmdOrchestrator([]string{"--gateway", "http://gw:4000", "-l", "--dispatch", "vm"})
+	if err == nil {
+		t.Fatal("an unrecognised --dispatch should stop the command")
+	}
+	if !strings.Contains(err.Error(), "--dispatch") || !strings.Contains(err.Error(), "vm") ||
+		!strings.Contains(err.Error(), "bare") || !strings.Contains(err.Error(), "docker") {
+		t.Errorf("the failure should name the flag, the value, and the accepted set, got %v", err)
+	}
+	if _, err := os.Stat("work.yaml.state.json"); !os.IsNotExist(err) {
+		t.Errorf("a run that worked no item records no state, got %v", err)
+	}
+}
+
+// --dispatch docker checks the daemon once, at startup: an unreachable one
+// stops the command before it works an item, naming the fix.
+func TestCmdOrchestrator_DispatchDockerChecksTheDaemonAtStartup(t *testing.T) {
+	isolateConfig(t)
+	t.Setenv("OPENAI_API_KEY", "the-token")
+	// No `docker` on PATH stands in for a daemon that does not answer: both
+	// are the docker backend's own reachability check failing before any
+	// item is worked.
+	t.Setenv("PATH", t.TempDir())
+	dir := t.TempDir()
+	t.Chdir(dir)
+	mustWrite(t, "work.yaml", "- id: a\n  instructions: do\n  dir: .\n")
+	err := cmdOrchestrator([]string{"--gateway", "http://gw:4000", "-l", "--dispatch", "docker"})
+	if err == nil {
+		t.Fatal("an unreachable docker daemon should stop the command")
+	}
+	if !strings.Contains(err.Error(), "docker") {
+		t.Errorf("the failure should name the fix, got %v", err)
+	}
+	if _, err := os.Stat("work.yaml.state.json"); !os.IsNotExist(err) {
+		t.Errorf("a run that worked no item records no state, got %v", err)
+	}
+}
+
+// A harness.yaml whose env collides with the token's own variable stops
+// the command before it works an item, whether the file is the default
+// beside the items file or one --harness-config names.
+func TestCmdOrchestrator_HarnessYamlEnvCollisionNamesTheVariable(t *testing.T) {
+	isolateConfig(t)
+	t.Setenv("OPENAI_API_KEY", "the-token")
+	dir := t.TempDir()
+	t.Chdir(dir)
+	mustWrite(t, "work.yaml", "- id: a\n  instructions: do\n  dir: .\n")
+	mustWrite(t, "harness.yaml", "env:\n  OPENAI_API_KEY: nope\n")
+	err := cmdOrchestrator([]string{"--gateway", "http://gw:4000", "-l"})
+	if err == nil || !strings.Contains(err.Error(), "OPENAI_API_KEY") {
+		t.Errorf("the failure should name the colliding variable, got %v", err)
+	}
+	if _, err := os.Stat("work.yaml.state.json"); !os.IsNotExist(err) {
+		t.Errorf("a run that worked no item records no state, got %v", err)
+	}
+}
+
+// --harness-config names a file read in preference to harness.yaml beside
+// the items file.
+func TestCmdOrchestrator_HarnessConfigFlagOverridesTheDefault(t *testing.T) {
+	isolateConfig(t)
+	t.Setenv("OPENAI_API_KEY", "the-token")
+	dir := t.TempDir()
+	t.Chdir(dir)
+	mustWrite(t, "work.yaml", "- id: a\n  instructions: do\n  dir: .\n")
+	mustWrite(t, "harness.yaml", "env:\n  OPENAI_API_KEY: nope\n")
+	mustWrite(t, "other.yaml", "env:\n  FOO: bar\n")
+	err := cmdOrchestrator([]string{"--gateway", "http://127.0.0.1:1", "-l", "--harness-config", "other.yaml"})
+	// The default harness.yaml's collision would have stopped the command
+	// before it ever reached the gateway; reaching the (unreachable)
+	// gateway's own failure instead shows the flag's file was the one read.
+	if err == nil || !strings.Contains(err.Error(), "http://127.0.0.1:1") {
+		t.Errorf("the flag's file should be read instead of the colliding default, got %v", err)
+	}
+}

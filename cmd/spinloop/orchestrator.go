@@ -31,6 +31,7 @@ func orchestratorCmd() *cobra.Command {
 	var createItemDirs bool
 	var listen, apiToken, apiTokenFile string
 	var loopback bool
+	var dispatchBackend, dispatchImage, harnessConfigPath string
 	c := &cobra.Command{
 		Use:   "orchestrator",
 		Short: "work a backlog of items against the fleet, at the fleet's pace",
@@ -81,7 +82,7 @@ without a separate call to spinloop work list.`,
 			if err != nil {
 				return err
 			}
-			return runOrchestratorCommand(gateway, itemsPath, tokenVar, harnessName, logLevel, createItemDirs, listenAddr, apiToken, apiTokenFile)
+			return runOrchestratorCommand(gateway, itemsPath, tokenVar, harnessName, logLevel, createItemDirs, listenAddr, apiToken, apiTokenFile, dispatchBackend, dispatchImage, harnessConfigPath)
 		},
 	}
 
@@ -98,9 +99,13 @@ without a separate call to spinloop work list.`,
 	fs.BoolVarP(&loopback, "loopback", "l", false, "serve the work list API on loopback on the default port ("+orchestrator.LoopbackListen+"); needs no token")
 	fs.StringVar(&apiTokenFile, "api-token-file", "", "read the work list API's bearer token from this file")
 	fs.StringVar(&apiToken, "api-token", "", "the work list API's bearer token")
+	fs.StringVar(&dispatchBackend, "dispatch", "bare", "how an admitted item's agent runs: bare (a host process) or docker (a container)")
+	fs.StringVar(&dispatchImage, "dispatch-image", "", "the agent image the docker backend runs (default: ghcr.io/spinloop-ai/agent:<spinloop's version>); only meaningful with --dispatch docker")
+	fs.StringVar(&harnessConfigPath, "harness-config", "", "the harness.yaml to read (default: harness.yaml beside the items file, where one exists)")
 	compRegister(c, "items", compFiles)
 	compRegister(c, "harness", compHarnessNames)
 	compRegister(c, "log-level", compLogLevel)
+	compRegister(c, "dispatch", compDispatchBackends)
 	return c
 }
 
@@ -164,7 +169,7 @@ func orchestratorListenAddr(listen string, listenExplicit, loopback bool) (strin
 // and then the work list API standing before the run's first pass, the way
 // the gateway has its handler in before a signal can arrive, held until the
 // signal ends the run and the server goes down with it.
-func runOrchestratorCommand(gatewayAddr, itemsPath, token, harnessName, logLevel string, createItemDirs bool, listenAddr, apiToken, apiTokenFile string) error {
+func runOrchestratorCommand(gatewayAddr, itemsPath, token, harnessName, logLevel string, createItemDirs bool, listenAddr, apiToken, apiTokenFile, dispatchBackend, dispatchImage, harnessConfigPath string) error {
 	h, _, err := harness.Resolve(harnessName)
 	if err != nil {
 		return err
@@ -190,7 +195,31 @@ func runOrchestratorCommand(gatewayAddr, itemsPath, token, harnessName, logLevel
 	}
 	defer ln.Close()
 
-	dispatch := orchestrator.NewDispatcher(h, gatewayAddr, token, createItemDirs)
+	hc, err := orchestrator.LoadHarnessConfig(harnessConfigPath, itemsPath)
+	if err != nil {
+		return err
+	}
+	if err := orchestrator.CheckHarnessEnvCollision(hc.Env); err != nil {
+		return err
+	}
+
+	var dispatch orchestrator.Launcher
+	switch dispatchBackend {
+	case "", "bare":
+		dispatch = orchestrator.NewDispatcher(h, gatewayAddr, token, createItemDirs).WithHarnessConfig(hc)
+	case "docker":
+		if err := orchestrator.CheckDockerReachable(); err != nil {
+			return err
+		}
+		image := dispatchImage
+		if image == "" {
+			image = orchestrator.DefaultDockerImage(version)
+		}
+		dispatch = orchestrator.NewDockerLauncher(h, gatewayAddr, token, image, itemsPath, createItemDirs).WithHarnessConfig(hc)
+	default:
+		return fmt.Errorf("unknown --dispatch %q: expected bare or docker", dispatchBackend)
+	}
+
 	store, err := orchestrator.OpenStore(itemsPath)
 	if err != nil {
 		return err

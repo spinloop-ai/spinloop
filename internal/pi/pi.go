@@ -84,16 +84,25 @@ func providersMap(root map[string]any) map[string]any {
 	return pv
 }
 
-// Write deep-merges a provider entry into models.json. An existing provider's
-// unknown fields (headers, compat, modelOverrides, …) are preserved; baseUrl,
-// api and apiKey are overwritten when set, and models are merged by id with the
-// new entries winning. contextWindow and outputTokens, when > 0, are applied to
-// every model the selection writes (as contextWindow and maxTokens).
+// Write deep-merges a provider entry into models.json at ConfigPath(). An
+// existing provider's unknown fields (headers, compat, modelOverrides, …)
+// are preserved; baseUrl, api and apiKey are overwritten when set, and
+// models are merged by id with the new entries winning. contextWindow and
+// outputTokens, when > 0, are applied to every model the selection writes
+// (as contextWindow and maxTokens).
 func Write(id string, prov catalog.PiProvider, contextWindow, outputTokens int) error {
 	path, err := ConfigPath()
 	if err != nil {
 		return err
 	}
+	return WriteTo(path, id, prov, contextWindow, outputTokens)
+}
+
+// WriteTo is Write against an explicit path rather than ConfigPath() — a
+// path that does not yet exist merges into nothing, the way models.json
+// itself does the first time Write runs, so a caller renders a fresh,
+// scoped file by pointing this at an empty temp path.
+func WriteTo(path, id string, prov catalog.PiProvider, contextWindow, outputTokens int) error {
 	root, err := load(path)
 	if err != nil {
 		return err
