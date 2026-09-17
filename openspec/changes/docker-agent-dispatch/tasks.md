@@ -87,12 +87,12 @@
 
 ## 5. The official agent image
 
-- [ ] 5.1 Add a `Dockerfile` (e.g. `images/agent/Dockerfile`) building an
+- [x] 5.1 Add a `Dockerfile` (e.g. `images/agent/Dockerfile`) building an
   image with opencode, Pi and `gh` installed, a fixed `agent` user,
   `HOME=/home/agent` — verify by building it locally and running `docker
   run --rm <image> opencode --version`, `... pi --version` and `... gh
   --version` all succeeding
-- [ ] 5.2 Confirm the image carries no provider configuration out of the
+- [x] 5.2 Confirm the image carries no provider configuration out of the
   box — verify by running the image with nothing mounted and checking
   `~/.config/opencode` and `~/.pi` are absent or empty
 - [x] 5.3 Wire a CI job that builds and publishes the image on a tag,
