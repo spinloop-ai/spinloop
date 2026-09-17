@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/spinloop-ai/spinloop/internal/orchestrator"
 )
 
 // The command's help reads per the cli-ux conventions: a lowercase
@@ -433,6 +435,13 @@ func TestCmdOrchestrator_LoopbackServesTheWorkListWithoutAToken(t *testing.T) {
 	if !strings.Contains(string(data), "Work list on 127.0.0.1:4010") {
 		t.Fatalf("the startup line should name the work list's address, got:\n%s", data)
 	}
+	// Stdout is redirected to a file, not a terminal, so the startup work
+	// list is the plain tab-separated line spinloop work list prints off a
+	// pipe: the item's id and its state, backlog since no node carries the
+	// tag it names.
+	if !strings.Contains(string(data), "a\tbacklog") {
+		t.Fatalf("the startup output should carry the work list, item %q backlog, got:\n%s", "a", data)
+	}
 
 	// A tokenless caller reads the work list while the run works.
 	resp, err := http.Get("http://127.0.0.1:4010/v1/items")
@@ -462,5 +471,75 @@ func TestCmdOrchestrator_LoopbackServesTheWorkListWithoutAToken(t *testing.T) {
 	}
 	if _, err := os.Stat("work.yaml.state.json"); err != nil {
 		t.Errorf("the interrupt should leave the state saved: %v", err)
+	}
+}
+
+// A restart's recovered state shows at startup: an item the state beside
+// the file already records done shows done in the startup work list, not
+// backlog.
+func TestCmdOrchestrator_StartupShowsARestartsRecoveredState(t *testing.T) {
+	isolateConfig(t)
+	t.Setenv("OPENAI_API_KEY", "the-token")
+	t.Setenv("SPINLOOP_API_TOKEN", "")
+	node := newRoutableNode(t, "qwen3-27b", true, 300)
+	dir := t.TempDir()
+	fleetFileIn(t, dir, "nodes:\n"+node.entry("gpu-box"))
+	t.Chdir(dir)
+	// Both items name a tag no node carries, so neither is launched: the
+	// backlog one stays backlog, and the recorded one keeps its record.
+	mustWrite(t, "work.yaml", "- id: a\n  instructions: do\n  dir: .\n  tags:\n    - gpu=a100\n"+
+		"- id: b\n  instructions: do\n  dir: .\n  tags:\n    - gpu=a100\n")
+	if err := orchestrator.SaveStateFile("work.yaml", map[string]orchestrator.ItemState{
+		"a": {State: orchestrator.StateDone, Node: "gpu-box", EndedAt: "2026-01-01T00:00:00Z"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	srv, ln, err := newGatewayServer("", "127.0.0.1:0", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	go srv.Serve(ln)
+
+	stdout := filepath.Join(t.TempDir(), "stdout")
+	f, err := os.Create(stdout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := os.Stdout
+	os.Stdout = f
+	t.Cleanup(func() {
+		os.Stdout = old
+		f.Close()
+	})
+
+	done := make(chan error, 1)
+	go func() { done <- cmdOrchestrator([]string{"--gateway", "http://" + ln.Addr().String(), "-l"}) }()
+
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		data, _ := os.ReadFile(stdout)
+		if strings.Contains(string(data), "Work list on") {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	data, _ := os.ReadFile(stdout)
+	if !strings.Contains(string(data), "a\tdone") {
+		t.Errorf("the startup work list should show item %q's recorded state done, got:\n%s", "a", data)
+	}
+	if !strings.Contains(string(data), "b\tbacklog") {
+		t.Errorf("the startup work list should show item %q with no record as backlog, got:\n%s", "b", data)
+	}
+
+	interruptSelf(t)
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("the interrupt should end the run without an error, got %v", err)
+		}
+	case <-time.After(15 * time.Second):
+		t.Fatal("the interrupt did not end the run")
 	}
 }
