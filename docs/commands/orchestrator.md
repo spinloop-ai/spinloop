@@ -101,7 +101,18 @@ list before it returns.
 ```
 Working work.yaml against http://gateway.internal:4000: 3 items in the backlog
 Work list on 127.0.0.1:4010
+
+a   backlog  -  -                     -
+b   running  n  2026-09-14T10:00:00Z  -
+c   done     n  2026-09-14T09:00:00Z  2026-09-14T09:30:00Z
 ```
+
+After the banner, the startup output is the work list itself, the run's own
+view of the items at that moment — the same list
+[`spinloop work list`](work.md#listing-the-work) reads from the API, in the
+same form: a table on a terminal, plain tab-separated lines otherwise. An
+item a prior run recorded `done`, `failed` or `running` before this restart
+shows in that state, not `backlog`.
 
 | Path | Meaning |
 | ---- | ------- |
