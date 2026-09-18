@@ -28,7 +28,7 @@ func TestPflagParseForms(t *testing.T) {
 			"add":           func() error { return cmdAdd([]string{"-p", "ollama", "--nope"}) },
 			"apply":         func() error { return cmdApply([]string{"--nope"}) },
 			"serve":         func() error { return cmdServe([]string{"--nope"}) },
-			"fleet metrics": func() error { return cmdFleet([]string{"metrics", "--nope"}) },
+			"fleet metrics": func() error { return cmdMetrics([]string{"--nope"}) },
 			"remote start":  func() error { return cmdRemoteStart([]string{"--env", "default", "--nope"}) },
 			"daemon":        func() error { return cmdDaemon([]string{"--nope"}) },
 		} {
@@ -50,7 +50,7 @@ func TestPflagParseForms(t *testing.T) {
 		// takes them in place. An unknown flag raised *after* the positional is
 		// the proof that parsing continued past it.
 		for name, call := range map[string]func() error{
-			"fleet metrics": func() error { return cmdFleet([]string{"metrics", "someNode", "--nope"}) },
+			"fleet metrics": func() error { return cmdMetrics([]string{"someNode", "--nope"}) },
 			"remote env":    func() error { return cmdRemoteEnv([]string{"--env", "default", "somePath", "--nope"}) },
 		} {
 			if err := call(); err == nil || !strings.Contains(err.Error(), "unknown flag: --nope") {

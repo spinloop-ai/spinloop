@@ -286,7 +286,7 @@ func TestFleetMetricsShowsLastActive(t *testing.T) {
 	for _, format := range []string{"bar", "table"} {
 		t.Run(format, func(t *testing.T) {
 			out := captureStdout(t, func() {
-				if err := cmdFleet([]string{"metrics", "--format=" + format}); err != nil {
+				if err := cmdMetrics([]string{"--format=" + format}); err != nil {
 					t.Fatalf("cmdFleet metrics: %v", err)
 				}
 			})
@@ -308,7 +308,7 @@ func TestFleetMetricsJSONCarriesLastActive(t *testing.T) {
 	})
 
 	out := captureStdout(t, func() {
-		if err := cmdFleet([]string{"metrics", "--format=json"}); err != nil {
+		if err := cmdMetrics([]string{"--format=json"}); err != nil {
 			t.Fatalf("cmdFleet metrics: %v", err)
 		}
 	})
@@ -337,7 +337,7 @@ func TestFleetMetricsOmitsLastActiveWithoutActivity(t *testing.T) {
 	})
 
 	out := captureStdout(t, func() {
-		if err := cmdFleet([]string{"metrics"}); err != nil {
+		if err := cmdMetrics(nil); err != nil {
 			t.Fatalf("cmdFleet metrics: %v", err)
 		}
 	})
@@ -356,7 +356,7 @@ func TestFleetMetricsStoppedNodeStillShowsLastActive(t *testing.T) {
 	})
 
 	out := captureStdout(t, func() {
-		if err := cmdFleet([]string{"metrics"}); err != nil {
+		if err := cmdMetrics(nil); err != nil {
 			t.Fatalf("cmdFleet metrics: %v", err)
 		}
 	})
