@@ -69,6 +69,71 @@ type Keeper interface {
 	Keep(ctx context.Context, d time.Duration) (string, error)
 }
 
+// Coster is an optional node capability: a node that can price the time it has
+// been running. Only a cloud environment can — the price comes from the
+// instance type it launched as and the region it launched in, neither of which
+// a machine someone already owns has an answer for — so a daemon node does not
+// implement it. A caller offering a cost (metrics --cost) asserts for it and
+// renders the node as it would without the flag when it is absent.
+//
+// The lookup crosses the network, so it is made only when a caller asks. A
+// price that cannot be fetched is not an error: the node reports no cost, the
+// same as a node that cannot be priced at all, because a missing price and an
+// unpriceable node read the same in a table.
+type Coster interface {
+	Cost(ctx context.Context) (Cost, error)
+}
+
+// Cost is what a node has spent on the session it is running, and the rate it
+// is spending at. Zero means no figure is available — the instance is not
+// running, its type is unknown, or the price lookup did not complete.
+type Cost struct {
+	// SoFar is the estimated spend on the current running session.
+	SoFar float64
+	// PerHour is the on-demand rate the estimate was computed from.
+	PerHour float64
+}
+
+// Reported says whether there is a figure to show. A caller renders nothing
+// rather than a zero: "$0.00" claims a node cost nothing, which is a different
+// statement from having no price for it.
+func (c Cost) Reported() bool { return c.PerHour > 0 }
+
+// SourceLogger is an optional node capability: a node whose log is a store that
+// can be queried — by which log to read, how far back, and which instance
+// produced it. Only a cloud environment has one; a daemon's log is a byte
+// offset into one file on one machine, where none of the three narrows
+// anything. A caller offering those flags asserts for it and reads the node
+// through Logs when it is absent.
+type SourceLogger interface {
+	LogsMatching(ctx context.Context, q LogQuery) (daemon.LogsResponse, error)
+}
+
+// LogQuery is what a caller can narrow a queryable log by. A zero field means
+// "do not narrow by this".
+type LogQuery struct {
+	// Source names which of the node's logs to read — its engine's output, its
+	// boot record, or both.
+	Source string
+	// Since bounds how far back to read.
+	Since time.Duration
+	// Instance restricts the read to one instance id, for a node whose store
+	// holds the output of more than one.
+	Instance string
+	// Limit caps the events returned, keeping the most recent.
+	Limit int
+}
+
+// Versioner is an optional node capability: a node that reports the spinloop
+// release it is running somewhere other than its status reply. A daemon node
+// carries its version in that reply, so it does not implement this; a cloud
+// environment's arrives with its metrics, which is a different call. A caller
+// with a metrics reading in hand asserts for it rather than making a second
+// call of its own.
+type Versioner interface {
+	Version() string
+}
+
 // Node is one member of the fleet. Only daemonNode implements it today; the
 // interface exists so a remote-environment kind (an `spinloop remote`
 // environment read through its stats Lambda, which already yields
