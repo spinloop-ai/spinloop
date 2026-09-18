@@ -53,6 +53,12 @@ become a choice rather than a given for that to be possible.
   the harness has ended, whatever ended it — done, failed, or aborted —
   since it exists to tear down whatever startup set up. Both scripts'
   output joins the harness's own in the item's kept log, in order.
+- Once an admitted item's agent ends, under either backend, its kept log
+  is also copied into the item's own directory (`<dir>/log`), alongside
+  `workspace`/`config` — a static copy, written once, not a live mirror:
+  `work logs` and the work list API still read the canonical copy beside
+  the items file, which streams while the agent runs. `work remove` takes
+  the copy out with the rest of the item's kept output.
 
 ## Capabilities
 
@@ -65,11 +71,12 @@ become a choice rather than a given for that to be possible.
 
 ### Modified Capabilities
 
-(none — `fleet-orchestrator`'s "Running an item" requirement already
-states the outcome an agent's run must reach: one-shot, in the item's
-directory, inference pointed at the gateway, output kept. That contract
-holds under either backend by design; only the mechanics of reaching it are
-new, and those belong to `agent-dispatch`.)
+- `fleet-orchestrator`: "Running an item" now says the agent works in a
+  `workspace` subdirectory of the item's own directory, not the item's
+  directory directly. The outcome it already states — one-shot, inference
+  pointed at the gateway, output kept — still holds under either backend
+  by design; only where, precisely, the agent runs changed, and the rest
+  of that mechanics-level detail belongs to `agent-dispatch`.
 
 ## Impact
 
@@ -84,6 +91,8 @@ new, and those belong to `agent-dispatch`.)
   bare and docker launches alike run in place of the harness directly,
   when there is a startup or shutdown script to bracket it with
 - `openspec/specs/agent-dispatch/spec.md`: new capability
+- `openspec/specs/fleet-orchestrator/spec.md`: "Running an item" updated
+  for where the agent actually runs
 
 ## Non-Goals
 

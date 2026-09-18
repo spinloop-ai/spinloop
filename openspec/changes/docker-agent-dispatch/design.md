@@ -61,11 +61,12 @@ type Launcher interface {
 }
 ```
 
-`Dispatcher` becomes the thing that resolves the shared plan and hands it
-to one of two launchers (`bareLauncher`, `dockerLauncher`), chosen once at
-construction from `--dispatch`. `WorkList` keeps holding a `Launcher` where
-it holds a `*Dispatcher` today; the field's type is the only call-site
-change outside `internal/orchestrator/dispatch*.go`.
+`Dispatcher` itself becomes the bare `Launcher` — it already resolves the
+shared plan and starts the process, so it needs no separate wrapper type —
+and a new `dockerLauncher` (`dispatch_docker.go`) is the second, chosen
+once at construction from `--dispatch`. `WorkList` keeps holding a
+`Launcher` where it holds a `*Dispatcher` today; the field's type is the
+only call-site change outside `internal/orchestrator/dispatch*.go`.
 
 ### The shared plan
 
@@ -185,16 +186,19 @@ regression from `--network host`'s own unreliability.
 ### Running and stopping the container
 
 Shells out to the `docker` CLI (`docker run`, `docker stop`, `docker
-kill`, `docker wait`), the way `startChild` shells out to `exec.Command` —
-consistent with the codebase's existing preference for thin process
-wrappers over vendoring a client SDK (the only real external dependency
-elsewhere is `aws-sdk-go-v2`, scoped to `internal/remote`). `docker run
--d` returns the container id; `dockerChild.Wait` is `docker wait`;
-`Stop` is `docker stop --time 0` (an immediate `SIGTERM`, no separate
-Docker-side grace — the orchestrator's own `stopGrace` already bounds the
-wait between `Stop` and `Kill` in `worklist.go`, and a second, stacked
-grace inside `docker stop` would just make an abort take longer for no
-benefit); `Kill` is `docker kill`.
+kill`), the way `startChild` shells out to `exec.Command` — consistent
+with the codebase's existing preference for thin process wrappers over
+vendoring a client SDK (the only real external dependency elsewhere is
+`aws-sdk-go-v2`, scoped to `internal/remote`). `docker run` itself runs in
+the foreground, not detached, as this process's own child — the same
+contract `startChild` gives for a bare launch — so `dockerChild.Wait` is
+that local `docker` client process's own `Wait`, its exit mirroring the
+container's, with no separate `docker wait` call; `Stop` is `docker stop
+--time 0` (an immediate `SIGTERM`, no separate Docker-side grace — the
+orchestrator's own `stopGrace` already bounds the wait between `Stop` and
+`Kill` in `worklist.go`, and a second, stacked grace inside `docker stop`
+would just make an abort take longer for no benefit); `Kill` is `docker
+kill`.
 
 ### `--dispatch docker` checks `docker` once, at startup
 

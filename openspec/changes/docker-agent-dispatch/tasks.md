@@ -6,10 +6,10 @@
   passing unchanged (existing `Launch` tests still hold against the
   refactor alone)
 - [x] 1.2 Introduce the `Launcher` interface (`Launch(Item, Node, string)
-  (Child, error)`) and rename today's `Launch` body into a `bareLauncher`
-  that calls `resolvePlan` then does exactly what `Launch` does today —
-  verify with the existing dispatch/worklist test suite passing with no
-  changes to its assertions
+  (Child, error)`) and have `Dispatcher` itself implement it — its
+  `Launch` calls `resolvePlan` then does exactly what it does today, no
+  separate wrapper type — verify with the existing dispatch/worklist test
+  suite passing with no changes to its assertions
 - [x] 1.3 Change `WorkList`'s dispatcher field to hold a `Launcher`, `NewWorkList` and `NewDispatcher`'s
   callers updated — verify with `go build ./...` and the orchestrator
   suite passing
@@ -104,11 +104,13 @@
   on a routable address is unchanged — verify with a table test on the
   function itself, and one asserting the rendered config's base URL for
   both a loopback and a routable gateway
-- [x] 4.3 Implement `dockerChild`: `Wait` as `docker wait`, `Stop` as
-  `docker stop --time 0`, `Kill` as `docker kill` — verify with a test
-  against the fake `docker` seam asserting each method's argv and that
-  `Wait`'s exit code becomes the returned error the way `procChild`'s
-  does
+- [x] 4.3 Implement `dockerChild`: `docker run` itself runs in the
+  foreground as this process's own child (not detached), so `Wait` is
+  that local `docker` client process's own `Wait`, no separate `docker
+  wait` call; `Stop` is `docker stop --time 0`, `Kill` is `docker kill` —
+  verify with a test against the fake `docker` seam asserting each
+  method's argv and that `Wait`'s exit code becomes the returned error the
+  way `procChild`'s does
 - [x] 4.4 A docker failure (the run command's non-zero exit, or the
   binary missing) surfaces as an `error` from `Launch`, naming the item
   and the docker command's own message — verify with a test asserting the
@@ -165,9 +167,12 @@
 ## 8. Documentation and the spec
 
 - [x] 8.1 Document `--dispatch`, `--dispatch-image`, `--harness-config`,
-  the docker backend's mounts and network choice, and `harness.yaml`'s
-  `env`/`startup`/`shutdown` in `docs/commands/orchestrator.md` — verify
-  by reading it against the `agent-dispatch` spec's scenarios
+  the docker backend's mounts and network choice, harness.yaml's
+  `dispatch`/`harness`/`baseDir`/`env`/`startup`/`shutdown` (including
+  `harness`'s precedence against `--harness`), and the item's own
+  `workspace`/`config`/`log` under its own directory, in
+  `docs/commands/orchestrator.md` — verify by reading it against the
+  `agent-dispatch` spec's scenarios
 - [x] 8.2 A short README under `images/agent/` describing what the image
   carries and how its tag is chosen — verify by reading it against
   design.md's "Image tag follows the spinloop version" decision
