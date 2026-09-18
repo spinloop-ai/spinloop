@@ -62,7 +62,7 @@ different things to learn.
 | File | What it is |
 | --- | --- |
 | [`work.yaml`](work.yaml) | One item: read this directory's own README and summarise it. Change `dir` to point anywhere you actually want an agent's storage — its real working directory is `<dir>/workspace/`. |
-| [`harness.yaml`](harness.yaml) | The `--dispatch` backend, environment variables, and `startup`/`shutdown` scripts — a flag on the command line still wins over its `dispatch:`. Found automatically, beside `work.yaml`. |
+| [`harness.yaml`](harness.yaml) | The `--dispatch` backend, the harness, a base directory for items' own `dir`, environment variables, and `startup`/`shutdown` scripts — a flag on the command line still wins over its `dispatch:`/`harness:`. Found automatically, beside `work.yaml`. |
 
 ## See also
 

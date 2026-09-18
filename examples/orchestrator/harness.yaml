@@ -16,6 +16,21 @@
 # case.
 dispatch: bare
 
+# The harness the run uses, the way --harness/-H does — an explicit
+# --harness still wins over it. Set here so the walkthrough runs against
+# opencode regardless of the HARNESS environment variable or a stored
+# preference (`spinloop harness use`) on whatever machine runs it.
+harness: opencode
+
+# The directory an item's own relative dir (work.yaml's dir: .) resolves
+# against, in place of wherever the orchestrator command happens to be
+# started from. `.` here is a no-op — harness.yaml already lives in this
+# directory, which is where dir: . already resolves with no baseDir at
+# all — but the field earns its keep once this file and work.yaml are
+# copied elsewhere and run from a different working directory: baseDir
+# keeps dir: . pointing at this directory regardless.
+baseDir: .
+
 # Environment variables added to every launch. Values are literal — there
 # is no ${VAR} expansion — so a real secret here is a real secret on disk;
 # write the value your shell would otherwise export. An entry naming the
