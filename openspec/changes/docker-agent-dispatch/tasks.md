@@ -36,6 +36,11 @@
   entry naming the resolved token's variable fails the command before any
   item is worked, naming the variable — verify with a test for the merge
   and one for the refusal
+- [x] 3.2a Add `dispatch` to `HarnessConfig`: harness.yaml's choice of
+  backend where `--dispatch` is not given, an explicit flag still winning
+  outright — verify with a test for harness.yaml's value being used, one
+  for the flag overriding it, and one for an unrecognised value from
+  either source failing the command before it works an item
 - [x] 3.3 Add the wrapper: a generated POSIX shell script (design.md's
   "The wrapper" decision) run in place of the harness directly whenever
   `harness.yaml` names a `startup` or `shutdown` script; where neither is

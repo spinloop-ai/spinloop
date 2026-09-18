@@ -154,14 +154,22 @@ tasks.md as a small addition once the default path works.
 
 ### `harness.yaml`: one loader, read once at startup
 
-A small struct (`Env map[string]string`, `Startup, Shutdown string`),
-loaded once when the command starts — the way the items file and the
-fleet file already are — from `--harness-config`, or `harness.yaml` beside
-the items file, or neither. `resolvePlan` folds `Env` into the launch's
-environment for every item; an entry naming the token's own variable is
-refused there, before any item runs, the way an unrecognised `--dispatch`
-value already is. A missing file is not an error; a present-but-unparsable
-one is, the way a malformed items file already is.
+A small struct (`Dispatch, Startup, Shutdown string`, `Env
+map[string]string`), loaded once when the command starts — the way the
+items file and the fleet file already are — from `--harness-config`, or
+`harness.yaml` beside the items file, or neither. `resolvePlan` folds
+`Env` into the launch's environment for every item; an entry naming the
+token's own variable is refused there, before any item runs, the way an
+unrecognised `--dispatch` value already is. A missing file is not an
+error; a present-but-unparsable one is, the way a malformed items file
+already is.
+
+`Dispatch`'s precedence against `--dispatch` is resolved with the same
+`cmd.Flags().Changed("dispatch")` check `orchestratorListenAddr` already
+uses for `--listen`/`--loopback`: an explicit flag beats the file outright,
+so `harness.yaml` never has to know whether the flag's value it might be
+overridden by is the flag's own default or a real choice — the command
+already tracks that distinction, and `HarnessConfig` does not need to.
 
 ### The wrapper: how shutdown gets to always run
 

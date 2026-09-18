@@ -11,15 +11,19 @@ remote host as later additions behind the same choice.
 ### Requirement: Choosing the dispatch backend
 
 `spinloop orchestrator` SHALL take a `--dispatch` flag naming the backend
-every launch the run makes uses, one of `bare` or `docker`, defaulting to
-`bare` where the flag is not given. A name the command does not recognise
-SHALL fail the command before it works an item, naming the flag and the
-value and the accepted set. The choice is the run's: every item the run
-launches goes through the same backend, not a choice per node or per item.
+every launch the run makes uses, one of `bare` or `docker`. Where the flag
+is not given, harness.yaml's own `dispatch` (see "Configuring the harness
+with harness.yaml") SHALL be the run's choice where it names one; where
+neither says anything, the run SHALL use `bare`. A name neither the flag
+nor harness.yaml's field recognises SHALL fail the command before it works
+an item, naming whichever of the two named it, the value, and the accepted
+set. The choice is the run's: every item the run launches goes through the
+same backend, not a choice per node or per item.
 
 #### Scenario: The default is the bare backend
 
-- **WHEN** the operator runs the command with no `--dispatch` flag
+- **WHEN** the operator runs the command with no `--dispatch` flag and no
+  harness.yaml naming a dispatch
 - **THEN** every item it admits runs through the bare backend
 
 #### Scenario: Docker is named
@@ -27,12 +31,25 @@ launches goes through the same backend, not a choice per node or per item.
 - **WHEN** the operator runs the command with `--dispatch docker`
 - **THEN** every item it admits runs through the docker backend
 
+#### Scenario: harness.yaml names the backend
+
+- **WHEN** the operator runs the command with no `--dispatch` flag, and
+  harness.yaml carries a `dispatch`
+- **THEN** every item it admits runs through the backend harness.yaml
+  names
+
+#### Scenario: An explicit flag wins over harness.yaml's
+
+- **WHEN** the operator runs the command with `--dispatch`, and
+  harness.yaml also carries a `dispatch` naming a different backend
+- **THEN** every item it admits runs through the flag's backend
+
 #### Scenario: An unrecognised backend stops the command
 
-- **WHEN** the operator runs the command with `--dispatch` naming anything
-  but `bare` or `docker`
-- **THEN** the command fails before it works an item, naming the flag, the
-  value, and the accepted set
+- **WHEN** the operator runs the command with `--dispatch`, or harness.yaml
+  with no `--dispatch` given, naming anything but `bare` or `docker`
+- **THEN** the command fails before it works an item, naming whichever of
+  the two named it, the value, and the accepted set
 
 ### Requirement: The bare backend
 
@@ -118,7 +135,9 @@ has no provider configured.
 `spinloop orchestrator` SHALL read `harness.yaml` beside the items file by
 default, or the file `--harness-config` names where the flag is given;
 where neither the named file nor the default is present, the run SHALL
-proceed exactly as it does without one. The file MAY carry an `env` map,
+proceed exactly as it does without one. The file MAY carry a `dispatch`,
+naming the backend the way `--dispatch` does — see "Choosing the dispatch
+backend" for how the two are reconciled. The file MAY carry an `env` map,
 each entry added to every launch's environment, under both backends alike.
 An entry naming the variable the resolved token is presented under SHALL
 be refused, naming it, before the command works an item. The file MAY also
