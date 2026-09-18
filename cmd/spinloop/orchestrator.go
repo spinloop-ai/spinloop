@@ -23,6 +23,7 @@ import (
 	"github.com/spinloop-ai/spinloop/internal/orchestrator"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 )
 
 func orchestratorCmd() *cobra.Command {
@@ -61,7 +62,12 @@ that has ended is not run again on a restart.
 While it works, the orchestrator serves the work list — the items, their
 state, and each agent's kept output — over HTTP, the gateway's server
 pattern: an address and a token, loopback the bind that needs neither
-beyond the machine.`,
+beyond the machine.
+
+Once the work list API is ready, the command prints the startup banner and
+then the work list itself, the way spinloop work list prints it — a table
+on a terminal, plain lines otherwise — so a restart's recovered state shows
+without a separate call to spinloop work list.`,
 		Args:          cobra.NoArgs,
 		SilenceErrors: true,
 		SilenceUsage:  true,
@@ -206,6 +212,7 @@ func runOrchestratorCommand(gatewayAddr, itemsPath, token, harnessName, logLevel
 	}
 	fmt.Printf("Working %s against %s: %d %s in the backlog\n", itemsPath, gatewayAddr, len(items), unit)
 	fmt.Printf("Work list on %s\n\n", ln.Addr().String())
+	printOrchestratorStartupWorkList(wl.List())
 
 	// The signal ends the run the way the loop's contract says it does: the
 	// agents it has launched are stopped, their items back in the backlog.
@@ -227,4 +234,17 @@ func runOrchestratorCommand(gatewayAddr, itemsPath, token, harnessName, logLevel
 	srv.Shutdown(shutdownCtx)
 	cancel()
 	return runErr
+}
+
+// printOrchestratorStartupWorkList prints the run's view of the items the
+// way spinloop work list prints the work list API's: a table where stdout
+// is a terminal, one tab-separated line per item otherwise.
+func printOrchestratorStartupWorkList(items []orchestrator.ItemView) {
+	if term.IsTerminal(int(os.Stdout.Fd())) {
+		fmt.Print(workListTable(items))
+		return
+	}
+	for _, v := range items {
+		fmt.Println(workListLine(v, false))
+	}
 }

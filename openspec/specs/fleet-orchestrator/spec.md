@@ -50,6 +50,16 @@ first, then the file, and SHALL NOT write it anywhere. The API token is the
 orchestrator's own: it is distinct from the gateway's token and is not
 inherited from any environment variable the command itself uses.
 
+Once the work list API is ready and before the run's first admission pass,
+the command SHALL print the startup banner — the items file, the gateway,
+the backlog count, and the work list API's address — followed by the work
+list itself, in the form `spinloop work list` prints it: a table where
+standard output is a terminal, plain tab-separated lines otherwise. The
+list SHALL be the run's own view of the items, the one the work list API
+would answer at that moment, so a restart's recovered state — an item
+already recorded done, failed, or running — shows the way it would show to
+a caller of the API.
+
 #### Scenario: A gateway and an items file drive the command
 
 - **WHEN** the operator runs the command naming a reachable gateway and an
@@ -106,6 +116,27 @@ inherited from any environment variable the command itself uses.
   an address that is not loopback with no token
 - **THEN** the command fails before it works an item, naming the conflict
 
+#### Scenario: Startup prints the work list on a terminal
+
+- **WHEN** the command starts with standard output a terminal, and the
+  items file carries items
+- **THEN** after the startup banner, the command prints the work list as a
+  table — a heading row and one aligned row per item, id, state, node,
+  started and ended — the same table `spinloop work list` prints
+
+#### Scenario: Startup prints the work list on a pipe
+
+- **WHEN** the command's standard output is piped into another program
+- **THEN** after the startup banner, the command prints one plain
+  tab-separated line per item, in the items file's order, with no
+  decoration
+
+#### Scenario: A restart's recovered state shows at startup
+
+- **WHEN** the command starts against an items file whose state beside it
+  already records an item done, failed, or running from a prior run
+- **THEN** the startup work list shows that item in its recorded state, not
+  backlog
 ### Requirement: Serving the work list API
 
 The orchestrator SHALL serve a work list API for the life of the run, on
