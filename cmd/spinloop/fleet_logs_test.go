@@ -54,7 +54,7 @@ func TestCmdFleetLogsPrintsOneNodeUnlabelled(t *testing.T) {
 	oneLogFleet(t, "loading weights\nserving\n")
 
 	out := captureStdout(t, func() {
-		if err := cmdFleet([]string{"logs"}); err != nil {
+		if err := cmdLogs(nil); err != nil {
 			t.Errorf("fleet logs returned %v", err)
 		}
 	})
@@ -73,7 +73,7 @@ func TestCmdFleetLogsLabelsSeveralNodes(t *testing.T) {
 		hostA, portA, hostB, portB))
 
 	out := captureStdout(t, func() {
-		if err := cmdFleet([]string{"logs"}); err != nil {
+		if err := cmdLogs(nil); err != nil {
 			t.Errorf("fleet logs returned %v", err)
 		}
 	})
@@ -108,7 +108,7 @@ func TestCmdFleetLogsFollowTakesTheFleetFile(t *testing.T) {
 	t.Chdir(t.TempDir())
 
 	done := make(chan error, 1)
-	go func() { done <- cmdFleet([]string{"logs", "-f", "--fleet", path}) }()
+	go func() { done <- cmdLogs([]string{"-f", "--fleet", path}) }()
 
 	// The first poll is the proof of the parse: if -f had been the fleet-file
 	// flag it would have taken --fleet as its value and failed before
@@ -146,7 +146,7 @@ func TestCmdFleetLogsFollowTakesTheFleetFile(t *testing.T) {
 // -f is follow on logs, so the word after it is a node name, not a fleet file.
 func TestCmdFleetLogsShortFlagIsNotTheFleetFile(t *testing.T) {
 	oneLogFleet(t, "hello\n")
-	err := cmdFleet([]string{"logs", "-f", "nope"})
+	err := cmdLogs([]string{"-f", "nope"})
 	if err == nil || !strings.Contains(err.Error(), `no node "nope"`) {
 		t.Fatalf("want the unknown-node error for the word after -f, got %v", err)
 	}
@@ -165,7 +165,7 @@ func TestCmdFleetLogsReadsOneNamedNode(t *testing.T) {
 		hostA, portA, hostB, portB))
 
 	out := captureStdout(t, func() {
-		if err := cmdFleet([]string{"logs", "beta"}); err != nil {
+		if err := cmdLogs([]string{"beta"}); err != nil {
 			t.Errorf("fleet logs beta returned %v", err)
 		}
 	})
@@ -184,7 +184,7 @@ func TestCmdFleetLogsReadsOneNamedNode(t *testing.T) {
 func TestCmdFleetLogsUnknownNodeNamesTheKnownOnes(t *testing.T) {
 	oneLogFleet(t, "x\n")
 
-	err := cmdFleet([]string{"logs", "nope"})
+	err := cmdLogs([]string{"nope"})
 	if err == nil {
 		t.Fatal("an unknown node should be an error")
 	}
@@ -205,7 +205,7 @@ func TestCmdFleetLogsReportsNodesWithNothingToGive(t *testing.T) {
 		hostUp, portUp, hostOld, portOld))
 
 	out := captureStdout(t, func() {
-		if err := cmdFleet([]string{"logs"}); err != nil {
+		if err := cmdLogs(nil); err != nil {
 			t.Errorf("one bad node must not fail the command, got %v", err)
 		}
 	})
@@ -224,7 +224,7 @@ func TestCmdFleetLogsReportsAMissingLog(t *testing.T) {
 	oneLogFleet(t, "")
 
 	out := captureStdout(t, func() {
-		if err := cmdFleet([]string{"logs"}); err != nil {
+		if err := cmdLogs(nil); err != nil {
 			t.Errorf("fleet logs returned %v", err)
 		}
 	})
@@ -237,7 +237,7 @@ func TestCmdFleetLogsJSON(t *testing.T) {
 	oneLogFleet(t, "serving\n")
 
 	out := captureStdout(t, func() {
-		if err := cmdFleet([]string{"logs", "--format", "json"}); err != nil {
+		if err := cmdLogs([]string{"--format", "json"}); err != nil {
 			t.Errorf("fleet logs --format json returned %v", err)
 		}
 	})
@@ -261,11 +261,11 @@ func TestCmdFleetLogsJSON(t *testing.T) {
 func TestCmdFleetLogsRejectsBadFlags(t *testing.T) {
 	oneLogFleet(t, "x\n")
 
-	if err := cmdFleet([]string{"logs", "--format", "yaml"}); err == nil ||
+	if err := cmdLogs([]string{"--format", "yaml"}); err == nil ||
 		!strings.Contains(err.Error(), "--format") {
 		t.Errorf("bad format: got %v", err)
 	}
-	if err := cmdFleet([]string{"logs", "--limit", "0"}); err == nil ||
+	if err := cmdLogs([]string{"--limit", "0"}); err == nil ||
 		!strings.Contains(err.Error(), "--limit") {
 		t.Errorf("bad limit: got %v", err)
 	}
@@ -473,7 +473,7 @@ func TestCmdFleetLogsReportsARejectedToken(t *testing.T) {
 	writeFleetFile(t, fmt.Sprintf("nodes:\n  - name: box\n    host: %s\n    port: %d\n", host, port))
 
 	out := captureStdout(t, func() {
-		if err := cmdFleet([]string{"logs"}); err != nil {
+		if err := cmdLogs(nil); err != nil {
 			t.Errorf("a rejected token must not fail the command, got %v", err)
 		}
 	})
@@ -504,7 +504,7 @@ func TestCmdFleetLogsDistinguishesAnEmptyLogFromAMissingOne(t *testing.T) {
 	writeFleetFile(t, fmt.Sprintf("nodes:\n  - name: box\n    host: %s\n    port: %d\n", host, port))
 
 	out := captureStdout(t, func() {
-		if err := cmdFleet([]string{"logs"}); err != nil {
+		if err := cmdLogs(nil); err != nil {
 			t.Errorf("fleet logs returned %v", err)
 		}
 	})

@@ -17,29 +17,29 @@
 
 ## 2. The verbs
 
-- [ ] 2.1 Add `cmd/spinloop/metrics.go`: a root-registered `metrics` taking
+- [x] 2.1 Add `cmd/spinloop/metrics.go`: a root-registered `metrics` taking
       `--env`/`--fleet`, `--format`, `--watch` and `--cost`, resolving through
       `resolveFleetTarget` and rendering through the existing formatters.
       Verify each format renders for a fleet and for a single environment.
-- [ ] 2.2 Add `cmd/spinloop/logs.go` the same way, with `--follow`, `--limit`,
+- [x] 2.2 Add `cmd/spinloop/logs.go` the same way, with `--follow`, `--limit`,
       `--format`, and the `--source`/`--since`/`--instance` the capability
       answers. Verify `-f` remains `--follow` and the fleet file is long-form
       only.
-- [ ] 2.3 Wire `--cost` to `Coster`: priced nodes carry the figure, the rest
+- [x] 2.3 Wire `--cost` to `Coster`: priced nodes carry the figure, the rest
       render as they would without the flag, and a target with none succeeds
       (design D2). Verify with a mixed target and an all-daemon one.
-- [ ] 2.4 Wire `--source`/`--since`/`--instance` to `SourceLogger` on the same
+- [x] 2.4 Wire `--source`/`--since`/`--instance` to `SourceLogger` on the same
       terms. Verify a mixed target reads the environment's boot log and the
       daemon's ordinary output.
 - [ ] 2.5 Read a Spinloop given to either verb for its `ENV` instructions and
       adjacent `.env` only, never to select a target (design D4). Verify a
       Spinloop whose `ENV` supplies `SPINLOOP_REMOTE_*` configures the command.
-- [ ] 2.6 Register both at the root with the completion the fleet spellings
+- [x] 2.6 Register both at the root with the completion the fleet spellings
       had. Verify the completion test covers them.
 
 ## 3. Removing the old spellings
 
-- [ ] 3.1 Delete `fleetMetricsCmd` and `fleetLogsCmd` and unregister them,
+- [x] 3.1 Delete `fleetMetricsCmd` and `fleetLogsCmd` and unregister them,
       keeping their renderers. Verify `spinloop fleet --help` lists neither.
 - [ ] 3.2 Delete `remoteStatusCmd`, `remoteMetricsCmd`, `remoteLogsCmd` and
       their bodies, keeping the formatters the top-level verbs use. Verify

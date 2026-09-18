@@ -19,11 +19,34 @@ func StatusCall(ctx context.Context, n Node) NodeResult {
 	return r
 }
 
-// MetricsCall reads a node's engine and system metrics.
+// MetricsCall reads a node's engine and system metrics, and the release it
+// reports alongside them where its kind reports one there. The version costs
+// nothing: a node that answers it does so from the reading just taken.
 func MetricsCall(ctx context.Context, n Node) NodeResult {
 	stats, err := n.Metrics(ctx)
 	r := result(n.Name(), err)
 	r.Metrics = stats
+	if v, ok := n.(Versioner); ok {
+		r.Version = v.Version()
+	}
+	return r
+}
+
+// PricedMetricsCall is MetricsCall plus what the node has cost, for a caller
+// that asked. A node that cannot be priced is read exactly as MetricsCall
+// reads it, and a price that cannot be fetched leaves the cost unreported:
+// asking a fleet what it costs is not a command a fleet of unpriceable nodes
+// should refuse.
+func PricedMetricsCall(ctx context.Context, n Node) NodeResult {
+	r := MetricsCall(ctx, n)
+	if !r.OK() {
+		return r
+	}
+	if c, ok := n.(Coster); ok {
+		if cost, err := c.Cost(ctx); err == nil {
+			r.Cost = cost
+		}
+	}
 	return r
 }
 
@@ -38,6 +61,31 @@ func LogsCall(offsets map[string]int64, limit int) Call {
 			offset = daemon.TailLog
 		}
 		logs, err := n.Logs(ctx, offset, limit)
+		r := result(n.Name(), err)
+		r.Logs = logs
+		return r
+	}
+}
+
+// QueriedLogsCall reads each node's log narrowed by what the caller asked for,
+// where the node's kind can narrow it. A node whose log is a byte offset into
+// one file cannot, and is read exactly as LogsCall reads it — so a query
+// against a fleet of such nodes returns their output rather than nothing.
+//
+// limit doubles as the byte budget for a node read by offset and the event cap
+// for a node read by query, because it means the same thing to a caller either
+// way: how much to bring back.
+func QueriedLogsCall(q LogQuery, limit int) Call {
+	return func(ctx context.Context, n Node) NodeResult {
+		if s, ok := n.(SourceLogger); ok {
+			query := q
+			query.Limit = limit
+			logs, err := s.LogsMatching(ctx, query)
+			r := result(n.Name(), err)
+			r.Logs = logs
+			return r
+		}
+		logs, err := n.Logs(ctx, daemon.TailLog, limit)
 		r := result(n.Name(), err)
 		r.Logs = logs
 		return r

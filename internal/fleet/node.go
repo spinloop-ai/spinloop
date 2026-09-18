@@ -227,6 +227,16 @@ type NodeResult struct {
 	Metrics metrics.Stats
 	Logs    daemon.LogsResponse
 
+	// Cost is what this node has spent on its running session. Filled only by
+	// a call that asked for it, and only for a node that can be priced; see
+	// Cost.Reported for the difference between "nothing" and "no figure".
+	Cost Cost
+	// Version is the spinloop release this node reported somewhere other than
+	// its status reply. Empty for a node that carries it there instead — the
+	// status views read it from the status, and this is the metrics views'
+	// equivalent.
+	Version string
+
 	// At is when this reading was taken — set by the fan-out as the call
 	// returns. Reads are concurrent and of uneven duration, so a reading can
 	// land after one taken later than it; a caller that draws the newest

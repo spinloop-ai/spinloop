@@ -203,7 +203,7 @@ func TestFleetMetricsShowsKeep(t *testing.T) {
 	})
 
 	out := captureStdout(t, func() {
-		if err := cmdFleet([]string{"metrics"}); err != nil {
+		if err := cmdMetrics(nil); err != nil {
 			t.Fatalf("cmdFleet metrics: %v", err)
 		}
 	})
@@ -225,7 +225,7 @@ func TestFleetMetricsOmitsKeepWhenAbsent(t *testing.T) {
 	})
 
 	out := captureStdout(t, func() {
-		if err := cmdFleet([]string{"metrics"}); err != nil {
+		if err := cmdMetrics(nil); err != nil {
 			t.Fatalf("cmdFleet metrics: %v", err)
 		}
 	})

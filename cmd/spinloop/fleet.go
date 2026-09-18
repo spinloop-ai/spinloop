@@ -75,52 +75,10 @@ func fleetRow(r fleet.NodeResult) (state, serving string) {
 	return f.State, f.servingText()
 }
 
-// fleetMetricsCmd renders every node's engine and system metrics. --watch
-// redraws the whole fleet on an interval.
-func fleetMetricsCmd() *cobra.Command {
-	var (
-		path    string
-		envName string
-		format  string
-		watch   bool
-	)
-	c := &cobra.Command{
-		Use:           "metrics",
-		Short:         "sample every node's engine metrics",
-		Args:          cobra.ArbitraryArgs,
-		SilenceErrors: true,
-		SilenceUsage:  true,
-		RunE: func(c *cobra.Command, _ []string) error {
-			resolve(c)
-			if err := validateMetricsFormat(format); err != nil {
-				return err
-			}
-			cfg, err := resolveFleetTarget(fleetTarget{envName: envName, fleetPath: path})
-			if err != nil {
-				return err
-			}
-			if watch {
-				return runFleetMetricsWatch(cfg, format)
-			}
-			results := cfg.FanOut(context.Background(), fleet.MetricsCall)
-			return renderFleetMetrics(os.Stdout, results, format)
-		},
-	}
-	fs := c.Flags()
-	fs.StringVarP(&path, "fleet", "f", "", fleetFileUsage)
-	fs.StringVar(&envName, "env", "", envFlagTargetUsage)
-	fs.StringVar(&format, "format", "gauge", "output format: gauge (default), bar, table or json")
-	fs.BoolVarP(&watch, "watch", "w", false, "redraw the fleet every 60 seconds")
-	c.ValidArgsFunction = noPositionals
-	compRegister(c, "fleet", compFiles)
-	compRegister(c, "env", compEnvs)
-	return c
-}
-
 // runFleetMetricsWatch redraws the fleet until interrupted. Each refresh is
 // rendered into a buffer first, so the screen is cleared and rewritten in one
 // go — a slow node delays a refresh but never tears the display.
-func runFleetMetricsWatch(cfg *fleet.Config, format string) error {
+func runFleetMetricsWatch(cfg *fleet.Config, format string, call fleet.Call) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -135,7 +93,7 @@ func runFleetMetricsWatch(cfg *fleet.Config, format string) error {
 	first := true
 	for {
 		var buf strings.Builder
-		results := cfg.FanOut(ctx, fleet.MetricsCall)
+		results := cfg.FanOut(ctx, call)
 		if ctx.Err() != nil {
 			return nil
 		}
