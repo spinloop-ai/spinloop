@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/spinloop-ai/spinloop/internal/daemon"
@@ -33,6 +34,18 @@ type remoteNode struct {
 	// re-asks a little behind the newest event already seen and this
 	// suppresses what the overlap re-reads, by event id.
 	logs *remote.FollowCursor
+
+	// mu guards the facts Metrics retains for the capabilities to answer from.
+	// A board refreshing several nodes reads and writes these from different
+	// goroutines, so they are not left bare.
+	mu sync.Mutex
+	// instanceType, uptime and version are the last metrics reading's answers
+	// to questions the shared stats shape has no room for. Cost and Version
+	// read them rather than calling the control plane again — the reply that
+	// carried them has already been paid for.
+	instanceType string
+	uptime       int
+	version      string
 }
 
 // NewRemoteNode builds the live node for a named remote environment. The config
@@ -63,7 +76,73 @@ func (n *remoteNode) Metrics(ctx context.Context) (metrics.Stats, error) {
 	if err != nil {
 		return metrics.Stats{}, err
 	}
+	// The reply carries three facts the shared stats shape has no room for.
+	// Retaining them here is what lets Cost and Version answer without a
+	// second call for a reading already in hand.
+	n.mu.Lock()
+	n.instanceType, n.uptime, n.version = resp.InstanceType, resp.UptimeSeconds, resp.Version
+	n.mu.Unlock()
 	return statsFromRemote(*resp), nil
+}
+
+// Cost prices the session this environment has been running, from the instance
+// type it launched as and the region it launched in. Both come from the last
+// metrics reading, so a caller that has already taken one pays only for the
+// price lookup.
+//
+// A reading not yet taken, an instance that is not running, or a price the
+// Price List API does not return all yield the zero Cost and no error: a node
+// with no price to show reads the same however it came to have none.
+func (n *remoteNode) Cost(ctx context.Context) (Cost, error) {
+	n.mu.Lock()
+	instanceType, uptime := n.instanceType, n.uptime
+	n.mu.Unlock()
+	if instanceType == "" || uptime <= 0 {
+		return Cost{}, nil
+	}
+	price, err := remote.GetOnDemandPrice(ctx, n.cfg.Region, instanceType)
+	if err != nil || price <= 0 {
+		return Cost{}, nil
+	}
+	return Cost{SoFar: float64(uptime) / 3600.0 * price, PerHour: price}, nil
+}
+
+// Version is the spinloop release this environment's daemon reported with its
+// last metrics reading. Empty before one has been taken, or where the control
+// plane could not reach the daemon — the same absence, reported the same way.
+func (n *remoteNode) Version() string {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return n.version
+}
+
+// LogsMatching reads this environment's log store, narrowed by what the caller
+// asked for. Unlike Logs it is a query rather than a cursor: the caller states
+// the window it wants, so nothing is retained between calls.
+func (n *remoteNode) LogsMatching(ctx context.Context, q LogQuery) (daemon.LogsResponse, error) {
+	source := q.Source
+	if source == "" {
+		source = remote.LogSourceEngine
+	}
+	limit := q.Limit
+	if limit <= 0 {
+		limit = remoteEngineTail
+	}
+	rq := remote.LogQuery{
+		Environment: n.cfg.Environment,
+		Source:      source,
+		Limit:       limit,
+		Instance:    q.Instance,
+	}
+	if q.Since > 0 {
+		rq.Start = time.Now().Add(-q.Since)
+	}
+	res, err := remote.FetchLogs(ctx, n.cfg, rq)
+	if err != nil {
+		return daemon.LogsResponse{}, err
+	}
+	// A query is not a follow, so every event it returns is fresh to it.
+	return logsFromRemote(res.Events, len(res.Events) == 0), nil
 }
 
 func (n *remoteNode) Start(ctx context.Context) (daemon.StatusResponse, error) {
@@ -222,8 +301,11 @@ func statusFromRemote(resp remote.Response) daemon.StatusResponse {
 
 // statsFromRemote maps the stats Lambda's reply onto the shared stats shape. The
 // per-stat fields already alias the metrics types the collector produces, so the
-// mapping is a field-for-field copy; the reply's version and instance facts have
-// no home on the node's stats and are left to the remote view.
+// mapping is a field-for-field copy. The reply's version and instance facts are
+// deliberately not among them: they describe a cloud environment and nothing
+// else, so putting them on the shape every node answers with would leave a
+// field every daemon reports empty. Metrics retains them on the node instead,
+// where Cost and Version answer from them.
 func statsFromRemote(resp remote.StatsResponse) metrics.Stats {
 	return metrics.Stats{
 		State:         resp.State,
