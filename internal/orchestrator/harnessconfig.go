@@ -21,6 +21,19 @@ type HarnessConfig struct {
 	// way --dispatch does. An explicit --dispatch wins over it; where the
 	// flag is not given, this is the run's choice.
 	Dispatch string `yaml:"dispatch"`
+	// Harness names the harness the run uses — the way --harness/-H does.
+	// An explicit --harness wins over it; where the flag is not given,
+	// this is tried before the HARNESS environment variable and the
+	// stored preference (see harness.Resolve).
+	Harness string `yaml:"harness"`
+	// BaseDir is the directory an item's own relative dir (the items
+	// file's `dir`) resolves against, in place of the orchestrator's own
+	// working directory when the command starts. An item's dir that is
+	// already absolute is unaffected. Where BaseDir itself is relative,
+	// it resolves against harness.yaml's own directory — LoadHarnessConfig
+	// resolves it once, at load time, so every other use of it is already
+	// absolute.
+	BaseDir  string `yaml:"baseDir"`
 	Startup  string `yaml:"startup"`
 	Shutdown string `yaml:"shutdown"`
 }
@@ -51,6 +64,9 @@ func LoadHarnessConfig(flagPath, itemsPath string) (HarnessConfig, error) {
 	var cfg HarnessConfig
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return HarnessConfig{}, fmt.Errorf("parsing %s: %v", path, err)
+	}
+	if cfg.BaseDir != "" && !filepath.IsAbs(cfg.BaseDir) {
+		cfg.BaseDir = filepath.Join(filepath.Dir(path), cfg.BaseDir)
 	}
 	return cfg, nil
 }

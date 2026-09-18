@@ -244,6 +244,8 @@ found beside the items file by default, or named with
 
 ```yaml
 dispatch: docker
+harness: opencode
+baseDir: ../work
 env:
   GH_TOKEN: ghp_...
   SOME_TOOL_FLAG: "1"
@@ -257,6 +259,16 @@ shutdown: |
 - **`dispatch`** — the backend the run uses, `bare` or `docker`, the way
   `--dispatch` does. An explicit `--dispatch` wins over it; where the flag
   is not given, this is the run's choice.
+- **`harness`** — the harness the run uses, the way `--harness`/`-H` does.
+  An explicit `--harness` wins over it; where the flag is not given, this
+  is tried before the `HARNESS` environment variable and the stored
+  preference (`spinloop harness use`).
+- **`baseDir`** — the directory an item's own relative `dir` (see [The
+  items file](#the-items-file)) resolves against, in place of the
+  directory the orchestrator command happens to be started from. An
+  item's `dir` that is already absolute is unaffected. A relative
+  `baseDir` resolves against `harness.yaml`'s own directory, so the file
+  stays portable together with the items it describes.
 - **`env`** — a map added to every launch's environment, under either
   backend. An entry naming the same variable the gateway's token is
   presented under is refused, naming it, before the command works an item.

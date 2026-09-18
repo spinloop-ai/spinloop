@@ -82,7 +82,7 @@ without a separate call to spinloop work list.`,
 			if err != nil {
 				return err
 			}
-			return runOrchestratorCommand(gateway, itemsPath, tokenVar, harnessName, logLevel, createItemDirs, listenAddr, apiToken, apiTokenFile, dispatchBackend, c.Flags().Changed("dispatch"), dispatchImage, harnessConfigPath)
+			return runOrchestratorCommand(gateway, itemsPath, tokenVar, harnessName, c.Flags().Changed("harness"), logLevel, createItemDirs, listenAddr, apiToken, apiTokenFile, dispatchBackend, c.Flags().Changed("dispatch"), dispatchImage, harnessConfigPath)
 		},
 	}
 
@@ -170,8 +170,23 @@ func orchestratorListenAddr(listen string, listenExplicit, loopback bool) (strin
 // and then the work list API standing before the run's first pass, the way
 // the gateway has its handler in before a signal can arrive, held until the
 // signal ends the run and the server goes down with it.
-func runOrchestratorCommand(gatewayAddr, itemsPath, token, harnessName, logLevel string, createItemDirs bool, listenAddr, apiToken, apiTokenFile, dispatchBackend string, dispatchChanged bool, dispatchImage, harnessConfigPath string) error {
-	h, _, err := harness.Resolve(harnessName)
+func runOrchestratorCommand(gatewayAddr, itemsPath, token, harnessName string, harnessChanged bool, logLevel string, createItemDirs bool, listenAddr, apiToken, apiTokenFile, dispatchBackend string, dispatchChanged bool, dispatchImage, harnessConfigPath string) error {
+	hc, err := orchestrator.LoadHarnessConfig(harnessConfigPath, itemsPath)
+	if err != nil {
+		return err
+	}
+	if err := orchestrator.CheckHarnessEnvCollision(hc.Env); err != nil {
+		return err
+	}
+
+	// --harness, given explicitly, wins outright; otherwise harness.yaml's
+	// own harness: is tried before harness.Resolve's own env-var/stored-
+	// preference/default chain.
+	resolveName := harnessName
+	if !harnessChanged && hc.Harness != "" {
+		resolveName = hc.Harness
+	}
+	h, _, err := harness.Resolve(resolveName)
 	if err != nil {
 		return err
 	}
@@ -196,14 +211,6 @@ func runOrchestratorCommand(gatewayAddr, itemsPath, token, harnessName, logLevel
 	}
 	defer ln.Close()
 
-	hc, err := orchestrator.LoadHarnessConfig(harnessConfigPath, itemsPath)
-	if err != nil {
-		return err
-	}
-	if err := orchestrator.CheckHarnessEnvCollision(hc.Env); err != nil {
-		return err
-	}
-
 	// --dispatch, given explicitly, wins outright; otherwise harness.yaml's
 	// own dispatch: is the run's choice, and the flag's default ("bare")
 	// only where neither says anything.
@@ -215,7 +222,7 @@ func runOrchestratorCommand(gatewayAddr, itemsPath, token, harnessName, logLevel
 	var dispatch orchestrator.Launcher
 	switch backend {
 	case "", "bare":
-		dispatch = orchestrator.NewDispatcher(h, gatewayAddr, token, createItemDirs).WithHarnessConfig(hc)
+		dispatch = orchestrator.NewDispatcher(h, gatewayAddr, token, createItemDirs).WithHarnessConfig(hc).WithBaseDir(hc.BaseDir)
 	case "docker":
 		if err := orchestrator.CheckDockerReachable(); err != nil {
 			return err
@@ -224,7 +231,7 @@ func runOrchestratorCommand(gatewayAddr, itemsPath, token, harnessName, logLevel
 		if image == "" {
 			image = orchestrator.DefaultDockerImage(version)
 		}
-		dispatch = orchestrator.NewDockerLauncher(h, gatewayAddr, token, image, createItemDirs).WithHarnessConfig(hc)
+		dispatch = orchestrator.NewDockerLauncher(h, gatewayAddr, token, image, createItemDirs).WithHarnessConfig(hc).WithBaseDir(hc.BaseDir)
 	default:
 		return fmt.Errorf("unknown %s %q: expected bare or docker", backendSource, backend)
 	}
@@ -237,6 +244,7 @@ func runOrchestratorCommand(gatewayAddr, itemsPath, token, harnessName, logLevel
 	if err != nil {
 		return err
 	}
+	wl = wl.WithBaseDir(hc.BaseDir)
 	// The store's lock goes with the process, after the server has gone
 	// down and with it any request that could still touch the store.
 	defer wl.Close()

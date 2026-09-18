@@ -215,22 +215,35 @@ tasks.md as a small addition once the default path works.
 
 ### `harness.yaml`: one loader, read once at startup
 
-A small struct (`Dispatch, Startup, Shutdown string`, `Env
-map[string]string`), loaded once when the command starts — the way the
-items file and the fleet file already are — from `--harness-config`, or
-`harness.yaml` beside the items file, or neither. `resolvePlan` folds
+A small struct (`Dispatch, Harness, BaseDir, Startup, Shutdown string`,
+`Env map[string]string`), loaded once when the command starts — the way
+the items file and the fleet file already are — from `--harness-config`,
+or `harness.yaml` beside the items file, or neither. `resolvePlan` folds
 `Env` into the launch's environment for every item; an entry naming the
 token's own variable is refused there, before any item runs, the way an
 unrecognised `--dispatch` value already is. A missing file is not an
 error; a present-but-unparsable one is, the way a malformed items file
 already is.
 
-`Dispatch`'s precedence against `--dispatch` is resolved with the same
-`cmd.Flags().Changed("dispatch")` check `orchestratorListenAddr` already
-uses for `--listen`/`--loopback`: an explicit flag beats the file outright,
-so `harness.yaml` never has to know whether the flag's value it might be
-overridden by is the flag's own default or a real choice — the command
-already tracks that distinction, and `HarnessConfig` does not need to.
+`Dispatch`'s and `Harness`'s precedence against `--dispatch` and
+`--harness` are each resolved with the same `cmd.Flags().Changed(...)`
+check `orchestratorListenAddr` already uses for `--listen`/`--loopback`:
+an explicit flag beats the file outright, so `harness.yaml` never has to
+know whether the flag's value it might be overridden by is the flag's own
+default or a real choice — the command already tracks that distinction,
+and `HarnessConfig` does not need to. `Harness`'s own fallback, where
+neither the flag nor harness.yaml says anything, is `harness.Resolve`'s
+existing chain (the `HARNESS` environment variable, the stored
+preference, the default) — harness.yaml slots in ahead of that chain,
+behind the flag, rather than replacing it.
+
+`BaseDir` is resolved once, inside `LoadHarnessConfig`, against
+harness.yaml's own directory where it is itself relative — before
+`dispatchConfig` or `WorkList` ever see it, so every later use
+(`ResolveItemDir`) just joins, never re-resolves. Both `Dispatcher` and
+`dockerLauncher` gain a `WithBaseDir` builder, mirroring `WithHarnessConfig`;
+`WorkList` gains one too, since `Remove`'s own cleanup needs to resolve an
+item's directory the same way a launch already does.
 
 ### The wrapper: how shutdown gets to always run
 

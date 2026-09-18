@@ -151,10 +151,18 @@ default, or the file `--harness-config` names where the flag is given;
 where neither the named file nor the default is present, the run SHALL
 proceed exactly as it does without one. The file MAY carry a `dispatch`,
 naming the backend the way `--dispatch` does — see "Choosing the dispatch
-backend" for how the two are reconciled. The file MAY carry an `env` map,
-each entry added to every launch's environment, under both backends alike.
-An entry naming the variable the resolved token is presented under SHALL
-be refused, naming it, before the command works an item. The file MAY also
+backend" for how the two are reconciled. The file MAY carry a `harness`,
+naming the harness the way `--harness`/`-H` does; an explicit `--harness`
+wins over it outright, and where neither says anything the harness is
+resolved the way it always has been (the `HARNESS` environment variable,
+then the stored preference, then the default). The file MAY carry a
+`baseDir`: an item's own `dir`, where it is not already absolute, SHALL
+resolve against it rather than the directory the orchestrator command
+happens to be started from; a relative `baseDir` itself resolves against
+`harness.yaml`'s own directory. The file MAY carry an `env` map, each
+entry added to every launch's environment, under both backends alike. An
+entry naming the variable the resolved token is presented under SHALL be
+refused, naming it, before the command works an item. The file MAY also
 carry `startup` and `shutdown`, each a multiline shell script — see "The
 startup and shutdown scripts".
 
@@ -164,6 +172,32 @@ startup and shutdown scripts".
   and no `harness.yaml` beside the items file
 - **THEN** every launch proceeds exactly as it would with no harness.yaml
   at all
+
+#### Scenario: harness.yaml names the harness
+
+- **WHEN** the operator runs the command with no `--harness` flag, and
+  harness.yaml carries a `harness`
+- **THEN** every item it admits runs against the harness harness.yaml
+  names
+
+#### Scenario: An explicit harness flag wins over harness.yaml's
+
+- **WHEN** the operator runs the command with `--harness`, and
+  harness.yaml also carries a `harness` naming a different one
+- **THEN** every item it admits runs against the flag's harness
+
+#### Scenario: harness.yaml's baseDir resolves a relative item dir
+
+- **WHEN** harness.yaml carries a `baseDir`, and an admitted item's `dir`
+  is relative
+- **THEN** the item's directory is that `dir` resolved against `baseDir`,
+  not the directory the orchestrator command was started from
+
+#### Scenario: baseDir does not affect an absolute item dir
+
+- **WHEN** harness.yaml carries a `baseDir`, and an admitted item's `dir`
+  is already absolute
+- **THEN** the item's directory is that `dir`, unchanged
 
 #### Scenario: harness.yaml's env reaches the launch
 

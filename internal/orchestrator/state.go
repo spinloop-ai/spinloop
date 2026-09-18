@@ -63,6 +63,19 @@ func logDirFor(itemsPath string) string { return itemsPath + ".logs" }
 
 func abortsDirFor(itemsPath string) string { return itemsPath + ".aborts" }
 
+// ResolveItemDir is the directory the orchestrator actually operates on
+// for an item: dir unchanged where it is already absolute, or where
+// baseDir is empty; otherwise dir resolved against baseDir. baseDir comes
+// from harness.yaml's own baseDir, letting an operator keep the items
+// file's dir fields short and portable, independent of the directory the
+// orchestrator command happens to start from.
+func ResolveItemDir(baseDir, dir string) string {
+	if baseDir == "" || filepath.IsAbs(dir) {
+		return dir
+	}
+	return filepath.Join(baseDir, dir)
+}
+
 // ItemWorkspaceDir is the harness's own working directory for an item: a
 // `workspace` subdirectory of the item's own directory (the `dir` the items
 // file names), bind-mounted into the container under the docker backend,

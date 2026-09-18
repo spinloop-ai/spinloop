@@ -41,6 +41,21 @@
   outright — verify with a test for harness.yaml's value being used, one
   for the flag overriding it, and one for an unrecognised value from
   either source failing the command before it works an item
+- [x] 3.2b Add `harness` to `HarnessConfig`: harness.yaml's choice of
+  harness where `--harness`/`-H` is not given, tried ahead of
+  `harness.Resolve`'s own env-var/stored-preference/default chain, an
+  explicit flag still winning outright — verify with a test for
+  harness.yaml's value being used and one for the flag overriding it
+- [x] 3.2c Add `baseDir` to `HarnessConfig`, resolved once against
+  harness.yaml's own directory inside `LoadHarnessConfig`; `ResolveItemDir`
+  joins an item's relative `dir` under it, leaving an absolute `dir`
+  unaffected; `Dispatcher`, `dockerLauncher` and `WorkList` each gain a
+  `WithBaseDir` builder, `resolvePlan` and `Remove`'s own cleanup both
+  resolving through it — verify with a test for a relative `baseDir`
+  resolving against harness.yaml's directory, one for an absolute
+  `baseDir` unchanged, one for a relative item `dir` joining it, one for
+  an absolute item `dir` unaffected, and one for `Remove`'s cleanup
+  resolving the same way a launch does
 - [x] 3.3 Add the wrapper: a generated POSIX shell script (design.md's
   "The wrapper" decision) run in place of the harness directly whenever
   `harness.yaml` names a `startup` or `shutdown` script; where neither is

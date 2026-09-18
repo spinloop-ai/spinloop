@@ -40,10 +40,14 @@ become a choice rather than a given for that to be possible.
 - An operator's `harness.yaml` — found beside the items file by default, or
   named with `--harness-config` — configures the run's harness beyond what
   a fleet file or flag reaches: a `dispatch`, naming the backend the way
-  `--dispatch` does (an explicit flag still wins), an `env` map added to
-  the launch's environment, and `startup`/`shutdown` shell scripts
-  bracketing it. Both backends honour it: the scripts run in the item's
-  own `workspace` subdirectory — on the host for bare, inside the
+  `--dispatch` does (an explicit flag still wins), a `harness`, naming the
+  harness the way `--harness`/`-H` does (an explicit flag still wins,
+  otherwise tried ahead of the `HARNESS` environment variable and the
+  stored preference), a `baseDir` an item's own relative `dir` resolves
+  against in place of the orchestrator's own working directory, an `env`
+  map added to the launch's environment, and `startup`/`shutdown` shell
+  scripts bracketing it. Both backends honour it: the scripts run in the
+  item's own `workspace` subdirectory — on the host for bare, inside the
   container for docker. A failing startup script
   fails the item before the harness ever runs; shutdown always runs once
   the harness has ended, whatever ended it — done, failed, or aborted —

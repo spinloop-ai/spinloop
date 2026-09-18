@@ -36,6 +36,11 @@ type WorkList struct {
 	gateway   string
 	log       *slog.Logger
 
+	// baseDir is harness.yaml's own baseDir — see dispatchConfig's field of
+	// the same name. Remove's own cleanup needs it to resolve an item's
+	// directory the same way a launch already does.
+	baseDir string
+
 	items    []Item
 	records  map[string]ItemState
 	inflight map[string]*flight
@@ -89,6 +94,13 @@ func NewWorkList(itemsPath string, store Store, dispatch Launcher, gateway strin
 		wl.lastMod, wl.lastSize = fi.ModTime(), fi.Size()
 	}
 	return wl, nil
+}
+
+// WithBaseDir sets harness.yaml's own baseDir — see dispatchConfig's
+// baseDir field. Unset (empty) means unchanged behavior.
+func (w *WorkList) WithBaseDir(dir string) *WorkList {
+	w.baseDir = dir
+	return w
 }
 
 // Close releases the store's hold on the items file.
@@ -501,7 +513,7 @@ func (w *WorkList) Remove(id string) error {
 	// bare-backend item, or one the docker backend never launched, has no
 	// config directory — RemoveAll of one that is not there is a silent
 	// no-op.
-	os.RemoveAll(ItemConfigDir(removed.Dir))
+	os.RemoveAll(ItemConfigDir(ResolveItemDir(w.baseDir, removed.Dir)))
 	return nil
 }
 

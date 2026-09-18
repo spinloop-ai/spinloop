@@ -91,6 +91,32 @@ func TestDockerLaunch_RendersAScopedConfigPerItem(t *testing.T) {
 	}
 }
 
+func TestDockerLaunch_ABaseDirResolvesTheItemsRelativeDirectory(t *testing.T) {
+	h := testDockerHarness(t)
+	l, rec, work := testDockerLauncher(t, h, "spinloop/agent:test")
+	l.WithBaseDir(work)
+	if err := os.MkdirAll(filepath.Join(work, "parser"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	item := Item{ID: "a", Instructions: "do a", Dir: "parser"}
+	if _, err := l.Launch(item, runningNode("n", "org/model", nil), filepath.Join(work, "a.log")); err != nil {
+		t.Fatalf("Launch: %v", err)
+	}
+
+	itemDir := filepath.Join(work, "parser")
+	if _, err := os.Stat(filepath.Join(ItemWorkspaceDir(itemDir))); err != nil {
+		t.Errorf("the workspace should be under baseDir/parser, got: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(ItemConfigDir(itemDir), "opencode.json")); err != nil {
+		t.Errorf("the config should be under baseDir/parser, got: %v", err)
+	}
+	call := rec.calls[0]
+	if !strings.Contains(strings.Join(call.args, " "), mustAbs(t, itemDir)+"/workspace:/item/workspace") {
+		t.Errorf("the mount should use baseDir/parser, got:\n%s", strings.Join(call.args, " "))
+	}
+}
+
 func TestDockerLaunch_BuildsTheExpectedInvocation(t *testing.T) {
 	h := testDockerHarness(t)
 	l, rec, work := testDockerLauncher(t, h, "spinloop/agent:test")

@@ -663,3 +663,38 @@ func TestCmdOrchestrator_HarnessConfigFlagOverridesTheDefault(t *testing.T) {
 		t.Errorf("the flag's file should be read instead of the colliding default, got %v", err)
 	}
 }
+
+// harness.yaml's own harness: is used where --harness is not given.
+func TestCmdOrchestrator_HarnessYamlHarnessIsUsedWhenFlagNotGiven(t *testing.T) {
+	isolateConfig(t)
+	t.Setenv("OPENAI_API_KEY", "the-token")
+	dir := t.TempDir()
+	t.Chdir(dir)
+	mustWrite(t, "work.yaml", "- id: a\n  instructions: do\n  dir: .\n")
+	mustWrite(t, "harness.yaml", "harness: not-a-real-harness\n")
+	err := cmdOrchestrator([]string{"--gateway", "http://gw:4000", "-l"})
+	if err == nil {
+		t.Fatal("an unrecognised harness.yaml harness should stop the command")
+	}
+	if !strings.Contains(err.Error(), "not-a-real-harness") {
+		t.Errorf("the failure should name harness.yaml's own value, got %v", err)
+	}
+}
+
+// An explicit --harness wins over harness.yaml's harness:, even where
+// harness.yaml names a value the command would otherwise refuse.
+func TestCmdOrchestrator_ExplicitHarnessFlagWinsOverHarnessYaml(t *testing.T) {
+	isolateConfig(t)
+	t.Setenv("OPENAI_API_KEY", "the-token")
+	dir := t.TempDir()
+	t.Chdir(dir)
+	mustWrite(t, "work.yaml", "- id: a\n  instructions: do\n  dir: .\n")
+	mustWrite(t, "harness.yaml", "harness: not-a-real-harness\n")
+	// opencode, explicitly, reaches the (unreachable) gateway's own
+	// failure — not harness.yaml's unrecognised value, which an explicit
+	// --harness never consults.
+	err := cmdOrchestrator([]string{"--gateway", "http://127.0.0.1:1", "-l", "--harness", "opencode"})
+	if err == nil || !strings.Contains(err.Error(), "http://127.0.0.1:1") {
+		t.Errorf("an explicit --harness should win over harness.yaml's, got %v", err)
+	}
+}

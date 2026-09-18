@@ -145,6 +145,13 @@ func (l *dockerLauncher) WithHarnessConfig(hc HarnessConfig) *dockerLauncher {
 	return l
 }
 
+// WithBaseDir sets harness.yaml's own baseDir, the way Dispatcher's does —
+// see its doc comment.
+func (l *dockerLauncher) WithBaseDir(dir string) *dockerLauncher {
+	l.baseDir = dir
+	return l
+}
+
 // Launch runs the item against the node inside a container. A failure
 // names the item and the cause — a missing directory, a harness without a
 // single-task form or a docker config mount, a docker failure — and the
@@ -179,7 +186,7 @@ func (l *dockerLauncher) Launch(item Item, node Node, logPath string) (Child, er
 		return nil, fmt.Errorf("rendering the docker config for item %q: %v", item.ID, err)
 	}
 
-	configDir := ItemConfigDir(item.Dir)
+	configDir := ItemConfigDir(plan.dir)
 	if err := os.MkdirAll(configDir, 0o700); err != nil {
 		return nil, fmt.Errorf("item %q's docker config directory %s: %v", item.ID, configDir, err)
 	}
@@ -189,7 +196,7 @@ func (l *dockerLauncher) Launch(item Item, node Node, logPath string) (Child, er
 	}
 
 	// resolvePlan (above) has already created the workspace subdirectory.
-	workspace, err := filepath.Abs(ItemWorkspaceDir(item.Dir))
+	workspace, err := filepath.Abs(ItemWorkspaceDir(plan.dir))
 	if err != nil {
 		return nil, fmt.Errorf("resolving item %q's workspace directory: %v", item.ID, err)
 	}

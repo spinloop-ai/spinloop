@@ -743,6 +743,75 @@ func TestDispatch_RunsTheAgentOneShotInTheItemsWorkspaceDirectory(t *testing.T) 
 	}
 }
 
+func TestDispatch_ABaseDirResolvesTheItemsRelativeDirectory(t *testing.T) {
+	base := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(base, "parser"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	work := t.TempDir()
+	record := filepath.Join(work, "record")
+	t.Setenv("RECORD_FILE", record)
+	t.Setenv("OPENAI_API_KEY", "")
+	bin := stubAgent(t)
+
+	h := &fakeHarness{name: "opencode", bin: bin}
+	d := NewDispatcher(h, "http://gateway:4000", "the-token", false).WithBaseDir(base)
+	child, err := d.Launch(
+		Item{ID: "a", Instructions: "fix the parser", Dir: "parser"},
+		runningNode("gpu-a", "org/model", nil),
+		filepath.Join(work, "a.log"),
+	)
+	if err != nil {
+		t.Fatalf("the launch should succeed: %v", err)
+	}
+	if err := child.Wait(); err != nil {
+		t.Fatalf("the agent should end cleanly: %v", err)
+	}
+
+	workspace := ItemWorkspaceDir(filepath.Join(base, "parser"))
+	canonical := workspace
+	if resolved, err := filepath.EvalSymlinks(workspace); err == nil {
+		canonical = resolved
+	}
+	rec := readRecord(t, record)
+	if !strings.Contains(rec, "cwd:"+canonical) {
+		t.Errorf("a relative item dir should resolve against baseDir, record:\n%s", rec)
+	}
+}
+
+func TestDispatch_ABaseDirLeavesAnAbsoluteItemDirUnaffected(t *testing.T) {
+	base := t.TempDir()
+	work := t.TempDir()
+	record := filepath.Join(work, "record")
+	t.Setenv("RECORD_FILE", record)
+	t.Setenv("OPENAI_API_KEY", "")
+	bin := stubAgent(t)
+
+	h := &fakeHarness{name: "opencode", bin: bin}
+	d := NewDispatcher(h, "http://gateway:4000", "the-token", false).WithBaseDir(base)
+	child, err := d.Launch(
+		Item{ID: "a", Instructions: "fix the parser", Dir: work},
+		runningNode("gpu-a", "org/model", nil),
+		filepath.Join(work, "a.log"),
+	)
+	if err != nil {
+		t.Fatalf("the launch should succeed: %v", err)
+	}
+	if err := child.Wait(); err != nil {
+		t.Fatalf("the agent should end cleanly: %v", err)
+	}
+
+	workspace := ItemWorkspaceDir(work)
+	canonical := workspace
+	if resolved, err := filepath.EvalSymlinks(workspace); err == nil {
+		canonical = resolved
+	}
+	rec := readRecord(t, record)
+	if !strings.Contains(rec, "cwd:"+canonical) {
+		t.Errorf("an absolute item dir should ignore baseDir, record:\n%s", rec)
+	}
+}
+
 func TestDispatch_TheChildsPWDVariableCarriesTheItemsWorkspaceDirectory(t *testing.T) {
 	work := t.TempDir()
 	itemDir := filepath.Join(work, "item")

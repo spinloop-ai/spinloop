@@ -79,8 +79,9 @@ type Launcher interface {
 
 // dispatchConfig is what every launcher backend needs to resolve a launch
 // plan: the harness, the gateway a launch's inference points at, the
-// token the harness's own bearer needs, and whether a missing item
-// directory is created rather than failing the item.
+// token the harness's own bearer needs, whether a missing item directory
+// is created rather than failing the item, and the base an item's own
+// relative directory resolves against.
 type dispatchConfig struct {
 	h       harness.Harness
 	gateway string // the gateway's address
@@ -89,6 +90,12 @@ type dispatchConfig struct {
 	// createItemDirs makes a missing item directory get created rather than
 	// failing the item.
 	createItemDirs bool
+
+	// baseDir is harness.yaml's own baseDir: an item's relative dir
+	// resolves against it (see ResolveItemDir) rather than the
+	// orchestrator's own working directory. Empty means unchanged
+	// behavior — an item's dir is used exactly as the items file gives it.
+	baseDir string
 
 	// harnessConfig is harness.yaml's own: env added to every launch, and
 	// the startup/shutdown scripts wrapping it. Its env has already been
@@ -99,34 +106,37 @@ type dispatchConfig struct {
 }
 
 // launchPlan is what every backend needs before it diverges into how the
-// process actually runs: the args a one-shot harness runs with, the
-// catalogue provider its config carries, and the selection that provider
-// is written under.
+// process actually runs: the item's resolved directory (see
+// ResolveItemDir), the args a one-shot harness runs with, the catalogue
+// provider its config carries, and the selection that provider is written
+// under.
 type launchPlan struct {
+	dir      string
 	args     []string
 	provider *catalog.Provider
 	sel      spinloop.Selection
 }
 
-// resolvePlan checks the item's directory (creating it where cfg allows),
-// ensures its workspace subdirectory exists, resolves the harness's
-// one-shot form and the node's model, and builds the catalogue provider
-// and selection a launch's config is written under. A failure names the
-// item and the cause — a missing directory, a harness without a
-// single-task form — and the caller records it failed rather than
-// retrying it.
+// resolvePlan resolves the item's directory (see ResolveItemDir), checks
+// it (creating it where cfg allows), ensures its workspace subdirectory
+// exists, resolves the harness's one-shot form and the node's model, and
+// builds the catalogue provider and selection a launch's config is
+// written under. A failure names the item and the cause — a missing
+// directory, a harness without a single-task form — and the caller
+// records it failed rather than retrying it.
 func (cfg dispatchConfig) resolvePlan(item Item, node Node) (launchPlan, error) {
-	if fi, err := os.Stat(item.Dir); err != nil || !fi.IsDir() {
+	dir := ResolveItemDir(cfg.baseDir, item.Dir)
+	if fi, err := os.Stat(dir); err != nil || !fi.IsDir() {
 		if !cfg.createItemDirs {
-			return launchPlan{}, fmt.Errorf("item %q's directory %s does not exist", item.ID, item.Dir)
+			return launchPlan{}, fmt.Errorf("item %q's directory %s does not exist", item.ID, dir)
 		}
-		if err := os.MkdirAll(item.Dir, 0o755); err != nil {
-			return launchPlan{}, fmt.Errorf("item %q's directory %s: creating it: %v", item.ID, item.Dir, err)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return launchPlan{}, fmt.Errorf("item %q's directory %s: creating it: %v", item.ID, dir, err)
 		}
 	}
-	// The workspace subdirectory is the orchestrator's own, unlike item.Dir
+	// The workspace subdirectory is the orchestrator's own, unlike dir
 	// itself: always created if missing, regardless of createItemDirs.
-	if err := os.MkdirAll(ItemWorkspaceDir(item.Dir), 0o755); err != nil {
+	if err := os.MkdirAll(ItemWorkspaceDir(dir), 0o755); err != nil {
 		return launchPlan{}, fmt.Errorf("item %q's workspace directory: %v", item.ID, err)
 	}
 	form, ok := oneShot[cfg.h.Name()]
@@ -155,7 +165,7 @@ func (cfg dispatchConfig) resolvePlan(item Item, node Node) (launchPlan, error) 
 		BaseURL:     fleet.EndpointBaseURL(cfg.gateway),
 		DisplayName: "Spinloop fleet (" + node.Name + ")",
 	}
-	return launchPlan{args: form(providerKey(node), model, item.Instructions), provider: p, sel: sel}, nil
+	return launchPlan{dir: dir, args: form(providerKey(node), model, item.Instructions), provider: p, sel: sel}, nil
 }
 
 // sortedEnvPairs returns m as NAME=VALUE pairs in a stable, sorted order —
@@ -217,6 +227,13 @@ func (d *Dispatcher) WithHarnessConfig(hc HarnessConfig) *Dispatcher {
 	return d
 }
 
+// WithBaseDir sets harness.yaml's own baseDir — see dispatchConfig's
+// baseDir field. Unset (empty) means unchanged behavior.
+func (d *Dispatcher) WithBaseDir(dir string) *Dispatcher {
+	d.baseDir = dir
+	return d
+}
+
 // Launch runs the item against the node as a bare process. A failure names
 // the item and the cause — a missing directory, a harness without a
 // single-task form, an apply the harness refused — and the caller records
@@ -252,7 +269,7 @@ func (d *Dispatcher) Launch(item Item, node Node, logPath string) (Child, error)
 	env = append(env, sortedEnvPairs(d.harnessConfig.Env)...)
 
 	bin, args, extraEnv := wrapCommand(d.h.Command(), plan.args, d.harnessConfig)
-	child, err := d.start(bin, args, ItemWorkspaceDir(item.Dir), logPath, append(env, extraEnv...))
+	child, err := d.start(bin, args, ItemWorkspaceDir(plan.dir), logPath, append(env, extraEnv...))
 	if err != nil {
 		return nil, err
 	}

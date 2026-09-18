@@ -471,6 +471,29 @@ func TestAPI_ARemovalTakesTheDockerBackendsScopedConfigToo(t *testing.T) {
 	}
 }
 
+// TestAPI_ARemovalResolvesTheConfigDirAgainstBaseDir checks that Remove's
+// own cleanup resolves a relative item dir against WithBaseDir the same
+// way a launch already does — not the raw dir the items file carries.
+func TestAPI_ARemovalResolvesTheConfigDirAgainstBaseDir(t *testing.T) {
+	base := t.TempDir()
+	wl, _, _ := testWorkList(t, itemsFile(itemSpec{id: "a", instr: "do a", dir: "a"}), nil)
+	wl = wl.WithBaseDir(base)
+	configDir := ItemConfigDir(filepath.Join(base, "a"))
+	if err := os.MkdirAll(configDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	srv := workListServer(t, wl, "")
+	defer srv.Close()
+
+	code, raw := apiDo(t, srv, "", http.MethodDelete, "/v1/items/a", "")
+	if code != http.StatusOK {
+		t.Fatalf("a removal the work list accepts is answered, got %d: %s", code, raw)
+	}
+	if _, err := os.Stat(configDir); !os.IsNotExist(err) {
+		t.Errorf("the config directory under baseDir should be gone with the item, got %v", err)
+	}
+}
+
 func TestAPI_ARemovalItCannotMakeIsRefused(t *testing.T) {
 	wl, _, _ := testWorkList(t, itemsFile(itemSpec{id: "a", instr: "do a", dir: "./a"}),
 		func(s *memStore) {

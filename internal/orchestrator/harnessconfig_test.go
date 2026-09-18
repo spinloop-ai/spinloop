@@ -67,6 +67,59 @@ func TestLoadHarnessConfig_UnparsableFileFails(t *testing.T) {
 	}
 }
 
+func TestLoadHarnessConfig_ARelativeBaseDirResolvesAgainstHarnessYamlsOwnDirectory(t *testing.T) {
+	dir := t.TempDir()
+	itemsPath := filepath.Join(dir, "sub", "work.yaml")
+	if err := os.MkdirAll(filepath.Dir(itemsPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(filepath.Dir(itemsPath), "harness.yaml"),
+		[]byte("baseDir: ../items\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	hc, err := LoadHarnessConfig("", itemsPath)
+	if err != nil {
+		t.Fatalf("LoadHarnessConfig: %v", err)
+	}
+	want := filepath.Join(dir, "items")
+	if hc.BaseDir != want {
+		t.Errorf("baseDir = %q, want %q (resolved against harness.yaml's own directory)", hc.BaseDir, want)
+	}
+}
+
+func TestLoadHarnessConfig_AnAbsoluteBaseDirIsUnchanged(t *testing.T) {
+	dir := t.TempDir()
+	itemsPath := filepath.Join(dir, "work.yaml")
+	abs := filepath.Join(dir, "elsewhere")
+	if err := os.WriteFile(filepath.Join(dir, "harness.yaml"),
+		[]byte("baseDir: "+abs+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	hc, err := LoadHarnessConfig("", itemsPath)
+	if err != nil {
+		t.Fatalf("LoadHarnessConfig: %v", err)
+	}
+	if hc.BaseDir != abs {
+		t.Errorf("an absolute baseDir should be unchanged, got %q, want %q", hc.BaseDir, abs)
+	}
+}
+
+func TestResolveItemDir(t *testing.T) {
+	for _, tc := range []struct {
+		name, baseDir, dir, want string
+	}{
+		{"no baseDir", "", "./parser", "./parser"},
+		{"relative dir joins baseDir", "/base", "parser", "/base/parser"},
+		{"absolute dir is unaffected", "/base", "/elsewhere/parser", "/elsewhere/parser"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := ResolveItemDir(tc.baseDir, tc.dir); got != tc.want {
+				t.Errorf("ResolveItemDir(%q, %q) = %q, want %q", tc.baseDir, tc.dir, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestCheckHarnessEnvCollision(t *testing.T) {
 	if err := CheckHarnessEnvCollision(map[string]string{"OPENAI_API_KEY": "x"}); err == nil {
 		t.Error("an entry naming the token's own variable should be refused")
