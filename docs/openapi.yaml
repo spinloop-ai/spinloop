@@ -398,6 +398,13 @@ components:
           type: string
         modelId:
           type: string
+        servedName:
+          type: string
+          description: |
+            The name the engine answers to beside the model id, mirroring
+            StatusResponse's `servedName` from the same record — so a caller
+            resolving a stopped host's model from its metrics gets the same
+            name a running host reports on its status.
         uptimeSeconds:
           type: integer
         tokens:

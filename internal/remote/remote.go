@@ -727,13 +727,18 @@ type StatsResponse struct {
 	// Message carries a rejection reason on a non-success reply — including the
 	// authorizer's own text on a 403 — so an expired-credential rejection can be
 	// classified even though the stats fields are empty.
-	Message       string      `json:"message"`
-	Environment   string      `json:"environment"`
-	State         string      `json:"state"`
-	InstanceID    string      `json:"instanceId"`
-	InstanceType  string      `json:"instanceType"`
-	Runner        string      `json:"runner"`
-	ModelID       string      `json:"modelId"`
+	Message      string `json:"message"`
+	Environment  string `json:"environment"`
+	State        string `json:"state"`
+	InstanceID   string `json:"instanceId"`
+	InstanceType string `json:"instanceType"`
+	Runner       string `json:"runner"`
+	ModelID      string `json:"modelId"`
+	// ServedName is the name the engine answers to beside the model id,
+	// relayed from the environment's deploy config — the same field the
+	// status reply's Response.ServedName carries, so a stopped environment's
+	// wakeable name matches what it reported while running.
+	ServedName    string      `json:"servedName"`
 	UptimeSeconds int         `json:"uptimeSeconds"`
 	Tokens        *TokenStats `json:"tokens"`
 	GPUs          []GpuStat   `json:"gpus"`

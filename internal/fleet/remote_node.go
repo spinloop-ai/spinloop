@@ -229,6 +229,7 @@ func statsFromRemote(resp remote.StatsResponse) metrics.Stats {
 		State:         resp.State,
 		Runner:        resp.Runner,
 		ModelID:       resp.ModelID,
+		ServedName:    resp.ServedName,
 		UptimeSeconds: resp.UptimeSeconds,
 		Tokens:        resp.Tokens,
 		GPUs:          resp.GPUs,
