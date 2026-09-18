@@ -471,7 +471,10 @@ func TestModelsListsOnlyWhatRunsWhenWakeIsOff(t *testing.T) {
 // stats reply — the environment's stored deploy config, read directly by
 // the stats Lambda — not from its status reply, which carries no deploy
 // facts while the environment is stopped, and not from a Spinloop source.
-// So it is wakeable and listed the same as a daemon node's.
+// So it is wakeable and listed the same as a daemon node's, under the same
+// served-name-first naming: the stats reply carries the served name beside
+// the model id, so a stopped environment lists the same name it would report
+// while running rather than the bare model id.
 func TestModelsListsADeployedRemoteEnvironment(t *testing.T) {
 	url, _ := remoteControlServer(t)
 	registerRemoteEnv(t, "env", url)
@@ -480,8 +483,8 @@ func TestModelsListsADeployedRemoteEnvironment(t *testing.T) {
 	}}
 	h := New(cfg, "", Options{})
 	m := h.wakeableModels(context.Background())
-	if got := m["env"]; got != "org/deployed" {
-		t.Errorf("wakeableModels()[env] = %q, want the model id from its stats reply", got)
+	if got := m["env"]; got != "deployed" {
+		t.Errorf("wakeableModels()[env] = %q, want the served name from its stats reply", got)
 	}
 }
 
@@ -1200,7 +1203,7 @@ func remoteControlServer(t *testing.T) (url string, started func() bool) {
 	})
 	mux.HandleFunc("GET /stats", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"state":"stopped","runner":"llamacpp","modelId":"org/deployed"}`)
+		fmt.Fprint(w, `{"state":"stopped","runner":"llamacpp","modelId":"org/deployed","servedName":"deployed"}`)
 	})
 	mux.HandleFunc("POST /", func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
@@ -1248,6 +1251,35 @@ func TestColdRequestWakesADeployedRemoteNode(t *testing.T) {
 	h := New(cfg, "", Options{})
 
 	resp, body := post(t, h, "", `{"model":"org/deployed"}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("HTTP %d, body %s", resp.StatusCode, body)
+	}
+	if !started() {
+		t.Error("the environment's instance was never started")
+	}
+}
+
+// A request for a deployed-but-stopped remote node's served name — the
+// alias a caller knew it by while it was running, rather than its bare model
+// id — still matches: the stats reply the wake path reads carries the served
+// name from the deploy config, the same field the status reply carries while
+// running, so a caller need not learn a second name once the node stops.
+func TestColdRequestWakesADeployedRemoteNodeByItsServedName(t *testing.T) {
+	shortWake := func(t *testing.T) {
+		old := fleet.WakeTimeout
+		fleet.WakeTimeout = 3 * time.Second
+		t.Cleanup(func() { fleet.WakeTimeout = old })
+	}
+	shortWake(t)
+	url, started := remoteControlServer(t)
+	registerRemoteEnv(t, "cloud", url)
+
+	cfg := &fleet.Config{Path: "fleet.yaml", Dir: t.TempDir(), Nodes: []fleet.NodeConfig{
+		{Name: "cloud", Kind: fleet.KindRemote},
+	}}
+	h := New(cfg, "", Options{})
+
+	resp, body := post(t, h, "", `{"model":"deployed"}`)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("HTTP %d, body %s", resp.StatusCode, body)
 	}

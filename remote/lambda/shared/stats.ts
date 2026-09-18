@@ -79,6 +79,13 @@ export interface StatsResult {
   runner?: string;
   /** Model id from deploy config. */
   modelId?: string;
+  /**
+   * The name the engine answers to beside the model id, from the deploy
+   * config's ALIAS — the same field the start/env Lambdas' status reply
+   * carries, so a stopped environment's wakeable name matches what it
+   * reported while running.
+   */
+  servedName?: string;
   /** Uptime in seconds since launch. */
   uptimeSeconds?: number;
   /** Token/request metrics from the daemon's engine scrape. */

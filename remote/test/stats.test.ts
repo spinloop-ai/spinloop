@@ -242,6 +242,29 @@ beforeEach(() => {
 const futureTag = '2030-01-02T04:00:00.000Z';
 const pastTag = '2020-01-02T04:00:00.000Z';
 
+describe('servedName', () => {
+  it('is relayed from the deploy config on a running instance', async () => {
+    findManagedInstance.mockResolvedValue({ instanceId: 'i-run', state: 'running' });
+    readDeployConfig.mockResolvedValue({ runner: 'llamacpp', modelId: 'org/m', servedModelName: 'the-alias' });
+
+    const result = await handler(statsEvent({ env: 'dev' }));
+    const body = bodyOf(result);
+    expect(statusOf(result)).toBe(200);
+    expect(body.servedName).toBe('the-alias');
+  });
+
+  it('is relayed from the deploy config on a stopped instance, so a wake matches it', async () => {
+    findManagedInstance.mockResolvedValue({ instanceId: 'i-stopped', state: 'stopped' });
+    readDeployConfig.mockResolvedValue({ runner: 'llamacpp', modelId: 'org/m', servedModelName: 'the-alias' });
+
+    const result = await handler(statsEvent({ env: 'dev' }));
+    const body = bodyOf(result);
+    expect(statusOf(result)).toBe(200);
+    expect(body.state).toBe('stopped');
+    expect(body.servedName).toBe('the-alias');
+  });
+});
+
 describe('retainUntil', () => {
   it('is present on a running instance whose tag is in the future', async () => {
     findManagedInstance.mockResolvedValue({

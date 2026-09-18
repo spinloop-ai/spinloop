@@ -427,11 +427,12 @@ func (d *Daemon) activity() (lastActiveAt string, idleSeconds int) {
 // Errors; an absent source is simply omitted, per the engine-metrics spec.
 func (d *Daemon) Metrics(ctx context.Context) metrics.Stats {
 	state, _, uptime := d.Sup.Status()
-	runner, model, _ := d.served()
+	runner, model, servedName := d.served()
 	stats := metrics.Stats{
 		State:         string(state),
 		Runner:        runner,
 		ModelID:       model,
+		ServedName:    servedName,
 		UptimeSeconds: uptime,
 	}
 	if state == StateRunning {

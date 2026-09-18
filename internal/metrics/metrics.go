@@ -13,9 +13,14 @@ package metrics
 // response field-for-field (minus the Lambda's transport fields), so the
 // existing `spinloop remote metrics` formats render it unchanged.
 type Stats struct {
-	State         string      `json:"state"`
-	Runner        string      `json:"runner,omitempty"`
-	ModelID       string      `json:"modelId,omitempty"`
+	State   string `json:"state"`
+	Runner  string `json:"runner,omitempty"`
+	ModelID string `json:"modelId,omitempty"`
+	// ServedName is the name the engine answers to beside the model id —
+	// mirroring daemon.StatusResponse.ServedName from the same record — so a
+	// caller resolving a stopped host's model from its metrics gets the same
+	// name a running host reports on its status.
+	ServedName    string      `json:"servedName,omitempty"`
 	UptimeSeconds int         `json:"uptimeSeconds,omitempty"`
 	Tokens        *TokenStats `json:"tokens,omitempty"`
 	GPUs          []GpuStat   `json:"gpus,omitempty"`

@@ -329,9 +329,10 @@ func (h *Handler) wakeableModels(ctx context.Context) map[string]string {
 // unconditionally, since the stats Lambda reads the deploy config directly
 // rather than relaying it alongside instance state; an undeployed
 // environment's stats read fails outright (no config to read), which is
-// what "nothing deployed" looks like here. It carries no served name — the
-// stats reply has none — so a stopped remote node's wakeable model is its
-// model id alone, unlike a running one's served-name-first naming.
+// what "nothing deployed" looks like here. It carries the served name
+// alongside the model id too, the same field the deploy config's ALIAS
+// sets, so a stopped remote node's wakeable name matches what it reported
+// while running rather than falling back to the bare model id.
 func (h *Handler) remoteConfigFor(ctx context.Context) fleet.ConfigFor {
 	return func(entry fleet.NodeConfig) (inference.DeployConfig, error) {
 		node, err := h.cfg.NewNode(entry)
@@ -342,7 +343,7 @@ func (h *Handler) remoteConfigFor(ctx context.Context) fleet.ConfigFor {
 		if err != nil {
 			return inference.DeployConfig{}, fmt.Errorf("%s: %w (run `spinloop remote deploy` if nothing is deployed)", entry.Name, err)
 		}
-		return inference.DeployConfig{ModelID: stats.ModelID}, nil
+		return inference.DeployConfig{ModelID: stats.ModelID, ServedModelName: stats.ServedName}, nil
 	}
 }
 

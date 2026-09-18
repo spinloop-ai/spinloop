@@ -82,6 +82,7 @@ export async function handler(event: LambdaFunctionURLEvent): Promise<LambdaFunc
       state: instance?.state ?? (instance ? 'stopped' : 'undeployed'),
       runner: deployConfig.runner,
       modelId: deployConfig.modelId,
+      servedName: deployConfig.servedModelName,
     };
     // A stopped environment can still be retained: its deadline is the control
     // plane's, not the engine's, so it rides this branch too.
@@ -95,6 +96,7 @@ export async function handler(event: LambdaFunctionURLEvent): Promise<LambdaFunc
     instanceId: instance.instanceId,
     runner: deployConfig.runner,
     modelId: deployConfig.modelId,
+    servedName: deployConfig.servedModelName,
   };
   if (instance.instanceType) {
     result.instanceType = instance.instanceType;
