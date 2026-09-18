@@ -59,7 +59,7 @@ different things to learn.
 | File | What it is |
 | --- | --- |
 | [`work.yaml`](work.yaml) | One item: read this directory's own README and summarise it. Change `dir` to point anywhere you actually want an agent working. |
-| [`harness.yaml`](harness.yaml) | Environment variables and `startup`/`shutdown` scripts, applied to every launch under either `--dispatch` backend. Found automatically, beside `work.yaml`. |
+| [`harness.yaml`](harness.yaml) | The `--dispatch` backend, environment variables, and `startup`/`shutdown` scripts — a flag on the command line still wins over its `dispatch:`. Found automatically, beside `work.yaml`. |
 
 ## See also
 

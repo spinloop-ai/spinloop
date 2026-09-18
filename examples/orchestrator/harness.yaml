@@ -7,6 +7,15 @@
 # elsewhere. Applies to every launch, under either --dispatch backend
 # (bare or docker) alike.
 
+# The backend, the way --dispatch names one. Set here so the choice lives
+# with the rest of the item's environment rather than in a wrapper script
+# that adds the flag — but an explicit --dispatch on the command line
+# still wins over it. bare here is what the README's first walkthrough
+# runs; its "Trying --dispatch docker" section passes the flag explicitly,
+# overriding this, which is the precedence rule in action, not a special
+# case.
+dispatch: bare
+
 # Environment variables added to every launch. Values are literal — there
 # is no ${VAR} expansion — so a real secret here is a real secret on disk;
 # write the value your shell would otherwise export. An entry naming the
