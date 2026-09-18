@@ -114,12 +114,46 @@ line there.
   container's `WORKDIR` matches
 - The rendered config directory → `/home/agent/<suffix>`'s parent, read
   only from the harness's perspective after the one write
-- `--network host`: the gateway's address reaches the container exactly
-  as it reaches a bare process, including a loopback bind — the
-  trade-off proposal.md already names
+- The default bridge network, not `--network host` — see "A loopback
+  gateway reaches the container by host.docker.internal, not host
+  networking" below for why
 - The token reaches the container as an environment variable
   (`-e <name>=<value>`), the same variable `Apply`'s `resolve` would have
   read from the host's own environment for a bare launch
+
+### A loopback gateway reaches the container by host.docker.internal, not host networking
+
+The original design used `--network host` on the theory that it puts the
+container on the same network the orchestrator itself is, so a
+loopback-bound gateway just works. That holds on native Linux docker, but
+not reliably anywhere else: Docker Desktop's Mac and Windows builds run
+containers inside a VM, and `--network host` only reaches the real host's
+loopback when an operator has turned on a specific, off-by-default Docker
+Desktop setting. Without it, `localhost`/`127.0.0.1` inside the container
+is the VM's own loopback — not the machine running spinloop, and not
+reachable at all. A `fleet.yaml` naming `http://localhost:4000` — the
+common case for a gateway run on the same machine — hits exactly this.
+
+The fix does not touch the fleet file: `dockerReachableGateway` rewrites
+the address the *container's own rendered config* points its inference
+at, substituting `host.docker.internal` for a `localhost`/`127.0.0.1`/`::1`
+host, leaving a routable address (anything else) unchanged. This runs on
+a copy of `dispatchConfig` local to the docker launcher's `Launch` — the
+bare backend, sharing the same `resolvePlan`, keeps the real host address
+it actually needs. `host.docker.internal` resolves on Docker Desktop out
+of the box; `--add-host host.docker.internal:host-gateway` on the `docker
+run` invocation makes it resolve on native Linux docker too, where it is
+not automatic — a no-op where Docker Desktop already provides it.
+
+Dropping `--network host` also undoes the one deliberate trade-off the
+original design named (see Risks/Trade-offs below): the container is back
+on its own network namespace, so the isolation this whole change is for
+is no longer given up for the network dimension specifically. A service
+on the host's loopback *other than the gateway* is no longer transparently
+reachable as plain `localhost` from inside the container — an item that
+needs one reaches it via `host.docker.internal` itself, the same way the
+gateway now does; that is a real, narrower trade than before, not a
+regression from `--network host`'s own unreliability.
 
 ### Running and stopping the container
 
@@ -244,10 +278,11 @@ set without a new image.
 
 ## Risks / Trade-offs
 
-- **Host networking gives up the isolation that motivated this in the
-  first place, for the network dimension.** Accepted for now
-  (proposal.md's non-goal); revisit once there is a concrete need for a
-  gateway address a container-scoped network can also reach.
+- **A host-loopback service other than the gateway is no longer plain
+  `localhost` from inside the container**, now that `--network host` is
+  gone — see "A loopback gateway reaches the container by
+  host.docker.internal, not host networking" above. An item that needs
+  one reaches it via `host.docker.internal` itself.
 - **A second image to build, publish and version.** Mitigated by tying
   its tag to spinloop's own version, so there is one place a given binary
   looks, not a moving target.

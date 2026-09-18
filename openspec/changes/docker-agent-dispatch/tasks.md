@@ -70,15 +70,23 @@
   per-launch directory under `<items-file>.logs/.config/<item-id>/` —
   verify with a test asserting the file's content and that a second
   launch for a different item gets its own directory
-- [x] 4.2 Build the `docker run -d` invocation: `--network host`, the
-  workspace mount (`item.Dir` → `/workspace`, the harness's working
-  directory), the config mount (the per-launch directory →
-  `/home/agent/<suffix>`, from the small suffix table design.md
-  describes), the token and `harness.yaml`'s `env` as `-e`, the wrapper
-  (§3.3) as the container's command where one applies, else the harness
-  directly, the image reference — verify with a test against a fake
-  `docker` seam (the same `d.start`-style test hook pattern `startChild`
-  already uses) asserting the exact argv
+- [x] 4.2 Build the `docker run` invocation: the default bridge network
+  with `--add-host host.docker.internal:host-gateway`, the workspace
+  mount (`item.Dir` → `/workspace`, the harness's working directory), the
+  config mount (the per-launch directory → `/home/agent/<suffix>`, from
+  the small suffix table design.md describes), the token and
+  `harness.yaml`'s `env` as `-e`, the wrapper (§3.3) as the container's
+  command where one applies, else the harness directly, the image
+  reference — verify with a test against a fake `docker` seam (the same
+  `d.start`-style test hook pattern `startChild` already uses) asserting
+  the exact argv
+- [x] 4.2a `dockerReachableGateway` rewrites a loopback gateway address
+  (`localhost`/`127.0.0.1`/`::1`) to `host.docker.internal` for the
+  container's own rendered config, on a local copy of `dispatchConfig` so
+  the bare backend's `resolvePlan` calls are unaffected; a gateway already
+  on a routable address is unchanged — verify with a table test on the
+  function itself, and one asserting the rendered config's base URL for
+  both a loopback and a routable gateway
 - [x] 4.3 Implement `dockerChild`: `Wait` as `docker wait`, `Stop` as
   `docker stop --time 0`, `Kill` as `docker kill` — verify with a test
   against the fake `docker` seam asserting each method's argv and that

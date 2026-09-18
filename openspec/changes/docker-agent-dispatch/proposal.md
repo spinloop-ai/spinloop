@@ -19,9 +19,13 @@ become a choice rather than a given for that to be possible.
   for every launch the run makes (`bare`, the default, or `docker`). This
   is a run-wide choice, not per-node or per-item.
 - Under `docker`, an item's agent runs inside a container from an official
-  spinloop image, on Docker's host network (so a loopback-bound gateway
-  address resolves the way it does for a bare launch), with two bind
-  mounts: the item's directory as the harness's working directory, and a
+  spinloop image, on the container's own network — a loopback-bound
+  gateway address is rewritten to `host.docker.internal` for the
+  container's own rendered config, with no change to the fleet file or
+  the gateway flag, and no reliance on a Docker Desktop setting that
+  makes `--network host` behave the way it does on native Linux docker —
+  with two bind mounts: the item's directory as the harness's working
+  directory, and a
   scoped, per-launch config directory generated fresh for that one launch,
   mounted directly at the path the harness resolves its own config to
   (`$HOME`-relative, the same convention `internal/opencode`,
@@ -84,6 +88,8 @@ new, and those belong to `agent-dispatch`.)
   orchestrator's own host — also a future backend; `--dispatch` chooses
   among local backends only for now
 - Per-node or per-item backend selection: one backend for the whole run
-- Network isolation for the docker backend: host networking is the
-  starting point, trading isolation for working gateway reachability with
-  no new configuration; a later change can revisit this
+- A host-loopback service *other than the gateway* being reachable as
+  plain `localhost` from inside the container: the container is on its
+  own network, and only the gateway address is rewritten to reach the
+  host; an item needing another host-loopback service reaches it via
+  `host.docker.internal` itself

@@ -3,6 +3,7 @@ package orchestrator
 import (
 	"bytes"
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -56,11 +57,45 @@ func CheckDockerReachable() error {
 	return nil
 }
 
+// dockerReachableGateway is the address a container reaches the gateway
+// at, given the address the orchestrator itself — a bare process — reaches
+// it at. A loopback-bound gateway is the orchestrator host's own loopback,
+// which is not the container's: `--network host` would put it in the same
+// namespace on Linux, but Docker Desktop's Mac and Windows builds only
+// honour that with a setting most operators do not have on, so it cannot
+// be relied on. `host.docker.internal` is the one address that reaches
+// back to the real host on every platform docker runs on — Docker Desktop
+// resolves it out of the box, and `--add-host
+// host.docker.internal:host-gateway` (see the docker run invocation below)
+// makes it resolve on a native Linux docker host too, where it is not
+// automatic. A gateway already on a routable, non-loopback address is
+// reachable from the container's own network exactly as it is from the
+// host, unchanged.
+func dockerReachableGateway(gateway string) string {
+	u, err := url.Parse(gateway)
+	if err != nil || u.Hostname() == "" {
+		return gateway
+	}
+	switch u.Hostname() {
+	case "localhost", "127.0.0.1", "::1":
+	default:
+		return gateway
+	}
+	host := "host.docker.internal"
+	if port := u.Port(); port != "" {
+		host += ":" + port
+	}
+	u.Host = host
+	return u.String()
+}
+
 // dockerLauncher is the docker Launcher: it renders a scoped, per-launch
 // config carrying one provider (harness.ConfigRenderer), mounts it and the
 // item's directory into a container from the official agent image, and
 // runs the harness — wrapped where harness.yaml names a lifecycle script,
-// see wrapCommand — as the container's own command, on the host's network.
+// see wrapCommand — as the container's own command, on the default bridge
+// network, reaching a loopback-bound gateway via host.docker.internal
+// (dockerReachableGateway) rather than the host's own network namespace.
 type dockerLauncher struct {
 	dispatchConfig
 
@@ -99,7 +134,13 @@ func (l *dockerLauncher) WithHarnessConfig(hc HarnessConfig) *dockerLauncher {
 // single-task form or a docker config mount, a docker failure — and the
 // caller records it failed rather than retrying it.
 func (l *dockerLauncher) Launch(item Item, node Node, logPath string) (Child, error) {
-	plan, err := l.resolvePlan(item, node)
+	// resolvePlan is shared with the bare backend, which needs the
+	// orchestrator host's own gateway address unchanged — so the
+	// substitution happens on a local copy of the config, not on
+	// l.dispatchConfig itself.
+	cfg := l.dispatchConfig
+	cfg.gateway = dockerReachableGateway(l.gateway)
+	plan, err := cfg.resolvePlan(item, node)
 	if err != nil {
 		return nil, err
 	}
@@ -143,7 +184,8 @@ func (l *dockerLauncher) Launch(item Item, node Node, logPath string) (Child, er
 	bin, runArgs, wrapEnv := wrapCommand(l.h.Command(), plan.args, l.harnessConfig)
 	name := dockerContainerName(item.ID)
 	args := []string{
-		"run", "--rm", "--network", "host", "--name", name,
+		"run", "--rm", "--name", name,
+		"--add-host", "host.docker.internal:host-gateway",
 		"-v", workspace + ":/workspace",
 		"-w", "/workspace",
 		"-v", absConfigDir + ":" + dockerHome + "/" + filepath.Dir(suffix),

@@ -194,8 +194,13 @@ whole run — not per node, not per item:
   its own process group, the harness's config the host's own — exactly
   what running spinloop directly has always done.
 - **`docker`** — a container from the official spinloop agent image
-  (opencode, Pi and `gh`), on the host's network, so a gateway bound to
-  loopback is reachable the same way it is from a bare process. The
+  (opencode, Pi and `gh`), on its own network. A gateway bound to the
+  orchestrator host's own loopback (`localhost`, `127.0.0.1` — what a
+  gateway run on the same machine usually is) reaches the container by
+  `host.docker.internal` instead: nothing to change in the fleet file or
+  `--gateway`, and no reliance on a Docker Desktop setting most operators
+  do not have on for `--network host` to reach the real host on macOS or
+  Windows. A gateway already on a routable address is unaffected. The
   container mounts the item's directory as its workspace and a config
   scoped to that one launch alone — never the host's own harness
   config — carrying just the provider this launch needs. `docker version`

@@ -108,7 +108,8 @@ func TestDockerLaunch_BuildsTheExpectedInvocation(t *testing.T) {
 	joined := strings.Join(call.args, " ")
 
 	for _, want := range []string{
-		"run", "--rm", "--network host",
+		"run", "--rm",
+		"--add-host host.docker.internal:host-gateway",
 		"-v " + mustAbs(t, work) + ":/workspace",
 		"-w /workspace",
 		"-e OPENAI_API_KEY=the-token",
@@ -120,6 +121,9 @@ func TestDockerLaunch_BuildsTheExpectedInvocation(t *testing.T) {
 			t.Errorf("the invocation should carry %q, got:\n%s", want, joined)
 		}
 	}
+	if strings.Contains(joined, "--network") {
+		t.Errorf("the invocation should not set --network, got:\n%s", joined)
+	}
 	if call.containerName != "spinloop-a" {
 		t.Errorf("containerName = %q, want spinloop-a", call.containerName)
 	}
@@ -130,6 +134,73 @@ func TestDockerLaunch_BuildsTheExpectedInvocation(t *testing.T) {
 	// the image's fixed home.
 	if !strings.Contains(joined, ":"+dockerHome+"/.config/opencode") {
 		t.Errorf("the config mount should target the image's opencode config dir, got:\n%s", joined)
+	}
+}
+
+// TestDockerLaunch_ALoopbackGatewayReachesTheContainerViaDockerInternal is
+// the bug a fleet.yaml naming a loopback gateway (http://localhost:4000,
+// http://127.0.0.1:4000) hits under the docker backend: the container is
+// not the host, and --network host does not reliably put it there on
+// Docker Desktop. The rendered config's base URL SHALL name
+// host.docker.internal instead, never asking the operator to change their
+// fleet file.
+func TestDockerLaunch_ALoopbackGatewayReachesTheContainerViaDockerInternal(t *testing.T) {
+	h := testDockerHarness(t)
+	work := t.TempDir()
+	itemsPath := filepath.Join(work, "work.yaml")
+	l := NewDockerLauncher(h, "http://localhost:4000", "the-token", "spinloop/agent:test", itemsPath, false)
+	rec := &dockerRunRecorder{}
+	l.run = rec.run
+
+	item := Item{ID: "a", Instructions: "do", Dir: work}
+	if _, err := l.Launch(item, runningNode("n", "org/model", nil), filepath.Join(work, "a.log")); err != nil {
+		t.Fatalf("Launch: %v", err)
+	}
+
+	rendered, err := os.ReadFile(filepath.Join(ConfigDirFor(itemsPath, "a"), "opencode.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(rendered), "host.docker.internal:4000") {
+		t.Errorf("the rendered config should reach the gateway via host.docker.internal, got:\n%s", rendered)
+	}
+	if strings.Contains(string(rendered), "localhost:4000") || strings.Contains(string(rendered), "127.0.0.1:4000") {
+		t.Errorf("the rendered config should not carry the host's own loopback address, got:\n%s", rendered)
+	}
+}
+
+// TestDockerLaunch_ARoutableGatewayIsUnchanged checks that a gateway
+// already reachable from the container's own network — anything but the
+// host's own loopback — is not rewritten.
+func TestDockerLaunch_ARoutableGatewayIsUnchanged(t *testing.T) {
+	h := testDockerHarness(t)
+	l, _, work := testDockerLauncher(t, h, "spinloop/agent:test") // gateway: http://gateway:4000
+
+	item := Item{ID: "a", Instructions: "do", Dir: work}
+	if _, err := l.Launch(item, runningNode("n", "org/model", nil), filepath.Join(work, "a.log")); err != nil {
+		t.Fatalf("Launch: %v", err)
+	}
+
+	rendered, err := os.ReadFile(filepath.Join(ConfigDirFor(l.itemsPath, "a"), "opencode.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(rendered), "gateway:4000") {
+		t.Errorf("a routable gateway should reach the config unchanged, got:\n%s", rendered)
+	}
+}
+
+func TestDockerReachableGateway(t *testing.T) {
+	for _, tc := range []struct{ in, want string }{
+		{"http://localhost:4000", "http://host.docker.internal:4000"},
+		{"http://127.0.0.1:4000/v1", "http://host.docker.internal:4000/v1"},
+		{"http://[::1]:4000", "http://host.docker.internal:4000"},
+		{"http://gateway.internal:4000", "http://gateway.internal:4000"},
+		{"http://gateway:4000", "http://gateway:4000"},
+	} {
+		if got := dockerReachableGateway(tc.in); got != tc.want {
+			t.Errorf("dockerReachableGateway(%q) = %q, want %q", tc.in, got, tc.want)
+		}
 	}
 }
 

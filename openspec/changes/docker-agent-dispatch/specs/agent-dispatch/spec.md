@@ -69,9 +69,12 @@ the grace runs out, the hard end.
 ### Requirement: The docker backend
 
 The docker backend SHALL run an admitted item's harness inside a container
-from the official spinloop agent image, on the host's network, so a
-gateway bound to loopback is reachable from inside the container the way
-it is from a bare process. The container SHALL carry two mounts: the
+from the official spinloop agent image. A gateway address bound to the
+orchestrator host's own loopback SHALL reach the container by
+`host.docker.internal` instead — never a change to the fleet file or the
+gateway flag — so it answers from inside the container the way it does a
+bare process; a gateway already on a routable address is reachable from
+the container's own network unchanged. The container SHALL carry two mounts: the
 item's directory as the harness's working directory, and a config
 directory generated fresh for that one launch, carrying only that launch's
 provider — never the orchestrator host's own harness configuration —
@@ -86,9 +89,16 @@ naming the item and the cause, the rest of the backlog going on.
 #### Scenario: An item runs inside a container
 
 - **WHEN** the run admits an item under the docker backend
-- **THEN** a container starts from the official agent image, on the host's
-  network, the item's directory mounted as the harness's working
-  directory, and the harness's inference reaches the gateway
+- **THEN** a container starts from the official agent image, the item's
+  directory mounted as the harness's working directory, and the harness's
+  inference reaches the gateway
+
+#### Scenario: A loopback gateway reaches the container
+
+- **WHEN** the gateway is bound to the orchestrator host's own loopback,
+  and the run admits an item under the docker backend
+- **THEN** the container's harness reaches it by `host.docker.internal`,
+  with nothing changed in the fleet file or the gateway flag
 
 #### Scenario: The container's config carries only this launch
 
