@@ -1,6 +1,6 @@
 // The work items file: the backlog the orchestrator works. A file is a list
-// of items in file order; each names the work its agent is given, the
-// directory the agent works in, and — where the item is bound to a kind of
+// of items in file order; each names the work its agent is given, its own
+// directory (see Item.Dir), and — where the item is bound to a kind of
 // node — the tags of the nodes it can run on.
 package orchestrator
 
@@ -20,7 +20,11 @@ type Item struct {
 	ID string
 	// Instructions is what the item's agent is told to do.
 	Instructions string
-	// Dir is the directory the agent works in.
+	// Dir is the item's own directory: the storage location for everything
+	// the orchestrator keeps about that item's launch — the harness's own
+	// working directory under a `workspace` subdirectory (ItemWorkspaceDir),
+	// and, under the docker backend, its scoped config under a `config`
+	// subdirectory (ItemConfigDir).
 	Dir string
 	// Tags are the nodes the item can run on, named the way node tags are
 	// named — a key and a value joined by =. An item that names none

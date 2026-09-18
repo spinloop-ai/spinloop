@@ -54,17 +54,19 @@ same backend, not a choice per node or per item.
 ### Requirement: The bare backend
 
 The bare backend SHALL run an admitted item's harness as a process on the
-orchestrator's own host, in its own process group, working in the item's
-directory, its config the harness's own host config file, written with the
-node's provider before the launch the way it always has been. Stopping the
-item SHALL stop the process group: the polite signal first, then, where
-the grace runs out, the hard end.
+orchestrator's own host, in its own process group, working in a
+`workspace` subdirectory of the item's own directory (created fresh on
+every launch, if it is not already there), its config the harness's own
+host config file, written with the node's provider before the launch the
+way it always has been. Stopping the item SHALL stop the process group:
+the polite signal first, then, where the grace runs out, the hard end.
 
 #### Scenario: An item runs as a bare process
 
 - **WHEN** the run admits an item under the bare backend
 - **THEN** the harness runs as a process on the orchestrator's host,
-  working in the item's directory, its inference pointed at the gateway
+  working in the item's own `workspace` subdirectory, its inference
+  pointed at the gateway
 
 ### Requirement: The docker backend
 
@@ -74,11 +76,13 @@ orchestrator host's own loopback SHALL reach the container by
 `host.docker.internal` instead — never a change to the fleet file or the
 gateway flag — so it answers from inside the container the way it does a
 bare process; a gateway already on a routable address is reachable from
-the container's own network unchanged. The container SHALL carry two mounts: the
-item's directory as the harness's working directory, and a config
-directory generated fresh for that one launch, carrying only that launch's
+the container's own network unchanged. The container SHALL carry two
+mounts, both from subdirectories of the item's own directory (created
+fresh where not already there): a `workspace` subdirectory as the
+harness's working directory, and a `config` subdirectory holding a
+config generated fresh for that one launch, carrying only that launch's
 provider — never the orchestrator host's own harness configuration —
-mounted at the path the harness resolves its own config to inside the
+mounted where the harness resolves its own config to inside the
 container. The token the provider needs SHALL reach the container through
 its environment, the way the bare backend's does. Stopping the item SHALL
 stop the container: the polite signal first, then, where the grace runs
@@ -90,8 +94,8 @@ naming the item and the cause, the rest of the backlog going on.
 
 - **WHEN** the run admits an item under the docker backend
 - **THEN** a container starts from the official agent image, the item's
-  directory mounted as the harness's working directory, and the harness's
-  inference reaches the gateway
+  own `workspace` subdirectory mounted as the harness's working
+  directory, and the harness's inference reaches the gateway
 
 #### Scenario: A loopback gateway reaches the container
 
@@ -183,11 +187,11 @@ startup and shutdown scripts".
 ### Requirement: The startup and shutdown scripts
 
 A `startup` script SHALL run before the harness, under both backends
-alike: in the item's directory for the bare backend, in the container's
-workspace for the docker backend, under the launch's full environment —
-harness.yaml's `env` and everything the launch already sets. A `startup`
-script that exits non-zero SHALL fail the item, naming the script's
-failure, before the harness ever runs.
+alike, in the item's own `workspace` subdirectory — the container's
+`/item/workspace` for the docker backend — under the launch's full
+environment — harness.yaml's `env` and everything the launch already
+sets. A `startup` script that exits non-zero SHALL fail the item, naming
+the script's failure, before the harness ever runs.
 
 A `shutdown` script SHALL run once the harness has ended — a clean finish,
 a failure, or an abort alike — provided a `startup` script ran at all,

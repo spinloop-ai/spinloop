@@ -66,20 +66,22 @@
 ## 4. The docker launcher
 
 - [x] 4.1 Add `dockerLauncher` implementing `Launcher`: calls
-  `resolvePlan`, then `RenderProviderConfig`, writes the bytes to a fresh
-  per-launch directory under `<items-file>.logs/.config/<item-id>/` —
-  verify with a test asserting the file's content and that a second
-  launch for a different item gets its own directory
+  `resolvePlan`, then `RenderProviderConfig`, writes the bytes to a file
+  under `<item.Dir>/config/` — verify with a test asserting the file's
+  content and that a second item, with its own `Dir`, gets its own
+  directory
 - [x] 4.2 Build the `docker run` invocation: the default bridge network
   with `--add-host host.docker.internal:host-gateway`, the workspace
-  mount (`item.Dir` → `/workspace`, the harness's working directory), the
-  config mount (the per-launch directory → `/home/agent/<suffix>`, from
-  the small suffix table design.md describes), the token and
-  `harness.yaml`'s `env` as `-e`, the wrapper (§3.3) as the container's
-  command where one applies, else the harness directly, the image
-  reference — verify with a test against a fake `docker` seam (the same
-  `d.start`-style test hook pattern `startChild` already uses) asserting
-  the exact argv
+  mount (`<item.Dir>/workspace` → `/item/workspace`, the harness's
+  working directory), the config mount (the rendered file →
+  `/item/config/<file>`, a file mount, with the harness's own redirect
+  variable — `XDG_CONFIG_HOME` for opencode, `PI_CODING_AGENT_DIR` for
+  Pi, from the small table design.md describes — set to `/item/config`),
+  the token and `harness.yaml`'s `env` as `-e`, the wrapper (§3.3) as the
+  container's command where one applies, else the harness directly, the
+  image reference — verify with a test against a fake `docker` seam (the
+  same `d.start`-style test hook pattern `startChild` already uses)
+  asserting the exact argv
 - [x] 4.2a `dockerReachableGateway` rewrites a loopback gateway address
   (`localhost`/`127.0.0.1`/`::1`) to `host.docker.internal` for the
   container's own rendered config, on a local copy of `dispatchConfig` so

@@ -18,8 +18,11 @@ Built from [`Dockerfile`](Dockerfile).
 
 It carries none of any operator's own harness configuration: a container
 started from it with nothing else mounted in has no provider configured
-for either harness. The docker dispatch backend mounts a config scoped to
-one launch alone in at the path each harness resolves its own to under
+for either harness. The docker dispatch backend mounts an item's own
+`workspace/` and `config/` subdirectories in at `/item/workspace` and
+`/item/config`, redirecting each harness's own config resolution there
+with its own environment variable (`XDG_CONFIG_HOME` for opencode,
+`PI_CODING_AGENT_DIR` for Pi) rather than into this image's fixed
 `/home/agent` — see
 [`internal/orchestrator/dispatch_docker.go`](../../internal/orchestrator/dispatch_docker.go)
 and the `agent-dispatch` spec (`openspec/specs/agent-dispatch/spec.md`

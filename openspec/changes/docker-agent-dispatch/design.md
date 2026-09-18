@@ -91,29 +91,56 @@ RenderProviderConfig(p *catalog.Provider, sel spinloop.Selection, resolve func(s
 
 `Apply` is refactored to call it for the "file does not exist yet" case it
 already has, rather than duplicating the provider-block construction. The
-docker launcher calls it directly, writes the bytes to a fresh temp
-directory (one per launch, named for the item), and mounts that directory
-in — never the host's real `ConfigPath()`.
+docker launcher calls it directly and writes the bytes to a file under the
+item's own `config/` subdirectory (see "Where an item's workspace and
+config live" below) — never the host's real `ConfigPath()`.
 
-### Where the config mount lands inside the container
+### Where an item's workspace and config live
 
-The official image fixes `HOME=/home/agent`. Each dispatchable harness's
-config path is `$HOME`-relative today (opencode:
-`.config/opencode/opencode.json`, Pi: `.pi/agent/models.json`), so the
-docker launcher carries a small table of those suffixes — parallel to,
-and no bigger than, the existing `oneShot` map — and mounts the rendered
-file at `/home/agent/<suffix>`. This needs nothing from the harness or
-catalogue beyond what `RenderProviderConfig` already returns; a harness
-added to `oneShot` later needs one line here, the same as it needs one
-line there.
+An item's own directory (`dir` in the items file) is the storage location
+for everything the orchestrator keeps about that item's launch, not the
+harness's working directory directly:
+
+```
+<item.Dir>/workspace/   the harness's own working directory, both backends
+<item.Dir>/config/      docker only: this item's scoped provider config
+```
+
+`resolvePlan` (shared by both backends) creates `workspace/` on every
+launch if it is not already there — unconditionally, unlike `<item.Dir>`
+itself, which is only created where `--create-item-dirs` allows it. The
+bare backend runs the harness with `workspace/` as its working directory,
+exactly where `<item.Dir>` itself was the working directory before this
+decision; the docker backend bind-mounts it.
+
+Inside the container, both live under one root, `/item`:
+`/item/workspace` (bind-mounted from `<item.Dir>/workspace`, and the
+container's `-w`) and `/item/config` (the rendered provider config's
+parent). A harness resolves its own config from a fixed, `$HOME`-relative
+path, not an arbitrary one — opencode from `$XDG_CONFIG_HOME/opencode/
+opencode.json` (falling back to `$HOME/.config/opencode/opencode.json`),
+Pi from `$PI_CODING_AGENT_DIR/models.json` (falling back to `$HOME/
+.pi/agent/models.json`) — so the docker launcher sets that variable to
+`/item/config` for the harness in use, rather than mounting into the
+image's fixed `$HOME` directly. A small table (`dockerHarnessRedirects`,
+parallel to, and no bigger than, the existing `oneShot` map) carries each
+harness's variable name and its config file's path relative to it; a
+harness added to `oneShot` later needs one line here, the same as it needs
+one line there.
+
+The config mount is a file, not a directory: only the rendered config
+lands inside the container, never whatever else the harness keeps
+alongside it on a real host — opencode installs its plugin's
+`node_modules` into its config directory on first run, which a directory
+mount would otherwise leave growing, unbounded, on the host across
+launches. A file mount confines that growth to the container's own
+filesystem, gone with the container on exit.
 
 ### Mounts and network
 
-- `<item.Dir>` → a fixed in-container workspace path (e.g. `/workspace`);
-  the harness's command runs with that as its working directory, and the
-  container's `WORKDIR` matches
-- The rendered config directory → `/home/agent/<suffix>`'s parent, read
-  only from the harness's perspective after the one write
+- `<item.Dir>/workspace` → `/item/workspace`, and the container's `-w`
+- `<item.Dir>/config/<file>` → `/item/config/<file>`, a file mount (see
+  above), with the harness's own redirect variable set to `/item/config`
 - The default bridge network, not `--network host` — see "A loopback
   gateway reaches the container by host.docker.internal, not host
   networking" below for why
@@ -286,11 +313,12 @@ set without a new image.
 - **A second image to build, publish and version.** Mitigated by tying
   its tag to spinloop's own version, so there is one place a given binary
   looks, not a moving target.
-- **Per-launch config directories need cleanup.** They live under the
-  same `<items-file>.logs/` convention the item's kept output already
-  uses (a sibling `.config/<id>/` directory), so they are found and
-  removed the way a `work remove` already removes an item's kept output —
-  tasks.md covers wiring that in, not a new cleanup mechanism.
+- **Per-launch config directories need cleanup.** `<item.Dir>/config/` is
+  found from the item's own `Dir` the way its `workspace/` sibling is, so
+  `work remove` takes it out the same way it already removes an item's
+  kept output; `workspace/` itself is left alone — it can hold real
+  output an operator wants to keep, unlike the config `work remove`
+  itself rendered.
 - **`docker stop --time 0` skips Docker's own grace entirely.** This is
   deliberate (see above), but means a harness that needs more than the
   orchestrator's own `stopGrace` to flush anything on `SIGTERM` gets less

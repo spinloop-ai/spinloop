@@ -27,10 +27,9 @@ env:
   GIT_AUTHOR_NAME: spinloop-agent
   GIT_AUTHOR_EMAIL: agent@example.com
 
-# Runs before the harness, in the item's directory (bare) or the
-# container's workspace (docker), under the launch's full environment. A
-# non-zero exit fails the item, naming the script, before the harness
-# ever runs.
+# Runs before the harness, in the item's workspace directory, under the
+# launch's full environment. A non-zero exit fails the item, naming the
+# script, before the harness ever runs.
 startup: |
   git config --global user.name "$GIT_AUTHOR_NAME"
   git config --global user.email "$GIT_AUTHOR_EMAIL"

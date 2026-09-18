@@ -50,8 +50,7 @@ func testDockerHarness(t *testing.T) harness.Harness {
 func testDockerLauncher(t *testing.T, h harness.Harness, image string) (*dockerLauncher, *dockerRunRecorder, string) {
 	t.Helper()
 	work := t.TempDir()
-	itemsPath := filepath.Join(work, "work.yaml")
-	l := NewDockerLauncher(h, "http://gateway:4000", "the-token", image, itemsPath, false)
+	l := NewDockerLauncher(h, "http://gateway:4000", "the-token", image, false)
 	rec := &dockerRunRecorder{}
 	l.run = rec.run
 	return l, rec, work
@@ -61,8 +60,16 @@ func TestDockerLaunch_RendersAScopedConfigPerItem(t *testing.T) {
 	h := testDockerHarness(t)
 	l, _, work := testDockerLauncher(t, h, "spinloop/agent:test")
 
-	itemA := Item{ID: "a", Instructions: "do a", Dir: work}
-	itemB := Item{ID: "b", Instructions: "do b", Dir: work}
+	dirA := filepath.Join(work, "a")
+	dirB := filepath.Join(work, "b")
+	if err := os.MkdirAll(dirA, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(dirB, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	itemA := Item{ID: "a", Instructions: "do a", Dir: dirA}
+	itemB := Item{ID: "b", Instructions: "do b", Dir: dirB}
 	node := runningNode("n", "org/model", nil)
 
 	if _, err := l.Launch(itemA, node, filepath.Join(work, "a.log")); err != nil {
@@ -72,19 +79,14 @@ func TestDockerLaunch_RendersAScopedConfigPerItem(t *testing.T) {
 		t.Fatalf("Launch b: %v", err)
 	}
 
-	dirA := ConfigDirFor(l.itemsPath, "a")
-	dirB := ConfigDirFor(l.itemsPath, "b")
-	if dirA == dirB {
-		t.Fatalf("each item should get its own config directory, both got %s", dirA)
-	}
-	dataA, err := os.ReadFile(filepath.Join(dirA, "opencode.json"))
+	dataA, err := os.ReadFile(filepath.Join(ItemConfigDir(dirA), "opencode.json"))
 	if err != nil {
 		t.Fatalf("item a's config should be on disk: %v", err)
 	}
 	if !strings.Contains(string(dataA), "spinloop-orchestrator-n") {
 		t.Errorf("the rendered config should carry the node's provider, got %s", dataA)
 	}
-	if _, err := os.Stat(filepath.Join(dirB, "opencode.json")); err != nil {
+	if _, err := os.Stat(filepath.Join(ItemConfigDir(dirB), "opencode.json")); err != nil {
 		t.Errorf("item b's config should be on disk: %v", err)
 	}
 }
@@ -94,7 +96,11 @@ func TestDockerLaunch_BuildsTheExpectedInvocation(t *testing.T) {
 	l, rec, work := testDockerLauncher(t, h, "spinloop/agent:test")
 	l.harnessConfig = HarnessConfig{Env: map[string]string{"FOO": "bar"}}
 
-	item := Item{ID: "a", Instructions: "fix it", Dir: work}
+	itemDir := filepath.Join(work, "a")
+	if err := os.MkdirAll(itemDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	item := Item{ID: "a", Instructions: "fix it", Dir: itemDir}
 	node := runningNode("gpu-1", "org/model", nil)
 	logPath := filepath.Join(work, "a.log")
 
@@ -110,8 +116,10 @@ func TestDockerLaunch_BuildsTheExpectedInvocation(t *testing.T) {
 	for _, want := range []string{
 		"run", "--rm",
 		"--add-host host.docker.internal:host-gateway",
-		"-v " + mustAbs(t, work) + ":/workspace",
-		"-w /workspace",
+		"-v " + mustAbs(t, filepath.Join(itemDir, "workspace")) + ":/item/workspace",
+		"-w /item/workspace",
+		"-v " + mustAbs(t, filepath.Join(itemDir, "config")) + "/opencode.json:/item/config/opencode/opencode.json",
+		"-e XDG_CONFIG_HOME=/item/config",
 		"-e OPENAI_API_KEY=the-token",
 		"-e FOO=bar",
 		"spinloop/agent:test",
@@ -130,11 +138,6 @@ func TestDockerLaunch_BuildsTheExpectedInvocation(t *testing.T) {
 	if call.logPath != logPath {
 		t.Errorf("logPath = %q, want %q", call.logPath, logPath)
 	}
-	// The config mount lands where opencode resolves its own config under
-	// the image's fixed home.
-	if !strings.Contains(joined, ":"+dockerHome+"/.config/opencode") {
-		t.Errorf("the config mount should target the image's opencode config dir, got:\n%s", joined)
-	}
 }
 
 // TestDockerLaunch_ALoopbackGatewayReachesTheContainerViaDockerInternal is
@@ -147,8 +150,7 @@ func TestDockerLaunch_BuildsTheExpectedInvocation(t *testing.T) {
 func TestDockerLaunch_ALoopbackGatewayReachesTheContainerViaDockerInternal(t *testing.T) {
 	h := testDockerHarness(t)
 	work := t.TempDir()
-	itemsPath := filepath.Join(work, "work.yaml")
-	l := NewDockerLauncher(h, "http://localhost:4000", "the-token", "spinloop/agent:test", itemsPath, false)
+	l := NewDockerLauncher(h, "http://localhost:4000", "the-token", "spinloop/agent:test", false)
 	rec := &dockerRunRecorder{}
 	l.run = rec.run
 
@@ -157,7 +159,7 @@ func TestDockerLaunch_ALoopbackGatewayReachesTheContainerViaDockerInternal(t *te
 		t.Fatalf("Launch: %v", err)
 	}
 
-	rendered, err := os.ReadFile(filepath.Join(ConfigDirFor(itemsPath, "a"), "opencode.json"))
+	rendered, err := os.ReadFile(filepath.Join(ItemConfigDir(work), "opencode.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -181,7 +183,7 @@ func TestDockerLaunch_ARoutableGatewayIsUnchanged(t *testing.T) {
 		t.Fatalf("Launch: %v", err)
 	}
 
-	rendered, err := os.ReadFile(filepath.Join(ConfigDirFor(l.itemsPath, "a"), "opencode.json"))
+	rendered, err := os.ReadFile(filepath.Join(ItemConfigDir(item.Dir), "opencode.json"))
 	if err != nil {
 		t.Fatal(err)
 	}

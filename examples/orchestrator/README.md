@@ -29,9 +29,12 @@ In another terminal:
 spinloop work list --url http://127.0.0.1:4010
 ```
 
-`describe-repo` runs once admitted, `harness.yaml`'s `startup` sets a
-throwaway git identity before the agent starts, and its `shutdown` line lands
-in the kept log after the agent's own output:
+`describe-repo` runs once admitted — its actual working directory is
+`workspace/`, created fresh under `dir` on launch, hence `work.yaml`'s
+instructions reading `../README.md` rather than one already in its cwd.
+`harness.yaml`'s `startup` sets a throwaway git identity before the agent
+starts, and its `shutdown` line lands in the kept log after the agent's own
+output:
 
 ```sh
 cat work.yaml.logs/describe-repo.log
@@ -58,7 +61,7 @@ different things to learn.
 
 | File | What it is |
 | --- | --- |
-| [`work.yaml`](work.yaml) | One item: read this directory's own README and summarise it. Change `dir` to point anywhere you actually want an agent working. |
+| [`work.yaml`](work.yaml) | One item: read this directory's own README and summarise it. Change `dir` to point anywhere you actually want an agent's storage — its real working directory is `<dir>/workspace/`. |
 | [`harness.yaml`](harness.yaml) | The `--dispatch` backend, environment variables, and `startup`/`shutdown` scripts — a flag on the command line still wins over its `dispatch:`. Found automatically, beside `work.yaml`. |
 
 ## See also

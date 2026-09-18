@@ -469,10 +469,12 @@ func (w *WorkList) Remove(id string) error {
 		return &errConflict{msg: fmt.Sprintf("item %q is running: abort it first, then remove it", id)}
 	}
 	kept := make([]Item, 0, len(w.items))
+	var removed Item
 	found := false
 	for _, it := range w.items {
 		if it.ID == id {
 			found = true
+			removed = it
 			continue
 		}
 		kept = append(kept, it)
@@ -493,10 +495,13 @@ func (w *WorkList) Remove(id string) error {
 	w.log.Info("item removed", slog.String("item", id))
 	// The kept output goes with it; an item that wrote none has no file.
 	os.Remove(w.store.LogPath(id))
-	// The docker backend's scoped config goes with it too; a bare-backend
-	// item, or one the docker backend never launched, has no directory —
-	// RemoveAll of one that is not there is a silent no-op.
-	os.RemoveAll(ConfigDirFor(w.itemsPath, id))
+	// The docker backend's scoped config goes with it too — a config
+	// subdirectory of the item's own directory, left behind by the item's
+	// workspace subdirectory, which is not the orchestrator's to remove. A
+	// bare-backend item, or one the docker backend never launched, has no
+	// config directory — RemoveAll of one that is not there is a silent
+	// no-op.
+	os.RemoveAll(ItemConfigDir(removed.Dir))
 	return nil
 }
 

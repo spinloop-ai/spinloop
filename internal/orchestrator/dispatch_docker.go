@@ -12,22 +12,39 @@ import (
 	"github.com/spinloop-ai/spinloop/internal/harness"
 )
 
-// dockerConfigSuffix is the path, relative to the official agent image's
-// fixed $HOME (/home/agent), each dispatchable harness resolves its own
-// config file to — the same convention internal/opencode and internal/pi
-// use against a real $HOME, just computed against the image's own rather
-// than assumed from the orchestrator's host. A harness with a one-shot
-// form but no entry here cannot run under the docker backend; lucinate has
-// neither an entry here nor a one-shot form, so it never reaches this
-// table at all.
-var dockerConfigSuffix = map[string]string{
-	"opencode": ".config/opencode/opencode.json",
-	"pi":       ".pi/agent/models.json",
+// dockerHarnessRedirect is how a dispatchable harness's own config
+// resolution is pointed at dockerConfigRoot instead of the image's fixed
+// $HOME: the env var the harness reads in place of its default config
+// directory, and the path its rendered config lands at, relative to that
+// directory. A harness with a one-shot form but no entry here cannot run
+// under the docker backend; lucinate has neither an entry here nor a
+// one-shot form, so it never reaches this table at all.
+type dockerHarnessRedirect struct {
+	envVar string // overrides the harness's own default config directory
+	file   string // the harness's config file, relative to envVar's value
 }
 
-// dockerHome is the official agent image's fixed home directory, the base
-// every dockerConfigSuffix mount target is resolved against.
-const dockerHome = "/home/agent"
+var dockerHarnessRedirects = map[string]dockerHarnessRedirect{
+	// opencode reads $XDG_CONFIG_HOME/opencode/opencode.json ahead of
+	// $HOME/.config/opencode/opencode.json.
+	"opencode": {envVar: "XDG_CONFIG_HOME", file: "opencode/opencode.json"},
+	// Pi reads $PI_CODING_AGENT_DIR/models.json ahead of
+	// $HOME/.pi/agent/models.json.
+	"pi": {envVar: "PI_CODING_AGENT_DIR", file: "models.json"},
+}
+
+// dockerItemRoot is where one launch's own directory tree lands inside the
+// container: config/ (the rendered, per-launch provider config, from
+// ItemConfigDir) and workspace/ (from ItemWorkspaceDir, the harness's
+// working directory) sit side by side under it, mirroring the same two
+// subdirectories of the item's own directory on the host, rather than
+// scattering config under the image's fixed $HOME while workspace sits at
+// the container's root.
+const (
+	dockerItemRoot      = "/item"
+	dockerConfigRoot    = dockerItemRoot + "/config"
+	dockerWorkspaceRoot = dockerItemRoot + "/workspace"
+)
 
 // DefaultDockerImage builds the docker backend's default image reference
 // for spinloop's own version, so a given binary defaults to the image
@@ -91,16 +108,16 @@ func dockerReachableGateway(gateway string) string {
 
 // dockerLauncher is the docker Launcher: it renders a scoped, per-launch
 // config carrying one provider (harness.ConfigRenderer), mounts it and the
-// item's directory into a container from the official agent image, and
-// runs the harness — wrapped where harness.yaml names a lifecycle script,
-// see wrapCommand — as the container's own command, on the default bridge
-// network, reaching a loopback-bound gateway via host.docker.internal
-// (dockerReachableGateway) rather than the host's own network namespace.
+// item's workspace directory into a container from the official agent
+// image, and runs the harness — wrapped where harness.yaml names a
+// lifecycle script, see wrapCommand — as the container's own command, on
+// the default bridge network, reaching a loopback-bound gateway via
+// host.docker.internal (dockerReachableGateway) rather than the host's own
+// network namespace.
 type dockerLauncher struct {
 	dispatchConfig
 
-	image     string // the agent image reference
-	itemsPath string // where ConfigDirFor resolves a launch's scoped config dir from
+	image string // the agent image reference
 
 	// run begins `docker run` for one launch as this process's own child,
 	// given the full argv and the log path its output is kept at; a test
@@ -112,11 +129,10 @@ type dockerLauncher struct {
 // pointed at the gateway and the agent image, holding the token its
 // caller presents. Where createItemDirs is set, a missing item directory
 // is created rather than failing the item, the same as the bare backend.
-func NewDockerLauncher(h harness.Harness, gateway, token, image, itemsPath string, createItemDirs bool) *dockerLauncher {
+func NewDockerLauncher(h harness.Harness, gateway, token, image string, createItemDirs bool) *dockerLauncher {
 	l := &dockerLauncher{
 		dispatchConfig: dispatchConfig{h: h, gateway: gateway, token: token, createItemDirs: createItemDirs},
 		image:          image,
-		itemsPath:      itemsPath,
 	}
 	l.run = runDockerContainer
 	return l
@@ -148,7 +164,7 @@ func (l *dockerLauncher) Launch(item Item, node Node, logPath string) (Child, er
 	if !ok {
 		return nil, fmt.Errorf("the %q harness cannot render a config for the docker backend", l.h.Name())
 	}
-	suffix, ok := dockerConfigSuffix[l.h.Name()]
+	redirect, ok := dockerHarnessRedirects[l.h.Name()]
 	if !ok {
 		return nil, fmt.Errorf("the %q harness has no docker config mount known to the docker backend", l.h.Name())
 	}
@@ -163,22 +179,23 @@ func (l *dockerLauncher) Launch(item Item, node Node, logPath string) (Child, er
 		return nil, fmt.Errorf("rendering the docker config for item %q: %v", item.ID, err)
 	}
 
-	configDir := ConfigDirFor(l.itemsPath, item.ID)
+	configDir := ItemConfigDir(item.Dir)
 	if err := os.MkdirAll(configDir, 0o700); err != nil {
 		return nil, fmt.Errorf("item %q's docker config directory %s: %v", item.ID, configDir, err)
 	}
-	configFile := filepath.Join(configDir, filepath.Base(suffix))
+	configFile := filepath.Join(configDir, filepath.Base(redirect.file))
 	if err := os.WriteFile(configFile, rendered, 0o600); err != nil {
 		return nil, fmt.Errorf("item %q's docker config %s: %v", item.ID, configFile, err)
 	}
 
-	workspace, err := filepath.Abs(item.Dir)
+	// resolvePlan (above) has already created the workspace subdirectory.
+	workspace, err := filepath.Abs(ItemWorkspaceDir(item.Dir))
 	if err != nil {
-		return nil, fmt.Errorf("resolving item %q's directory %s: %v", item.ID, item.Dir, err)
+		return nil, fmt.Errorf("resolving item %q's workspace directory: %v", item.ID, err)
 	}
-	absConfigDir, err := filepath.Abs(configDir)
+	absConfigFile, err := filepath.Abs(configFile)
 	if err != nil {
-		return nil, fmt.Errorf("resolving item %q's docker config directory %s: %v", item.ID, configDir, err)
+		return nil, fmt.Errorf("resolving item %q's docker config %s: %v", item.ID, configFile, err)
 	}
 
 	bin, runArgs, wrapEnv := wrapCommand(l.h.Command(), plan.args, l.harnessConfig)
@@ -186,9 +203,20 @@ func (l *dockerLauncher) Launch(item Item, node Node, logPath string) (Child, er
 	args := []string{
 		"run", "--rm", "--name", name,
 		"--add-host", "host.docker.internal:host-gateway",
-		"-v", workspace + ":/workspace",
-		"-w", "/workspace",
-		"-v", absConfigDir + ":" + dockerHome + "/" + filepath.Dir(suffix),
+		"-v", workspace + ":" + dockerWorkspaceRoot,
+		"-w", dockerWorkspaceRoot,
+		// A file mount, not a directory: only the rendered config lands
+		// at the harness's config path. Mounting the whole directory
+		// would put whatever else the harness keeps there — opencode
+		// installs its plugin's node_modules into its config directory —
+		// on the host, growing without bound across launches. The rest
+		// of that directory stays ordinary container filesystem, gone
+		// with the container on exit.
+		"-v", absConfigFile + ":" + dockerConfigRoot + "/" + redirect.file,
+		// Redirects the harness's own config resolution to dockerConfigRoot
+		// rather than the image's fixed $HOME, so the file mount above lands
+		// where the harness actually looks.
+		"-e", redirect.envVar + "=" + dockerConfigRoot,
 	}
 	for _, e := range l.providerEnv(plan) {
 		args = append(args, "-e", e)

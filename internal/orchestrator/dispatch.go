@@ -109,19 +109,25 @@ type launchPlan struct {
 }
 
 // resolvePlan checks the item's directory (creating it where cfg allows),
-// resolves the harness's one-shot form and the node's model, and builds
-// the catalogue provider and selection a launch's config is written
-// under. A failure names the item and the cause — a missing directory, a
-// harness without a single-task form — and the caller records it failed
-// rather than retrying it.
+// ensures its workspace subdirectory exists, resolves the harness's
+// one-shot form and the node's model, and builds the catalogue provider
+// and selection a launch's config is written under. A failure names the
+// item and the cause — a missing directory, a harness without a
+// single-task form — and the caller records it failed rather than
+// retrying it.
 func (cfg dispatchConfig) resolvePlan(item Item, node Node) (launchPlan, error) {
 	if fi, err := os.Stat(item.Dir); err != nil || !fi.IsDir() {
 		if !cfg.createItemDirs {
-			return launchPlan{}, fmt.Errorf("item %q's working directory %s does not exist", item.ID, item.Dir)
+			return launchPlan{}, fmt.Errorf("item %q's directory %s does not exist", item.ID, item.Dir)
 		}
 		if err := os.MkdirAll(item.Dir, 0o755); err != nil {
-			return launchPlan{}, fmt.Errorf("item %q's working directory %s: creating it: %v", item.ID, item.Dir, err)
+			return launchPlan{}, fmt.Errorf("item %q's directory %s: creating it: %v", item.ID, item.Dir, err)
 		}
+	}
+	// The workspace subdirectory is the orchestrator's own, unlike item.Dir
+	// itself: always created if missing, regardless of createItemDirs.
+	if err := os.MkdirAll(ItemWorkspaceDir(item.Dir), 0o755); err != nil {
+		return launchPlan{}, fmt.Errorf("item %q's workspace directory: %v", item.ID, err)
 	}
 	form, ok := oneShot[cfg.h.Name()]
 	if !ok {
@@ -181,8 +187,9 @@ func (cfg dispatchConfig) providerEnv(plan launchPlan) []string {
 
 // Dispatcher is the bare-process Launcher: it applies the node's provider
 // into the harness's own host config, and runs the active harness in its
-// single-task form in the item's directory, the agent's output kept per
-// item beside the items file.
+// single-task form in the item's workspace directory (see
+// ItemWorkspaceDir), the agent's output kept per item beside the items
+// file.
 type Dispatcher struct {
 	dispatchConfig
 
@@ -245,7 +252,7 @@ func (d *Dispatcher) Launch(item Item, node Node, logPath string) (Child, error)
 	env = append(env, sortedEnvPairs(d.harnessConfig.Env)...)
 
 	bin, args, extraEnv := wrapCommand(d.h.Command(), plan.args, d.harnessConfig)
-	child, err := d.start(bin, args, item.Dir, logPath, append(env, extraEnv...))
+	child, err := d.start(bin, args, ItemWorkspaceDir(item.Dir), logPath, append(env, extraEnv...))
 	if err != nil {
 		return nil, err
 	}

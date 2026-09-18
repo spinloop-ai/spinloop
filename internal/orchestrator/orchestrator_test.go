@@ -676,7 +676,7 @@ func readRecord(t *testing.T, path string) string {
 	return string(data)
 }
 
-func TestDispatch_RunsTheAgentOneShotInTheItemsDirectory(t *testing.T) {
+func TestDispatch_RunsTheAgentOneShotInTheItemsWorkspaceDirectory(t *testing.T) {
 	work := t.TempDir()
 	record := filepath.Join(work, "record")
 	t.Setenv("RECORD_FILE", record)
@@ -697,10 +697,11 @@ func TestDispatch_RunsTheAgentOneShotInTheItemsDirectory(t *testing.T) {
 		t.Fatalf("the agent should end cleanly: %v", err)
 	}
 
-	// The kernel resolves the item's directory for the child, so the
-	// reported working directory is the resolved one.
-	canonical := work
-	if resolved, err := filepath.EvalSymlinks(work); err == nil {
+	// The kernel resolves the item's workspace directory for the child, so
+	// the reported working directory is the resolved one.
+	workspace := ItemWorkspaceDir(work)
+	canonical := workspace
+	if resolved, err := filepath.EvalSymlinks(workspace); err == nil {
 		canonical = resolved
 	}
 	rec := readRecord(t, record)
@@ -742,7 +743,7 @@ func TestDispatch_RunsTheAgentOneShotInTheItemsDirectory(t *testing.T) {
 	}
 }
 
-func TestDispatch_TheChildsPWDVariableCarriesTheItemsDirectory(t *testing.T) {
+func TestDispatch_TheChildsPWDVariableCarriesTheItemsWorkspaceDirectory(t *testing.T) {
 	work := t.TempDir()
 	itemDir := filepath.Join(work, "item")
 	if err := os.MkdirAll(itemDir, 0o755); err != nil {
@@ -774,8 +775,8 @@ func TestDispatch_TheChildsPWDVariableCarriesTheItemsDirectory(t *testing.T) {
 	// The variable carries the directory resolved the way filepath.Abs
 	// gives it — the symlinked form, not the kernel's resolved cwd.
 	rec := readRecord(t, record)
-	if !strings.Contains(rec, "pwd:"+itemDir) {
-		t.Errorf("the child's PWD variable should carry the item's directory, record:\n%s", rec)
+	if !strings.Contains(rec, "pwd:"+ItemWorkspaceDir(itemDir)) {
+		t.Errorf("the child's PWD variable should carry the item's workspace directory, record:\n%s", rec)
 	}
 }
 
@@ -823,12 +824,13 @@ func TestDispatch_AMissingDirectoryIsCreatedWhereTheCommandSaysTo(t *testing.T) 
 		t.Fatalf("the directory should have been created: %v", err)
 	}
 	rec := readRecord(t, record)
-	canonical := missing
-	if resolved, err := filepath.EvalSymlinks(missing); err == nil {
+	workspace := ItemWorkspaceDir(missing)
+	canonical := workspace
+	if resolved, err := filepath.EvalSymlinks(workspace); err == nil {
 		canonical = resolved
 	}
 	if !strings.Contains(rec, "cwd:"+canonical) {
-		t.Errorf("the agent should have worked in the created directory, record:\n%s", rec)
+		t.Errorf("the agent should have worked in the created directory's workspace, record:\n%s", rec)
 	}
 }
 

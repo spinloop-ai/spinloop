@@ -450,8 +450,9 @@ func TestAPI_ARemovalTakesTheItemItsRecordAndItsOutput(t *testing.T) {
 // removal takes the docker backend's per-launch config directory out with
 // the item's kept output — the same cleanup, one more directory.
 func TestAPI_ARemovalTakesTheDockerBackendsScopedConfigToo(t *testing.T) {
-	wl, _, path := testWorkList(t, itemsFile(itemSpec{id: "a", instr: "do a", dir: "./a"}), nil)
-	configDir := ConfigDirFor(path, "a")
+	itemDir := filepath.Join(t.TempDir(), "a")
+	wl, _, _ := testWorkList(t, itemsFile(itemSpec{id: "a", instr: "do a", dir: itemDir}), nil)
+	configDir := ItemConfigDir(itemDir)
 	if err := os.MkdirAll(configDir, 0o700); err != nil {
 		t.Fatal(err)
 	}

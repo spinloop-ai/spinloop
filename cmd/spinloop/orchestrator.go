@@ -224,7 +224,7 @@ func runOrchestratorCommand(gatewayAddr, itemsPath, token, harnessName, logLevel
 		if image == "" {
 			image = orchestrator.DefaultDockerImage(version)
 		}
-		dispatch = orchestrator.NewDockerLauncher(h, gatewayAddr, token, image, itemsPath, createItemDirs).WithHarnessConfig(hc)
+		dispatch = orchestrator.NewDockerLauncher(h, gatewayAddr, token, image, createItemDirs).WithHarnessConfig(hc)
 	default:
 		return fmt.Errorf("unknown %s %q: expected bare or docker", backendSource, backend)
 	}

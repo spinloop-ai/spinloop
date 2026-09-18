@@ -1,11 +1,15 @@
 # A minimal backlog `spinloop orchestrator` works. One item, one directory
-# — pointed at wherever you actually want an agent to work.
+# — pointed at wherever you actually want an agent to work. `dir` is the
+# item's own directory: the agent's actual working directory is its
+# workspace/ subdirectory (see docs/commands/orchestrator.md's "What it
+# keeps"), created fresh on every launch — hence reading the README one
+# level up, rather than one already sitting in the agent's own cwd.
 #
 #   spinloop orchestrator --fleet ../fleet-docker/fleet.yaml -l
 #   spinloop work add --url http://127.0.0.1:4010 --id describe-repo \
-#     --instructions "read README.md and summarise what this project does" \
+#     --instructions "read ../README.md and summarise what this project does" \
 #     --dir .
 
 - id: describe-repo
-  instructions: read README.md and summarise what this project does
+  instructions: read ../README.md and summarise what this project does
   dir: .

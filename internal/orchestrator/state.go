@@ -63,12 +63,21 @@ func logDirFor(itemsPath string) string { return itemsPath + ".logs" }
 
 func abortsDirFor(itemsPath string) string { return itemsPath + ".aborts" }
 
-// ConfigDirFor is where the docker backend renders one item's scoped,
-// per-launch harness config: under the same `<items-file>.logs/`
-// directory its kept output already lives in, a `.config/<id>` sibling of
-// the log files themselves.
-func ConfigDirFor(itemsPath, id string) string {
-	return filepath.Join(logDirFor(itemsPath), ".config", id)
+// ItemWorkspaceDir is the harness's own working directory for an item: a
+// `workspace` subdirectory of the item's own directory (the `dir` the items
+// file names), bind-mounted into the container under the docker backend,
+// and the bare backend's own process working directory.
+func ItemWorkspaceDir(itemDir string) string {
+	return filepath.Join(itemDir, "workspace")
+}
+
+// ItemConfigDir is where the docker backend renders one item's scoped,
+// per-launch harness config: a `config` subdirectory of the item's own
+// directory, alongside `workspace` — the item's own directory is the
+// storage location for everything the orchestrator keeps about that one
+// item's launch.
+func ItemConfigDir(itemDir string) string {
+	return filepath.Join(itemDir, "config")
 }
 
 // LogPathFor is where one item's kept output stands beside the items file.

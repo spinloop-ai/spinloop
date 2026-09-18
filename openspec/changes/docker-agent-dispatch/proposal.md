@@ -24,14 +24,15 @@ become a choice rather than a given for that to be possible.
   container's own rendered config, with no change to the fleet file or
   the gateway flag, and no reliance on a Docker Desktop setting that
   makes `--network host` behave the way it does on native Linux docker —
-  with two bind mounts: the item's directory as the harness's working
-  directory, and a
-  scoped, per-launch config directory generated fresh for that one launch,
-  mounted directly at the path the harness resolves its own config to
-  (`$HOME`-relative, the same convention `internal/opencode`,
-  `internal/pi` and `internal/lucinate` already use) — no reliance on the
-  harness supporting a config-path override, and no mount of the host's
-  real harness config.
+  with two bind mounts, both subdirectories of the item's own directory
+  (created fresh where not already there, under either backend): a
+  `workspace` subdirectory as the harness's working directory, and, under
+  docker, a `config` subdirectory holding a config generated fresh for
+  that one launch, mounted where the harness resolves its own config to
+  inside the container — redirected there with the harness's own
+  environment variable for the purpose (`XDG_CONFIG_HOME` for opencode,
+  `PI_CODING_AGENT_DIR` for Pi) rather than mounted into the image's fixed
+  `$HOME` — and no mount of the host's real harness config.
 - The official image is a new artifact this change publishes: opencode and
   Pi's one-shot forms, their runtimes, the `gh` CLI (an item's instructions
   routinely want it — opening a PR, reading an issue), nothing of the
@@ -41,9 +42,9 @@ become a choice rather than a given for that to be possible.
   a fleet file or flag reaches: a `dispatch`, naming the backend the way
   `--dispatch` does (an explicit flag still wins), an `env` map added to
   the launch's environment, and `startup`/`shutdown` shell scripts
-  bracketing it. Both backends honour it: for bare, the scripts run on
-  the host in the item's
-  directory; for docker, inside the container. A failing startup script
+  bracketing it. Both backends honour it: the scripts run in the item's
+  own `workspace` subdirectory — on the host for bare, inside the
+  container for docker. A failing startup script
   fails the item before the harness ever runs; shutdown always runs once
   the harness has ended, whatever ended it — done, failed, or aborted —
   since it exists to tear down whatever startup set up. Both scripts'
