@@ -494,6 +494,30 @@ func TestAPI_ARemovalResolvesTheConfigDirAgainstBaseDir(t *testing.T) {
 	}
 }
 
+// TestAPI_ARemovalTakesTheItemsOwnLogCopyToo checks that a removal takes
+// the item's own copy of its log out with the canonical one.
+func TestAPI_ARemovalTakesTheItemsOwnLogCopyToo(t *testing.T) {
+	itemDir := filepath.Join(t.TempDir(), "a")
+	if err := os.MkdirAll(itemDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	wl, _, _ := testWorkList(t, itemsFile(itemSpec{id: "a", instr: "do a", dir: itemDir}), nil)
+	logFile := ItemLogFile(itemDir)
+	if err := os.WriteFile(logFile, []byte("the agent's output"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	srv := workListServer(t, wl, "")
+	defer srv.Close()
+
+	code, raw := apiDo(t, srv, "", http.MethodDelete, "/v1/items/a", "")
+	if code != http.StatusOK {
+		t.Fatalf("a removal the work list accepts is answered, got %d: %s", code, raw)
+	}
+	if _, err := os.Stat(logFile); !os.IsNotExist(err) {
+		t.Errorf("the item's own log copy should be gone with the item, got %v", err)
+	}
+}
+
 func TestAPI_ARemovalItCannotMakeIsRefused(t *testing.T) {
 	wl, _, _ := testWorkList(t, itemsFile(itemSpec{id: "a", instr: "do a", dir: "./a"}),
 		func(s *memStore) {

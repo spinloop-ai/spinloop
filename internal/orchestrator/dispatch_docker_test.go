@@ -91,6 +91,39 @@ func TestDockerLaunch_RendersAScopedConfigPerItem(t *testing.T) {
 	}
 }
 
+func TestDockerLaunch_TheKeptLogIsAlsoCopiedToTheItemsOwnDirectory(t *testing.T) {
+	h := testDockerHarness(t)
+	l, _, work := testDockerLauncher(t, h, "spinloop/agent:test")
+
+	itemDir := filepath.Join(work, "a")
+	if err := os.MkdirAll(itemDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	logPath := filepath.Join(work, "a.log")
+	// runDockerContainer itself opens and writes logPath; the fake run
+	// seam does not, so this stands in for the container's own output.
+	if err := os.WriteFile(logPath, []byte("the container's output"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	item := Item{ID: "a", Instructions: "do a", Dir: itemDir}
+	child, err := l.Launch(item, runningNode("n", "org/model", nil), logPath)
+	if err != nil {
+		t.Fatalf("Launch: %v", err)
+	}
+	if err := child.Wait(); err != nil {
+		t.Fatalf("Wait: %v", err)
+	}
+
+	copied, err := os.ReadFile(ItemLogFile(itemDir))
+	if err != nil {
+		t.Fatalf("the item's own directory should carry a copy of the log: %v", err)
+	}
+	if string(copied) != "the container's output" {
+		t.Errorf("the copy should match the canonical log, got %q", copied)
+	}
+}
+
 func TestDockerLaunch_ABaseDirResolvesTheItemsRelativeDirectory(t *testing.T) {
 	h := testDockerHarness(t)
 	l, rec, work := testDockerLauncher(t, h, "spinloop/agent:test")

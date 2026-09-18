@@ -238,7 +238,7 @@ func (l *dockerLauncher) Launch(item Item, node Node, logPath string) (Child, er
 	if err != nil {
 		return nil, fmt.Errorf("item %q: %v", item.ID, err)
 	}
-	return wrapChild(child, l.harnessConfig), nil
+	return withItemLogCopy(wrapChild(child, l.harnessConfig), logPath, ItemLogFile(plan.dir)), nil
 }
 
 // dockerContainerName is the container name a launch runs under: unique

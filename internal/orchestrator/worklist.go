@@ -507,13 +507,17 @@ func (w *WorkList) Remove(id string) error {
 	w.log.Info("item removed", slog.String("item", id))
 	// The kept output goes with it; an item that wrote none has no file.
 	os.Remove(w.store.LogPath(id))
+	dir := ResolveItemDir(w.baseDir, removed.Dir)
 	// The docker backend's scoped config goes with it too — a config
 	// subdirectory of the item's own directory, left behind by the item's
 	// workspace subdirectory, which is not the orchestrator's to remove. A
 	// bare-backend item, or one the docker backend never launched, has no
 	// config directory — RemoveAll of one that is not there is a silent
 	// no-op.
-	os.RemoveAll(ItemConfigDir(ResolveItemDir(w.baseDir, removed.Dir)))
+	os.RemoveAll(ItemConfigDir(dir))
+	// The item's own copy of its log goes with it too, the same as the
+	// canonical one beside the items file; an item never launched has none.
+	os.Remove(ItemLogFile(dir))
 	return nil
 }
 

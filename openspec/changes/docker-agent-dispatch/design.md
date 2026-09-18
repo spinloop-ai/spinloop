@@ -308,6 +308,30 @@ outcome — that is the harness's exit code (or the sentinel), not
 shutdown's — but is visible in the kept log the way shutdown's output
 always is, so a broken teardown is not silent.
 
+### A second copy of the log, written once, not streamed
+
+`Child` gains a decorator, `logCopyChild` (`state.go`, alongside
+`ItemLogFile`), the same shape as `sentinelChild`: its `Wait` calls
+through, then copies the canonical log (`logPath`) into
+`ItemLogFile(plan.dir)` — a plain read then write, not a live mirror. Both
+`Dispatcher.Launch` and `dockerLauncher.Launch` wrap the child in it,
+outside `wrapChild`, so the copy runs regardless of whether a lifecycle
+wrapper is in play.
+
+A live mirror — writing both files as the agent's own output arrives —
+was rejected: `startChild` and `runDockerContainer` currently pass the
+opened log file straight to `cmd.Stdout`/`cmd.Stderr`, letting `exec`
+`dup` the descriptor into the child and let the parent close its own copy
+immediately (the "the child holds its own copy of the handle" comment
+each already carries). Writing to two files at once means an
+`io.MultiWriter` instead, which `exec` cannot `dup` — it falls back to a
+pipe and a copying goroutine per stream, keeping both file handles open
+for the launch's own lifetime rather than closed the moment the child
+starts. That is a real complication — tracking the handles on `procChild`
+and `dockerChild`, closing them only after `Wait` returns — for a copy
+`work logs`/the API never read from live in the first place; a
+post-`Wait` copy gets the same end state with none of it.
+
 ### gh in the image, opencode and Pi's own tool config untouched
 
 `gh` is installed alongside opencode and Pi in the Dockerfile

@@ -743,6 +743,39 @@ func TestDispatch_RunsTheAgentOneShotInTheItemsWorkspaceDirectory(t *testing.T) 
 	}
 }
 
+func TestDispatch_TheKeptLogIsAlsoCopiedToTheItemsOwnDirectory(t *testing.T) {
+	work := t.TempDir()
+	t.Setenv("OPENAI_API_KEY", "")
+	bin := stubAgent(t)
+
+	h := &fakeHarness{name: "opencode", bin: bin}
+	d := NewDispatcher(h, "http://gateway:4000", "the-token", false)
+	logPath := filepath.Join(work, "a.log")
+	child, err := d.Launch(
+		Item{ID: "a", Instructions: "fix the parser", Dir: work},
+		runningNode("gpu-a", "org/model", nil),
+		logPath,
+	)
+	if err != nil {
+		t.Fatalf("the launch should succeed: %v", err)
+	}
+	if err := child.Wait(); err != nil {
+		t.Fatalf("the agent should end cleanly: %v", err)
+	}
+
+	canonical, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	copied, err := os.ReadFile(ItemLogFile(work))
+	if err != nil {
+		t.Fatalf("the item's own directory should carry a copy of the log: %v", err)
+	}
+	if string(copied) != string(canonical) {
+		t.Errorf("the item directory's copy should match the canonical log, got %q, want %q", copied, canonical)
+	}
+}
+
 func TestDispatch_ABaseDirResolvesTheItemsRelativeDirectory(t *testing.T) {
 	base := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(base, "parser"), 0o755); err != nil {

@@ -86,13 +86,19 @@ And inside each item's own directory (`dir` in the items file):
 ```
 <dir>/workspace/      the harness's own working directory
 <dir>/config/         under --dispatch docker: one item's scoped config, while it runs
+<dir>/log             a second copy of the item's kept output, written once the agent ends
 ```
 
 `workspace/` is created on every launch, under either backend, if it is not
 already there; the operator's own files elsewhere in `dir` are left alone.
 `config/` only appears under the docker backend, and only while the item
-runs — `work remove` takes it out with the item's kept output, the same as
-the log.
+runs. `log` is a static copy, not a live one: `work logs`/the work list API
+read the canonical copy beside the items file, which streams while the
+agent runs; `<dir>/log` is written once the agent ends, so the item's own
+directory carries everything about its launch on its own. `work remove`
+takes both `config/` and `log` out with the item's kept output —
+`workspace/` is left alone, since it can hold real output an operator
+wants to keep.
 
 The state holds each item's `running`/`done`/`failed` record — the node a
 running one is on, the reason a failed one failed — and an item with no entry

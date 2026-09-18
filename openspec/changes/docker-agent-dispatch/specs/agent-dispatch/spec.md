@@ -275,3 +275,17 @@ in the order they ran: startup's, then the harness's, then shutdown's.
 - **WHEN** harness.yaml names a startup or shutdown script
 - **THEN** the script's own output is in the item's kept log, in the order
   it ran relative to the harness's own output
+
+### Requirement: An item's own copy of its log
+
+Once an admitted item's agent has ended — whatever the outcome — its kept
+log SHALL also be copied into the item's own directory, under both
+backends alike. This copy is not live: while the agent runs, the item's
+kept log beside the items file is the one that streams; the item
+directory's own copy is written once, after the agent ends.
+
+#### Scenario: The log is copied once the agent ends
+
+- **WHEN** an admitted item's agent ends, under either backend
+- **THEN** the item's own directory carries a copy of the item's kept
+  log, matching it

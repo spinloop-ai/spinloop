@@ -155,6 +155,12 @@
   per-launch config directory out with the item's kept output — verify
   with a test asserting the directory is gone after a remove, the way the
   log file already is
+- [x] 7.2 Add `ItemLogFile` and a `Child` decorator (`logCopyChild`) that
+  copies the canonical log into it once `Wait` returns, wrapped around the
+  child both `Dispatcher.Launch` and `dockerLauncher.Launch` return; `work
+  remove` takes the copy out too — verify with a test per backend
+  asserting the item directory's copy matches the canonical log after
+  `Wait`, and one asserting `work remove` takes it out
 
 ## 8. Documentation and the spec
 

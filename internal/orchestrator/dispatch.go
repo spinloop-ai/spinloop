@@ -273,7 +273,7 @@ func (d *Dispatcher) Launch(item Item, node Node, logPath string) (Child, error)
 	if err != nil {
 		return nil, err
 	}
-	return wrapChild(child, d.harnessConfig), nil
+	return withItemLogCopy(wrapChild(child, d.harnessConfig), logPath, ItemLogFile(plan.dir)), nil
 }
 
 // startChild begins the agent as this process's child: its own process
