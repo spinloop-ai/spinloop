@@ -171,7 +171,7 @@ process environment or in a `.env` beside the fleet file.
 
 Callers present the gateway's token as a bearer token on every request — a
 wrong or missing one is a `401`. The token comes from one of three places, the
-same rules the [daemon's](serve.md#the-control-api---api-and-spinloop-daemon)
+same rules the [daemon's](serve.md#the-control-api-api-and-spinloop-daemon)
 token follows, and giving two at once is an error rather than a silent
 precedence:
 
@@ -201,7 +201,8 @@ on a shared machine wants, and the reason the token is not optional there.
 
 - [`spinloop fleet`](fleet.md) — the file the gateway serves, and the nodes it
   drives
-- [`spinloop daemon`](serve.md#the-control-api---api-and-spinloop-daemon) — what
+- [`spinloop daemon`](serve.md#the-control-api-api-and-spinloop-daemon) — what
   each node runs
- - [`examples/gateway-docker/`](../../examples/gateway-docker/) — a gateway and
-   its fleet in containers, with the test suite that asserts all of this
+ - [`examples/gateway-docker/`](https://github.com/spinloop-ai/spinloop/tree/main/examples/gateway-docker)
+   — a gateway and its fleet in containers, with the test suite that asserts
+   all of this

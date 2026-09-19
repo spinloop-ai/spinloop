@@ -325,12 +325,16 @@ from disk — or leave it out and let `SPINLOOP_ALIAS` name one.
 
 ## Documentation
 
-The [`docs/`](docs/) directory is the user manual:
+The site is at [docs.spinloop.ai](https://docs.spinloop.ai); the source is the
+[`docs/`](docs/) directory, built with MkDocs Material (`scripts/docs-serve.sh`
+serves it locally).
 
 - [Getting started](docs/getting-started.md) — install to launched agent, end
   to end
+- [Guides](docs/index.md#where-next) — local serving, opening the agent,
+  daemon nodes, cloud deployment, fleets, and the gateway
 - [The `Spinloop` file](docs/spinloop-file.md) — full syntax and examples
-- [Command reference](docs/README.md#commands) — a page per command, under
+- [Command reference](docs/commands/index.md) — a page per command, under
   [`docs/commands/`](docs/commands/)
 
 ## Harnesses
@@ -741,7 +745,7 @@ SPINLOOP_PROVIDERS=providers.yaml spinloop provider list
 The flag wins, then the environment variable, then the catalogue built into the
 binary. See [`spinloop provider init`](docs/commands/provider.md#spinloop-provider-init) for the
 file's shape — or, to contribute the provider back so everyone gets it,
-[Development](docs/development.md#adding-a-provider-or-model).
+[Development](docs/maintainer/development.md#adding-a-provider-or-model).
 
 ## Development
 
@@ -752,14 +756,14 @@ go build -o spinloop ./cmd/spinloop
 go test ./...
 ```
 
-[`docs/development.md`](docs/development.md) has the rest: how the packages are
-laid out, and the full set of checks.
+[`docs/maintainer/development.md`](docs/maintainer/development.md) has the
+rest: how the packages are laid out, and the full set of checks.
 
 ## Contributing
 
 Issues and pull requests are welcome. Adding a provider, adding another harness,
 and what a change needs before it can be merged are all covered in
-[`docs/development.md`](docs/development.md).
+[`docs/maintainer/development.md`](docs/maintainer/development.md).
 
 ## License
 

@@ -9,3 +9,4 @@ remote/.env
 **/.env
 *.log
 spinloop
+site

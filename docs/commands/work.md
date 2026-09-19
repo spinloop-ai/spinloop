@@ -160,7 +160,7 @@ Where neither token flag is given, the token comes from the
 
 ## See also
 
-- [Working a backlog against the fleet](../work-items.md) — the feature this
+- [Working a backlog against the fleet](../guides/work-items.md) — the feature this
   command family drives
 - [`spinloop orchestrator`](orchestrator.md) — the run the commands talk to,
   and the [work list API](orchestrator.md#the-work-list-api) they call

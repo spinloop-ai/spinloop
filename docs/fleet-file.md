@@ -1,7 +1,7 @@
 # The `fleet.yaml` file
 
 A **fleet file** is the `fleet.yaml` that names the machines you run — and how
-to reach each one's [`spinloop daemon`](commands/serve.md#the-control-api---api-and-spinloop-daemon) —
+to reach each one's [`spinloop daemon`](commands/serve.md#the-control-api-api-and-spinloop-daemon) —
 so [`spinloop fleet`](commands/fleet.md) can observe and drive them all from one
 place, and [`spinloop harness open`](commands/harness.md#launching-against-your-fleet)
 can pick one of them for you. Like a [Spinloop](spinloop-file.md), it is a small
@@ -129,8 +129,8 @@ creates it from the fleet file itself — and never stored in the fleet file. So
 daemon and an environment sit side by side as the same kind of row, and an
 environment that has not been deployed yet shows as `config-error` on its row
 rather than blanking the fleet. See
-[`examples/fleet-remote`](../examples/fleet-remote/README.md) and
-[`examples/fleet-mixed`](../examples/fleet-mixed/README.md).
+[`examples/fleet-remote`](https://github.com/spinloop-ai/spinloop/blob/main/examples/fleet-remote/README.md) and
+[`examples/fleet-mixed`](https://github.com/spinloop-ai/spinloop/blob/main/examples/fleet-mixed/README.md).
 
 A `kind: remote` node may also name the EC2 instance type its environment
 launches as, with `instance-type` (a family and size separated by a dot, e.g.
@@ -421,12 +421,12 @@ nothing shows up per node when a command needs it, as described under
 
 Fleet files, each with a walkthrough:
 
-- [`examples/fleet-local/`](../examples/fleet-local/) — a fleet of one, on your own machine
-- [`examples/fleet/`](../examples/fleet/) — a small LAN fleet, all defaults
-- [`examples/fleet-docker/`](../examples/fleet-docker/) — a runnable multi-node fleet in containers
-- [`examples/fleet-remote/`](../examples/fleet-remote/) — a fleet of cloud environments
-- [`examples/fleet-mixed/`](../examples/fleet-mixed/) — daemons and environments side by side
-- [`examples/gateway-docker/`](../examples/gateway-docker/) — a fleet behind its gateway
+- [`examples/fleet-local/`](https://github.com/spinloop-ai/spinloop/tree/main/examples/fleet-local) — a fleet of one, on your own machine
+- [`examples/fleet/`](https://github.com/spinloop-ai/spinloop/tree/main/examples/fleet) — a small LAN fleet, all defaults
+- [`examples/fleet-docker/`](https://github.com/spinloop-ai/spinloop/tree/main/examples/fleet-docker) — a runnable multi-node fleet in containers
+- [`examples/fleet-remote/`](https://github.com/spinloop-ai/spinloop/tree/main/examples/fleet-remote) — a fleet of cloud environments
+- [`examples/fleet-mixed/`](https://github.com/spinloop-ai/spinloop/tree/main/examples/fleet-mixed) — daemons and environments side by side
+- [`examples/gateway-docker/`](https://github.com/spinloop-ai/spinloop/tree/main/examples/gateway-docker) — a fleet behind its gateway
 
 ## See also
 

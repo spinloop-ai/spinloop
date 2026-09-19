@@ -1,0 +1,80 @@
+/* spinloop brand tokens, sampled from the logo: a near-black ground, a mint
+   accent, a geometric wordmark. Mirrors the tokens in the web project's
+   global.css — re-tint the site by changing one line.
+    Loaded after Material's own stylesheets (extra_css), so the
+   [data-md-color-scheme=slate] block below wins over the theme's values:
+   it targets the same element the theme's palette rules do, later in the
+   cascade. */
+:root {
+  --accent: #1de2ad;
+
+  --bg: #06080a;
+  --panel: #0c1013;
+  --line: #1a2228;
+  --line-soft: #131a1f;
+
+  --ink: #eef3f2;
+  --ink-2: #9aa7ac;
+  --ink-3: #7c8b94;
+
+  /* terminal state colours are not part of the site palette; they mirror
+     what the CLI prints and stay inside code blocks only. */
+  --term-fg: #c4d0d4;
+  --term-bg: #040607;
+
+  /* the display face, applied to headings below */
+  --display: "Poppins", "Avenir Next", "Century Gothic", sans-serif;
+}
+
+[data-md-color-scheme=slate] {
+  /* The primary is a surface, not a colour: the header is near-black, and
+     the accent does the pointing. */
+  --md-primary-fg-color: var(--panel);
+  --md-primary-fg-color--light: var(--line-soft);
+  --md-primary-fg-color--dark: var(--ink);
+  --md-primary-bg-color: var(--ink);
+  --md-primary-bg-color--light: var(--ink-2);
+  --md-primary-bg-color--dark: var(--bg);
+
+  --md-accent-fg-color: var(--accent);
+
+  --md-default-bg-color: var(--bg);
+  --md-default-bg-color--light: var(--panel);
+  --md-default-bg-color--dark: var(--term-bg);
+
+  --md-default-fg-color: var(--ink);
+  --md-default-fg-color--light: var(--ink-2);
+  --md-default-fg-color--dark: var(--ink-3);
+
+  --md-code-bg-color: var(--term-bg);
+  --md-code-fg-color: var(--term-fg);
+
+  --md-typeset-a-color: var(--accent);
+  --md-typeset-color: var(--ink);
+  --md-typeset-table-color: var(--line);
+  --md-typeset-table-color--light: var(--line-soft);
+
+  --md-footer-bg-color: var(--term-bg);
+  --md-footer-bg-color--dark: var(--bg);
+}
+
+/* The display face is for headings only; the body face never stands in for
+   it and vice versa. */
+.md-typeset h1,
+.md-typeset h2,
+.md-typeset h3 {
+  font-family: var(--display);
+  font-weight: 600;
+  letter-spacing: -0.028em;
+}
+
+/* Inline code chips sit on a barely-lifted step; blocks go to the terminal
+   ground. :not(pre) keeps block code on its own background. */
+.md-typeset :not(pre) > code:not([class]) {
+  background-color: #0b1116;
+}
+
+/* Focus and selection carry the accent, the way the CLI's selection does. */
+::selection {
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
+}

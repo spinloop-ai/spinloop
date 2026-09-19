@@ -1,7 +1,8 @@
 # Implementation notes
 
-This is maintainer reference, not a user guide (see [`docs/README.md`](README.md)
-for that) and not a behavior spec (see `openspec/specs/` for that — the
+This is maintainer reference, not a user guide (see the [documentation
+index](../index.md) for that) and not a behavior spec (see `openspec/specs/`
+for that — the
 requirements below are already covered there). It's the gotchas and
 cross-cutting rationale worth knowing before you touch the code, that don't
 fit either of those.
