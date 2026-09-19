@@ -5,7 +5,7 @@ absorb. The orchestrator holds the backlog, reads the fleet's topology from
 the fleet's [gateway](gateway.md), admits an item while the fleet's declared
 [concurrency](fleet.md#concurrency) limits allow, and runs each admitted item
 as a one-shot agent of the [active harness](harness.md) in the item's own
-directory — the agent's inference going through that same gateway.
+workspace directory — the agent's inference going through that same gateway.
 
 ```sh
 spinloop orchestrator
@@ -36,8 +36,8 @@ reaches each agent as its key.
 
 ## The items file
 
-A list of items, each with an id, the instructions its agent is given, and the
-directory the agent works in:
+A list of items, each with an id, the instructions its agent is given, and its
+own directory:
 
 ```yaml
 - id: fix-the-parser
@@ -54,9 +54,11 @@ directory the agent works in:
 
 - **`id`** — unique in the file; the state and the per-item log are keyed by it.
 - **`instructions`** — the task the agent is given, whole.
-- **`dir`** — the working directory the agent runs in. A missing directory
-  fails that item and only that item; the rest of the backlog goes on. With
-  `--create-item-dirs`, the orchestrator creates a missing directory instead.
+- **`dir`** — the item's own directory: everything the orchestrator keeps
+  about that item's launch lives under it (see [What it
+  keeps](#what-it-keeps)). A missing directory fails that item and only that
+  item; the rest of the backlog goes on. With `--create-item-dirs`, the
+  orchestrator creates a missing directory instead.
 - **`priority`** — an integer, higher first; items of one rank go in file
   order.
 - **`tags`** — `key=value` pairs naming the [tags](fleet.md#tags) of the nodes
@@ -69,7 +71,7 @@ backlog, and an item dropped from the file keeps its recorded end.
 
 ## What it keeps
 
-Beside the items file, and only beside it:
+Beside the items file:
 
 ```
 work.yaml            the items
@@ -78,6 +80,25 @@ work.yaml.lock       what keeps a second orchestrator off the file
 work.yaml.logs/      one log per item, its agent's output
 work.yaml.aborts/    the abort markers left beside the file, while they stand
 ```
+
+And inside each item's own directory (`dir` in the items file):
+
+```
+<dir>/workspace/      the harness's own working directory
+<dir>/config/         under --dispatch docker: one item's scoped config, while it runs
+<dir>/log             a second copy of the item's kept output, written once the agent ends
+```
+
+`workspace/` is created on every launch, under either backend, if it is not
+already there; the operator's own files elsewhere in `dir` are left alone.
+`config/` only appears under the docker backend, and only while the item
+runs. `log` is a static copy, not a live one: `work logs`/the work list API
+read the canonical copy beside the items file, which streams while the
+agent runs; `<dir>/log` is written once the agent ends, so the item's own
+directory carries everything about its launch on its own. `work remove`
+takes both `config/` and `log` out with the item's kept output —
+`workspace/` is left alone, since it can hold real output an operator
+wants to keep.
 
 The state holds each item's `running`/`done`/`failed` record — the node a
 running one is on, the reason a failed one failed — and an item with no entry
@@ -164,12 +185,19 @@ API's token never reaches a node or an agent.
 ## How an item runs
 
 An admitted item is launched as the harness's non-interactive single-task
-form — `opencode run` or `pi --print` — in the item's directory. The model it
+form — `opencode run` or `pi --print` — in the item's workspace directory
+(`<dir>/workspace/`, see [What it keeps](#what-it-keeps)). The model it
 runs against is the gateway and the chosen node: the node's model, under a
 provider the orchestrator writes into the harness config for the run, with the
 gateway's OpenAI-compatible address as the base URL — its address plus `/v1`
 where it names none — and the gateway's token as the key. A
 harness with no single-task form — lucinate — is refused at startup, naming it.
+
+opencode's launch carries `--auto`: with no terminal for a permission prompt
+to reach, one otherwise blocks the item forever, or is auto-rejected off a
+terminal, silently stopping the agent from doing the item's own work. Every
+one-shot launch trusts every tool the item's instructions call for — there is
+no way, at dispatch time, to know which ones it will need.
 
 The node an item takes is the fleet's own routing, read through the gateway:
 an item matches a node only where every tag it names is one the node carries;
@@ -177,6 +205,90 @@ a node already running and answering is offered before a node the run would
 have to start, and among a tier the fleet file's `prefer` ranks them. A
 stopped node is an option only where the fleet file
 [wakes](fleet.md#waking).
+
+### Where an item's agent runs: `--dispatch`
+
+`--dispatch` chooses how an admitted item's agent actually runs, for the
+whole run — not per node, not per item:
+
+- **`bare`** (the default) — a process on the orchestrator's own host, in
+  its own process group, the harness's config the host's own — exactly
+  what running spinloop directly has always done.
+- **`docker`** — a container from the official spinloop agent image
+  (opencode, Pi and `gh`), on its own network. A gateway bound to the
+  orchestrator host's own loopback (`localhost`, `127.0.0.1` — what a
+  gateway run on the same machine usually is) reaches the container by
+  `host.docker.internal` instead: nothing to change in the fleet file or
+  `--gateway`, and no reliance on a Docker Desktop setting most operators
+  do not have on for `--network host` to reach the real host on macOS or
+  Windows. A gateway already on a routable address is unaffected. The
+  container mounts the item's own `workspace/` and `config/` directories
+  (see [What it keeps](#what-it-keeps)) — the config scoped to that one
+  launch alone, never the host's own harness config, carrying just the
+  provider this launch needs. `docker version` is checked once, at
+  startup: an unreachable daemon stops the command before it works an
+  item, naming the fix. `--dispatch-image` names the image to run,
+  defaulting to `ghcr.io/spinloop-ai/agent:<spinloop's own version>` — the
+  image built alongside that release.
+
+[`harness.yaml`](#harnessyaml-environment-and-lifecycle-scripts) can also
+name the backend, with `dispatch:` — useful for keeping the choice with
+the rest of an item's environment rather than in a wrapper script that
+adds the flag. An explicit `--dispatch` on the command line wins over it.
+
+Stopping an item — an abort, or the run's own clean interrupt — stops
+either the same way: the polite signal first, then, where the grace runs
+out, the hard end. See [`images/agent/README.md`](../../images/agent/README.md)
+for what the official image carries.
+
+## `harness.yaml`: environment and lifecycle scripts
+
+Beyond the fleet file and the flags, an operator can shape the environment
+an item's agent runs in without building a new image: `harness.yaml`,
+found beside the items file by default, or named with
+`--harness-config <path>`. Where neither is present, nothing changes.
+
+```yaml
+dispatch: docker
+harness: opencode
+baseDir: ../work
+env:
+  GH_TOKEN: ghp_...
+  SOME_TOOL_FLAG: "1"
+startup: |
+  git config --global user.email "agent@example.com"
+  git config --global user.name "Agent"
+shutdown: |
+  echo "item finished" >> /tmp/agent-activity.log
+```
+
+- **`dispatch`** — the backend the run uses, `bare` or `docker`, the way
+  `--dispatch` does. An explicit `--dispatch` wins over it; where the flag
+  is not given, this is the run's choice.
+- **`harness`** — the harness the run uses, the way `--harness`/`-H` does.
+  An explicit `--harness` wins over it; where the flag is not given, this
+  is tried before the `HARNESS` environment variable and the stored
+  preference (`spinloop harness use`).
+- **`baseDir`** — the directory an item's own relative `dir` (see [The
+  items file](#the-items-file)) resolves against, in place of the
+  directory the orchestrator command happens to be started from. An
+  item's `dir` that is already absolute is unaffected. A relative
+  `baseDir` resolves against `harness.yaml`'s own directory, so the file
+  stays portable together with the items it describes.
+- **`env`** — a map added to every launch's environment, under either
+  backend. An entry naming the same variable the gateway's token is
+  presented under is refused, naming it, before the command works an item.
+- **`startup`** — a shell script run before the harness, in the item's
+  workspace directory, under the launch's full environment. A startup
+  script that exits non-zero fails the item, naming the script, before the
+  harness ever runs.
+- **`shutdown`** — a shell script run once the harness has ended —
+  cleanly, failed, or aborted alike — provided a startup script ran at
+  all. An abort's own answer waits for it, bound by the same grace the
+  harness's own stop already has.
+
+Both scripts' output joins the harness's own in the item's kept log, in
+the order they ran: startup's, then the harness's, then shutdown's.
 
 ## What it does not do
 
@@ -210,6 +322,9 @@ stopped node is an option only where the fleet file
 | `--api-token <value>` | The work list API's bearer token |
 | `-H`, `--harness <name>` | Which harness to run the agents with (default the resolved one) |
 | `--log-level` | `debug`, `info`, `warn`, or `error` — overrides `SPINLOOP_LOG_LEVEL` (default `info`) |
+| `--dispatch <backend>` | How an admitted item's agent runs: `bare` (default) or `docker` |
+| `--dispatch-image <ref>` | The agent image the docker backend runs (default `ghcr.io/spinloop-ai/agent:<spinloop's version>`); only meaningful with `--dispatch docker` |
+| `--harness-config <path>` | The `harness.yaml` to read (default: one beside the items file, where it exists) |
 
 ## See also
 

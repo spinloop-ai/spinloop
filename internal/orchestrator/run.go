@@ -12,12 +12,12 @@ var stopGrace = 5 * time.Second
 
 // Config is what the loop runs on: the gateway it names in its failures,
 // the items file it works, the gateway it reads the fleet from, and the
-// dispatcher that launches admitted items.
+// launcher that starts an admitted item's harness.
 type Config struct {
 	Gateway    string
 	ItemsPath  string
 	Topologist Topologist
-	Dispatcher *Dispatcher
+	Dispatcher Launcher
 	// Tick is how often the loop re-reads the topology and the items file;
 	// zero takes the default.
 	Tick time.Duration

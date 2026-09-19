@@ -409,6 +409,14 @@ func TestComplete_FlagValues(t *testing.T) {
 	if _, directive := complete(t, "orchestrator", "--fleet", ""); directive != directiveFile {
 		t.Errorf("orchestrator --fleet should complete paths, got %q", directive)
 	}
+	// --harness-config names a file too.
+	if _, directive := complete(t, "orchestrator", "--harness-config", ""); directive != directiveFile {
+		t.Errorf("orchestrator --harness-config should complete paths, got %q", directive)
+	}
+	// --dispatch offers the two backends.
+	if got, _ := complete(t, "orchestrator", "--dispatch", ""); !hasAll(got, "bare", "docker") {
+		t.Errorf("orchestrator --dispatch: bare/docker missing from %v", got)
+	}
 	if got, _ := complete(t, "completion", ""); !hasAll(got, "bash", "zsh", "powershell") {
 		t.Errorf("shells missing from %v", got)
 	}

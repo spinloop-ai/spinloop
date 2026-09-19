@@ -2,6 +2,8 @@ package harness
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 
 	"github.com/spinloop-ai/spinloop/internal/catalog"
 	"github.com/spinloop-ai/spinloop/internal/contextsize"
@@ -31,10 +33,13 @@ func (opencodeHarness) Command() string { return "opencode" }
 
 func (opencodeHarness) ConfigPath() (string, error) { return opencode.ResolveConfigFile() }
 
-func (opencodeHarness) Apply(p *catalog.Provider, sel spinloop.Selection, contextWindow, outputTokens int, setDefaultModel bool, resolve func(string) string) (Summary, error) {
+// opencodeBlock builds the provider block and default model Apply and
+// RenderProviderConfig both write, applying the display name, context
+// limits and discovered models a selection carries.
+func opencodeBlock(p *catalog.Provider, sel spinloop.Selection, contextWindow, outputTokens int, setDefaultModel bool, resolve func(string) string) (map[string]any, string, error) {
 	block, defaultModel, err := catalog.BuildProviderBlock(sel.Provider, p, modelKey(sel), sel.BaseURL, resolve)
 	if err != nil {
-		return Summary{}, err
+		return nil, "", err
 	}
 	if !setDefaultModel {
 		defaultModel = ""
@@ -66,6 +71,14 @@ func (opencodeHarness) Apply(p *catalog.Provider, sel spinloop.Selection, contex
 			}
 		}
 		block["models"] = models
+	}
+	return block, defaultModel, nil
+}
+
+func (opencodeHarness) Apply(p *catalog.Provider, sel spinloop.Selection, contextWindow, outputTokens int, setDefaultModel bool, resolve func(string) string) (Summary, error) {
+	block, defaultModel, err := opencodeBlock(p, sel, contextWindow, outputTokens, setDefaultModel, resolve)
+	if err != nil {
+		return Summary{}, err
 	}
 
 	configFile, err := opencode.ResolveConfigFile()
@@ -117,6 +130,27 @@ func (opencodeHarness) State() (map[string]ProviderState, string, error) {
 	return out, defaultModel, nil
 }
 
+// RenderProviderConfig builds the same block Apply would and writes it to a
+// path inside a fresh temp directory rather than ConfigPath() — a path
+// WriteConfig has never seen merges into nothing, so the bytes read back
+// carry this provider alone.
+func (opencodeHarness) RenderProviderConfig(p *catalog.Provider, sel spinloop.Selection, resolve func(string) string) ([]byte, error) {
+	block, defaultModel, err := opencodeBlock(p, sel, 0, 0, false, resolve)
+	if err != nil {
+		return nil, err
+	}
+	dir, err := os.MkdirTemp("", "spinloop-opencode-render-*")
+	if err != nil {
+		return nil, err
+	}
+	defer os.RemoveAll(dir)
+	path := filepath.Join(dir, "opencode.json")
+	if err := opencode.WriteConfig(path, sel.Provider, block, defaultModel); err != nil {
+		return nil, err
+	}
+	return os.ReadFile(path)
+}
+
 // piHarness configures the Pi coding agent via ~/.pi/agent/models.json.
 type piHarness struct{}
 
@@ -126,10 +160,12 @@ func (piHarness) Command() string { return "pi" }
 
 func (piHarness) ConfigPath() (string, error) { return pi.ConfigPath() }
 
-func (piHarness) Apply(p *catalog.Provider, sel spinloop.Selection, contextWindow, outputTokens int, setDefaultModel bool, resolve func(string) string) (Summary, error) {
+// piProvider builds the provider Apply and RenderProviderConfig both write,
+// adding the discovered models a selection with no model or alias carries.
+func piProvider(p *catalog.Provider, sel spinloop.Selection, resolve func(string) string) (catalog.PiProvider, string, error) {
 	prov, defaultModel, err := catalog.BuildPiProvider(sel.Provider, p, modelKey(sel), sel.BaseURL, resolve)
 	if err != nil {
-		return Summary{}, err
+		return catalog.PiProvider{}, "", err
 	}
 	// DiscoveredModels is set only when the selection named no model or alias
 	// to route by, in which case BuildPiProvider above added no model at all —
@@ -144,6 +180,14 @@ func (piHarness) Apply(p *catalog.Provider, sel spinloop.Selection, contextWindo
 				prov.Models = append(prov.Models, catalog.PiModel{ID: id})
 			}
 		}
+	}
+	return prov, defaultModel, nil
+}
+
+func (piHarness) Apply(p *catalog.Provider, sel spinloop.Selection, contextWindow, outputTokens int, setDefaultModel bool, resolve func(string) string) (Summary, error) {
+	prov, defaultModel, err := piProvider(p, sel, resolve)
+	if err != nil {
+		return Summary{}, err
 	}
 	if err := pi.Write(sel.Provider, prov, contextWindow, outputTokens); err != nil {
 		return Summary{}, err
@@ -185,6 +229,30 @@ func (piHarness) State() (map[string]ProviderState, string, error) {
 		out[id] = ProviderState{ModelKeys: st.ModelKeys, BaseURL: st.BaseURL, Contexts: st.Contexts, Outputs: st.Outputs}
 	}
 	return out, "", nil
+}
+
+// RenderProviderConfig builds the same provider Apply would and writes it
+// to a path inside a fresh temp directory rather than ConfigPath() — a
+// path Write has never seen merges into nothing, so the bytes read back
+// carry this provider alone.
+func (piHarness) RenderProviderConfig(p *catalog.Provider, sel spinloop.Selection, resolve func(string) string) ([]byte, error) {
+	prov, _, err := piProvider(p, sel, resolve)
+	if err != nil {
+		return nil, err
+	}
+	dir, err := os.MkdirTemp("", "spinloop-pi-render-*")
+	if err != nil {
+		return nil, err
+	}
+	defer os.RemoveAll(dir)
+	path := filepath.Join(dir, "models.json")
+	// contextWindow/outputTokens are 0 here the way a dispatch's Apply call
+	// already passes 0: a one-shot launch names its model, not a context
+	// override.
+	if err := pi.WriteTo(path, sel.Provider, prov, 0, 0); err != nil {
+		return nil, err
+	}
+	return os.ReadFile(path)
 }
 
 // lucinateHarness configures the lucinate chat client via

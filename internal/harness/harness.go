@@ -74,6 +74,20 @@ type Harness interface {
 	State() (providers map[string]ProviderState, defaultModel string, err error)
 }
 
+// ConfigRenderer is a Harness whose provider config can be rendered fresh —
+// carrying one provider and nothing merged in from any existing file. It is
+// what a scoped, per-launch config (the docker dispatch backend's) is built
+// from, so it is a separate interface from Harness rather than a method
+// every harness must have: lucinate has no one-shot form (see
+// dispatch.oneShot), so the orchestrator never dispatches it under any
+// backend, and there is nothing for it to render.
+type ConfigRenderer interface {
+	// RenderProviderConfig returns a fresh config file's bytes, carrying
+	// only this one provider selection — the same content Apply would
+	// write were ConfigPath() empty, without writing it there.
+	RenderProviderConfig(p *catalog.Provider, sel spinloop.Selection, resolve func(string) string) ([]byte, error)
+}
+
 // registry holds the available harnesses by name.
 var registry = map[string]Harness{
 	"opencode": opencodeHarness{},

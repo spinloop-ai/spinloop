@@ -251,7 +251,7 @@ func TestIntegration_ItemsTakeTheNodeTheFleetShapes(t *testing.T) {
 			t.Fatalf("the clean interrupt should end the run without an error, got %v", err)
 		}
 
-		args, err := os.ReadFile(filepath.Join(workdir, "args.txt"))
+		args, err := os.ReadFile(filepath.Join(ItemWorkspaceDir(workdir), "args.txt"))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -285,7 +285,7 @@ func TestIntegration_ItemsTakeTheNodeTheFleetShapes(t *testing.T) {
 			t.Fatalf("the clean interrupt should end the run without an error, got %v", err)
 		}
 
-		args, err := os.ReadFile(filepath.Join(workdir, "args.txt"))
+		args, err := os.ReadFile(filepath.Join(ItemWorkspaceDir(workdir), "args.txt"))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -320,7 +320,7 @@ func TestIntegration_ItemsTakeTheNodeTheFleetShapes(t *testing.T) {
 				t.Fatalf("the clean interrupt should end the run without an error, got %v", err)
 			}
 
-			args, err := os.ReadFile(filepath.Join(workdir, "args.txt"))
+			args, err := os.ReadFile(filepath.Join(ItemWorkspaceDir(workdir), "args.txt"))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -348,7 +348,7 @@ func TestIntegration_ItemsTakeTheNodeTheFleetShapes(t *testing.T) {
 			if st := readState(t, itemsPath).Items["a"]; st.State != "" {
 				t.Fatalf("with the fleet's wake off the item should wait, got %s", st.State)
 			}
-			if _, err := os.ReadFile(filepath.Join(workdir, "args.txt")); !os.IsNotExist(err) {
+			if _, err := os.ReadFile(filepath.Join(ItemWorkspaceDir(workdir), "args.txt")); !os.IsNotExist(err) {
 				t.Errorf("with the fleet's wake off the item should not be launched")
 			}
 			cancel()
@@ -387,7 +387,7 @@ func TestIntegration_ItemsTakeTheNodeTheFleetShapes(t *testing.T) {
 		if err := <-done; err != nil {
 			t.Fatalf("the clean interrupt should end the run without an error, got %v", err)
 		}
-		args, err := os.ReadFile(filepath.Join(workdir, "args.txt"))
+		args, err := os.ReadFile(filepath.Join(ItemWorkspaceDir(workdir), "args.txt"))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -488,7 +488,7 @@ func TestIntegration_TheLifecycleEndsTheSpecSays(t *testing.T) {
 		if err := <-done; err != nil {
 			t.Fatalf("the clean interrupt should end the run without an error, got %v", err)
 		}
-		if _, err := os.ReadFile(filepath.Join(workdir, "args.txt")); err != nil {
+		if _, err := os.ReadFile(filepath.Join(ItemWorkspaceDir(workdir), "args.txt")); err != nil {
 			t.Errorf("the restarted run should have launched the item, got %v", err)
 		}
 	})
@@ -549,8 +549,8 @@ func TestIntegration_TheLifecycleEndsTheSpecSays(t *testing.T) {
 		if fi, err := os.Stat(missing); err != nil || !fi.IsDir() {
 			t.Errorf("the item's directory should have been created: %v", err)
 		}
-		if _, err := os.ReadFile(filepath.Join(missing, "args.txt")); err != nil {
-			t.Errorf("the agent should have worked in the created directory, got %v", err)
+		if _, err := os.ReadFile(filepath.Join(ItemWorkspaceDir(missing), "args.txt")); err != nil {
+			t.Errorf("the agent should have worked in the created directory's workspace, got %v", err)
 		}
 	})
 }

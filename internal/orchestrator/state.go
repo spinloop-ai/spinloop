@@ -63,6 +63,75 @@ func logDirFor(itemsPath string) string { return itemsPath + ".logs" }
 
 func abortsDirFor(itemsPath string) string { return itemsPath + ".aborts" }
 
+// ResolveItemDir is the directory the orchestrator actually operates on
+// for an item: dir unchanged where it is already absolute, or where
+// baseDir is empty; otherwise dir resolved against baseDir. baseDir comes
+// from harness.yaml's own baseDir, letting an operator keep the items
+// file's dir fields short and portable, independent of the directory the
+// orchestrator command happens to start from.
+func ResolveItemDir(baseDir, dir string) string {
+	if baseDir == "" || filepath.IsAbs(dir) {
+		return dir
+	}
+	return filepath.Join(baseDir, dir)
+}
+
+// ItemWorkspaceDir is the harness's own working directory for an item: a
+// `workspace` subdirectory of the item's own directory (the `dir` the items
+// file names), bind-mounted into the container under the docker backend,
+// and the bare backend's own process working directory.
+func ItemWorkspaceDir(itemDir string) string {
+	return filepath.Join(itemDir, "workspace")
+}
+
+// ItemConfigDir is where the docker backend renders one item's scoped,
+// per-launch harness config: a `config` subdirectory of the item's own
+// directory, alongside `workspace` — the item's own directory is the
+// storage location for everything the orchestrator keeps about that one
+// item's launch.
+func ItemConfigDir(itemDir string) string {
+	return filepath.Join(itemDir, "config")
+}
+
+// ItemLogFile is a second copy of an item's kept output, written under
+// the item's own directory alongside workspace/ and config/. LogPathFor
+// is the canonical copy, kept beside the items file — `work logs` and the
+// work list API both read from that one, live, while the agent runs;
+// this one is written once the agent has ended, for an item's own
+// directory to carry everything about its launch on its own.
+func ItemLogFile(itemDir string) string {
+	return filepath.Join(itemDir, "log")
+}
+
+// logCopyChild wraps a Child so that once it ends, whatever the outcome,
+// its kept log is copied into the item's own directory too. The copy runs
+// after Wait returns, not live alongside the agent's own output: the
+// canonical log (logPath) is what streams while the agent runs, and by
+// the time Wait returns the backend that started the child has already
+// finished writing to it, so a plain read-then-write is enough.
+type logCopyChild struct {
+	Child
+	logPath     string
+	itemLogPath string
+}
+
+func (c logCopyChild) Wait() error {
+	err := c.Child.Wait()
+	// Best-effort: a failure here — the item's own directory gone, a
+	// permissions problem — does not change the item's own recorded
+	// outcome, the way a failing shutdown script already does not either.
+	if data, rerr := os.ReadFile(c.logPath); rerr == nil {
+		_ = os.WriteFile(c.itemLogPath, data, 0o600)
+	}
+	return err
+}
+
+// withItemLogCopy wraps child so its kept log is copied into the item's
+// own directory once it ends — see logCopyChild.
+func withItemLogCopy(child Child, logPath, itemLogPath string) Child {
+	return logCopyChild{Child: child, logPath: logPath, itemLogPath: itemLogPath}
+}
+
 // LogPathFor is where one item's kept output stands beside the items file.
 func LogPathFor(itemsPath, id string) string {
 	return filepath.Join(logDirFor(itemsPath), id+".log")

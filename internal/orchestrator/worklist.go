@@ -32,9 +32,14 @@ type WorkList struct {
 
 	itemsPath string
 	store     Store
-	dispatch  *Dispatcher
+	dispatch  Launcher
 	gateway   string
 	log       *slog.Logger
+
+	// baseDir is harness.yaml's own baseDir — see dispatchConfig's field of
+	// the same name. Remove's own cleanup needs it to resolve an item's
+	// directory the same way a launch already does.
+	baseDir string
 
 	items    []Item
 	records  map[string]ItemState
@@ -61,7 +66,7 @@ type WorkList struct {
 // NewWorkList reads the work a run works from: the items file's items, the
 // record the store keeps, and the file's last-modified facts the re-read
 // checks against. The store's lock is the one it took opening.
-func NewWorkList(itemsPath string, store Store, dispatch *Dispatcher, gateway string, log *slog.Logger) (*WorkList, error) {
+func NewWorkList(itemsPath string, store Store, dispatch Launcher, gateway string, log *slog.Logger) (*WorkList, error) {
 	if log == nil {
 		log = slog.New(slog.DiscardHandler)
 	}
@@ -89,6 +94,13 @@ func NewWorkList(itemsPath string, store Store, dispatch *Dispatcher, gateway st
 		wl.lastMod, wl.lastSize = fi.ModTime(), fi.Size()
 	}
 	return wl, nil
+}
+
+// WithBaseDir sets harness.yaml's own baseDir — see dispatchConfig's
+// baseDir field. Unset (empty) means unchanged behavior.
+func (w *WorkList) WithBaseDir(dir string) *WorkList {
+	w.baseDir = dir
+	return w
 }
 
 // Close releases the store's hold on the items file.
@@ -469,10 +481,12 @@ func (w *WorkList) Remove(id string) error {
 		return &errConflict{msg: fmt.Sprintf("item %q is running: abort it first, then remove it", id)}
 	}
 	kept := make([]Item, 0, len(w.items))
+	var removed Item
 	found := false
 	for _, it := range w.items {
 		if it.ID == id {
 			found = true
+			removed = it
 			continue
 		}
 		kept = append(kept, it)
@@ -493,6 +507,17 @@ func (w *WorkList) Remove(id string) error {
 	w.log.Info("item removed", slog.String("item", id))
 	// The kept output goes with it; an item that wrote none has no file.
 	os.Remove(w.store.LogPath(id))
+	dir := ResolveItemDir(w.baseDir, removed.Dir)
+	// The docker backend's scoped config goes with it too — a config
+	// subdirectory of the item's own directory, left behind by the item's
+	// workspace subdirectory, which is not the orchestrator's to remove. A
+	// bare-backend item, or one the docker backend never launched, has no
+	// config directory — RemoveAll of one that is not there is a silent
+	// no-op.
+	os.RemoveAll(ItemConfigDir(dir))
+	// The item's own copy of its log goes with it too, the same as the
+	// canonical one beside the items file; an item never launched has none.
+	os.Remove(ItemLogFile(dir))
 	return nil
 }
 

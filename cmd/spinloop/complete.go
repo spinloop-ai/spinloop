@@ -176,6 +176,12 @@ func compLogLevel(_ *cobra.Command, _ []string, _ string) ([]string, cobra.Shell
 	return daemon.LevelNames(), cobra.ShellCompDirectiveNoFileComp
 }
 
+// compDispatchBackends offers the dispatch backends spinloop orchestrator
+// accepts.
+func compDispatchBackends(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+	return []string{"bare", "docker"}, cobra.ShellCompDirectiveNoFileComp
+}
+
 // compFiles offers no static candidates and lets the shell fall back to
 // filesystem paths.
 func compFiles(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {

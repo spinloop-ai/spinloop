@@ -676,7 +676,7 @@ func readRecord(t *testing.T, path string) string {
 	return string(data)
 }
 
-func TestDispatch_RunsTheAgentOneShotInTheItemsDirectory(t *testing.T) {
+func TestDispatch_RunsTheAgentOneShotInTheItemsWorkspaceDirectory(t *testing.T) {
 	work := t.TempDir()
 	record := filepath.Join(work, "record")
 	t.Setenv("RECORD_FILE", record)
@@ -697,10 +697,11 @@ func TestDispatch_RunsTheAgentOneShotInTheItemsDirectory(t *testing.T) {
 		t.Fatalf("the agent should end cleanly: %v", err)
 	}
 
-	// The kernel resolves the item's directory for the child, so the
-	// reported working directory is the resolved one.
-	canonical := work
-	if resolved, err := filepath.EvalSymlinks(work); err == nil {
+	// The kernel resolves the item's workspace directory for the child, so
+	// the reported working directory is the resolved one.
+	workspace := ItemWorkspaceDir(work)
+	canonical := workspace
+	if resolved, err := filepath.EvalSymlinks(workspace); err == nil {
 		canonical = resolved
 	}
 	rec := readRecord(t, record)
@@ -709,6 +710,7 @@ func TestDispatch_RunsTheAgentOneShotInTheItemsDirectory(t *testing.T) {
 		"arg:run",
 		"arg:-m",
 		"arg:spinloop-orchestrator-gpu-a/org/model",
+		"arg:--auto",
 		"arg:fix the parser",
 		"key:the-token",
 	} {
@@ -741,7 +743,109 @@ func TestDispatch_RunsTheAgentOneShotInTheItemsDirectory(t *testing.T) {
 	}
 }
 
-func TestDispatch_TheChildsPWDVariableCarriesTheItemsDirectory(t *testing.T) {
+func TestDispatch_TheKeptLogIsAlsoCopiedToTheItemsOwnDirectory(t *testing.T) {
+	work := t.TempDir()
+	t.Setenv("OPENAI_API_KEY", "")
+	bin := stubAgent(t)
+
+	h := &fakeHarness{name: "opencode", bin: bin}
+	d := NewDispatcher(h, "http://gateway:4000", "the-token", false)
+	logPath := filepath.Join(work, "a.log")
+	child, err := d.Launch(
+		Item{ID: "a", Instructions: "fix the parser", Dir: work},
+		runningNode("gpu-a", "org/model", nil),
+		logPath,
+	)
+	if err != nil {
+		t.Fatalf("the launch should succeed: %v", err)
+	}
+	if err := child.Wait(); err != nil {
+		t.Fatalf("the agent should end cleanly: %v", err)
+	}
+
+	canonical, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	copied, err := os.ReadFile(ItemLogFile(work))
+	if err != nil {
+		t.Fatalf("the item's own directory should carry a copy of the log: %v", err)
+	}
+	if string(copied) != string(canonical) {
+		t.Errorf("the item directory's copy should match the canonical log, got %q, want %q", copied, canonical)
+	}
+}
+
+func TestDispatch_ABaseDirResolvesTheItemsRelativeDirectory(t *testing.T) {
+	base := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(base, "parser"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	work := t.TempDir()
+	record := filepath.Join(work, "record")
+	t.Setenv("RECORD_FILE", record)
+	t.Setenv("OPENAI_API_KEY", "")
+	bin := stubAgent(t)
+
+	h := &fakeHarness{name: "opencode", bin: bin}
+	d := NewDispatcher(h, "http://gateway:4000", "the-token", false).WithBaseDir(base)
+	child, err := d.Launch(
+		Item{ID: "a", Instructions: "fix the parser", Dir: "parser"},
+		runningNode("gpu-a", "org/model", nil),
+		filepath.Join(work, "a.log"),
+	)
+	if err != nil {
+		t.Fatalf("the launch should succeed: %v", err)
+	}
+	if err := child.Wait(); err != nil {
+		t.Fatalf("the agent should end cleanly: %v", err)
+	}
+
+	workspace := ItemWorkspaceDir(filepath.Join(base, "parser"))
+	canonical := workspace
+	if resolved, err := filepath.EvalSymlinks(workspace); err == nil {
+		canonical = resolved
+	}
+	rec := readRecord(t, record)
+	if !strings.Contains(rec, "cwd:"+canonical) {
+		t.Errorf("a relative item dir should resolve against baseDir, record:\n%s", rec)
+	}
+}
+
+func TestDispatch_ABaseDirLeavesAnAbsoluteItemDirUnaffected(t *testing.T) {
+	base := t.TempDir()
+	work := t.TempDir()
+	record := filepath.Join(work, "record")
+	t.Setenv("RECORD_FILE", record)
+	t.Setenv("OPENAI_API_KEY", "")
+	bin := stubAgent(t)
+
+	h := &fakeHarness{name: "opencode", bin: bin}
+	d := NewDispatcher(h, "http://gateway:4000", "the-token", false).WithBaseDir(base)
+	child, err := d.Launch(
+		Item{ID: "a", Instructions: "fix the parser", Dir: work},
+		runningNode("gpu-a", "org/model", nil),
+		filepath.Join(work, "a.log"),
+	)
+	if err != nil {
+		t.Fatalf("the launch should succeed: %v", err)
+	}
+	if err := child.Wait(); err != nil {
+		t.Fatalf("the agent should end cleanly: %v", err)
+	}
+
+	workspace := ItemWorkspaceDir(work)
+	canonical := workspace
+	if resolved, err := filepath.EvalSymlinks(workspace); err == nil {
+		canonical = resolved
+	}
+	rec := readRecord(t, record)
+	if !strings.Contains(rec, "cwd:"+canonical) {
+		t.Errorf("an absolute item dir should ignore baseDir, record:\n%s", rec)
+	}
+}
+
+func TestDispatch_TheChildsPWDVariableCarriesTheItemsWorkspaceDirectory(t *testing.T) {
 	work := t.TempDir()
 	itemDir := filepath.Join(work, "item")
 	if err := os.MkdirAll(itemDir, 0o755); err != nil {
@@ -773,8 +877,8 @@ func TestDispatch_TheChildsPWDVariableCarriesTheItemsDirectory(t *testing.T) {
 	// The variable carries the directory resolved the way filepath.Abs
 	// gives it — the symlinked form, not the kernel's resolved cwd.
 	rec := readRecord(t, record)
-	if !strings.Contains(rec, "pwd:"+itemDir) {
-		t.Errorf("the child's PWD variable should carry the item's directory, record:\n%s", rec)
+	if !strings.Contains(rec, "pwd:"+ItemWorkspaceDir(itemDir)) {
+		t.Errorf("the child's PWD variable should carry the item's workspace directory, record:\n%s", rec)
 	}
 }
 
@@ -822,12 +926,13 @@ func TestDispatch_AMissingDirectoryIsCreatedWhereTheCommandSaysTo(t *testing.T) 
 		t.Fatalf("the directory should have been created: %v", err)
 	}
 	rec := readRecord(t, record)
-	canonical := missing
-	if resolved, err := filepath.EvalSymlinks(missing); err == nil {
+	workspace := ItemWorkspaceDir(missing)
+	canonical := workspace
+	if resolved, err := filepath.EvalSymlinks(workspace); err == nil {
 		canonical = resolved
 	}
 	if !strings.Contains(rec, "cwd:"+canonical) {
-		t.Errorf("the agent should have worked in the created directory, record:\n%s", rec)
+		t.Errorf("the agent should have worked in the created directory's workspace, record:\n%s", rec)
 	}
 }
 

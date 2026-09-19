@@ -1,0 +1,57 @@
+# spinloop orchestrator's own way to shape an item's environment and
+# lifecycle without building a new docker image — see
+# ../../docs/commands/orchestrator.md.
+#
+# Read automatically, because it sits beside work.yaml — the default
+# --items — in this directory; --harness-config names one explicitly
+# elsewhere. Applies to every launch, under either --dispatch backend
+# (bare or docker) alike.
+
+# The backend, the way --dispatch names one. Set here so the choice lives
+# with the rest of the item's environment rather than in a wrapper script
+# that adds the flag — but an explicit --dispatch on the command line
+# still wins over it. bare here is what the README's first walkthrough
+# runs; its "Trying --dispatch docker" section passes the flag explicitly,
+# overriding this, which is the precedence rule in action, not a special
+# case.
+dispatch: bare
+
+# The harness the run uses, the way --harness/-H does — an explicit
+# --harness still wins over it. Set here so the walkthrough runs against
+# opencode regardless of the HARNESS environment variable or a stored
+# preference (`spinloop harness use`) on whatever machine runs it.
+harness: opencode
+
+# The directory an item's own relative dir (work.yaml's dir: .) resolves
+# against, in place of wherever the orchestrator command happens to be
+# started from. `.` here is a no-op — harness.yaml already lives in this
+# directory, which is where dir: . already resolves with no baseDir at
+# all — but the field earns its keep once this file and work.yaml are
+# copied elsewhere and run from a different working directory: baseDir
+# keeps dir: . pointing at this directory regardless.
+baseDir: .
+
+# Environment variables added to every launch. Values are literal — there
+# is no ${VAR} expansion — so a real secret here is a real secret on disk;
+# write the value your shell would otherwise export. An entry naming the
+# same variable the gateway's token is presented under is refused, naming
+# it, before the command works an item, so the token itself can't be
+# shadowed by accident.
+env:
+  GH_TOKEN: ghp_your_token_here   # so an item's `gh pr create` works
+  GIT_AUTHOR_NAME: spinloop-agent
+  GIT_AUTHOR_EMAIL: agent@example.com
+
+# Runs before the harness, in the item's workspace directory, under the
+# launch's full environment. A non-zero exit fails the item, naming the
+# script, before the harness ever runs.
+startup: |
+  git config --global user.name "$GIT_AUTHOR_NAME"
+  git config --global user.email "$GIT_AUTHOR_EMAIL"
+  git config --global --add safe.directory "$PWD"
+
+# Runs once the harness has ended — done, failed, or aborted alike —
+# provided startup ran at all. Both scripts' output joins the harness's
+# own in the item's kept log, in the order they ran.
+shutdown: |
+  echo "item finished at $(date -u +%FT%TZ)"
