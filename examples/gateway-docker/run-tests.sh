@@ -678,13 +678,13 @@ EOF
   assert_equals "the items ended done" "$(state_count done)" "3"
   assert_equals "the fleet's total held the in-flight count" "${max_inflight}" "2"
   assert_contains "the tagged item took the node carrying its tag" \
-    "$(cat "${sandbox}/work/a/args.txt")" "spinloop-orchestrator-node-a"
+    "$(cat "${sandbox}/work/a/workspace/args.txt")" "spinloop-orchestrator-node-a"
   assert_contains "an untagged item ran too" \
-    "$(cat "${sandbox}/work/b/args.txt")" "spinloop-orchestrator-"
+    "$(cat "${sandbox}/work/b/workspace/args.txt")" "spinloop-orchestrator-"
   assert_contains "the agent was given the gateway's token as its key" \
-    "$(cat "${sandbox}/work/a/key.txt")" "key=${GATEWAY_TOKEN}"
+    "$(cat "${sandbox}/work/a/workspace/key.txt")" "key=${GATEWAY_TOKEN}"
   assert_contains "the agent's inference reached the gateway, at the address its config named" \
-    "$(cat "${sandbox}/work/a/reply.txt" 2>/dev/null)" "Hello from the fake engine"
+    "$(cat "${sandbox}/work/a/workspace/reply.txt" 2>/dev/null)" "Hello from the fake engine"
 
   kill -INT "${orch_pid}" 2>/dev/null || true
   local rc=0
@@ -827,13 +827,13 @@ EOF
   assert_contains "the abort is answered for the item it stopped" "${body}" '"id":"c"'
   deadline=$((SECONDS + 60))
   while (( SECONDS < deadline )); do
-    if [[ "$(wc -l < "${sandbox}/work/c/launches.txt" 2>/dev/null | tr -d ' ')" == "2" ]]; then
+    if [[ "$(wc -l < "${sandbox}/work/c/workspace/launches.txt" 2>/dev/null | tr -d ' ')" == "2" ]]; then
       break
     fi
     sleep 0.2
   done
   assert_equals "the aborted item is admitted again, launched a second time" \
-    "$(wc -l < "${sandbox}/work/c/launches.txt" 2>/dev/null | tr -d ' ')" "2"
+    "$(wc -l < "${sandbox}/work/c/workspace/launches.txt" 2>/dev/null | tr -d ' ')" "2"
 
   # A remove of an ended item takes the item, its record, and its output.
   body="$(curl -s -X DELETE "${base}/v1/items/a")"
