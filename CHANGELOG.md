@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [1.41.0] - 2026-09-19
+### Added
+- feat(orchestrator): print the work list on startup
+- feat(remote): require a named environment, drop the implicit default
+- feat: add spinloop work logs (#237)
+- feat: make agent dispatch pluggable, add a docker backend
+- feat: make status and dashboard top-level verbs
+- feat: make the work commands clients of the work list API
+
+### Changed
+- docs: describe fleet.yaml (#215)
+
+### Fixed
+- fix(gateway): carry a remote node's served name into its wake stats
+
 ## [1.40.0] - 2026-09-14
 ### Added
 - feat(fleet): target a registered environment with --env
