@@ -68,7 +68,7 @@ spinloop harness apply qwen3.6-27b-team             # never touches preset.ini
 Nothing here is fetched until the command that actually needs it runs —
 applying the Spinloop doesn't fetch the preset, and registering the alias
 doesn't either. See [Fetching a Spinloop from a
-URL](../../docs/spinloop-file.md#fetching-an-spinloop-from-a-url) for the full
+URL](../../docs/spinloop-file.md#fetching-a-spinloop-from-a-url) for the full
 picture.
 
 ## See also

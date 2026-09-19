@@ -91,317 +91,13 @@ nodes:
 ```
 
 The file is found the way a `Spinloop` is: `./fleet.yaml` in the working
-directory, or `--fleet <path>`.
-
-### Where a node's engine answers
-
-A node's `host` and `port` name its **daemon**, which is a different port from
-the **engine** it supervises. For [routing](#which-node-would-i-get) spinloop
-needs the engine's, and the daemon reports it — so most nodes need nothing
-more. Declare an `engine` block for the cases a daemon cannot describe:
-
-```yaml
-nodes:
-  - name: containerised
-    host: docker-host
-    engine:
-      port: 18080          # published port, not the one it binds inside
-
-  - name: proxied
-    host: node.local
-    engine:
-      host: https://engine.example   # a reverse proxy in front of the engine
-      path: /openai                  # when it is not the usual /v1
-```
-
-Each field falls back independently to what spinloop would otherwise derive: the
-node's own `host`, and the port and path the daemon reports.
-
-An engine bound to loopback answers only on its own machine. Routing to it from
-elsewhere fails with that explanation rather than a bare connection refused —
-bind the engine to a reachable address (llama.cpp's `--host 0.0.0.0`), or
-declare an `engine` block, which is you taking responsibility for reachability.
-
-### Remote environments
-
-`kind` (defaulted to `daemon`) says how the fleet reaches a node. A node can
-also be an [`spinloop remote`](remote.md) environment rather than a machine: its
-`name` is the registered environment it drives — no `host` needed — and it is
-reached through its control plane, which signs each call with your AWS
-credentials, so it needs no bearer token:
-
-```yaml
-nodes:
-  - name: qwen          # the registered environment, and what you type at `fleet start <node>`
-    kind: remote
-```
-
-The environment's control URLs live in its `remote.json` (under
-`~/.config/spinloop/remotes/<name>/`), written by `spinloop remote deploy` — or by
-[`spinloop fleet deploy`](#deploying-remote-nodes), which creates it from the
-fleet file itself — and never stored in the fleet file. So a daemon and an
-environment sit side by side as the same kind of row, and an environment that
-has not been deployed yet shows as `config-error` on its row rather than
-blanking the fleet. See
-[`examples/fleet-remote`](../../examples/fleet-remote/README.md) and
-[`examples/fleet-mixed`](../../examples/fleet-mixed/README.md).
-
-A `kind: remote` node may also name the EC2 instance type its environment
-launches as, with `instance-type` (a family and size separated by a dot, e.g.
-`g6e.xlarge`):
-
-```yaml
-nodes:
-  - name: qwen
-    kind: remote
-    instance-type: g6e.2xlarge
-```
-
-It is a property of the cloud environment, not of the fleet's view of it:
-`fleet deploy` records it on the environment, and the environment's next
-**fresh** launch uses it. A re-wake of a stopped instance keeps the type it
-was launched with — EC2 cannot resize a running or stopped box — so a changed
-value takes effect only after the instance is terminated (an idle sweep or
-`spinloop remote stop`) and launched again. Omitted, the environment launches
-as its control plane's default type. Naming `instance-type` on a `kind: daemon`
-node is a configuration error: a daemon's hardware is the operator's to choose,
-not the fleet file's.
-
-### A node's Spinloop source
-
-Both `fleet deploy` (for a `kind: remote` node's environment) and `fleet
-start` (for a `kind: daemon` node's engine) need to know what Spinloop file
-describes what a node runs. A node names it with `file`, resolved relative to
-the fleet file:
-
-```yaml
-nodes:
-  - name: qwen
-    kind: remote
-    file: ./envs/qwen.Spinloop
-```
-
-`file` is optional, because the node's own `name` already doubles as a lookup
-key. When it is absent, resolution tries, in order:
-
-1. `name` registered as a `spinloop alias` (`spinloop alias add qwen
-   ./envs/qwen.Spinloop`) — the same lookup `spinloop remote deploy`
-   performs for a Spinloop argument;
-2. a subdirectory named after the node, beside the fleet file — `qwen/Spinloop`
-   next to `fleet.yaml` for a node named `qwen`, no fields needed on either
-   side.
-
-A fleet laid out as one subdirectory per node therefore needs nothing beyond
-each node's own `name`:
-
-```
-fleet.yaml
-qwen/Spinloop
-llama/Spinloop
-```
-
-Nothing resolving is a per-node error naming all three ways a source could
-have been given. For `fleet deploy` that always fails the node (there is
-nothing to create an environment from); for `fleet start` on a `kind: daemon`
-node it likewise fails that node's start — there is no fallback to a plain,
-config-less start once this field exists. A `kind: remote` node's `start` is
-unaffected by any of this: what it serves is fixed at deploy time, not pushed
-at start time.
-
-This does not apply to `spinloop dashboard`'s `s` key, which still
-starts the selected node with a plain start, whatever the CLI's `fleet start`
-would resolve for it.
-
-### Spreading or consolidating
-
-`prefer` decides which node wins when several could all serve you:
-
-```yaml
-prefer: idle      # or: active
-nodes: …
-```
-
-- **`idle`** (the default) — the machine quiet longest wins. A node that is
-  mid-request is the *least* idle of all, so it is the last one chosen. Use it
-  when several people share the fleet, or you run several agents at once.
-- **`active`** — the most recently active wins, consolidating sessions onto one
-  engine and leaving the others free to be woken for another model, or left
-  asleep.
-
-`spinloop harness open --prefer <value>` and `spinloop fleet route --prefer <value>`
-override the file for one command, which is the cheap way to see what the other
-setting would do before committing to it.
-
-### Waking
-
-`wake` decides whether routing may start an engine on a node that is not
-running one:
-
-```yaml
-wake: off      # or: on
-nodes: …
-```
-
-- **`on`** (the default, and the behaviour of a file that declares nothing) —
-  when nothing is serving, spinloop starts a node and waits for its engine to
-  answer before the agent launches or the request is answered.
-- **`off`** — a request nothing is serving fails rather than starting
-  anything, naming the node that would have been woken and the `spinloop fleet
-  start <node>` command that would start it. Use it where the machines are not
-  to be started on demand — the models are loaded by hand, or someone else
-  drives the starts.
-
-An explicit `--no-wake` still refuses to start anything, whatever the file
-says; an explicit `spinloop fleet start` does the opposite — it always starts,
-because it was asked.
-
-A node MAY declare its own `wake`, overriding the file's setting for that
-node alone:
-
-```yaml
-wake: on
-nodes:
-  - name: gpu-box
-    host: 198.51.100.7
-  - name: prod
-    kind: remote
-    wake: off   # this one node stays asleep even though the fleet wakes
-```
-
-This matters most for a `kind: remote` node, whose wake boots a billed cloud
-instance rather than starting a process on a machine you already run — so you
-can leave the fleet's daemons on `wake: on` while deciding a given remote
-environment's waking separately, in either direction: `wake: off` on one node
-under a fleet that otherwise wakes, or `wake: on` on one node under a fleet
-that otherwise does not.
-
-### Tags
-
-A node's `tags` name the kind of work the node takes on — key/value pairs the
-operator chooses:
-
-```yaml
-nodes:
-  - name: gpu-box
-    host: 198.51.100.7
-    tags:
-      gpu: a100
-      os: linux
-```
-
-They are how an [`spinloop orchestrator`](orchestrator.md) item chooses its
-node: an item names the tags of the nodes it may run on, and it matches a node
-only where every one it names is a tag the node carries. A node with no tags
-takes only items that name none. Routing, waking and the dashboard do not read
-them — tags belong to the orchestrator's matching alone.
-
-### Concurrency
-
-`concurrency` is the pace this fleet works at, for the
-[`spinloop orchestrator`](orchestrator.md): how much work it may take at once.
-The limits are a ceiling the operator sets, not a measurement of the engines'
-load:
-
-```yaml
-concurrency:
-  total: 8          # the most items the fleet may have in flight at once
-  tags:
-    "gpu=a100": 4   # and, per tag, the most in flight on nodes carrying it
-```
-
-An admitted item counts against `total` and against the limit of every tag it
-names, and it frees its counts when it ends. A limit on a tag no node carries
-is a configuration error naming the tag, as is a limit that is not a positive
-integer. A file that declares no `concurrency` has no limit: the orchestrator
-admits as fast as the nodes match.
-
-### Gateway
-
-`gateway` names the address this fleet is served under by a
-[`spinloop gateway`](gateway.md): a launch routed through this file is pointed
-at the gateway rather than at a node. The gateway has done the choosing, so
-the launch queries no node and wakes none:
-
-```yaml
-nodes: …
-gateway:
-  url: http://gateway.internal:4000   # required, with a scheme
-  tokenEnv: GATEWAY_TOKEN             # optional; OPENAI_API_KEY when absent
-  name: remote-llms                   # optional; labels the gateway (see below)
-```
-
-A launch through such a file is pointed at the section's address — the agent's
-base URL, with the OpenAI-compatible `/v1` prefix added when it carries no path
-— and the token is resolved from the variable the section names —
-`OPENAI_API_KEY` when it names none — the way a key is resolved elsewhere: an
-`ENV` instruction, then the process environment, then the `.env` beside the
-Spinloop. A variable set nowhere fails the launch before anything is written,
-naming the variable.
-As with a node's choice, the launch reports the address on stderr before the
-agent starts.
-
-This is how a machine that holds the fleet file points a harness at the fleet:
-A launch reads the section when it is there, so a Spinloop
-beside the file needs only the model, and the address travels with the file.
-`spinloop fleet route` answers a file that names a gateway the same way — the
-address, and that no node is queried and nothing is started.
-
-When a launch through the gateway has no model of its own to route by (see
-[Launching the harness](#launching-the-harness)), it needs a way to label the
-provider it configures — otherwise every gateway a fleet might name would
-collide under the same generic id. `name` supplies that label directly; with
-none given, the section's address's host stands in (e.g. `localhost:4000`).
-Either way opencode and Pi show it the way a remote environment is shown —
-`Gateway (remote-llms)` rather than a bare `OpenAI-compatible`, the same
-pattern as `llama.cpp (dev-2)`.
-
-### Tokens
-
-`tokenEnv` names an environment variable; the value is resolved from the
-process environment first, then a `.env` beside the `fleet.yaml` — the same
-precedence spinloop uses everywhere, so an exported value wins and the `.env`
-only fills a gap. Put the secrets there:
-
-```sh
-# .env beside fleet.yaml (gitignored)
-GPU_BOX_TOKEN=…
-```
-
-A node with no `tokenEnv` is contacted without authentication, which is
-correct for a daemon bound to loopback. Any node reachable over the network
-needs a token — the daemon refuses to listen on a non-loopback address without
-one.
-
-A `tokenEnv` naming a variable that is set nowhere is reported against that
-node as `config-error`, so a typo shows up on its row rather than as a
-mysterious `unauthorized`.
-
-A node whose **engine** needs a key names that separately, with
-`engineTokenEnv`. The two are different credentials — one authorises driving the
-node, the other authorises using its engine — and a node may need either, both,
-or neither. It is resolved exactly as `tokenEnv` is, and the daemon never hands
-its engine's key out: it says only that one is required.
-
-```yaml
-  - name: gated
-    host: gated.local
-    tokenEnv: GATED_TOKEN             # to drive the daemon
-    engineTokenEnv: GATED_ENGINE_KEY  # to talk to its engine
-```
-
-A `kind: remote` environment is always keyed, so it needs an engine key too —
-its `engineTokenEnv` works as above, and a fleet-wide `apiKeyEnv` is the
-default for every remote node that does not name one of its own. Either way the
-launch fails before it starts the agent rather than pointing it at a gate it
-cannot pass:
-
-```yaml
-apiKeyEnv: REMOTE_ENGINE_KEY   # the default for every kind: remote node
-nodes:
-  - name: qwen
-    kind: remote
-    engineTokenEnv: OTHER_KEY  # overrides it for this node
-```
+directory, or `--fleet <path>`. The full format reference — every field, a
+node's [Spinloop source](../fleet-file.md#a-nodes-spinloop-source),
+[remote environments](../fleet-file.md#remote-environments),
+[`prefer`](../fleet-file.md#spreading-or-consolidating) and
+[`wake`](../fleet-file.md#waking), [tags](../fleet-file.md#tags) and
+[concurrency](../fleet-file.md#concurrency), the [gateway section](../fleet-file.md#gateway),
+and [tokens](../fleet-file.md#tokens) — is [the `fleet.yaml` file](../fleet-file.md).
 
 ## A node that is down never blanks the view
 
@@ -503,7 +199,7 @@ spinloop dashboard --fleet f.yaml # another fleet file
 | `q` or `Ctrl+C` | Leave |
 
 The board keeps its own cadence: local machines are read every two seconds,
-and a [`kind: remote`](#remote-environments) environment every 60 — one
+and a [`kind: remote`](../fleet-file.md#remote-environments) environment every 60 — one
 status call a minute, because its status is a signed control-plane call, not a
 local socket, and a cold instance changes state on the scale of minutes. `r`
 is due for every node whatever those deadlines say.
@@ -645,7 +341,7 @@ Would use gpu-box at http://gpu-box:8080/v1
   serving qwen3-27b, active 312s ago (prefer idle)
 ```
 
-A file that names a [gateway](#gateway) is answered the way a launch answers
+A file that names a [gateway](../fleet-file.md#gateway) is answered the way a launch answers
 it — the gateway's address, and that no node is queried and nothing is
 started.
 
@@ -678,7 +374,7 @@ spinloop code -O=./client/Spinloop --fleet fleet.yaml
 spinloop code --fleet fleet.yaml --node gpu-box   # the launch's steering flags
 ```
 
-A fleet file that names a [gateway](#gateway) points the agent there, so the
+A fleet file that names a [gateway](../fleet-file.md#gateway) points the agent there, so the
 address lives in the file rather than in every Spinloop.
 
 The fleet comes from `--fleet`/`-f`, or from the `fleet.yaml` in the working
@@ -689,20 +385,16 @@ picks it up.
 
 Routing is the launch's routing: at the gateway where the file names one,
 otherwise by node selection and, where the file's
-[wake policy](#waking) allows, a wake — `--node`, `--prefer`, `--no-wake` and
+[wake policy](../fleet-file.md#waking) allows, a wake — `--node`, `--prefer`, `--no-wake` and
 `--wake-timeout` steer it. A Spinloop that pins a `BASEURL` is not routed, and
 a variable already set in spinloop's environment wins.
-
-With no Spinloop to route, what happens next depends on the fleet file.
-Routing to a node needs a model to match one against, so the launch fails
-saying `--fleet` needs a Spinloop. A gateway needs no such match — it resolves the
 model per request — so a launch through one needs no Spinloop at all: the
 harness is configured with a generic OpenAI-compatible provider at the
 gateway's address, its model list populated from the gateway's own
 `GET /v1/models`, and no default model — labelled and keyed by the gateway's
-[`name`](#gateway), or its address when the section names none, so a second
+[`name`](../fleet-file.md#gateway), or its address when the section names none, so a second
 gateway gets its own block rather than overwriting this one (see
-[Gateway](#gateway)). This applies equally to a Spinloop that is given but
+[Gateway](../fleet-file.md#gateway)). This applies equally to a Spinloop that is given but
 names neither a `MODEL` nor an `ALIAS`. The populated model list is only as
 fresh as the last run of the command — rerun it to pick up a newly-served
 model — and, since not every harness's config format holds more than one
@@ -735,7 +427,7 @@ running reports its conflict, and stopping one that is not running succeeds
 quietly.
 
 **Starting a `kind: daemon` node now requires its [Spinloop
-source](#a-nodes-spinloop-source) to resolve.** When it does, `fleet start`
+source](../fleet-file.md#a-nodes-spinloop-source) to resolve.** When it does, `fleet start`
 derives a deploy config from it and pushes it with the start (`StartWith`) —
 telling the daemon what to run, the same way a routed `harness` launch
 already tells a node what to run when it wakes one. When it does not resolve,
@@ -759,7 +451,7 @@ spinloop fleet deploy --all          # every kind: remote node in the file
 ```
 
 Each node deploys from its own resolved [Spinloop
-source](#a-nodes-spinloop-source), reusing the exact derivation, consent, and
+source](../fleet-file.md#a-nodes-spinloop-source), reusing the exact derivation, consent, and
 registration `spinloop remote deploy` uses for the same file — the two can
 never disagree about what a given Spinloop deploys — and the environment each
 node creates is named after the node itself. A `kind: daemon` node
@@ -801,6 +493,8 @@ deploy`](remote.md), applied per node.
 
 ## See also
 
+- [The `fleet.yaml` file](../fleet-file.md) — the format reference for the
+  file this command reads
 - [`spinloop up`](up.md) — the one-word start, from a fleet directory
 - [`examples/fleet-local/`](../../examples/fleet-local/) — a fleet of one, on your own machine
 - [`examples/fleet-docker/`](../../examples/fleet-docker/) — a runnable fleet

@@ -14,7 +14,7 @@ spinloop code --fleet ./fleet.yaml       # route through a fleet, or its gateway
 
 `code` is the only way to launch an agent against a fleet: `spinloop fleet
 harness` was removed, and typing it names this command instead. A fleet file
-that names a [gateway](fleet.md#gateway) needs no Spinloop at all — the gateway
+that names a [gateway](../fleet-file.md#gateway) needs no Spinloop at all — the gateway
 resolves the model per request — so `spinloop code --fleet ./fleet.yaml` is a
 complete launch on a machine holding nothing but the fleet file.
 
