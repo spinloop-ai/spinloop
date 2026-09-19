@@ -55,6 +55,7 @@ the item is done or failed, or the operator interrupts.`,
 	fs := c.Flags()
 	workAPIFlags(fs, &base, &apiToken, &apiTokenFile)
 	fs.BoolVarP(&follow, "follow", "f", false, "keep printing new output as it arrives")
+	c.ValidArgsFunction = itemIDSlot
 	return c
 }
 

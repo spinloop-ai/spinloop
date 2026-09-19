@@ -229,6 +229,25 @@ func TestComplete_UnaliasOffersAliasNames(t *testing.T) {
 	}
 }
 
+// TestComplete_WorkItemIDSlotsOfferNoFilePaths checks work logs/abort/
+// remove's own positional: no registry to draw a real item id from, so it
+// offers no candidates, but must still suppress file completion — an id is
+// never a filename, and before this the slot fell through to the default,
+// offering the working directory's own files.
+func TestComplete_WorkItemIDSlotsOfferNoFilePaths(t *testing.T) {
+	isolateConfig(t)
+
+	for _, sub := range []string{"logs", "abort", "remove"} {
+		got, directive := complete(t, "work", sub, "")
+		if len(got) != 0 {
+			t.Errorf("work %s: candidates offered where there is no registry to draw from: %v", sub, got)
+		}
+		if directive != directiveNoFile {
+			t.Errorf("work %s: directive = %q, want %q (an id is never a file path)", sub, directive, directiveNoFile)
+		}
+	}
+}
+
 // TestComplete_SpinloopCommandsOfferAliasesAndPaths checks the commands that take
 // either.
 func TestComplete_SpinloopCommandsOfferAliasesAndPaths(t *testing.T) {

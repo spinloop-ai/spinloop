@@ -379,6 +379,7 @@ the command reports its answer: a refusal reads the way the API states it.`,
 	}
 	fs := c.Flags()
 	workAPIFlags(fs, &base, &apiToken, &apiTokenFile)
+	c.ValidArgsFunction = itemIDSlot
 	return c
 }
 
@@ -414,5 +415,6 @@ reads the way the API states it.`,
 	}
 	fs := c.Flags()
 	workAPIFlags(fs, &base, &apiToken, &apiTokenFile)
+	c.ValidArgsFunction = itemIDSlot
 	return c
 }
