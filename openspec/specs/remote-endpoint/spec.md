@@ -8,9 +8,9 @@ what to serve from a Spinloop: the `spinloop remote` command group.
 ### Requirement: Remote command group
 
 The system SHALL provide a `remote` command group with the subcommands
-`bootstrap`, `bake`, `auth`, `start`, `stop`, `restart`, `status`, `deploy`,
-`ls`, `metrics`, and `keep`. `start`, `stop`, `restart`, `status`, `metrics` and
-`deploy` each take an optional Spinloop path:
+`bootstrap`, `bake`, `auth`, `start`, `stop`, `restart`, `deploy`,
+`ls`, and `keep`. `start`, `stop`, `restart` and `deploy` each take an
+optional Spinloop path:
 `start` SHALL boot the endpoint and block until it is serving, then perform a
 quick TCP probe of the inference endpoint — if the probe fails, a warning is
 printed to stderr explaining the network mismatch (see the Remote Start Probe
@@ -26,14 +26,9 @@ and reporting progress as `start` does (see the Reporting a start in progress
 specification); `restart` SHALL accept a `--force` flag with a `-F` short form
 that, when set, performs the stop without first asking the engine to shut down
 (see the Endpoint Lifecycle specification for forced stops);
-`status` SHALL report instance state and endpoint health without side effects
-and SHALL NOT perform any TCP probe, and SHALL include the `Retain-Until`
-deadline when the instance has an active retention tag;
 `keep` SHALL set the `Retain-Until` tag on the environment's instance for the
 given duration, without starting or stopping the instance (see the Remote Keep
-specification); `metrics` SHALL report instance state, token usage, resource
-consumption, and GPU information for a running instance; `deploy` SHALL set
-what the endpoint serves. `ls` SHALL list the registered remote environments
+specification); `deploy` SHALL set what the endpoint serves. `ls` SHALL list the registered remote environments
 (see the Remote Environments specification). `bootstrap` SHALL stand up the
 account-level AWS control plane (once per account) by obtaining and driving the
 CDK project, and takes its own flags rather than a Spinloop path (see the
@@ -105,11 +100,6 @@ SHALL fail naming the accepted ones.
 - **WHEN** the user runs `spinloop remote keep 2h`
 - **THEN** the instance retention tag is set and the deadline is reported
 
-#### Scenario: Metrics reports instance figures
-
-- **WHEN** the user runs `spinloop remote metrics` with a running instance
-- **THEN** token counts, resource usage, and GPU information are displayed
-
 #### Scenario: Bootstrap is a recognised subcommand
 
 - **WHEN** the user runs `spinloop remote bootstrap`
@@ -132,7 +122,14 @@ SHALL fail naming the accepted ones.
 
 - **WHEN** the user runs `spinloop remote frobnicate`
 - **THEN** the command fails listing the accepted subcommands, which include
-  `bootstrap`, `bake`, `metrics`, and `keep`
+  `bootstrap`, `bake`, `auth`, and `keep`
+
+#### Scenario: The read verbs are not in the group
+
+- **WHEN** the operator runs `spinloop remote status`, `spinloop remote
+  metrics` or `spinloop remote logs`
+- **THEN** each fails naming the top-level verb that replaced it, and the
+  group's help lists none of them
 
 ### Requirement: Reporting a start in progress
 
@@ -425,9 +422,9 @@ the instance.
 - **THEN** the key is sent to the control plane to be stored for the
   environment, and the report says a key was applied without printing the value
 
-### Requirement: Status reports when the endpoint last did work
+### Requirement: An environment reports when it last did work
 
-`spinloop remote status` SHALL report how long it has been since the endpoint's
+`spinloop status --env <name>` SHALL report how long it has been since the endpoint's
 engine last did any work, alongside the instance state and health it reports
 already. The figure SHALL come from the activity the on-instance daemon
 tracks, not from a measurement the control plane makes itself — one answer,
@@ -444,20 +441,20 @@ read, and SHALL still perform no TCP probe.
 
 #### Scenario: A running endpoint reports its last activity
 
-- **WHEN** the user runs `spinloop remote status` against a running endpoint
+- **WHEN** the user runs `spinloop status --env <name>` against a running endpoint
   whose engine has served work
 - **THEN** the output reports how long ago that work happened, labelled "last
   active", beside the state and health lines
 
 #### Scenario: Status stays a read
 
-- **WHEN** the user runs `spinloop remote status`
+- **WHEN** the user runs `spinloop status --env <name>`
 - **THEN** nothing is started, stopped or probed in order to obtain the
   last-active figure
 
-### Requirement: Status degrades when activity cannot be read
+### Requirement: An environment's status degrades when activity cannot be read
 
-`spinloop remote status` SHALL omit the last-active figure rather than fail,
+`spinloop status --env <name>` SHALL omit the last-active figure rather than fail,
 report zero, or imply inactivity, whenever the figure cannot be obtained. That
 covers an endpoint whose engine has not yet done any work, a daemon that
 cannot be reached or answers unrecognisably, and an instance that is not
@@ -470,7 +467,7 @@ SHALL still succeed.
 
 #### Scenario: A stopped instance reports no activity figure
 
-- **WHEN** the user runs `spinloop remote status` and the instance is stopped or
+- **WHEN** the user runs `spinloop status --env <name>` and the instance is stopped or
   undeployed
 - **THEN** the output reports the state as it does today and shows no
   last-active figure
