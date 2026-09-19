@@ -42,6 +42,17 @@ func TestWorkLogs_NoOutputYetPrintsNothingNotAFault(t *testing.T) {
 	}
 }
 
+func TestWorkLogsCmd_NoURLFailsBeforeTheCall(t *testing.T) {
+	_, got := workAPIStub(t, http.StatusOK, map[string]any{"id": "a", "log": "hi\n"})
+	_, err := runWork(t, "logs", "a")
+	if err == nil || !strings.Contains(err.Error(), "--url") {
+		t.Errorf("no --url, the command fails naming the flag: %v", err)
+	}
+	if got.method != "" {
+		t.Errorf("no address, no call: the stub saw %s %s", got.method, got.path)
+	}
+}
+
 func TestWorkLogs_TheRefusalReadsTheWayTheAPIStatesIt(t *testing.T) {
 	base, _ := workAPIStub(t, http.StatusNotFound,
 		workAPIErrorReply(`the items file carries no item with id "ghost"`))
@@ -51,7 +62,108 @@ func TestWorkLogs_TheRefusalReadsTheWayTheAPIStatesIt(t *testing.T) {
 	}
 }
 
+func TestWorkItemState_ReadsTheMatchingItemsState(t *testing.T) {
+	base, _ := workAPIStub(t, http.StatusOK, map[string]any{"data": []map[string]any{
+		{"id": "a", "state": "running"},
+		{"id": "b", "state": "done"},
+	}})
+	state, found, err := workItemState(base, "", "b")
+	if err != nil {
+		t.Fatalf("workItemState: %v", err)
+	}
+	if !found || state != "done" {
+		t.Errorf("found = %v, state = %q, want found=true state=done", found, state)
+	}
+}
+
+func TestWorkItemState_NotFoundWhenTheListDoesNotCarryIt(t *testing.T) {
+	base, _ := workAPIStub(t, http.StatusOK, map[string]any{"data": []map[string]any{{"id": "a", "state": "running"}}})
+	_, found, err := workItemState(base, "", "ghost")
+	if err != nil {
+		t.Fatalf("workItemState: %v", err)
+	}
+	if found {
+		t.Error("an id the list does not carry should answer found=false, not an error — a removal leaves the list this way, not a refusal")
+	}
+}
+
+func TestWorkItemState_AnAPIFailurePropagates(t *testing.T) {
+	_, _, err := workItemState("http://127.0.0.1:1", "", "a")
+	if err == nil {
+		t.Error("the work list API being unreachable should fail, not silently answer not-found")
+	}
+}
+
+func TestWorkItemState_AMalformedAnswerFails(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte("not json"))
+	}))
+	t.Cleanup(srv.Close)
+	_, _, err := workItemState(srv.URL, "", "a")
+	if err == nil {
+		t.Error("a malformed answer should fail, not silently answer not-found")
+	}
+}
+
+func TestWorkLogFetch_AMalformedAnswerFails(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte("not json"))
+	}))
+	t.Cleanup(srv.Close)
+	_, err := workLogFetch(srv.URL, "", "a")
+	if err == nil {
+		t.Error("a malformed answer should fail")
+	}
+}
+
+func TestPrintWorkLogSuffix(t *testing.T) {
+	for _, tc := range []struct {
+		name, log, last, wantPrinted, wantReturn string
+	}{
+		{"grows from empty", "first\n", "", "first\n", "first\n"},
+		{"prints only the new suffix", "first\nsecond\n", "first\n", "second\n", "first\nsecond\n"},
+		{"nothing new prints nothing", "first\n", "first\n", "", "first\n"},
+		{"content changed underneath prints in full", "replaced\n", "first\n", "replaced\n", "replaced\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			got := printWorkLogSuffix(&buf, tc.log, tc.last)
+			if buf.String() != tc.wantPrinted {
+				t.Errorf("printed = %q, want %q", buf.String(), tc.wantPrinted)
+			}
+			if got != tc.wantReturn {
+				t.Errorf("returned = %q, want %q", got, tc.wantReturn)
+			}
+		})
+	}
+}
+
 // --- 2: following ------------------------------------------------------------
+
+// TestWorkLogs_FollowFlagRunsTheFollowPath drives -f through the real
+// command, not followWorkLogsLoop directly, so workLogsCmd's own follow
+// branch and followWorkLogs's followUntilInterrupted wiring both get
+// exercised — the item is already done on the first poll, so the follow
+// ends on its own without needing an interrupt or a shortened interval.
+func TestWorkLogs_FollowFlagRunsTheFollowPath(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /v1/items/a/log", func(w http.ResponseWriter, _ *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{"id": "a", "log": "done already\n"})
+	})
+	mux.HandleFunc("GET /v1/items", func(w http.ResponseWriter, _ *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{"data": []map[string]any{{"id": "a", "state": "done"}}})
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	out, err := runWork(t, "logs", "a", "-f", "--url", srv.URL)
+	if err != nil {
+		t.Fatalf("work logs -f: %v", err)
+	}
+	if out != "done already\n" {
+		t.Errorf("out = %q, want %q", out, "done already\n")
+	}
+}
 
 func TestWorkLogs_WithoutFollowMakesOneRequest(t *testing.T) {
 	var mu sync.Mutex
@@ -214,6 +326,46 @@ func TestFollowWorkLogsLoop_EndsCleanlyWhenTheItemIsRemoved(t *testing.T) {
 	var buf bytes.Buffer
 	if err := followWorkLogsLoop(context.Background(), srv.URL, "", "a", &buf); err != nil {
 		t.Fatalf("an item removed mid-follow should end cleanly, not fail: %v", err)
+	}
+}
+
+func TestFollowWorkLogsLoop_ALogFetchFailurePropagates(t *testing.T) {
+	// A real failure (not a 404 "not found") reading the log itself must end
+	// the follow as an error too, distinct from workItemGone's clean end.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	t.Cleanup(srv.Close)
+
+	var buf bytes.Buffer
+	err := followWorkLogsLoop(context.Background(), srv.URL, "", "a", &buf)
+	if err == nil {
+		t.Error("a real failure reading the log should end the follow as an error")
+	}
+}
+
+func TestFollowWorkLogsLoop_AStateCheckFailurePropagates(t *testing.T) {
+	prev := workLogsInterval
+	workLogsInterval = time.Millisecond
+	t.Cleanup(func() { workLogsInterval = prev })
+
+	// The log fetch succeeds, but the list — the loop's second call each
+	// tick — answers a real failure, not a clean "not found": that must
+	// end the follow as an error, not as if the item had simply ended.
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /v1/items/a/log", func(w http.ResponseWriter, _ *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{"id": "a", "log": "hi\n"})
+	})
+	mux.HandleFunc("GET /v1/items", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	var buf bytes.Buffer
+	err := followWorkLogsLoop(context.Background(), srv.URL, "", "a", &buf)
+	if err == nil {
+		t.Error("a real failure reading the item's state should end the follow as an error")
 	}
 }
 
