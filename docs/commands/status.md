@@ -13,7 +13,7 @@ spinloop status --env prod            # one registered environment, no file need
 NODE     STATE         SERVING
 studio   running       llamacpp  qwen3-27b  (up 2h 14m)  (active 3m ago)  (1.40.0)
 gpu-box  stopped
-prod     running       vllm  org/model  (active 12s ago)
+prod     running       vllm  org/model  (active 12s ago)  (1.41.0)  (kept 3h 20m)  http://198.51.100.1:8000/v1
 dead     unreachable   dial tcp 198.51.100.9:4242: connect: connection refused
 ```
 
@@ -50,15 +50,23 @@ and name that machine in a `fleet.yaml`.
   cloud environment whose endpoint the control plane reports unhealthy reads
   the same way.
 
-Two things are deliberately not columns, because only one kind of node has
-them: an environment's endpoint address, which is
-[`spinloop remote env`](remote.md), and its retention deadline, which
-[`spinloop fleet metrics`](fleet.md#metrics) and
-[`spinloop dashboard`](dashboard.md) show.
+A node that runs on a cloud instance adds what only it can report: the
+release on it, where its engine answers, and how long it is retained. A daemon
+node shows none of those — it has no answer for them — and the row is shorter
+for it.
+
+## Which flags apply to which nodes
+
+| flag | applies to |
+| --- | --- |
+| `--env`, `--fleet`, `-O`/`--spinloop` | every target |
+
+`status` takes no flag that only some node kinds can answer. `metrics` and
+`logs` do — see their pages.
 
 ## See also
 
 - [`spinloop dashboard`](dashboard.md) — the same facts, live and interactive
+- [`spinloop metrics`](metrics.md) — what the engines are doing with the hardware
+- [`spinloop logs`](logs.md) — what they have said
 - [`spinloop fleet`](fleet.md) — driving the nodes rather than reading them
-- [`spinloop remote status`](remote.md) — one environment, with its address,
-  version and keep deadline in full

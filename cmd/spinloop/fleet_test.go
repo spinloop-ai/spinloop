@@ -147,7 +147,7 @@ func TestCmdFleetMetricsFormats(t *testing.T) {
 
 	t.Run("default (gauge)", func(t *testing.T) {
 		out := captureStdout(t, func() {
-			if err := cmdFleet([]string{"metrics"}); err != nil {
+			if err := cmdMetrics(nil); err != nil {
 				t.Error(err)
 			}
 		})
@@ -167,7 +167,7 @@ func TestCmdFleetMetricsFormats(t *testing.T) {
 
 	t.Run("bar", func(t *testing.T) {
 		out := captureStdout(t, func() {
-			if err := cmdFleet([]string{"metrics", "--format=bar"}); err != nil {
+			if err := cmdMetrics([]string{"--format=bar"}); err != nil {
 				t.Error(err)
 			}
 		})
@@ -181,7 +181,7 @@ func TestCmdFleetMetricsFormats(t *testing.T) {
 
 	t.Run("table", func(t *testing.T) {
 		out := captureStdout(t, func() {
-			if err := cmdFleet([]string{"metrics", "--format=table"}); err != nil {
+			if err := cmdMetrics([]string{"--format=table"}); err != nil {
 				t.Error(err)
 			}
 		})
@@ -192,7 +192,7 @@ func TestCmdFleetMetricsFormats(t *testing.T) {
 
 	t.Run("json covers the whole fleet", func(t *testing.T) {
 		out := captureStdout(t, func() {
-			if err := cmdFleet([]string{"metrics", "--format=json"}); err != nil {
+			if err := cmdMetrics([]string{"--format=json"}); err != nil {
 				t.Error(err)
 			}
 		})
@@ -221,7 +221,7 @@ func TestCmdFleetMetricsFormats(t *testing.T) {
 
 func TestCmdFleetMetricsRejectsBadFormat(t *testing.T) {
 	twoNodeFleet(t, "running")
-	if err := cmdFleet([]string{"metrics", "--format=csv"}); err == nil {
+	if err := cmdMetrics([]string{"--format=csv"}); err == nil {
 		t.Fatal("--format=csv accepted")
 	}
 }
@@ -262,7 +262,7 @@ func TestCmdFleetMetricsDrawsHistory(t *testing.T) {
 		upHost, upPort, downHost, downPort))
 
 	out := captureStdout(t, func() {
-		if err := cmdFleet([]string{"metrics"}); err != nil {
+		if err := cmdMetrics(nil); err != nil {
 			t.Error(err)
 		}
 	})
@@ -281,7 +281,7 @@ func TestCmdFleetMetricsDrawsHistory(t *testing.T) {
 	// bar draws the retained readings alone, including the GPU series the
 	// current reading no longer names.
 	out = captureStdout(t, func() {
-		if err := cmdFleet([]string{"metrics", "--format=bar"}); err != nil {
+		if err := cmdMetrics([]string{"--format=bar"}); err != nil {
 			t.Error(err)
 		}
 	})
@@ -689,7 +689,7 @@ func TestFleetFlagShortForm(t *testing.T) {
 	fleet := commandUnder(t, root, "fleet")
 	// status and dashboard are top-level verbs now; the rest still hang off
 	// the group, and every one of them offers -f for the fleet file.
-	for _, name := range []string{"metrics", "start", "stop", "deploy", "route"} {
+	for _, name := range []string{"start", "stop", "deploy", "route"} {
 		sub := commandUnder(t, fleet, name)
 		f := sub.Flags().Lookup("fleet")
 		if f == nil {
@@ -704,16 +704,29 @@ func TestFleetFlagShortForm(t *testing.T) {
 	if f := commandUnder(t, commandUnder(t, root, "harness"), "open").Flags().Lookup("fleet"); f == nil || f.Shorthand != "f" {
 		t.Errorf("harness open: --fleet lacks the -f shorthand")
 	}
-	logs := commandUnder(t, fleet, "logs")
+	// logs is a top-level verb now, and the one surface where -f means follow
+	// rather than the fleet file.
+	logs := commandUnder(t, root, "logs")
 	if f := logs.Flags().Lookup("fleet"); f == nil {
-		t.Error("fleet logs: no --fleet flag")
+		t.Error("logs: no --fleet flag")
 	} else if f.Shorthand != "" {
-		t.Errorf("fleet logs: --fleet carries shorthand %q, want none", f.Shorthand)
+		t.Errorf("logs: --fleet carries shorthand %q, want none", f.Shorthand)
 	}
 	if f := logs.Flags().Lookup("follow"); f == nil {
-		t.Error("fleet logs: no --follow flag")
+		t.Error("logs: no --follow flag")
 	} else if f.Shorthand != "f" {
-		t.Errorf("fleet logs: --follow shorthand = %q, want \"f\"", f.Shorthand)
+		t.Errorf("logs: --follow shorthand = %q, want \"f\"", f.Shorthand)
+	}
+	// The other top-level read verbs keep -f for the fleet file.
+	for _, name := range []string{"status", "dashboard", "metrics"} {
+		f := commandUnder(t, root, name).Flags().Lookup("fleet")
+		if f == nil {
+			t.Errorf("%s: no --fleet flag", name)
+			continue
+		}
+		if f.Shorthand != "f" {
+			t.Errorf("%s: shorthand = %q, want \"f\"", name, f.Shorthand)
+		}
 	}
 }
 
@@ -755,7 +768,7 @@ func TestCmdFleetMetricsWatchExitsOnInterrupt(t *testing.T) {
 	t.Cleanup(func() { metricsWatchInterval = orig })
 
 	done := make(chan error, 1)
-	go func() { done <- cmdFleet([]string{"metrics", "--watch"}) }()
+	go func() { done <- cmdMetrics([]string{"--watch"}) }()
 
 	// Let it draw at least twice, so the clear-and-redraw path runs.
 	time.Sleep(200 * time.Millisecond)

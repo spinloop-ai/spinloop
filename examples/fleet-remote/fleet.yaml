@@ -1,7 +1,7 @@
 # A fleet of `spinloop remote` environments, observed like machines.
 #
 #   spinloop status                # one row per environment: state and what it serves
-#   spinloop fleet metrics -w    # a live dashboard
+#   spinloop metrics -w    # a live dashboard
 #   spinloop fleet deploy --all  # create both environments from this file
 #
 # Each node's `name` is the registered environment it drives — one per

@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/spinloop-ai/spinloop/internal/daemon"
@@ -33,6 +34,17 @@ type remoteNode struct {
 	// re-asks a little behind the newest event already seen and this
 	// suppresses what the overlap re-reads, by event id.
 	logs *remote.FollowCursor
+
+	// mu guards the facts Metrics retains for the capabilities to answer from.
+	// A board refreshing several nodes reads and writes these from different
+	// goroutines, so they are not left bare.
+	mu sync.Mutex
+	// instance is what the replies so far have said about the instance this
+	// environment runs on, and uptime how long it has been running. They are
+	// what Cost and Instance answer from, so neither costs a call of its own:
+	// the replies that carried them have already been paid for.
+	instance Instance
+	uptime   int
 }
 
 // NewRemoteNode builds the live node for a named remote environment. The config
@@ -55,6 +67,24 @@ func (n *remoteNode) Status(ctx context.Context) (daemon.StatusResponse, error) 
 	if err != nil {
 		return daemon.StatusResponse{}, err
 	}
+	n.mu.Lock()
+	n.instance.BaseURL = resp.BaseURL
+	n.instance.RetainUntil = resp.RetainUntil
+	n.mu.Unlock()
+	// The release is not in this reply — the stats one carries it, read from
+	// the daemon on the box — so a running environment is asked for it, as the
+	// environment-only status command asked. A stopped one has no daemon to
+	// answer, and a failure to reach it leaves the version empty rather than
+	// failing a status that otherwise succeeded.
+	if resp.State == "running" || resp.State == "ready" {
+		if stats, err := remote.Stats(ctx, n.cfg); err == nil {
+			n.mu.Lock()
+			n.instance.Version = stats.Version
+			n.instance.ID = stats.InstanceID
+			n.instance.Type = stats.InstanceType
+			n.mu.Unlock()
+		}
+	}
 	return statusFromRemote(*resp), nil
 }
 
@@ -63,7 +93,77 @@ func (n *remoteNode) Metrics(ctx context.Context) (metrics.Stats, error) {
 	if err != nil {
 		return metrics.Stats{}, err
 	}
+	// The reply carries three facts the shared stats shape has no room for.
+	// Retaining them here is what lets Cost and Version answer without a
+	// second call for a reading already in hand.
+	n.mu.Lock()
+	n.uptime = resp.UptimeSeconds
+	n.instance.ID = resp.InstanceID
+	n.instance.Type = resp.InstanceType
+	n.instance.Version = resp.Version
+	n.mu.Unlock()
 	return statsFromRemote(*resp), nil
+}
+
+// Cost prices the session this environment has been running, from the instance
+// type it launched as and the region it launched in. Both come from the last
+// metrics reading, so a caller that has already taken one pays only for the
+// price lookup.
+//
+// A reading not yet taken, an instance that is not running, or a price the
+// Price List API does not return all yield the zero Cost and no error: a node
+// with no price to show reads the same however it came to have none.
+func (n *remoteNode) Cost(ctx context.Context) (Cost, error) {
+	n.mu.Lock()
+	instanceType, uptime := n.instance.Type, n.uptime
+	n.mu.Unlock()
+	if instanceType == "" || uptime <= 0 {
+		return Cost{}, nil
+	}
+	price, err := remote.GetOnDemandPrice(ctx, n.cfg.Region, instanceType)
+	if err != nil || price <= 0 {
+		return Cost{}, nil
+	}
+	return Cost{SoFar: float64(uptime) / 3600.0 * price, PerHour: price}, nil
+}
+
+// Instance is what the replies so far have said about the instance this
+// environment runs on. Empty fields are ones no reply carried — a stopped
+// environment has no instance id, and a control plane that could not reach the
+// daemon reports no version.
+func (n *remoteNode) Instance() Instance {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return n.instance
+}
+
+// LogsMatching reads this environment's log store, narrowed by what the caller
+// asked for. Unlike Logs it is a query rather than a cursor: the caller states
+// the window it wants, so nothing is retained between calls.
+func (n *remoteNode) LogsMatching(ctx context.Context, q LogQuery) (daemon.LogsResponse, error) {
+	source := q.Source
+	if source == "" {
+		source = remote.LogSourceEngine
+	}
+	limit := q.Limit
+	if limit <= 0 {
+		limit = remoteEngineTail
+	}
+	rq := remote.LogQuery{
+		Environment: n.cfg.Environment,
+		Source:      source,
+		Limit:       limit,
+		Instance:    q.Instance,
+	}
+	if q.Since > 0 {
+		rq.Start = time.Now().Add(-q.Since)
+	}
+	res, err := FetchLogsFn(ctx, n.cfg, rq)
+	if err != nil {
+		return daemon.LogsResponse{}, err
+	}
+	// A query is not a follow, so every event it returns is fresh to it.
+	return logsFromRemote(res.Events, len(res.Events) == 0), nil
 }
 
 func (n *remoteNode) Start(ctx context.Context) (daemon.StatusResponse, error) {
@@ -140,6 +240,12 @@ func (n *remoteNode) Keep(ctx context.Context, d time.Duration) (string, error) 
 	return deadline.UTC().Format(time.RFC3339), nil
 }
 
+// FetchLogsFn is exported so a test in this package or in cmd/spinloop can
+// substitute it. The read goes to the cloud's log store through the AWS SDK
+// rather than an HTTP Function URL, so there is no HTTP test server that can
+// stand in for it.
+var FetchLogsFn = remote.FetchLogs
+
 // remoteEngineTail caps how many engine log events a node read pulls. Remote logs
 // are a bounded tail pulled from the log store, not a byte cursor, so a follow of
 // a chatty engine must not page through an unbounded window.
@@ -153,7 +259,7 @@ func (n *remoteNode) Logs(ctx context.Context, offset int64, limit int) (daemon.
 		n.logs.Reset()
 	}
 	start := n.logs.Start()
-	res, err := remote.FetchLogs(ctx, n.cfg, remote.LogQuery{
+	res, err := FetchLogsFn(ctx, n.cfg, remote.LogQuery{
 		Environment: n.cfg.Environment,
 		Source:      remote.LogSourceEngine,
 		Limit:       remoteEngineTail,
@@ -222,8 +328,11 @@ func statusFromRemote(resp remote.Response) daemon.StatusResponse {
 
 // statsFromRemote maps the stats Lambda's reply onto the shared stats shape. The
 // per-stat fields already alias the metrics types the collector produces, so the
-// mapping is a field-for-field copy; the reply's version and instance facts have
-// no home on the node's stats and are left to the remote view.
+// mapping is a field-for-field copy. The reply's version and instance facts are
+// deliberately not among them: they describe a cloud environment and nothing
+// else, so putting them on the shape every node answers with would leave a
+// field every daemon reports empty. Metrics retains them on the node instead,
+// where Cost and Version answer from them.
 func statsFromRemote(resp remote.StatsResponse) metrics.Stats {
 	return metrics.Stats{
 		State:         resp.State,

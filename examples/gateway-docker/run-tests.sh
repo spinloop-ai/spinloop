@@ -170,6 +170,33 @@ status() {
 }
 
 #######################################
+# `spinloop metrics` against this example's fleet file. metrics is a top-level
+# verb rather than a fleet subcommand, so it needs its own wrapper.
+# Globals:
+#   SPINLOOP_BIN, HERE
+# Arguments:
+#   Arguments to pass to `spinloop metrics`.
+# Outputs:
+#   The command's stdout; stderr is discarded so assertions read cleanly.
+#######################################
+metrics() {
+  "${SPINLOOP_BIN}" metrics "$@" --fleet "${HERE}/fleet.yaml" 2>/dev/null
+}
+
+#######################################
+# `spinloop logs` against this example's fleet file, for the same reason.
+# Globals:
+#   SPINLOOP_BIN, HERE
+# Arguments:
+#   Arguments to pass to `spinloop logs`.
+# Outputs:
+#   The command's stdout; stderr is discarded so assertions read cleanly.
+#######################################
+logs() {
+  "${SPINLOOP_BIN}" logs "$@" --fleet "${HERE}/fleet.yaml" 2>/dev/null
+}
+
+#######################################
 # As fleet(), but merging stderr — for assertions about error messages.
 # Globals:
 #   SPINLOOP_BIN, HERE
@@ -458,7 +485,7 @@ test_engine_key_gating() {
   assert_not_contains "the node never discloses the key" "${status}" "${NODE_A_ENGINE_KEY}"
 
   local enginelog
-  enginelog="$(fleet logs node-a --limit 50 2>/dev/null || true)"
+  enginelog="$(logs node-a --limit 50 2>/dev/null || true)"
   assert_contains "the engine was gated by file" "${enginelog}" "--api-key-file"
   assert_not_contains "the key itself never reaches the command line" \
     "${enginelog}" "${NODE_A_ENGINE_KEY}"

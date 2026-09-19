@@ -197,7 +197,7 @@ func TestFleetCommandsCompleteEnv(t *testing.T) {
 	})
 	t.Chdir(t.TempDir())
 
-	for _, sub := range []string{"metrics", "logs", "start", "stop", "deploy", "route"} {
+	for _, sub := range []string{"start", "stop", "deploy", "route"} {
 		t.Run(sub, func(t *testing.T) {
 			got, _ := complete(t, "fleet", sub, "--env", "")
 			want := map[string]bool{"prod": false, "staging": false}

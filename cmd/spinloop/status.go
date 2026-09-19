@@ -15,7 +15,7 @@ import (
 )
 
 func statusCmd() *cobra.Command {
-	var path, envName string
+	var path, envName, spinloopPath string
 	c := &cobra.Command{
 		Use:   "status",
 		Short: "report every engine's state",
@@ -36,6 +36,9 @@ applies to every node.`,
 		SilenceUsage:  true,
 		RunE: func(c *cobra.Command, _ []string) error {
 			resolve(c)
+			if err := applyReadSpinloopEnv(spinloopPath); err != nil {
+				return err
+			}
 			cfg, err := resolveFleetTarget(fleetTarget{envName: envName, fleetPath: path})
 			if err != nil {
 				return err
@@ -48,6 +51,7 @@ applies to every node.`,
 	fs := c.Flags()
 	fs.StringVarP(&path, "fleet", "f", "", fleetFileUsage)
 	fs.StringVar(&envName, "env", "", envFlagTargetUsage)
+	registerSpinloopEnvFlag(fs, &spinloopPath)
 	c.ValidArgsFunction = noPositionals
 	compRegister(c, "fleet", compFiles)
 	compRegister(c, "env", compEnvs)

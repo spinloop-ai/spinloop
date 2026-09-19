@@ -49,11 +49,11 @@ func TestRemote_EnvNameResolves(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := captureStdout(t, func() {
-		if err := cmdRemoteStatus([]string{"--env", "prodenv"}); err != nil {
+		if err := cmdStatus([]string{"--env", "prodenv"}); err != nil {
 			t.Errorf("status via --env name: %v", err)
 		}
 	})
-	if !strings.Contains(out, "state: running") {
+	if !strings.Contains(out, "running") {
 		t.Errorf("--env name should resolve via the registry, got:\n%s", out)
 	}
 }
@@ -68,11 +68,11 @@ func TestRemote_DefaultEnvironment(t *testing.T) {
 
 	t.Chdir(t.TempDir()) // no ./Spinloop here
 	out := captureStdout(t, func() {
-		if err := cmdRemoteStatus([]string{"--env", "default"}); err != nil {
+		if err := cmdStatus([]string{"--env", "default"}); err != nil {
 			t.Errorf("status via default env: %v", err)
 		}
 	})
-	if !strings.Contains(out, "state: running") {
+	if !strings.Contains(out, "running") {
 		t.Errorf("no-Spinloop should use the default environment, got:\n%s", out)
 	}
 }
@@ -94,7 +94,7 @@ func TestRemote_SupersededFileIsNotRead(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Chdir(t.TempDir())
-	err := cmdRemoteMetrics([]string{"--env", "default"})
+	err := cmdMetrics([]string{"--env", "default"})
 	if err == nil {
 		t.Fatal("the superseded file must not configure an environment")
 	}

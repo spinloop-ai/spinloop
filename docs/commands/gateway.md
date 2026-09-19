@@ -85,7 +85,7 @@ The list is what a request can reach, so it is bounded by what the gateway can
 start: a running node contributes only what it reports — a running engine is
 never displaced to make room. A deployed-but-stopped `kind: remote`
 environment contributes the model id its own stats reply reports — read
-directly from its stored deploy config, the way `spinloop remote metrics`
+directly from its stored deploy config, the way `spinloop metrics --env <name>`
 already reads it, since its status reply carries no such facts while
 stopped — since the gateway can wake it the same way it wakes a
 `kind: daemon` node; one with nothing deployed contributes nothing, and

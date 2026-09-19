@@ -7,8 +7,8 @@ Observe and drive every engine you run, from one place. Each machine runs
 ```sh
 spinloop status                  # one row per node: state and what it serves
 spinloop dashboard               # the interactive tiled view — watch it, drive it
-spinloop fleet metrics           # each node's engine + system metrics
-spinloop fleet metrics -w        # the same, redrawn in place until interrupted
+spinloop metrics           # each node's engine + system metrics
+spinloop metrics -w        # the same, redrawn in place until interrupted
 spinloop fleet route my-spinloop # which node a harness launch would pick
 spinloop fleet start gpu-box     # start one or more nodes' engines
 spinloop fleet start --all       # start every node in the fleet
@@ -48,7 +48,7 @@ thing, so `--env` lets you skip writing the file:
 ```sh
 spinloop status --env qwen      # the same row a one-node fleet file gives
 spinloop dashboard --env qwen   # the tiled view, on one environment
-spinloop fleet logs --env qwen        # its engine's log
+spinloop logs --env qwen        # its engine's log
 ```
 
 Because such a fleet has no file, it carries none of the settings a fleet file
@@ -128,9 +128,9 @@ has been started at all.
 
 ## Metrics
 
-`spinloop fleet metrics` renders each node's engine and system metrics in the
+`spinloop metrics` renders each node's engine and system metrics in the
 same `gauge` (default), `bar`, `table`, and `json` formats as
-[`spinloop remote metrics`](remote.md) — they share the renderers, so a node in
+[`spinloop metrics --env <name>`](remote.md) — they share the renderers, so a node in
 your fleet and a cloud endpoint look the same. `gauge` draws the current
 reading per series as a filled progress gauge; `--format=bar` draws each
 series as a sparkline of the node's daemon's retained history instead, and a
@@ -171,7 +171,7 @@ silently missing whatever was down:
 ## The dashboard
 
 `spinloop dashboard` is that same board as a live view: one tile per
-node, repainted in place, each drawing exactly what `fleet metrics`' gauge
+node, repainted in place, each drawing exactly what `metrics`' gauge
 format prints for the node — state and uptime, what it serves, the CPU/GPU/RAM
 gauges, the token counters — so the view and the one-shot command never
 word a number differently. `g` toggles every tile between the gauge drawing
@@ -241,14 +241,14 @@ next round rather than waiting out its full cadence.
 
 Everything else in the view is `status`/`metrics`/`logs` in place — it
 is read-only apart from those four action keys. It needs a real terminal: a
-piped run is refused, and it says so by way of `fleet metrics --watch`, which
+piped run is refused, and it says so by way of `metrics --watch`, which
 is the streamable surface.
 
 ### The node detail view
 
 `Enter` on a tile opens a full-screen view of that node in place of the grid:
 its metrics, unclipped to the tile's 42 columns, its engine log tailed and
-followed the way `fleet logs -f` follows one node, and a footer naming the
+followed the way `logs -f` follows one node, and a footer naming the
 keys the view answers to. `Esc` closes it and returns to the grid with the
 same node still selected.
 
@@ -266,7 +266,7 @@ under you. The one exception is the keep prompt: while it is open it answers
 to `q`/`Ctrl+C` the way the stop confirmation does, cancelling and leaving. The rest of the
 fleet keeps refreshing behind the view, and any action already in flight on
 another node keeps running. A node whose engine has never run shows the same
-explanation `fleet logs` gives for it, not an empty pane.
+explanation `logs` gives for it, not an empty pane.
 
 `f` pauses and resumes the log's follow, independently of everything else in
 the view — the metrics section keeps refreshing either way. The header names
@@ -276,14 +276,14 @@ poll that simply ran late.
 
 ## Logs
 
-`spinloop fleet logs` prints what your engines actually said — the answer to the
+`spinloop logs` prints what your engines actually said — the answer to the
 question `status` raises when it reports a node as `crashed`.
 
 ```sh
-spinloop fleet logs              # the tail of every node's engine log
-spinloop fleet logs gpu-box      # just that node
-spinloop fleet logs -f           # follow, until you interrupt it
-spinloop fleet logs --limit 500  # more backlog per node
+spinloop logs              # the tail of every node's engine log
+spinloop logs gpu-box      # just that node
+spinloop logs -f           # follow, until you interrupt it
+spinloop logs --limit 500  # more backlog per node
 ```
 
 Each node's daemon captures its engine's stdout and stderr to a file, and

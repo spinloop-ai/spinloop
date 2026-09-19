@@ -10,8 +10,8 @@ spinloop remote auth       # store or report the credential this machine signs w
 spinloop remote bake       # bake the runner AMI(s) an environment runs from
 spinloop remote deploy     # create an endpoint (environment) and tell it what to serve
 spinloop remote start      # boot it; with --print-env, prints the exports your agent needs
-spinloop remote status     # is it up? is it healthy?
-spinloop remote logs       # what did it say? (readable after it's gone)
+spinloop status --env <name>     # is it up? is it healthy?
+spinloop logs --env <name>       # what did it say? (readable after it's gone)
 spinloop remote pause      # stop it now; a later start re-wakes it
 spinloop remote restart    # fresh engine, same address: stop it and wake it again
 spinloop remote keep 4h    # prevent the idle sweep from stopping it for 4 hours
@@ -121,7 +121,7 @@ the deployment that owns it. A `BASEURL` in the Spinloop wins if you set one.
 Name the environment with the `--env` flag:
 
 ```sh
-spinloop remote status --env qwen3.6-27b-prod
+spinloop status --env <name> --env qwen3.6-27b-prod
 ```
 
 The flag selects a **named environment** from the
@@ -230,9 +230,9 @@ a stored key covers them too.
 ## Checking on an endpoint
 
 ```sh
-spinloop remote status                   # is it up, is it healthy, where is it
-spinloop remote metrics                  # what is it doing — tokens, GPU, CPU, RAM
-spinloop remote metrics -w               # the same, redrawn every 60 seconds
+spinloop status --env <name>                   # is it up, is it healthy, where is it
+spinloop metrics --env <name>                  # what is it doing — tokens, GPU, CPU, RAM
+spinloop metrics --env <name> -w               # the same, redrawn every 60 seconds
 ```
 
 `metrics` draws its resource series as **gauge** format by default: the
@@ -316,10 +316,10 @@ endpoint's base URL when it serves, so you can check the address is unchanged.
 ## Reading the logs
 
 ```sh
-spinloop remote logs                      # the last hour of engine output
-spinloop remote logs --source boot        # the start-up log, before the engine ran
-spinloop remote logs --since 6h --limit 500
-spinloop remote logs -f                   # follow, until you interrupt it
+spinloop logs --env <name>                      # the last hour of engine output
+spinloop logs --env <name> --source boot        # the start-up log, before the engine ran
+spinloop logs --env <name> --since 6h --limit 500
+spinloop logs --env <name> -f                   # follow, until you interrupt it
 ```
 
 Instances ship two logs to CloudWatch: the inference engine's own output, and
