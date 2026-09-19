@@ -62,12 +62,14 @@ jobs:
       - name: Custom domain
         run: echo "docs.spinloop.ai" > site/CNAME
 
-      # enablement: true makes the first deploy configure the repository's
-      # Pages setting itself (source: GitHub Actions), so publishing the site
-      # needs no step in the repository settings.
+      # Pages must be enabled on the repository once (Settings -> Pages ->
+      # Source: GitHub Actions), or via the API:
+      #   curl -X POST -H "Authorization: Bearer <token>" \
+      #     https://api.github.com/repos/<owner>/<repo>/pages \
+      #     -d '{"build_type":"workflow"}'
+      # The workflow token cannot create the site itself, so this is a
+      # one-time admin step before the first deploy.
       - uses: actions/configure-pages@v6
-        with:
-          enablement: true
       - uses: actions/upload-pages-artifact@v5
         with:
           path: site
