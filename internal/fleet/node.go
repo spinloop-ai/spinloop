@@ -69,6 +69,90 @@ type Keeper interface {
 	Keep(ctx context.Context, d time.Duration) (string, error)
 }
 
+// Coster is an optional node capability: a node that can price the time it has
+// been running. Only a cloud environment can — the price comes from the
+// instance type it launched as and the region it launched in, neither of which
+// a machine someone already owns has an answer for — so a daemon node does not
+// implement it. A caller offering a cost (metrics --cost) asserts for it and
+// renders the node as it would without the flag when it is absent.
+//
+// The lookup crosses the network, so it is made only when a caller asks. A
+// price that cannot be fetched is not an error: the node reports no cost, the
+// same as a node that cannot be priced at all, because a missing price and an
+// unpriceable node read the same in a table.
+type Coster interface {
+	Cost(ctx context.Context) (Cost, error)
+}
+
+// Cost is what a node has spent on the session it is running, and the rate it
+// is spending at. Zero means no figure is available — the instance is not
+// running, its type is unknown, or the price lookup did not complete.
+type Cost struct {
+	// SoFar is the estimated spend on the current running session.
+	SoFar float64
+	// PerHour is the on-demand rate the estimate was computed from.
+	PerHour float64
+}
+
+// Reported says whether there is a figure to show. A caller renders nothing
+// rather than a zero: "$0.00" claims a node cost nothing, which is a different
+// statement from having no price for it.
+func (c Cost) Reported() bool { return c.PerHour > 0 }
+
+// SourceLogger is an optional node capability: a node whose log is a store that
+// can be queried — by which log to read, how far back, and which instance
+// produced it. Only a cloud environment has one; a daemon's log is a byte
+// offset into one file on one machine, where none of the three narrows
+// anything. A caller offering those flags asserts for it and reads the node
+// through Logs when it is absent.
+type SourceLogger interface {
+	LogsMatching(ctx context.Context, q LogQuery) (daemon.LogsResponse, error)
+}
+
+// LogQuery is what a caller can narrow a queryable log by. A zero field means
+// "do not narrow by this".
+type LogQuery struct {
+	// Source names which of the node's logs to read — its engine's output, its
+	// boot record, or both.
+	Source string
+	// Since bounds how far back to read.
+	Since time.Duration
+	// Instance restricts the read to one instance id, for a node whose store
+	// holds the output of more than one.
+	Instance string
+	// Limit caps the events returned, keeping the most recent.
+	Limit int
+}
+
+// InstanceReporter is an optional node capability: a node running on an
+// instance it can describe. A daemon node runs on a machine its operator
+// already knows about and does not implement it; a cloud environment reports
+// the instance it launched, the release on it, the address it answers at and
+// how long it is retained — the facts the environment-only commands used to
+// render and the shared engine reply has no room for.
+//
+// The values come from the replies the node has already received, so asking
+// costs nothing. A field the node has not been told is empty.
+type InstanceReporter interface {
+	Instance() Instance
+}
+
+// Instance is what a node reports about the instance it runs on. Every field
+// is optional: a reply that did not carry one leaves it empty, and a renderer
+// omits what is empty rather than printing a blank.
+type Instance struct {
+	// ID is the instance identifier the control plane assigned.
+	ID string
+	// Type is the instance type it launched as.
+	Type string
+	// Version is the spinloop release running on it.
+	Version string
+	// BaseURL is where its engine answers, as the control plane published it.
+	BaseURL string
+	// RetainUntil is its retention deadline, RFC 3339, while it has one.
+	RetainUntil string
+}
+
 // Node is one member of the fleet. Only daemonNode implements it today; the
 // interface exists so a remote-environment kind (an `spinloop remote`
 // environment read through its stats Lambda, which already yields
@@ -161,6 +245,15 @@ type NodeResult struct {
 	Status  daemon.StatusResponse
 	Metrics metrics.Stats
 	Logs    daemon.LogsResponse
+
+	// Cost is what this node has spent on its running session. Filled only by
+	// a call that asked for it, and only for a node that can be priced; see
+	// Cost.Reported for the difference between "nothing" and "no figure".
+	Cost Cost
+	// Instance describes the instance this node runs on, for a node that runs
+	// on one it can describe. The zero value means the node reported none,
+	// which is every node that is a machine rather than an instance.
+	Instance Instance
 
 	// At is when this reading was taken — set by the fan-out as the call
 	// returns. Reads are concurrent and of uneven duration, so a reading can

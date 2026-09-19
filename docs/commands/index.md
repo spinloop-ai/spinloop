@@ -7,6 +7,8 @@ help` the usage summary.
 | ------- | ------------ |
 | [`spinloop status`](status.md) | What every engine you run is doing, one row each — a fleet, or one environment |
 | [`spinloop dashboard`](dashboard.md) | The live tiled view of the same, with the keys to drive it |
+| [`spinloop metrics`](metrics.md) | What each engine is doing with its hardware, and what it has cost |
+| [`spinloop logs`](logs.md) | What each engine has said — a daemon's log file or an environment's log store |
 | [`spinloop code`](code.md) | Launch the active harness — a one-word shortcut for `spinloop harness open` |
 | [`spinloop harness`](harness.md) | Configure the agent (add, remove, apply, unapply, show, export), launch it (open), and set the default (config) |
 | [`spinloop provider`](provider.md) | Work with the provider catalogue (list, init) |

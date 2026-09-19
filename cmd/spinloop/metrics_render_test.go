@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/spinloop-ai/spinloop/internal/fleet"
 	"github.com/spinloop-ai/spinloop/internal/metrics"
 	"github.com/spinloop-ai/spinloop/internal/remote"
 )
@@ -441,16 +442,19 @@ func TestRenderStatCombinedStoppedEngineDrawsHistoryAlone(t *testing.T) {
 }
 
 func TestFormatMetricsBarStoppedWithHistory(t *testing.T) {
-	resp := &remote.StatsResponse{
-		Environment: "prod", State: "stopped", ModelID: "org/qwen:q4",
-		LastActiveAt: "2026-08-21T10:00:00Z", IdleSeconds: 12,
-		History: []metrics.HistorySample{
-			{Time: 1, CPU: ptrPct(10)},
-			{Time: 2, CPU: ptrPct(20)},
+	results := []fleet.NodeResult{{
+		Name: "prod", Outcome: fleet.OutcomeOK,
+		Metrics: metrics.Stats{
+			State: "stopped", ModelID: "org/qwen:q4",
+			LastActiveAt: "2026-08-21T10:00:00Z", IdleSeconds: 12,
+			History: []metrics.HistorySample{
+				{Time: 1, CPU: ptrPct(10)},
+				{Time: 2, CPU: ptrPct(20)},
+			},
 		},
-	}
+	}}
 	var b bytes.Buffer
-	if err := formatMetricsBar(resp, remote.Config{}, &b); err != nil {
+	if err := renderFleetMetrics(&b, results, "bar"); err != nil {
 		t.Fatal(err)
 	}
 	want := "prod  stopped  org/qwen:q4\n" +
@@ -463,7 +467,7 @@ func TestFormatMetricsBarStoppedWithHistory(t *testing.T) {
 	// The gauge format draws no series for a stopped endpoint: the header and
 	// the active line, and nothing after.
 	b.Reset()
-	if err := formatMetricsGauge(resp, remote.Config{}, &b); err != nil {
+	if err := renderFleetMetrics(&b, results, "gauge"); err != nil {
 		t.Fatal(err)
 	}
 	want = "prod  stopped  org/qwen:q4\n" +
@@ -488,7 +492,7 @@ func TestFormatMetricsBarRunning(t *testing.T) {
 		},
 	}
 	var b bytes.Buffer
-	if err := formatMetricsBar(resp, remote.Config{}, &b); err != nil {
+	if err := renderFleetMetrics(&b, nodeResultsFor(resp), "bar"); err != nil {
 		t.Fatal(err)
 	}
 	got := b.String()
@@ -521,7 +525,7 @@ func TestFormatMetricsJSONCarriesHistory(t *testing.T) {
 		},
 	}
 	var b bytes.Buffer
-	if err := formatMetricsJSON(resp, false, remote.Config{}, &b); err != nil {
+	if err := renderFleetMetrics(&b, nodeResultsFor(resp), "json"); err != nil {
 		t.Fatal(err)
 	}
 	got := b.String()
@@ -533,10 +537,31 @@ func TestFormatMetricsJSONCarriesHistory(t *testing.T) {
 	// Absent history stays absent, as on the daemon.
 	b.Reset()
 	resp.History = nil
-	if err := formatMetricsJSON(resp, false, remote.Config{}, &b); err != nil {
+	if err := renderFleetMetrics(&b, nodeResultsFor(resp), "json"); err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(b.String(), "history") {
 		t.Errorf("absent history serialised: %s", b.String())
 	}
+}
+
+// nodeResultsFor turns a control-plane stats reply into the one node result a
+// fan-out would produce for it, so a test can state its input as the reply and
+// assert on what the renderer draws.
+func nodeResultsFor(resp *remote.StatsResponse) []fleet.NodeResult {
+	return []fleet.NodeResult{{
+		Name: resp.Environment, Outcome: fleet.OutcomeOK,
+		Instance: fleet.Instance{
+			ID: resp.InstanceID, Type: resp.InstanceType, Version: resp.Version,
+			RetainUntil: resp.RetainUntil,
+		},
+		Metrics: metrics.Stats{
+			State: resp.State, Runner: resp.Runner, ModelID: resp.ModelID,
+			UptimeSeconds: resp.UptimeSeconds, Tokens: resp.Tokens,
+			GPUs: resp.GPUs, CPU: resp.CPU, Memory: resp.Memory,
+			History: resp.History, Errors: resp.Errors,
+			LastActiveAt: resp.LastActiveAt, IdleSeconds: resp.IdleSeconds,
+			RetainUntil: resp.RetainUntil,
+		},
+	}}
 }

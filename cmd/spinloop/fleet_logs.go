@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/spf13/cobra"
 	"github.com/spinloop-ai/spinloop/internal/fleet"
 )
 
@@ -25,59 +24,18 @@ var fleetLogsInterval = 3 * time.Second
 // cap would impose anyway.
 const bytesPerLineGuess = 512
 
-// fleetLogsCmd prints the engine output of the fleet's nodes. Unlike start and
-// stop it fans out by default: reading is safe, and "what did my engines say?"
-// is a fleet-wide question. Naming a node narrows it to that one.
-func fleetLogsCmd() *cobra.Command {
-	var (
-		path    string
-		follow  bool
-		limit   int
-		format  string
-		envName string
-	)
-	const followUsage = "keep printing new output as it arrives"
-	c := &cobra.Command{
-		Use:           "logs",
-		Short:         "tail the engines' logs",
-		Args:          cobra.ArbitraryArgs,
-		SilenceErrors: true,
-		SilenceUsage:  true,
-		RunE: func(c *cobra.Command, args []string) error {
-			resolve(c)
-			return runFleetLogs(fleetTarget{envName: envName, fleetPath: path}, follow, limit, format, args)
-		},
-	}
-	fs := c.Flags()
-	// --fleet takes no short form here: -f is already --follow, and a flag
-	// cannot carry two meanings on one command line. Every other fleet
-	// subcommand offers -f for the fleet file.
-	fs.StringVar(&path, "fleet", "", fleetFileUsage)
-	fs.StringVar(&envName, "env", "", envFlagTargetUsage)
-	fs.BoolVarP(&follow, "follow", "f", false, followUsage)
-	fs.IntVar(&limit, "limit", 200, "lines of backlog to print per node")
-	fs.StringVar(&format, "format", "text", "output format: text (default) or json")
-	c.ValidArgsFunction = noPositionals
-	compRegister(c, "fleet", compFiles)
-	compRegister(c, "env", compEnvs)
-	return c
-}
-
 // runFleetLogs is the body of `spinloop fleet logs`.
-func runFleetLogs(target fleetTarget, follow bool, limit int, format string, args []string) error {
-	if format != "text" && format != "json" {
-		return fmt.Errorf("--format must be \"text\" or \"json\", got %q", format)
-	}
-	if limit <= 0 {
-		return fmt.Errorf("--limit must be positive, got %d", limit)
+func runLogs(target fleetTarget, q fleet.LogQuery, follow bool, limit int, format string, args []string) error {
+	if err := validateLogQuery(q, format, limit); err != nil {
+		return err
 	}
 
 	cfg, err := resolveFleetTarget(target)
 	if err != nil {
 		return err
 	}
-	// A named node restricts the read; the fleet file still supplies its
-	// details, so an unknown name is caught here rather than at the socket.
+	// A named node restricts the read; the target still supplies its details,
+	// so an unknown name is caught here rather than at the socket.
 	if len(args) > 0 {
 		if cfg, err = cfg.Only(args[0]); err != nil {
 			return err
@@ -87,12 +45,12 @@ func runFleetLogs(target fleetTarget, follow bool, limit int, format string, arg
 	if follow {
 		return followFleetLogs(cfg, limit, format)
 	}
-	return runFleetLogsOnce(context.Background(), cfg, limit, format, os.Stdout)
+	return runFleetLogsOnce(context.Background(), cfg, q, limit, format, os.Stdout)
 }
 
 // runFleetLogsOnce reads each node's backlog and prints it.
-func runFleetLogsOnce(ctx context.Context, cfg *fleet.Config, limit int, format string, w io.Writer) error {
-	results := cfg.FanOut(ctx, fleet.LogsCall(nil, limit*bytesPerLineGuess))
+func runFleetLogsOnce(ctx context.Context, cfg *fleet.Config, q fleet.LogQuery, limit int, format string, w io.Writer) error {
+	results := cfg.FanOut(ctx, fleet.QueriedLogsCall(q, limit*bytesPerLineGuess))
 	for i := range results {
 		if results[i].OK() {
 			results[i].Logs.Content = lastLines(results[i].Logs.Content, limit)

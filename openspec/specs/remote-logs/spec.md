@@ -11,28 +11,32 @@ which is when they are wanted most.
 ## Requirements
 ### Requirement: An environment's shipped logs are readable from the CLI
 
-`spinloop remote logs` SHALL print the logs an environment's instances have
+`spinloop logs --env <name>` SHALL print the logs an environment's instances have
 shipped, without the operator needing to know the log group or stream naming,
 open the AWS console, or connect to an instance. It SHALL select which
-environment to read using the same rules as the other remote subcommands — the
-`--env <name>` flag naming a registered environment, else the `default`
-environment — so `spinloop remote logs` and `spinloop remote status` given the
-same `--env` always speak about the same environment.
+environment to read using the same `--env <name>` flag every other read verb
+uses, so `spinloop logs --env <name>` and `spinloop status --env <name>` given
+the same `--env` always speak about the same environment.
 
-#### Scenario: Reading the current environment's logs
+#### Scenario: Reading an environment's logs
 
-- **WHEN** the operator runs `spinloop remote logs` where `spinloop remote status`
-  would report on an environment
+- **WHEN** the operator runs `spinloop logs --env <name>` where `spinloop status --env <name>`
+  would report on that environment
 - **THEN** the log events that environment's instances shipped are printed
 - **AND** the operator is not required to name a log group, stream, or instance
 
 #### Scenario: Reading a named environment's logs
 
-- **WHEN** the operator runs `spinloop remote logs --env dev-2`
-- **THEN** `dev-2`'s logs are printed rather than the default
-  environment's
+- **WHEN** the operator runs `spinloop logs --env dev-2`
+- **THEN** `dev-2`'s logs are printed rather than any other environment's
 
-### Requirement: Logs are readable after the instance is gone
+#### Scenario: The remote spelling names its replacement
+
+- **WHEN** the operator runs `spinloop remote logs`
+- **THEN** it fails naming `spinloop logs --env <name>` as the command that
+  replaced it
+
+### Requirement: An environment's logs are readable after the instance is gone
 
 Reading logs SHALL NOT depend on an instance being running, nor on the
 environment's control endpoints answering. Logs SHALL be read from the durable
@@ -42,14 +46,14 @@ instance that has since terminated, is still available.
 #### Scenario: A terminated instance's logs are still readable
 
 - **WHEN** an instance has produced logs and has since terminated
-- **THEN** `spinloop remote logs` still prints that instance's shipped events
+- **THEN** `spinloop logs --env <name>` still prints that instance's shipped events
 
 #### Scenario: A stopped environment can be diagnosed
 
 - **WHEN** an environment is stopped, so its status reports no running instance
-- **THEN** `spinloop remote logs` still prints the logs from its previous runs
+- **THEN** `spinloop logs --env <name>` still prints the logs from its previous runs
 
-### Requirement: Both engine and boot logs are reachable
+### Requirement: An environment's both engine and boot logs are reachable
 
 The command SHALL be able to read either log source an instance ships — the
 inference engine's output and the boot (user-data) output — and both together.
@@ -60,7 +64,7 @@ the engine started is reachable even though the engine log is empty.
 
 #### Scenario: Engine output by default
 
-- **WHEN** the operator runs `spinloop remote logs` with no source selected
+- **WHEN** the operator runs `spinloop logs --env <name>` with no source selected
 - **THEN** the environment's engine log events are printed
 
 #### Scenario: Boot output on request
@@ -83,7 +87,7 @@ the engine started is reachable even though the engine log is empty.
 - **THEN** the engine's logs are found regardless of which supported engine
   produced them
 
-### Requirement: The volume fetched is bounded and controllable
+### Requirement: An environment's the volume fetched is bounded and controllable
 
 The command SHALL bound what it fetches by default rather than pulling an
 environment's entire retained history, and SHALL let the operator widen or
@@ -94,7 +98,7 @@ truncated view as complete.
 
 #### Scenario: A default window applies
 
-- **WHEN** the operator runs `spinloop remote logs` with no window stated
+- **WHEN** the operator runs `spinloop logs --env <name>` with no window stated
 - **THEN** only events from a bounded recent window are fetched
 
 #### Scenario: The window is widened
@@ -115,7 +119,7 @@ truncated view as complete.
 - **THEN** only that instance's events are printed, and events from the
   environment's other instances are excluded
 
-### Requirement: Output is ordered, timestamped and attributable
+### Requirement: An environment's output is ordered, timestamped and attributable
 
 Events SHALL be printed oldest first, each carrying its timestamp, so the
 output reads like a log rather than an unordered dump. When the printed events
@@ -147,7 +151,7 @@ fields for scripting.
 - **THEN** the events are emitted as structured records carrying at least the
   timestamp, source, instance and message
 
-### Requirement: New output can be followed
+### Requirement: An environment's new output can be followed
 
 The command SHALL be able to keep running and print events as they arrive,
 rather than exiting after one fetch, so an operator can watch a start or a
@@ -171,7 +175,7 @@ SHALL NOT be repeated on a later poll — and SHALL stop cleanly on interrupt.
 - **WHEN** the operator interrupts a follow
 - **THEN** the command exits without reporting an error
 
-### Requirement: Missing logs and missing access are explained
+### Requirement: An environment's missing logs and missing access are explained
 
 When no output can be produced, the command SHALL distinguish the causes an
 operator can act on and say what to do, rather than printing nothing or a raw
@@ -205,4 +209,3 @@ environment that simply has not logged anything in the window asked for.
   environment in the window asked for
 - **THEN** the command reports that there are no events for that environment in
   that window, and exits without an error
-

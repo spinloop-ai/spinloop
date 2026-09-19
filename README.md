@@ -548,13 +548,13 @@ spinloop fleet start gpu-box   # start one node's engine
 
 `dashboard` is the fleet you actually look at, and the board
 [at the top of this page](#2-on-every-machine-you-own) is a real one: one tile per
-node, repainted in place, showing the same numbers `fleet metrics` prints —
+node, repainted in place, showing the same numbers `metrics` prints —
 start a node with `s`, stop one with `x`, and a waking cloud machine shows its
 progress on its own tile; `a` lets you stop watching one that is still waking —
 it carries on in the cloud.
 Press `<enter>` on a tile for a full-screen view of that node — metrics, its
 engine log tailed live, and the keys that work there — `<esc>` to go back.
-`fleet metrics --watch` is the same board as a stream, for pipes.
+`metrics --watch` is the same board as a stream, for pipes.
 
 ```
 NODE     STATE         SERVING
@@ -625,11 +625,11 @@ while you are using it, and stops itself after a period of idleness.
 spinloop remote start --env dev-2 --print-env   # boot the instance, wait for the
                           # model to load, then print OPENAI_BASE_URL /
                           # OPENAI_API_KEY exports for eval
-spinloop remote status --env dev-2              # instance state, endpoint health,
+spinloop status --env <name> --env dev-2              # instance state, endpoint health,
                           # and when it last did any work
-spinloop remote metrics --env dev-2             # tokens, GPU, CPU and RAM — plus
+spinloop metrics --env <name> --env dev-2             # tokens, GPU, CPU and RAM — plus
                           # the same last-active
-spinloop remote logs --env dev-2                # what the engine (or the boot)
+spinloop logs --env <name> --env dev-2                # what the engine (or the boot)
                           # said, even after it's gone
 spinloop remote pause --env dev-2               # stop now, but keep it re-wakeable
 spinloop remote restart --env dev-2             # fresh engine, same address: stop

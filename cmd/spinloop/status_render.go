@@ -31,6 +31,14 @@ type statusFact struct {
 	// running engine that has answered is the ordinary case and needs no mark,
 	// and an absent reading is not evidence of anything to report.
 	Ready string
+	// Endpoint is where this node's engine answers, for a node whose address
+	// the control plane publishes. Empty for a daemon, whose address a client
+	// composes from the host it already has.
+	Endpoint string
+	// RetainUntil is the instance's retention deadline while it has one, RFC
+	// 3339. Empty for a node that is not retained, and for every node that is
+	// a machine rather than an instance.
+	RetainUntil string
 }
 
 // servingText is the "what it serves" text: runner and model, then the uptime and
@@ -68,6 +76,17 @@ func (f statusFact) servingText() string {
 	}
 	if f.Version != "" {
 		serving += fmt.Sprintf("  (%s)", f.Version)
+	}
+	// How long an instance is kept, where it is kept at all — the same figure
+	// and wording the metrics views draw, so one fact reads one way.
+	if keep := keepText(f.RetainUntil, metricsNow()); keep != "" {
+		serving += "  (" + keep + ")"
+	}
+	// Where its engine answers, last because it is the longest and the least
+	// often read: a node's address matters when you are about to use it, not
+	// when you are scanning states.
+	if f.Endpoint != "" {
+		serving += "  " + f.Endpoint
 	}
 	return serving
 }

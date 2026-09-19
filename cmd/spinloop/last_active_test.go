@@ -48,8 +48,8 @@ func TestRemoteMetricsBarShowsLastActive(t *testing.T) {
 	statsServer(t, runningWithActivity)
 
 	out := captureStdout(t, func() {
-		if err := cmdRemoteMetrics([]string{"--env", "default", "--format=bar"}); err != nil {
-			t.Fatalf("cmdRemoteMetrics: %v", err)
+		if err := cmdMetrics([]string{"--env", "default", "--format=bar"}); err != nil {
+			t.Fatalf("cmdMetrics: %v", err)
 		}
 	})
 	if !strings.Contains(out, "active    2m 5s ago") {
@@ -69,8 +69,8 @@ func TestRemoteMetricsTableShowsLastActive(t *testing.T) {
 	statsServer(t, runningWithActivity)
 
 	out := captureStdout(t, func() {
-		if err := cmdRemoteMetrics([]string{"--env", "default", "--format=table"}); err != nil {
-			t.Fatalf("cmdRemoteMetrics: %v", err)
+		if err := cmdMetrics([]string{"--env", "default", "--format=table"}); err != nil {
+			t.Fatalf("cmdMetrics: %v", err)
 		}
 	})
 	// Padded to the same key column as its neighbours, and beside uptime.
@@ -86,17 +86,25 @@ func TestRemoteMetricsJSONCarriesLastActive(t *testing.T) {
 	statsServer(t, runningWithActivity)
 
 	out := captureStdout(t, func() {
-		if err := cmdRemoteMetrics([]string{"--env", "default", "--format=json"}); err != nil {
-			t.Fatalf("cmdRemoteMetrics: %v", err)
+		if err := cmdMetrics([]string{"--env", "default", "--format=json"}); err != nil {
+			t.Fatalf("cmdMetrics: %v", err)
 		}
 	})
-	var decoded struct {
-		LastActiveAt string `json:"lastActiveAt"`
-		IdleSeconds  int    `json:"idleSeconds"`
+	// One object per node, since the one command reads a fleet as readily as
+	// one environment.
+	var nodes []struct {
+		Metrics struct {
+			LastActiveAt string `json:"lastActiveAt"`
+			IdleSeconds  int    `json:"idleSeconds"`
+		} `json:"metrics"`
 	}
-	if err := json.Unmarshal([]byte(out), &decoded); err != nil {
+	if err := json.Unmarshal([]byte(out), &nodes); err != nil {
 		t.Fatalf("output is not valid JSON: %v\n%s", err, out)
 	}
+	if len(nodes) != 1 {
+		t.Fatalf("nodes = %d, want 1:\n%s", len(nodes), out)
+	}
+	decoded := nodes[0].Metrics
 	// Unformatted: a consumer wanting a duration has the seconds, one wanting
 	// the fact has the timestamp.
 	if decoded.LastActiveAt != "2026-08-10T10:00:00Z" || decoded.IdleSeconds != 125 {
@@ -124,8 +132,8 @@ func TestRemoteMetricsStoppedStillShowsLastActive(t *testing.T) {
 	} {
 		t.Run(format, func(t *testing.T) {
 			out := captureStdout(t, func() {
-				if err := cmdRemoteMetrics([]string{"--env", "default", "--format=" + format}); err != nil {
-					t.Fatalf("cmdRemoteMetrics: %v", err)
+				if err := cmdMetrics([]string{"--env", "default", "--format=" + format}); err != nil {
+					t.Fatalf("cmdMetrics: %v", err)
 				}
 			})
 			if !strings.Contains(out, want) {
@@ -154,8 +162,8 @@ func TestLastActiveZeroIdleStillRenders(t *testing.T) {
 	} {
 		t.Run(format, func(t *testing.T) {
 			out := captureStdout(t, func() {
-				if err := cmdRemoteMetrics([]string{"--env", "default", "--format=" + format}); err != nil {
-					t.Fatalf("cmdRemoteMetrics: %v", err)
+				if err := cmdMetrics([]string{"--env", "default", "--format=" + format}); err != nil {
+					t.Fatalf("cmdMetrics: %v", err)
 				}
 			})
 			if !strings.Contains(out, want) {
@@ -176,8 +184,8 @@ func TestLastActiveOmittedWithoutATimestamp(t *testing.T) {
 	for _, format := range []string{"bar", "table"} {
 		t.Run(format, func(t *testing.T) {
 			out := captureStdout(t, func() {
-				if err := cmdRemoteMetrics([]string{"--env", "default", "--format=" + format}); err != nil {
-					t.Fatalf("cmdRemoteMetrics: %v", err)
+				if err := cmdMetrics([]string{"--env", "default", "--format=" + format}); err != nil {
+					t.Fatalf("cmdMetrics: %v", err)
 				}
 			})
 			// No line at all, rather than one implying it has sat unused.
@@ -215,18 +223,23 @@ func TestRemoteStatusShowsLastActive(t *testing.T) {
 	}`)
 
 	out := captureStdout(t, func() {
-		if err := cmdRemoteStatus([]string{"--env", "default"}); err != nil {
-			t.Fatalf("cmdRemoteStatus: %v", err)
+		if err := cmdStatus([]string{"--env", "default"}); err != nil {
+			t.Fatalf("cmdStatus: %v", err)
 		}
 	})
-	if !strings.Contains(out, "active: 2m 5s ago") {
+	if !strings.Contains(out, "(active 2m 5s ago)") {
 		t.Errorf("status missing the active line:\n%s", out)
 	}
-	// The lines it already printed are untouched.
-	for _, want := range []string{"state: running", "healthy: true", "base_url: http://198.51.100.7:8000"} {
+	// Every fact the environment-only status printed is still here: the state,
+	// the address, and — for a healthy endpoint — no not-ready mark, which is
+	// how health reads on a row that serves both node kinds.
+	for _, want := range []string{"running", "http://198.51.100.7:8000"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("status output missing %q:\n%s", want, out)
 		}
+	}
+	if strings.Contains(out, "not ready") {
+		t.Errorf("a healthy endpoint should carry no readiness mark:\n%s", out)
 	}
 }
 
@@ -234,11 +247,11 @@ func TestRemoteStatusZeroIdleStillRenders(t *testing.T) {
 	statusServer(t, `{"state": "running", "healthy": true, "lastActiveAt": "2026-08-10T10:00:00Z"}`)
 
 	out := captureStdout(t, func() {
-		if err := cmdRemoteStatus([]string{"--env", "default"}); err != nil {
-			t.Fatalf("cmdRemoteStatus: %v", err)
+		if err := cmdStatus([]string{"--env", "default"}); err != nil {
+			t.Fatalf("cmdStatus: %v", err)
 		}
 	})
-	if !strings.Contains(out, "active: 0s ago") {
+	if !strings.Contains(out, "(active 0s ago)") {
 		t.Errorf("status hid an endpoint that is working right now:\n%s", out)
 	}
 }
@@ -249,14 +262,14 @@ func TestRemoteStatusOmitsLastActiveWhenAbsent(t *testing.T) {
 	statusServer(t, `{"state": "stopped", "healthy": false}`)
 
 	out := captureStdout(t, func() {
-		if err := cmdRemoteStatus([]string{"--env", "default"}); err != nil {
-			t.Fatalf("cmdRemoteStatus: %v", err)
+		if err := cmdStatus([]string{"--env", "default"}); err != nil {
+			t.Fatalf("cmdStatus: %v", err)
 		}
 	})
 	if strings.Contains(out, "active") {
 		t.Errorf("status invented activity for a stopped instance:\n%s", out)
 	}
-	if !strings.Contains(out, "state: stopped") {
+	if !strings.Contains(out, "stopped") {
 		t.Errorf("status lost the rest of the report:\n%s", out)
 	}
 }
@@ -286,12 +299,18 @@ func TestFleetMetricsShowsLastActive(t *testing.T) {
 	for _, format := range []string{"bar", "table"} {
 		t.Run(format, func(t *testing.T) {
 			out := captureStdout(t, func() {
-				if err := cmdFleet([]string{"metrics", "--format=" + format}); err != nil {
+				if err := cmdMetrics([]string{"--format=" + format}); err != nil {
 					t.Fatalf("cmdFleet metrics: %v", err)
 				}
 			})
-			if !strings.Contains(out, "active    2m 5s ago") {
-				t.Errorf("fleet %s metrics missing the active line:\n%s", format, out)
+			// bar indents its active line under the header; table spells it
+			// as a key-value, like the facts around it.
+			want := "active    2m 5s ago"
+			if format == "table" {
+				want = "active:       2m 5s ago"
+			}
+			if !strings.Contains(out, want) {
+				t.Errorf("%s metrics missing the active line:\n%s", format, out)
 			}
 		})
 	}
@@ -308,7 +327,7 @@ func TestFleetMetricsJSONCarriesLastActive(t *testing.T) {
 	})
 
 	out := captureStdout(t, func() {
-		if err := cmdFleet([]string{"metrics", "--format=json"}); err != nil {
+		if err := cmdMetrics([]string{"--format=json"}); err != nil {
 			t.Fatalf("cmdFleet metrics: %v", err)
 		}
 	})
@@ -337,7 +356,7 @@ func TestFleetMetricsOmitsLastActiveWithoutActivity(t *testing.T) {
 	})
 
 	out := captureStdout(t, func() {
-		if err := cmdFleet([]string{"metrics"}); err != nil {
+		if err := cmdMetrics(nil); err != nil {
 			t.Fatalf("cmdFleet metrics: %v", err)
 		}
 	})
@@ -356,7 +375,7 @@ func TestFleetMetricsStoppedNodeStillShowsLastActive(t *testing.T) {
 	})
 
 	out := captureStdout(t, func() {
-		if err := cmdFleet([]string{"metrics"}); err != nil {
+		if err := cmdMetrics(nil); err != nil {
 			t.Fatalf("cmdFleet metrics: %v", err)
 		}
 	})
