@@ -49,7 +49,7 @@ remote`](../../docs/commands/remote.md) — just one command for both.
 
 ```sh
 spinloop status        # one row per node: the machine and the environments
-spinloop fleet metrics -w    # a live dashboard
+spinloop metrics -w    # a live dashboard
 spinloop fleet start qwen    # wake a sleeping environment from zero
 spinloop fleet stop gpu-box  # stop the machine's engine
 ```

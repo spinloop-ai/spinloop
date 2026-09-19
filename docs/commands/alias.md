@@ -40,7 +40,7 @@ It is stored and resolved just like a local one — see
 export SPINLOOP_ALIAS=big
 spinloop harness apply          # the same as `spinloop harness apply big`
 spinloop serve
-spinloop remote status
+spinloop status --env <name>
 ```
 
 The order is the argument you typed, then `SPINLOOP_ALIAS`, then `./Spinloop`. Two

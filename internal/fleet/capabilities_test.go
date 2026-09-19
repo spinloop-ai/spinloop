@@ -57,8 +57,8 @@ func TestDaemonNodeImplementsNoCloudCapability(t *testing.T) {
 	if _, ok := node.(SourceLogger); ok {
 		t.Error("a daemon node should not implement SourceLogger: its log is a byte offset")
 	}
-	if _, ok := node.(Versioner); ok {
-		t.Error("a daemon node should not implement Versioner: its status reply carries the version")
+	if _, ok := node.(InstanceReporter); ok {
+		t.Error("a daemon node should not implement InstanceReporter: it runs on a machine, not an instance")
 	}
 }
 
@@ -82,16 +82,16 @@ func TestRemoteNodeImplementsTheCloudCapabilities(t *testing.T) {
 	if _, ok := node.(SourceLogger); !ok {
 		t.Error("a cloud node should implement SourceLogger")
 	}
-	if _, ok := node.(Versioner); !ok {
-		t.Error("a cloud node should implement Versioner")
+	if _, ok := node.(InstanceReporter); !ok {
+		t.Error("a cloud node should implement InstanceReporter")
 	}
 }
 
-// The version comes from the reading already taken, not from a second call.
-func TestRemoteNodeVersionComesFromTheMetricsReading(t *testing.T) {
+// The instance facts come from the reading already taken, not a second call.
+func TestRemoteNodeInstanceComesFromTheMetricsReading(t *testing.T) {
 	stubAWSCreds(t)
 	calls := 0
-	srv := countingStatsServer(t, `{"state":"running","version":"1.40.0","instanceType":"g6e.xlarge","uptimeSeconds":7200}`, &calls)
+	srv := countingStatsServer(t, `{"state":"running","version":"1.40.0","instanceId":"i-0abc","instanceType":"g6e.xlarge","uptimeSeconds":7200}`, &calls)
 	registerStatsEnv(t, "prod", srv)
 	cfg, err := ForEnvironment("prod")
 	if err != nil {
@@ -102,19 +102,20 @@ func TestRemoteNodeVersionComesFromTheMetricsReading(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	v, _ := node.(Versioner)
-	if got := v.Version(); got != "" {
-		t.Errorf("version before any reading = %q, want empty", got)
+	i, _ := node.(InstanceReporter)
+	if got := i.Instance(); got != (Instance{}) {
+		t.Errorf("instance before any reading = %+v, want empty", got)
 	}
 	if _, err := node.Metrics(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	before := calls
-	if got := v.Version(); got != "1.40.0" {
-		t.Errorf("version = %q, want the reading's", got)
+	got := i.Instance()
+	if got.Version != "1.40.0" || got.ID != "i-0abc" || got.Type != "g6e.xlarge" {
+		t.Errorf("instance = %+v, want the reading's facts", got)
 	}
 	if calls != before {
-		t.Errorf("reading the version cost %d extra call(s), want none", calls-before)
+		t.Errorf("reading the instance cost %d extra call(s), want none", calls-before)
 	}
 }
 

@@ -14,7 +14,7 @@ set -a && . ./.env && set +a
 
 spinloop status --fleet ./fleet.yaml
 spinloop fleet start studio --fleet ./fleet.yaml
-spinloop fleet metrics -w --fleet ./fleet.yaml
+spinloop metrics -w --fleet ./fleet.yaml
 ```
 
 ```

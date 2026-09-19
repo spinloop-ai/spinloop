@@ -17,11 +17,12 @@ import (
 
 func metricsCmd() *cobra.Command {
 	var (
-		path     string
-		envName  string
-		format   string
-		watch    bool
-		withCost bool
+		path         string
+		envName      string
+		format       string
+		spinloopPath string
+		watch        bool
+		withCost     bool
 	)
 	c := &cobra.Command{
 		Use:   "metrics",
@@ -44,6 +45,9 @@ cost at all.`,
 		SilenceUsage:  true,
 		RunE: func(c *cobra.Command, _ []string) error {
 			resolve(c)
+			if err := applyReadSpinloopEnv(spinloopPath); err != nil {
+				return err
+			}
 			if err := validateMetricsFormat(format); err != nil {
 				return err
 			}
@@ -65,6 +69,7 @@ cost at all.`,
 	fs := c.Flags()
 	fs.StringVarP(&path, "fleet", "f", "", fleetFileUsage)
 	fs.StringVar(&envName, "env", "", envFlagTargetUsage)
+	registerSpinloopEnvFlag(fs, &spinloopPath)
 	fs.StringVar(&format, "format", "gauge", "output format: gauge (default), bar, table or json")
 	fs.BoolVarP(&watch, "watch", "w", false, "redraw every 60 seconds")
 	fs.BoolVar(&withCost, "cost", false, "include what each priceable node has cost so far")

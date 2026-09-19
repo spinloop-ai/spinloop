@@ -62,15 +62,24 @@ func fleetRow(r fleet.NodeResult) (state, serving string) {
 	}
 	// The shared facts come from the same source the remote status view reads,
 	// so the two cannot word or compute them differently.
+	// A node that runs on an instance reports its release outside the status
+	// reply, so the instance's answer fills what the reply left empty rather
+	// than overriding a daemon that carries its own.
+	version := r.Status.Version
+	if version == "" {
+		version = r.Instance.Version
+	}
 	f := statusFact{
 		State:         r.Status.State,
 		Model:         r.Status.Model,
 		Runner:        r.Status.Runner,
-		Version:       r.Status.Version,
+		Version:       version,
 		UptimeSeconds: r.Status.UptimeSeconds,
 		LastActiveAt:  r.Status.LastActiveAt,
 		IdleSeconds:   r.Status.IdleSeconds,
 		Ready:         r.Status.Ready,
+		Endpoint:      r.Instance.BaseURL,
+		RetainUntil:   r.Instance.RetainUntil,
 	}
 	return f.State, f.servingText()
 }
@@ -96,6 +105,15 @@ func runFleetMetricsWatch(cfg *fleet.Config, format string, call fleet.Call) err
 		results := cfg.FanOut(ctx, call)
 		if ctx.Err() != nil {
 			return nil
+		}
+		// A single-node target (an --env watch, or a fleet of one) with
+		// nothing else to show for the poll ends the watch rather than
+		// redrawing the same failure forever: this is the one node the
+		// caller asked about, and it could not be read. A multi-node fleet
+		// keeps drawing through a bad node so the rest of the fleet stays
+		// visible.
+		if len(results) == 1 && !results[0].OK() {
+			return fmt.Errorf("%s: %s", results[0].Name, results[0].Detail())
 		}
 		if err := renderFleetMetrics(&buf, results, format); err != nil {
 			return err
@@ -131,16 +149,19 @@ func renderFleetMetrics(w io.Writer, results []fleet.NodeResult, format string) 
 			continue
 		}
 		stats := r.Metrics
-		fmt.Fprintf(w, "%s  %s", r.Name, stats.State)
-		if stats.ModelID != "" {
-			fmt.Fprintf(w, "  %s", stats.ModelID)
-		}
-		fmt.Fprintln(w)
+		renderMetricsHeader(w, r, format)
 		// Before the continue, for the same reason the remote formats show it
 		// before theirs: a node whose engine has stopped still has a useful
 		// answer to "when did it last do anything?" — and, for a retained
 		// remote environment, "how long is it kept?".
-		renderActiveIndented(w, stats.LastActiveAt, stats.IdleSeconds, stats.RetainUntil, now)
+		// The table spells its facts as key-value lines, so its active line is
+		// spelled that way too; the compact formats indent theirs under the
+		// header.
+		if format == "table" {
+			renderActiveKeyValue(w, stats.LastActiveAt, stats.IdleSeconds, retainUntilOf(r), now)
+		} else {
+			renderActiveIndented(w, stats.LastActiveAt, stats.IdleSeconds, retainUntilOf(r), now)
+		}
 		switch format {
 		case "bar":
 			// No state gate, for the same reason the remote bar format has
@@ -163,9 +184,69 @@ func renderFleetMetrics(w io.Writer, results []fleet.NodeResult, format string) 
 			renderGPUTable(w, stats.GPUs)
 			renderCPUMemTable(w, stats.CPU, stats.Memory)
 		}
+		renderCost(w, r.Cost)
 		renderCollectionErrors(os.Stderr, stats.Errors)
 	}
 	return nil
+}
+
+// renderMetricsHeader draws the lines a node's figures open with. The table
+// format spells each fact on its own line, as the environment-only format did;
+// the compact formats put them on one line, as its bar and gauge did. Between
+// them they carry every fact those formats carried: what the node is, what it
+// runs on, what it serves, the release on it, and how long it has been up.
+func renderMetricsHeader(w io.Writer, r fleet.NodeResult, format string) {
+	stats := r.Metrics
+	if format == "table" {
+		fmt.Fprintf(w, "node:         %s\n", r.Name)
+		fmt.Fprintf(w, "state:        %s\n", stats.State)
+		for _, line := range []struct{ label, value string }{
+			{"instance", r.Instance.ID},
+			{"instanceType", r.Instance.Type},
+			{"runner", stats.Runner},
+			{"model", stats.ModelID},
+			{"version", r.Instance.Version},
+			{"endpoint", r.Instance.BaseURL},
+		} {
+			if line.value != "" {
+				fmt.Fprintf(w, "%-13s %s\n", line.label+":", line.value)
+			}
+		}
+		if stats.UptimeSeconds > 0 {
+			fmt.Fprintf(w, "%-13s %s\n", "uptime:", formatDuration(stats.UptimeSeconds))
+		}
+		return
+	}
+	fmt.Fprintf(w, "%s  %s", r.Name, stats.State)
+	for _, v := range []string{r.Instance.Type, stats.ModelID, r.Instance.Version} {
+		if v != "" {
+			fmt.Fprintf(w, "  %s", v)
+		}
+	}
+	if stats.UptimeSeconds > 0 {
+		fmt.Fprintf(w, "  (up %s)", formatDuration(stats.UptimeSeconds))
+	}
+	fmt.Fprintln(w)
+}
+
+// retainUntilOf is a node's retention deadline from whichever answer carried
+// it: the shared stats where a reading has been taken, the instance the node
+// describes otherwise. One fact, two replies, so a caller never has to pick.
+func retainUntilOf(r fleet.NodeResult) string {
+	if r.Metrics.RetainUntil != "" {
+		return r.Metrics.RetainUntil
+	}
+	return r.Instance.RetainUntil
+}
+
+// renderCost draws what a node has cost, where the caller asked and the node
+// could be priced. A node with no figure draws nothing: a zero would claim it
+// cost nothing.
+func renderCost(w io.Writer, c fleet.Cost) {
+	if !c.Reported() {
+		return
+	}
+	fmt.Fprintf(w, "  cost so far:  $%.2f (%.4f/hr)\n", c.SoFar, c.PerHour)
 }
 
 // fleetNodeJSON is one node in the JSON output: its metrics when it answered,
@@ -176,15 +257,34 @@ type fleetNodeJSON struct {
 	Outcome string `json:"outcome"`
 	Error   string `json:"error,omitempty"`
 	Metrics *any   `json:"metrics,omitempty"`
+	// The instance facts and the cost are what the node's kind could say
+	// beyond the shared engine figures. Omitted for a node that said none,
+	// which is every node that is a machine rather than an instance.
+	Instance     string   `json:"instance,omitempty"`
+	InstanceType string   `json:"instanceType,omitempty"`
+	Version      string   `json:"version,omitempty"`
+	BaseURL      string   `json:"baseUrl,omitempty"`
+	RetainUntil  string   `json:"retainUntil,omitempty"`
+	Cost         *float64 `json:"cost,omitempty"`
+	CostPerHour  *float64 `json:"costPerHour,omitempty"`
 }
 
 func renderFleetMetricsJSON(w io.Writer, results []fleet.NodeResult) error {
 	out := make([]fleetNodeJSON, 0, len(results))
 	for _, r := range results {
-		entry := fleetNodeJSON{Node: r.Name, Outcome: string(r.Outcome), Error: r.Detail()}
+		entry := fleetNodeJSON{
+			Node: r.Name, Outcome: string(r.Outcome), Error: r.Detail(),
+			Instance: r.Instance.ID, InstanceType: r.Instance.Type,
+			Version: r.Instance.Version, BaseURL: r.Instance.BaseURL,
+			RetainUntil: r.Instance.RetainUntil,
+		}
 		if r.OK() {
 			var m any = r.Metrics
 			entry.Metrics = &m
+		}
+		if r.Cost.Reported() {
+			soFar, perHour := r.Cost.SoFar, r.Cost.PerHour
+			entry.Cost, entry.CostPerHour = &soFar, &perHour
 		}
 		out = append(out, entry)
 	}

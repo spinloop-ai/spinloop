@@ -16,14 +16,15 @@ import (
 
 func logsCmd() *cobra.Command {
 	var (
-		path     string
-		envName  string
-		follow   bool
-		limit    int
-		format   string
-		source   string
-		since    time.Duration
-		instance string
+		path         string
+		envName      string
+		follow       bool
+		limit        int
+		format       string
+		source       string
+		since        time.Duration
+		instance     string
+		spinloopPath string
 	)
 	const followUsage = "keep printing new output as it arrives"
 	c := &cobra.Command{
@@ -47,6 +48,9 @@ read as it would be without them.`,
 		SilenceUsage:  true,
 		RunE: func(c *cobra.Command, args []string) error {
 			resolve(c)
+			if err := applyReadSpinloopEnv(spinloopPath); err != nil {
+				return err
+			}
 			q := fleet.LogQuery{Source: source, Since: since, Instance: instance}
 			return runLogs(fleetTarget{envName: envName, fleetPath: path}, q, follow, limit, format, args)
 		},
@@ -56,11 +60,12 @@ read as it would be without them.`,
 	// every other surface that follows something.
 	fs.StringVar(&path, "fleet", "", fleetFileUsage)
 	fs.StringVar(&envName, "env", "", envFlagTargetUsage)
+	registerSpinloopEnvFlag(fs, &spinloopPath)
 	fs.BoolVarP(&follow, "follow", "f", false, followUsage)
 	fs.IntVar(&limit, "limit", 200, "lines of backlog to print per node")
 	fs.StringVar(&format, "format", "text", "output format: text (default) or json")
 	fs.StringVar(&source, "source", "", "which log to read on a node that has more than one: engine (default), boot or all")
-	fs.DurationVar(&since, "since", 0, "how far back to read on a node whose log can be queried (30m, 2h)")
+	fs.DurationVar(&since, "since", time.Hour, "how far back to read on a node whose log can be queried (30m, 2h)")
 	fs.StringVar(&instance, "instance", "", "restrict to one instance id, on a node whose log holds more than one")
 	c.ValidArgsFunction = noPositionals
 	compRegister(c, "fleet", compFiles)

@@ -46,9 +46,10 @@ See proposal.md — Why. The implementation-relevant current state:
 
 **D1: Three capabilities, each a node-kind ability rather than a reply field.**
 
-`Coster`, `SourceLogger` and `Versioner` join `ProgressStarter` and `Keeper` on
-`fleet.Node`. A kind that cannot answer does not implement one; a caller that
-offers the flag asserts for it and leaves the node as it reads without it.
+`Coster`, `SourceLogger` and `InstanceReporter` join `ProgressStarter` and
+`Keeper` on `fleet.Node`. A kind that cannot answer does not implement one; a
+caller that offers the flag asserts for it and leaves the node as it reads
+without it.
 
 The alternative — widening `metrics.Stats` with an `InstanceType` and letting
 the renderer price it — was rejected twice over. It puts a cloud-only field on
@@ -75,11 +76,13 @@ requirement obliges each verb's page to say which flags apply to which kinds.
 
 **D3: `statsFromRemote` stops dropping the version and instance type.**
 
-Both are already in the reply the cloud node receives. `Versioner` reads the
-version from the node's retained reply rather than making a call, so the
-version costs nothing on the metrics path — unlike on `status`, where the
-version lives in a different endpoint and was what made `remote status` hard to
-move in the first place.
+Both are already in the reply the cloud node receives. `InstanceReporter`
+reads them from the node's retained replies rather than making a call, so
+these facts cost nothing extra on the metrics path — unlike on `status`, where
+the version lives in a different endpoint and was what made `remote status`
+hard to move in the first place. The same capability also carries the
+endpoint address and the retention deadline, so `status` and `metrics` read
+them the same way instead of each recomputing which reply carried what.
 
 `metrics.Stats` gains no field: the node keeps what it needs to answer its own
 capabilities, which is D1 applied consistently.
@@ -94,6 +97,23 @@ values come from a Spinloop loses them when the command they used is removed.
 
 This is the piece that made the last change stop short of `remote status`.
 Implementing it once here serves all three removed reads.
+
+**D4a: The Spinloop is named by a flag, and is never implicit.**
+
+The `remote` subcommands took their Spinloop as a positional and *also*
+consulted `./Spinloop` when none was given. Neither carries over as-is: `logs`
+already spends its positional on a node name, and a file sitting in the working
+directory should not silently set environment variables for a command that
+reads a fleet.
+
+So the verbs take `-O`/`--spinloop`, the spelling the launch already uses, and
+apply it only when given. An operator who relied on the implicit pickup names
+the file; that is one flag, and it makes the command say what it reads.
+
+Alternatives: a positional (rejected — ambiguous with `logs`'s node name, and
+inconsistent across the four verbs); keeping the implicit consult (rejected —
+it is the kind of at-a-distance behaviour this whole sequence has been
+removing, and it would newly apply to fleet reads that never had it).
 
 **D5: Five signposts, through the existing mechanism.**
 
