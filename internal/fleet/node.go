@@ -124,14 +124,33 @@ type LogQuery struct {
 	Limit int
 }
 
-// Versioner is an optional node capability: a node that reports the spinloop
-// release it is running somewhere other than its status reply. A daemon node
-// carries its version in that reply, so it does not implement this; a cloud
-// environment's arrives with its metrics, which is a different call. A caller
-// with a metrics reading in hand asserts for it rather than making a second
-// call of its own.
-type Versioner interface {
-	Version() string
+// InstanceReporter is an optional node capability: a node running on an
+// instance it can describe. A daemon node runs on a machine its operator
+// already knows about and does not implement it; a cloud environment reports
+// the instance it launched, the release on it, the address it answers at and
+// how long it is retained — the facts the environment-only commands used to
+// render and the shared engine reply has no room for.
+//
+// The values come from the replies the node has already received, so asking
+// costs nothing. A field the node has not been told is empty.
+type InstanceReporter interface {
+	Instance() Instance
+}
+
+// Instance is what a node reports about the instance it runs on. Every field
+// is optional: a reply that did not carry one leaves it empty, and a renderer
+// omits what is empty rather than printing a blank.
+type Instance struct {
+	// ID is the instance identifier the control plane assigned.
+	ID string
+	// Type is the instance type it launched as.
+	Type string
+	// Version is the spinloop release running on it.
+	Version string
+	// BaseURL is where its engine answers, as the control plane published it.
+	BaseURL string
+	// RetainUntil is its retention deadline, RFC 3339, while it has one.
+	RetainUntil string
 }
 
 // Node is one member of the fleet. Only daemonNode implements it today; the
@@ -231,11 +250,10 @@ type NodeResult struct {
 	// a call that asked for it, and only for a node that can be priced; see
 	// Cost.Reported for the difference between "nothing" and "no figure".
 	Cost Cost
-	// Version is the spinloop release this node reported somewhere other than
-	// its status reply. Empty for a node that carries it there instead — the
-	// status views read it from the status, and this is the metrics views'
-	// equivalent.
-	Version string
+	// Instance describes the instance this node runs on, for a node that runs
+	// on one it can describe. The zero value means the node reported none,
+	// which is every node that is a machine rather than an instance.
+	Instance Instance
 
 	// At is when this reading was taken — set by the fan-out as the call
 	// returns. Reads are concurrent and of uneven duration, so a reading can

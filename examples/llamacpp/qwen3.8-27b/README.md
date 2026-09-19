@@ -231,7 +231,7 @@ doesn't have these weights cached yet, deploy fetches them in the background
 eval "$(spinloop remote start --env qwen3.8-27b)"   # boots the instance
                                                     # (~10 min cold), exports
                                                     # OPENAI_BASE_URL / OPENAI_API_KEY
-spinloop remote status --env qwen3.8-27b            # is it up, is it healthy
+spinloop status --env <name> --env qwen3.8-27b            # is it up, is it healthy
 spinloop harness apply --env qwen3.8-27b                    # point opencode at the running endpoint
 spinloop harness open --env qwen3.8-27b             # work
 spinloop remote stop --env qwen3.8-27b              # done — shut it down now rather

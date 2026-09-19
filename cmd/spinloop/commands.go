@@ -351,6 +351,11 @@ var movedSubcommands = map[string]string{
 	"fleet harness":   "code --fleet <path>",
 	"fleet status":    "status",
 	"fleet dashboard": "dashboard",
+	"fleet metrics":   "metrics",
+	"fleet logs":      "logs",
+	"remote status":   "status --env <name>",
+	"remote metrics":  "metrics --env <name>",
+	"remote logs":     "logs --env <name>",
 }
 
 // fleetCmd builds the fleet parent and its subcommands. The parent does
@@ -404,9 +409,6 @@ names a file — falling back to the default environment. Each subcommand's
 		remotePauseCmd(),
 		remoteRestartCmd(),
 		remoteStopCmd(),
-		remoteStatusCmd(),
-		remoteMetricsCmd(),
-		remoteLogsCmd(),
 		remoteDeployCmd(),
 		remoteSeedCmd(),
 		remoteEnvCmd(),

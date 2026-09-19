@@ -63,6 +63,8 @@ Four words carry the whole tool:
 | [`spinloop daemon`](commands/serve.md#the-control-api---api-and-spinloop-daemon) | Supervise an engine over the [control API](http-api.md) |
 | [`spinloop status`](commands/status.md) | What every engine you run is doing, one row each — a fleet, or one environment |
 | [`spinloop dashboard`](commands/dashboard.md) | The live tiled view of the same, with the keys to drive it |
+| [`spinloop metrics`](commands/metrics.md) | What each engine is doing with its hardware, and what it has cost |
+| [`spinloop logs`](commands/logs.md) | What each engine has said — a daemon's log file or an environment's log store |
 | [`spinloop fleet`](commands/fleet.md) | Drive the engines on every machine you run: start, stop, deploy, route |
 | [`spinloop gateway`](commands/gateway.md) | Serve the fleet under one OpenAI-compatible endpoint |
 | [`spinloop orchestrator`](commands/orchestrator.md) | Work a backlog of items against the fleet, at the fleet's declared pace |

@@ -10,7 +10,7 @@ spinloop dashboard --env prod            # one environment, as a board of one
 ```
 
 Each tile draws what the gauge format of
-[`spinloop fleet metrics`](fleet.md#metrics) prints for that node — its state,
+[`spinloop metrics`](metrics.md) prints for that node — its state,
 what it serves, the resource gauges, the token counters — so the board and the
 metrics view cannot word the same reading differently.
 
@@ -44,9 +44,10 @@ node whose token reference cannot be resolved holds its reason for the life of
 the view.
 
 The board needs a terminal. To stream the same readings into a pipe, use
-`spinloop fleet metrics --watch`.
+`spinloop metrics --watch`.
 
 ## See also
 
 - [`spinloop status`](status.md) — the same facts as one table, scriptable
+- [`spinloop metrics`](metrics.md) — the same readings as text
 - [`spinloop fleet`](fleet.md) — the fleet file, and driving nodes from the CLI

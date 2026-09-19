@@ -167,6 +167,33 @@ status() {
 }
 
 #######################################
+# `spinloop metrics` against this example's fleet file. metrics is a top-level
+# verb rather than a fleet subcommand, so it needs its own wrapper.
+# Globals:
+#   SPINLOOP_BIN, HERE
+# Arguments:
+#   Arguments to pass to `spinloop metrics`.
+# Outputs:
+#   The command's stdout; stderr is discarded so assertions read cleanly.
+#######################################
+metrics() {
+  "${SPINLOOP_BIN}" metrics "$@" --fleet "${HERE}/fleet.yaml" 2>/dev/null
+}
+
+#######################################
+# `spinloop logs` against this example's fleet file, for the same reason.
+# Globals:
+#   SPINLOOP_BIN, HERE
+# Arguments:
+#   Arguments to pass to `spinloop logs`.
+# Outputs:
+#   The command's stdout; stderr is discarded so assertions read cleanly.
+#######################################
+logs() {
+  "${SPINLOOP_BIN}" logs "$@" --fleet "${HERE}/fleet.yaml" 2>/dev/null
+}
+
+#######################################
 # As fleet(), but merging stderr — for assertions about error messages, which
 # the CLI writes to stderr.
 # Globals:
@@ -289,7 +316,7 @@ wait_for_metrics() {
   local deadline=$((SECONDS + timeout))
   local out
   while (( SECONDS < deadline )); do
-    out="$(fleet metrics)"
+    out="$(metrics)"
     if [[ "${out}" == *"prompt tokens"* && "${out}" == *"RAM"* ]]; then
       return 0
     fi
@@ -503,7 +530,7 @@ STUB
   # own argv into the engine log, which is where that can be checked — in the
   # process list the shim has already exec'd and replaced itself.
   local enginelog
-  enginelog="$(fleet logs studio --limit 50 2>/dev/null || true)"
+  enginelog="$(logs studio --limit 50 2>/dev/null || true)"
   assert_contains "the engine was gated by file" "${enginelog}" "--api-key-file"
   assert_not_contains "the key itself never reaches the command line" \
     "${enginelog}" "${FLEET_TOKEN}"
@@ -530,13 +557,13 @@ test_metrics() {
   wait_for_metrics 30 || true
 
   local out
-  out="$(fleet metrics)"
+  out="$(metrics)"
   # The counters the fake engine serves, parsed by spinloop's own collector.
   assert_contains "token counters reach the fleet view" "${out}" "prompt tokens"
   assert_contains "prompt token count is the engine's" "${out}" "4096"
   assert_contains "resource bars are rendered" "${out}" "RAM"
 
-  out="$(fleet metrics --format=json)"
+  out="$(metrics --format=json)"
   assert_contains "json is labelled by node" "${out}" '"node": "gpu-box"'
   assert_contains "json reports the outcome" "${out}" '"outcome": "ok"'
 }

@@ -69,8 +69,10 @@ func TestRemoteDispatch(t *testing.T) {
 
 func TestRemote_Unconfigured(t *testing.T) {
 	isolateConfig(t)
-	// deploy needs a Spinloop, covered separately.
-	subs := []string{"start", "restart", "stop", "metrics"}
+	// deploy needs a Spinloop, covered separately. metrics, logs and status
+	// moved to the top level — cmd/spinloop/commands_test.go covers their
+	// signpost under the old spelling.
+	subs := []string{"start", "restart", "stop"}
 	// Naming no environment is its own failure: these commands act on one
 	// instance, and an instance nobody named is not one to act on.
 	for _, sub := range subs {
@@ -197,14 +199,18 @@ func TestRemoteStatus_PrintsState(t *testing.T) {
 	writeRemoteConfig(t, server.URL)
 
 	out := captureStdout(t, func() {
-		if err := cmdRemoteStatus([]string{"--env", "default"}); err != nil {
-			t.Errorf("cmdRemoteStatus: %v", err)
+		if err := cmdStatus([]string{"--env", "default"}); err != nil {
+			t.Errorf("cmdStatus: %v", err)
 		}
 	})
-	for _, want := range []string{"state: running", "healthy: true", "base_url: http://198.51.100.1:8000/v1"} {
+	for _, want := range []string{"running", "http://198.51.100.1:8000/v1"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("status output missing %q:\n%s", want, out)
 		}
+	}
+	// healthy:true reads as the absence of the not-ready mark, not a separate line.
+	if strings.Contains(out, "not ready") {
+		t.Errorf("a healthy endpoint should not be marked not ready:\n%s", out)
 	}
 }
 
@@ -242,11 +248,11 @@ func TestRemoteStatus_PrintsVersion(t *testing.T) {
 	}
 
 	out := captureStdout(t, func() {
-		if err := cmdRemoteStatus([]string{"--env", "default"}); err != nil {
-			t.Errorf("cmdRemoteStatus: %v", err)
+		if err := cmdStatus([]string{"--env", "default"}); err != nil {
+			t.Errorf("cmdStatus: %v", err)
 		}
 	})
-	if !strings.Contains(out, "version: 1.18.0") {
+	if !strings.Contains(out, "1.18.0") {
 		t.Errorf("status output missing version:\n%s", out)
 	}
 }
@@ -269,7 +275,7 @@ func TestRemoteStop_PrintsState(t *testing.T) {
 			t.Errorf("cmdRemoteStop: %v", err)
 		}
 	})
-	if !strings.Contains(out, "state: stopping") {
+	if !strings.Contains(out, "stopping") {
 		t.Errorf("stop should print the state, got:\n%s", out)
 	}
 }
@@ -505,11 +511,11 @@ func TestRemote_RestartInGeneratedHelp(t *testing.T) {
 	}
 }
 
-// The ./Spinloop in the working directory is still read before any
-// control-plane work — here for its ENV instructions, which name the control
-// plane a command with no other configuration would not find.
+// A Spinloop is read only when named with --spinloop/-O — never implicitly
+// from the working directory — for its ENV instructions, which here name the
+// control plane a command with no other configuration would not find.
 func TestRemote_SpinloopDiscovery(t *testing.T) {
-	isolateConfig(t) // no per-user config exists, so success proves discovery
+	isolateConfig(t) // no per-user config exists, so success proves the ENV reached it
 	stubAWSEnv(t)
 	unsetEnvOnCleanup(t, "SPINLOOP_REMOTE_START_URL", "SPINLOOP_REMOTE_STOP_URL", "SPINLOOP_REMOTE_REGION")
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -526,28 +532,28 @@ func TestRemote_SpinloopDiscovery(t *testing.T) {
 	}
 
 	out := captureStdout(t, func() {
-		if err := cmdRemoteStatus([]string{"--env", "default"}); err != nil {
-			t.Errorf("cmdRemoteStatus: %v", err)
+		if err := cmdStatus([]string{"--env", "default", "--spinloop", "Spinloop"}); err != nil {
+			t.Errorf("cmdStatus: %v", err)
 		}
 	})
-	if !strings.Contains(out, "state: running") {
+	if !strings.Contains(out, "running") {
 		t.Errorf("status via the Spinloop's ENV should work, got:\n%s", out)
 	}
 }
 
-// An explicit Spinloop no longer names an environment: read for its ENV
-// instructions and the adjacent .env, it falls through to the --env flag and
-// the per-user config, failing on the missing configuration — not on the
-// Spinloop.
+// --spinloop reads a Spinloop for its ENV instructions and the adjacent
+// .env; it never selects an environment by itself. One with no ENV lines
+// supplies nothing, so with no --env or --fleet either the command fails on
+// the missing target, not on the Spinloop.
 func TestRemote_ExplicitSpinloopDoesNotNameAnEnvironment(t *testing.T) {
 	isolateConfig(t)
 	t.Chdir(t.TempDir())
 	if err := os.WriteFile("Spinloop", []byte("PROVIDER ollama\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	err := cmdRemoteStatus([]string{"--env", "default", "Spinloop"})
-	if err == nil || !strings.Contains(err.Error(), "remote is not configured") {
-		t.Errorf("want the not-configured error, got %v", err)
+	err := cmdStatus([]string{"--spinloop", "Spinloop"})
+	if err == nil || !strings.Contains(err.Error(), "no fleet at") {
+		t.Errorf("want the no-target error, got %v", err)
 	}
 }
 
@@ -566,11 +572,11 @@ func TestRemote_SpinloopFallsBackToTheUserConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := captureStdout(t, func() {
-		if err := cmdRemoteStatus([]string{"--env", "default"}); err != nil {
-			t.Errorf("cmdRemoteStatus: %v", err)
+		if err := cmdStatus([]string{"--env", "default"}); err != nil {
+			t.Errorf("cmdStatus: %v", err)
 		}
 	})
-	if !strings.Contains(out, "state: stopped") {
+	if !strings.Contains(out, "stopped") {
 		t.Errorf("a Spinloop with no --env should fall back to the user config, got:\n%s", out)
 	}
 }
@@ -593,11 +599,11 @@ func TestRemote_IgnoresLowercaseSpinloopFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := captureStdout(t, func() {
-		if err := cmdRemoteStatus([]string{"--env", "default"}); err != nil {
-			t.Errorf("cmdRemoteStatus: %v", err)
+		if err := cmdStatus([]string{"--env", "default"}); err != nil {
+			t.Errorf("cmdStatus: %v", err)
 		}
 	})
-	if !strings.Contains(out, "state: stopped") {
+	if !strings.Contains(out, "stopped") {
 		t.Errorf("a lowercase spinloop file should not shadow discovery, got:\n%s", out)
 	}
 }
@@ -638,12 +644,12 @@ func TestRemoteMetrics_Running(t *testing.T) {
 	t.Setenv("SPINLOOP_REMOTE_STATS_URL", server.URL)
 
 	out := captureStdout(t, func() {
-		if err := cmdRemoteMetrics([]string{"--env", "default", "--format=table"}); err != nil {
-			t.Errorf("cmdRemoteMetrics: %v", err)
+		if err := cmdMetrics([]string{"--env", "default", "--format=table"}); err != nil {
+			t.Errorf("cmdMetrics: %v", err)
 		}
 	})
 	for _, want := range []string{
-		"environment:  dev",
+		"node:         default",
 		"state:        running",
 		"instance:     i-abc123",
 		"instanceType: g6e.xlarge",
@@ -682,8 +688,8 @@ func TestRemoteMetrics_Stopped(t *testing.T) {
 	t.Setenv("SPINLOOP_REMOTE_STATS_URL", server.URL)
 
 	out := captureStdout(t, func() {
-		if err := cmdRemoteMetrics([]string{"--env", "default", "--format=table"}); err != nil {
-			t.Errorf("cmdRemoteMetrics: %v", err)
+		if err := cmdMetrics([]string{"--env", "default", "--format=table"}); err != nil {
+			t.Errorf("cmdMetrics: %v", err)
 		}
 	})
 	if !strings.Contains(out, "state:        stopped") {
@@ -711,8 +717,8 @@ func TestRemoteMetrics_WithErrors(t *testing.T) {
 	t.Setenv("SPINLOOP_REMOTE_STATS_URL", server.URL)
 
 	errOut := captureStderr(t, func() {
-		if err := cmdRemoteMetrics([]string{"--env", "default"}); err != nil {
-			t.Errorf("cmdRemoteMetrics: %v", err)
+		if err := cmdMetrics([]string{"--env", "default"}); err != nil {
+			t.Errorf("cmdMetrics: %v", err)
 		}
 	})
 	for _, want := range []string{"metric collection errors", "nvidia-smi failed", "vmstat timeout"} {
@@ -746,11 +752,11 @@ func TestRemoteMetrics_DefaultFormat(t *testing.T) {
 	t.Setenv("SPINLOOP_REMOTE_STATS_URL", server.URL)
 
 	out := captureStdout(t, func() {
-		if err := cmdRemoteMetrics([]string{"--env", "default"}); err != nil {
-			t.Errorf("cmdRemoteMetrics: %v", err)
+		if err := cmdMetrics([]string{"--env", "default"}); err != nil {
+			t.Errorf("cmdMetrics: %v", err)
 		}
 	})
-	if !strings.Contains(out, "dev") || !strings.Contains(out, "running") {
+	if !strings.Contains(out, "default") || !strings.Contains(out, "running") {
 		t.Errorf("default format missing header, got:\n%s", out)
 	}
 	// The default is the gauge format: the current reading filled, with no
@@ -783,22 +789,27 @@ func TestRemoteMetrics_JsonFormat(t *testing.T) {
 	t.Setenv("SPINLOOP_REMOTE_STATS_URL", server.URL)
 
 	out := captureStdout(t, func() {
-		if err := cmdRemoteMetrics([]string{"--env", "default", "--format=json"}); err != nil {
-			t.Errorf("cmdRemoteMetrics: %v", err)
+		if err := cmdMetrics([]string{"--env", "default", "--format=json"}); err != nil {
+			t.Errorf("cmdMetrics: %v", err)
 		}
 	})
-	var result map[string]any
-	if err := json.Unmarshal([]byte(strings.TrimSpace(out)), &result); err != nil {
+	var results []map[string]any
+	if err := json.Unmarshal([]byte(strings.TrimSpace(out)), &results); err != nil {
 		t.Fatalf("JSON output is not valid: %v\n%s", err, out)
 	}
-	if result["environment"] != "dev" {
-		t.Errorf("expected environment=dev, got %v", result["environment"])
+	if len(results) != 1 {
+		t.Fatalf("decoded %d nodes, want 1", len(results))
 	}
-	if result["state"] != "running" {
-		t.Errorf("expected state=running, got %v", result["state"])
+	result := results[0]
+	if result["node"] != "default" {
+		t.Errorf("expected node=default, got %v", result["node"])
 	}
-	if result["instanceId"] != "i-abc123" {
-		t.Errorf("expected instanceId=i-abc123, got %v", result["instanceId"])
+	metrics, _ := result["metrics"].(map[string]any)
+	if metrics["state"] != "running" {
+		t.Errorf("expected state=running, got %v", metrics["state"])
+	}
+	if result["instance"] != "i-abc123" {
+		t.Errorf("expected instance=i-abc123, got %v", result["instance"])
 	}
 }
 
@@ -820,16 +831,19 @@ func TestRemoteMetrics_JsonFormatWithCost(t *testing.T) {
 	t.Setenv("SPINLOOP_REMOTE_STATS_URL", server.URL)
 
 	out := captureStdout(t, func() {
-		if err := cmdRemoteMetrics([]string{"--env", "default", "--format=json", "--cost"}); err != nil {
-			t.Errorf("cmdRemoteMetrics: %v", err)
+		if err := cmdMetrics([]string{"--env", "default", "--format=json", "--cost"}); err != nil {
+			t.Errorf("cmdMetrics: %v", err)
 		}
 	})
-	var result map[string]any
-	if err := json.Unmarshal([]byte(strings.TrimSpace(out)), &result); err != nil {
+	var results []map[string]any
+	if err := json.Unmarshal([]byte(strings.TrimSpace(out)), &results); err != nil {
 		t.Fatalf("JSON output is not valid: %v\n%s", err, out)
 	}
-	if result["environment"] != "dev" {
-		t.Errorf("expected environment=dev, got %v", result["environment"])
+	if len(results) != 1 {
+		t.Fatalf("decoded %d nodes, want 1", len(results))
+	}
+	if results[0]["node"] != "default" {
+		t.Errorf("expected node=default, got %v", results[0]["node"])
 	}
 }
 
@@ -838,7 +852,7 @@ func TestRemoteMetrics_InvalidFormat(t *testing.T) {
 	stubAWSEnv(t)
 	writeRemoteConfig(t, "http://localhost:0")
 
-	err := cmdRemoteMetrics([]string{"--env", "default", "--format=csv"})
+	err := cmdMetrics([]string{"--env", "default", "--format=csv"})
 	if err == nil || !strings.Contains(err.Error(), "format") {
 		t.Errorf("expected format error, got %v", err)
 	}
@@ -868,13 +882,13 @@ func TestRemoteMetrics_BarFormat(t *testing.T) {
 	t.Setenv("SPINLOOP_REMOTE_STATS_URL", server.URL)
 
 	out := captureStdout(t, func() {
-		err := cmdRemoteMetrics([]string{"--env", "default", "--format=bar"})
+		err := cmdMetrics([]string{"--env", "default", "--format=bar"})
 		if err != nil {
 			t.Errorf("bar format failed: %v", err)
 		}
 	})
 
-	if !strings.Contains(out, "dev") || !strings.Contains(out, "running") {
+	if !strings.Contains(out, "default") || !strings.Contains(out, "running") {
 		t.Errorf("bar output missing header:\n%s", out)
 	}
 	if !strings.Contains(out, "CPU") {
@@ -913,7 +927,7 @@ func TestRemoteMetrics_BarFormatStopped(t *testing.T) {
 	t.Setenv("SPINLOOP_REMOTE_STATS_URL", server.URL)
 
 	out := captureStdout(t, func() {
-		err := cmdRemoteMetrics([]string{"--env", "default", "--format=bar"})
+		err := cmdMetrics([]string{"--env", "default", "--format=bar"})
 		if err != nil {
 			t.Errorf("bar format failed: %v", err)
 		}
@@ -989,7 +1003,7 @@ func TestRemoteMetrics_WatchMode(t *testing.T) {
 	defer func() { metricsWatchInterval = oldInterval }()
 
 	out := captureStdout(t, func() {
-		err := cmdRemoteMetrics([]string{"--env", "default", "--watch", "--format=table"})
+		err := cmdMetrics([]string{"--env", "default", "--watch", "--format=table"})
 		// Expects error from the 3rd call.
 		if err == nil {
 			t.Error("watch should exit with error when server fails")
@@ -1000,7 +1014,7 @@ func TestRemoteMetrics_WatchMode(t *testing.T) {
 		t.Errorf("watch should have polled at least 3 times, got %d calls", callCount)
 	}
 	// Should see the metrics output multiple times (watch polls repeatedly).
-	count := strings.Count(out, "environment:  dev")
+	count := strings.Count(out, "node:         default")
 	if count < 2 {
 		t.Errorf("watch should have produced at least 2 outputs, got %d:\n%s", count, out)
 	}
@@ -1029,12 +1043,12 @@ func TestRemoteMetrics_WatchShortFlag(t *testing.T) {
 	defer func() { metricsWatchInterval = oldInterval }()
 
 	out := captureStdout(t, func() {
-		err := cmdRemoteMetrics([]string{"--env", "default", "-w", "--format=table"})
+		err := cmdMetrics([]string{"--env", "default", "-w", "--format=table"})
 		if err == nil {
 			t.Error("-w should exit with error when server fails")
 		}
 	})
-	if !strings.Contains(out, "environment:  dev") {
+	if !strings.Contains(out, "node:         default") {
 		t.Errorf("-w flag should work like --watch:\n%s", out)
 	}
 	if callCount < 2 {
@@ -1061,8 +1075,8 @@ func TestRemoteMetrics_MultiGPU(t *testing.T) {
 	t.Setenv("SPINLOOP_REMOTE_STATS_URL", server.URL)
 
 	out := captureStdout(t, func() {
-		if err := cmdRemoteMetrics([]string{"--env", "default", "--format=table"}); err != nil {
-			t.Errorf("cmdRemoteMetrics: %v", err)
+		if err := cmdMetrics([]string{"--env", "default", "--format=table"}); err != nil {
+			t.Errorf("cmdMetrics: %v", err)
 		}
 	})
 	for _, want := range []string{"GPU 0: GPU A", "GPU 1: GPU B", "avg util:", "total mem:"} {
@@ -1084,16 +1098,20 @@ func TestRemoteMetrics_JsonStopped(t *testing.T) {
 	t.Setenv("SPINLOOP_REMOTE_STATS_URL", server.URL)
 
 	out := captureStdout(t, func() {
-		if err := cmdRemoteMetrics([]string{"--env", "default", "--format=json"}); err != nil {
-			t.Errorf("cmdRemoteMetrics: %v", err)
+		if err := cmdMetrics([]string{"--env", "default", "--format=json"}); err != nil {
+			t.Errorf("cmdMetrics: %v", err)
 		}
 	})
-	var result map[string]any
-	if err := json.Unmarshal([]byte(strings.TrimSpace(out)), &result); err != nil {
+	var results []map[string]any
+	if err := json.Unmarshal([]byte(strings.TrimSpace(out)), &results); err != nil {
 		t.Fatalf("JSON output is not valid: %v\n%s", err, out)
 	}
-	if result["state"] != "stopped" {
-		t.Errorf("expected state=stopped, got %v", result["state"])
+	if len(results) != 1 {
+		t.Fatalf("decoded %d nodes, want 1", len(results))
+	}
+	metrics, _ := results[0]["metrics"].(map[string]any)
+	if metrics["state"] != "stopped" {
+		t.Errorf("expected state=stopped, got %v", metrics["state"])
 	}
 }
 
@@ -1114,15 +1132,19 @@ func TestRemoteMetrics_JsonWithErrors(t *testing.T) {
 	t.Setenv("SPINLOOP_REMOTE_STATS_URL", server.URL)
 
 	out := captureStdout(t, func() {
-		if err := cmdRemoteMetrics([]string{"--env", "default", "--format=json"}); err != nil {
-			t.Errorf("cmdRemoteMetrics: %v", err)
+		if err := cmdMetrics([]string{"--env", "default", "--format=json"}); err != nil {
+			t.Errorf("cmdMetrics: %v", err)
 		}
 	})
-	var result map[string]any
-	if err := json.Unmarshal([]byte(strings.TrimSpace(out)), &result); err != nil {
+	var results []map[string]any
+	if err := json.Unmarshal([]byte(strings.TrimSpace(out)), &results); err != nil {
 		t.Fatalf("JSON output is not valid: %v\n%s", err, out)
 	}
-	errors, ok := result["errors"].([]any)
+	if len(results) != 1 {
+		t.Fatalf("decoded %d nodes, want 1", len(results))
+	}
+	metrics, _ := results[0]["metrics"].(map[string]any)
+	errors, ok := metrics["errors"].([]any)
 	if !ok || len(errors) == 0 {
 		t.Errorf("expected errors in JSON output:\n%s", out)
 	}
@@ -1269,7 +1291,7 @@ func TestRemoteMetrics_WatchBuffersBeforeClear(t *testing.T) {
 	defer func() { metricsWatchInterval = oldInterval }()
 
 	out := captureStdout(t, func() {
-		cmdRemoteMetrics([]string{"--env", "default", "--watch", "--format=table"})
+		cmdMetrics([]string{"--env", "default", "--watch", "--format=table"})
 	})
 
 	// The clear-screen escape sequence.
@@ -1278,7 +1300,7 @@ func TestRemoteMetrics_WatchBuffersBeforeClear(t *testing.T) {
 	// First render must NOT have a clear-screen prefix — there's nothing to
 	// clear yet, and writing clear before content causes a visible flash.
 	firstClear := strings.Index(out, clearScreen)
-	firstEnv := strings.Index(out, "environment:")
+	firstEnv := strings.Index(out, "node:")
 	if firstClear != -1 && firstClear < firstEnv {
 		t.Error("first render must not clear screen before rendering content")
 	}
@@ -1286,16 +1308,16 @@ func TestRemoteMetrics_WatchBuffersBeforeClear(t *testing.T) {
 	// Subsequent renders DO have clear-screen before the new content, so the
 	// update is in-place.  With 3 calls (2 good, 1 error), we expect at least
 	// 2 renders and thus at least 1 clear between them.
-	count := strings.Count(out, "environment:")
+	count := strings.Count(out, "node:")
 	if count < 2 {
 		t.Fatalf("expected at least 2 renders, got %d", count)
 	}
 
 	// There should be at least one clear-screen that appears between the first
-	// and second "environment:" line.
-	firstIdx := strings.Index(out, "environment:")
-	secondIdx := strings.Index(out[firstIdx+len("environment:"):], "environment:")
-	secondIdx += firstIdx + len("environment:")
+	// and second "node:" line.
+	firstIdx := strings.Index(out, "node:")
+	secondIdx := strings.Index(out[firstIdx+len("node:"):], "node:")
+	secondIdx += firstIdx + len("node:")
 
 	between := out[firstIdx:secondIdx]
 	if !strings.Contains(between, clearScreen) {

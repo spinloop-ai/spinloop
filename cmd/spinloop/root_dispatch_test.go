@@ -78,6 +78,27 @@ func TestRoot_MovedSpellingsNameTheirNewHome(t *testing.T) {
 	}
 }
 
+// TestRoot_MovedSubcommandSpellingsNameTheirNewHome pins the same signpost one
+// level down, for a subcommand a group used to have: "fleet metrics" and
+// "remote status" and their siblings must each name the top-level verb that
+// replaced them, rather than cobra's ordinary unknown-command error.
+func TestRoot_MovedSubcommandSpellingsNameTheirNewHome(t *testing.T) {
+	isolateConfig(t)
+
+	for spelling, newHome := range movedSubcommands {
+		words := strings.Fields(spelling)
+		_, err := rootExec(t, words...)
+		if err == nil {
+			t.Errorf("%s: expected an error, got none", spelling)
+			continue
+		}
+		want := fmt.Sprintf("%q moved: run spinloop %s", spelling, newHome)
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("%s: error = %q, want it to contain %q", spelling, err.Error(), want)
+		}
+	}
+}
+
 // TestRoot_HarnessSubcommandsDispatch pins that each of harness's six
 // subcommands runs the subcommand and never launches the agent — the dispatch
 // the grouping depends on.

@@ -16,18 +16,23 @@ func StatusCall(ctx context.Context, n Node) NodeResult {
 	status, err := n.Status(ctx)
 	r := result(n.Name(), err)
 	r.Status = status
+	// A node that runs on an instance describes it; the status reply alone
+	// carries none of that, and asking costs nothing once the call is made.
+	if i, ok := n.(InstanceReporter); ok {
+		r.Instance = i.Instance()
+	}
 	return r
 }
 
-// MetricsCall reads a node's engine and system metrics, and the release it
-// reports alongside them where its kind reports one there. The version costs
-// nothing: a node that answers it does so from the reading just taken.
+// MetricsCall reads a node's engine and system metrics, and what its kind can
+// say about the instance it runs on. The latter costs nothing: a node that
+// answers it does so from the reading just taken.
 func MetricsCall(ctx context.Context, n Node) NodeResult {
 	stats, err := n.Metrics(ctx)
 	r := result(n.Name(), err)
 	r.Metrics = stats
-	if v, ok := n.(Versioner); ok {
-		r.Version = v.Version()
+	if i, ok := n.(InstanceReporter); ok {
+		r.Instance = i.Instance()
 	}
 	return r
 }

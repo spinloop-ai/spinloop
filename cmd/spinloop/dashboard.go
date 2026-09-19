@@ -11,7 +11,7 @@ import (
 )
 
 func dashboardCmd() *cobra.Command {
-	var path, envName string
+	var path, envName, spinloopPath string
 	c := &cobra.Command{
 		Use:   "dashboard",
 		Short: "watch the engines in an interactive tiled view",
@@ -39,12 +39,16 @@ metrics --watch instead.`,
 		SilenceUsage:  true,
 		RunE: func(c *cobra.Command, _ []string) error {
 			resolve(c)
+			if err := applyReadSpinloopEnv(spinloopPath); err != nil {
+				return err
+			}
 			return runFleetDashboard(fleetTarget{envName: envName, fleetPath: path})
 		},
 	}
 	fs := c.Flags()
 	fs.StringVarP(&path, "fleet", "f", "", fleetFileUsage)
 	fs.StringVar(&envName, "env", "", envFlagTargetUsage)
+	registerSpinloopEnvFlag(fs, &spinloopPath)
 	c.ValidArgsFunction = noPositionals
 	compRegister(c, "fleet", compFiles)
 	compRegister(c, "env", compEnvs)
