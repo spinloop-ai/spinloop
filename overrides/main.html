@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+
+{# Material's own main.html is a thin wrapper over base.html; extending
+   base.html straight keeps the whole page and only adds to the head. The
+   display face is not one Material loads for you, so the link goes here.
+   The body and code faces come from theme.font in mkdocs.yml. #}
+{% block extrahead %}
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700&display=swap"
+    rel="stylesheet"
+  >
+  {{ super() }}
+{% endblock %}

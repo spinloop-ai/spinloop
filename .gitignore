@@ -15,3 +15,6 @@
 # Coverage artefacts
 coverage.out
 coverage.html
+
+# The docs site's build output (mkdocs build / scripts/docs-serve.sh)
+/site/

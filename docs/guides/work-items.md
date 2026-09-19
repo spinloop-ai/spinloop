@@ -2,7 +2,7 @@
 
 Give the fleet a file of work items, and `spinloop orchestrator` works them
 at the pace the fleet allows: each admitted item runs as a one-shot coding
-agent — its inference going through the [fleet's gateway](commands/gateway.md) —
+agent — its inference going through the [fleet's gateway](../commands/gateway.md) —
 and its outcome is recorded beside the file. The orchestrator takes the
 fleet's shape from the gateway; it reads the fleet file, where there is one,
 only to find that gateway, and holds no node credentials of its own.
@@ -11,11 +11,11 @@ only to find that gateway, and holds no node credentials of its own.
 
 Three things, all described on their own pages:
 
-- A [fleet file](fleet-file.md) whose nodes carry [tags](fleet-file.md#tags) —
+- A [fleet file](../fleet-file.md) whose nodes carry [tags](../fleet-file.md#tags) —
   the operator's description of what work each node can take on — and which
-  declares its [concurrency limits](fleet-file.md#concurrency), how much
+  declares its [concurrency limits](../fleet-file.md#concurrency), how much
   work the fleet may hold in flight at once
-- A [gateway](commands/gateway.md) in front of that fleet, which is how the
+- A [gateway](../commands/gateway.md) in front of that fleet, which is how the
   orchestrator sees the nodes and how each agent's requests reach them —
   named to it by `--gateway`, or by the fleet file's gateway section where no
   flag is given
@@ -62,7 +62,7 @@ export OPENAI_API_KEY=the-gateway-token
 spinloop orchestrator --gateway http://127.0.0.1:4100 --items ./work.yaml
 ```
 
-Where the fleet file's [gateway section](fleet-file.md#gateway) names the gateway
+Where the fleet file's [gateway section](../fleet-file.md#gateway) names the gateway
 — and you run from the directory the file lives in — the flag stands down:
 
 ```sh
@@ -79,8 +79,8 @@ file: a second one for the same file is refused while the first holds its lock.
 Append an item to the file, by hand: a running orchestrator re-reads the file
 when it changes, and the new item enters the backlog on the next pass, ranked
 by its priority. Or, against a running orchestrator, with
-[`spinloop work add`](commands/work.md) — the item's fields as flags, sent to
-the [work list API](commands/orchestrator.md#the-work-list-api) the run
+[`spinloop work add`](../commands/work.md) — the item's fields as flags, sent to
+the [work list API](../commands/orchestrator.md#the-work-list-api) the run
 serves, which applies the file's validation on them:
 
 ```sh
@@ -99,7 +99,7 @@ is worked on its next pass, like any item the file carries. The API is also
 how a client watches the backlog move and acts on it: the list with each
 item's state, an item's kept output, a removal of an item the operator no
 longer wants, and an abort of one that is running —
-[`spinloop work`](commands/work.md) being that client from the shell.
+[`spinloop work`](../commands/work.md) being that client from the shell.
 
 ## Managing the backlog
 
@@ -116,8 +116,8 @@ the state, and the orchestrator moves on to the next. Read the state and the
 item's log to see what went wrong; fix the item and give it a new `id` to work
 it again.
 
-From the shell, the [`spinloop work`](commands/work.md) family drives this
-backlog through the run's [work list API](commands/orchestrator.md#the-work-list-api):
+From the shell, the [`spinloop work`](../commands/work.md) family drives this
+backlog through the run's [work list API](../commands/orchestrator.md#the-work-list-api):
 `work list` reports every item with its state — one plain line per item, a
 dash where a value is absent; `work logs <id>` (`-f` to follow) prints an
 item's kept agent output; `work abort <id>` stops a running item and puts
@@ -135,7 +135,7 @@ file left off. An orchestrator that dies uncleanly leaves its items marked
 ## What it does not do
 
 It never starts or stops a node — a stopped node is offered to an item only
-where the fleet's [wake policy](fleet-file.md#waking) says a request may
+where the fleet's [wake policy](../fleet-file.md#waking) says a request may
 start it, and it is the gateway that does the starting. It does not re-run an
 item that has ended, finished or failed, and its run holds no node
 credentials: the gateway is its only view of the fleet, the fleet file
@@ -143,9 +143,9 @@ giving only the gateway's address.
 
 ## Where next
 
-- [`spinloop orchestrator`](commands/orchestrator.md) — the full command reference, and
-  the [work list API](commands/orchestrator.md#the-work-list-api) a client works the backlog through
-- [`spinloop work`](commands/work.md) — the backlog driven from the shell,
+- [`spinloop orchestrator`](../commands/orchestrator.md) — the full command reference, and
+  the [work list API](../commands/orchestrator.md#the-work-list-api) a client works the backlog through
+- [`spinloop work`](../commands/work.md) — the backlog driven from the shell,
   through the run's work list API: add, list, logs, abort, remove
-- [The fleet file](commands/fleet.md) — tags, concurrency, and waking
-- [The gateway](commands/gateway.md) — the front door the orchestrator reads and routes through
+- [The fleet file](../fleet-file.md) — tags, concurrency, and waking
+- [The gateway](../commands/gateway.md) — the front door the orchestrator reads and routes through

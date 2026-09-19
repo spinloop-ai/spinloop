@@ -162,7 +162,7 @@ The mutations refuse rather than force:
 Callers present the API's token as a bearer token on every request,
 `/health` included — a wrong or missing one is a `401`. The token comes from
 one of three places, the same rules the
-[daemon's](serve.md#the-control-api---api-and-spinloop-daemon) token follows,
+[daemon's](serve.md#the-control-api-api-and-spinloop-daemon) token follows,
 and giving two at once is an error rather than a silent precedence:
 
 | Source | Notes |
@@ -238,7 +238,7 @@ adds the flag. An explicit `--dispatch` on the command line wins over it.
 
 Stopping an item — an abort, or the run's own clean interrupt — stops
 either the same way: the polite signal first, then, where the grace runs
-out, the hard end. See [`images/agent/README.md`](../../images/agent/README.md)
+out, the hard end. See [`images/agent/README.md`](https://github.com/spinloop-ai/spinloop/blob/main/images/agent/README.md)
 for what the official image carries.
 
 ## `harness.yaml`: environment and lifecycle scripts
@@ -328,7 +328,7 @@ the order they ran: startup's, then the harness's, then shutdown's.
 
 ## See also
 
-- [Working a backlog against the fleet](../work-items.md) — the feature this command drives, and how to work the items file
+- [Work a backlog](../guides/work-items.md) — the feature this command drives, and how to work the items file
 - [`spinloop gateway`](gateway.md) — the endpoint the orchestrator reads, and the one its agents call
 - [`spinloop fleet`](fleet.md) — the file the fleet's tags and concurrency limits live in
 - [`spinloop harness`](harness.md) — the single-task form each item runs as

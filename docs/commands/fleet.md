@@ -1,7 +1,7 @@
 # spinloop fleet
 
 Observe and drive every engine you run, from one place. Each machine runs
-[`spinloop daemon`](serve.md#the-control-api---api-and-spinloop-daemon); a
+[`spinloop daemon`](serve.md#the-control-api-api-and-spinloop-daemon); a
 `fleet.yaml` names them, and `spinloop fleet` fans out over their control APIs.
 
 ```sh
@@ -63,8 +63,8 @@ that environment reports is deployed.
 
 ## Try it without any hardware
 
-[`examples/fleet-docker/`](../../examples/fleet-docker/) brings up a real
-three-node fleet in containers — real daemons, real auth, a fake engine — so
+[`examples/fleet-docker/`](https://github.com/spinloop-ai/spinloop/tree/main/examples/fleet-docker)
+brings up a real three-node fleet in containers — real daemons, real auth, a fake engine — so
 you can see all of this working before setting up a single machine:
 
 ```sh
@@ -496,8 +496,10 @@ deploy`](remote.md), applied per node.
 - [The `fleet.yaml` file](../fleet-file.md) — the format reference for the
   file this command reads
 - [`spinloop up`](up.md) — the one-word start, from a fleet directory
-- [`examples/fleet-local/`](../../examples/fleet-local/) — a fleet of one, on your own machine
-- [`examples/fleet-docker/`](../../examples/fleet-docker/) — a runnable fleet
+- [`examples/fleet-local/`](https://github.com/spinloop-ai/spinloop/tree/main/examples/fleet-local)
+  — a fleet of one, on your own machine
+- [`examples/fleet-docker/`](https://github.com/spinloop-ai/spinloop/tree/main/examples/fleet-docker)
+  — a runnable fleet
 - [`spinloop daemon`](serve.md) — what runs on each node
 - [HTTP Control API](../http-api.md) — the API the fleet client speaks
 - [Environment variables](../env-vars.md)

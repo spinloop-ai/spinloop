@@ -1,0 +1,99 @@
+# The docs site, published at https://docs.spinloop.ai from the docs/
+# directory. Built with MkDocs Material; the brand theme lives in
+# docs/stylesheets/main.css and overrides/main.html, and the local/CI build is
+# scripts/docs-serve.sh and .github/workflows/docs.yml respectively.
+
+site_name: spinloop
+site_description: >-
+  Point your coding agent at any model — local or hosted — with one command.
+site_url: https://docs.spinloop.ai/
+docs_dir: docs
+site_dir: site
+
+# Loaded after Material's own stylesheets, so its variables win.
+extra_css:
+  - stylesheets/main.css
+
+theme:
+  name: material
+  custom_dir: overrides
+  # Body and code faces from the brand; the display face (Poppins) is loaded
+  # in overrides/main.html and applied to headings in stylesheets/main.css.
+  font:
+    text: IBM Plex Sans
+    code: IBM Plex Mono
+  favicon: img/favicon.svg
+  logo: img/favicon.svg
+  # One scheme, statically applied: the site is dark, the way the brand is.
+  # `custom` leaves the palette values to the CSS variables in main.css.
+  palette:
+    - scheme: slate
+      primary: custom
+      accent: custom
+  features:
+    - navigation.footer
+    - navigation.indexes
+    - navigation.tracking
+    - content.code.copy
+    - search.highlight
+    - search.suggest
+
+markdown_extensions:
+  - abbr
+  - admonition
+  - attr_list
+  - def_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+
+nav:
+  - Introduction: index.md
+  - Getting started: getting-started.md
+  - Guides:
+    - Serve a model locally: guides/local-serving.md
+    - Open your coding agent: guides/harness.md
+    - From a Hugging Face model: guides/hugging-face.md
+    - Run a daemon node: guides/daemon.md
+    - Deploy to a cloud GPU: guides/remote.md
+    - Run a fleet: guides/fleet.md
+    - Serve the fleet as a gateway: guides/gateway.md
+    - Work a backlog: guides/work-items.md
+  - Reference:
+    - The Spinloop file: spinloop-file.md
+    - The fleet.yaml file: fleet-file.md
+    - Commands:
+      - Overview: commands/index.md
+      - spinloop status: commands/status.md
+      - spinloop dashboard: commands/dashboard.md
+      - spinloop code: commands/code.md
+      - spinloop harness: commands/harness.md
+      - spinloop provider: commands/provider.md
+      - spinloop serve: commands/serve.md
+      - spinloop up: commands/up.md
+      - spinloop hf: commands/hf.md
+      - spinloop alias: commands/alias.md
+      - spinloop unalias: commands/unalias.md
+      - spinloop remote: commands/remote.md
+      - spinloop fleet: commands/fleet.md
+      - spinloop gateway: commands/gateway.md
+      - spinloop orchestrator: commands/orchestrator.md
+      - spinloop work: commands/work.md
+      - spinloop completion: commands/completion.md
+    - Environment variables: env-vars.md
+    - The HTTP control API: http-api.md
+  - Troubleshooting: troubleshooting.md
+  - FAQ: faq.md
+  - Maintainer:
+    - Development: maintainer/development.md
+    - Implementation notes: maintainer/internals.md
+  - GitHub: https://github.com/spinloop-ai/spinloop
+
+copyright: spinloop
