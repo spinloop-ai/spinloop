@@ -119,7 +119,8 @@ it again.
 From the shell, the [`spinloop work`](commands/work.md) family drives this
 backlog through the run's [work list API](commands/orchestrator.md#the-work-list-api):
 `work list` reports every item with its state — one plain line per item, a
-dash where a value is absent; `work abort <id>` stops a running item and puts
+dash where a value is absent; `work logs <id>` (`-f` to follow) prints an
+item's kept agent output; `work abort <id>` stops a running item and puts
 it back in the backlog; `work remove <id>` takes an item out of the file, its
 state, and its log. The commands name the API's address with `--url` and
 present its token, and a refusal reads the way the API states it.
@@ -145,6 +146,6 @@ giving only the gateway's address.
 - [`spinloop orchestrator`](commands/orchestrator.md) — the full command reference, and
   the [work list API](commands/orchestrator.md#the-work-list-api) a client works the backlog through
 - [`spinloop work`](commands/work.md) — the backlog driven from the shell,
-  through the run's work list API: add, list, abort, remove
+  through the run's work list API: add, list, logs, abort, remove
 - [The fleet file](commands/fleet.md) — tags, concurrency, and waking
 - [The gateway](commands/gateway.md) — the front door the orchestrator reads and routes through

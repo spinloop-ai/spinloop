@@ -217,6 +217,16 @@ func noPositionals(_ *cobra.Command, _ []string, _ string) ([]string, cobra.Shel
 	return nil, cobra.ShellCompDirectiveNoFileComp
 }
 
+// itemIDSlot is the work subcommands' own positional — an item's id. There
+// is no local registry to draw candidates from the way aliasSlot has
+// aliasNames (an id only means anything against a specific run's work
+// list, reached over the network, which completion does not call out to):
+// it offers none, only suppressing file completion so typing an id is not
+// interrupted by filename suggestions that are never valid ids.
+func itemIDSlot(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+	return nil, cobra.ShellCompDirectiveNoFileComp
+}
+
 // aliasSlot is the Spinloop slot: registered names plus a path, for the first
 // positional only.
 func aliasSlot(_ *cobra.Command, args []string, _ string) ([]string, cobra.ShellCompDirective) {

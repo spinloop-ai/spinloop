@@ -2,12 +2,13 @@
 
 Work the [orchestrator](orchestrator.md)'s work list — the backlog it works —
 from the shell, as a client of the [work list API](orchestrator.md#the-work-list-api)
-the orchestrator serves: add an item, read the work, stop a running item,
-remove an item.
+the orchestrator serves: add an item, read the work, read an item's kept
+output, stop a running item, remove an item.
 
 ```sh
 spinloop work add --url http://127.0.0.1:4010 --id fix-parser --instructions "fix the failing tests" --dir ./parser
 spinloop work list --url http://127.0.0.1:4010
+spinloop work logs --url http://127.0.0.1:4010 fix-parser -f
 spinloop work abort --url http://127.0.0.1:4010 fix-parser
 spinloop work remove --url http://127.0.0.1:4010 docs-refresh
 ```
@@ -76,6 +77,28 @@ record is `backlog`. The list reads the work list API the orchestrator serves
 — the run's view of the items, the source of truth. `spinloop work ls` is the
 same list.
 
+## Reading an item's log
+
+```sh
+spinloop work logs --url http://127.0.0.1:4010 fix-parser
+```
+
+Prints an item's kept agent output through the API's log path. An item with
+no output yet — still `backlog`, or `running` with nothing written so far —
+prints as empty, not a fault. An id the run does not carry is refused,
+naming it.
+
+```sh
+spinloop work logs --url http://127.0.0.1:4010 fix-parser -f
+```
+
+`-f`/`--follow` polls for new output and prints it as it arrives, the way
+`tail -f` does. It keeps polling through `backlog` and `running` — run it
+right after `work add` and it waits for the item to start, then streams
+its output — and stops once the item is `done` or `failed`, once it drops
+out of the work list (a `work remove` elsewhere), or on your own
+interrupt.
+
 ## Aborting an item
 
 ```sh
@@ -122,7 +145,7 @@ once the item is out, and the command reports its answer.
 
 | Flag | Meaning |
 | ---- | ------- |
-| `--url <address>` | The work list API's base address — `add`, `list`, `abort`, `remove` |
+| `--url <address>` | The work list API's base address — `add`, `list`, `logs`, `abort`, `remove` |
 | `--api-token <value>` | The work list API's bearer token — every subcommand |
 | `--api-token-file <path>` | The file the work list API's bearer token stands in — every subcommand |
 | `--id <id>` | The item's id — `add` |
@@ -130,6 +153,7 @@ once the item is out, and the command reports its answer.
 | `--dir <path>` | The directory the agent works in — `add` |
 | `--tag <key=value>` | A tag the item carries; repeatable — `add` |
 | `--priority <n>` | The item's priority, higher first — `add` |
+| `-f`, `--follow` | Keep printing new output as it arrives — `logs` |
 
 Where neither token flag is given, the token comes from the
 `SPINLOOP_API_TOKEN` environment, and a loopback API needs none at all.

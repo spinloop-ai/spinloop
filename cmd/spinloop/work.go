@@ -1,16 +1,15 @@
 // The `work` command family: the orchestrator's work list — the backlog the
 // orchestrator works — worked from the shell as a client of the work list API
-// the orchestrator serves: add an item, read the work, stop a running item,
-// remove an item. The commands name the API's address and present its token;
-// the run's view of the items is the source of truth, and a refusal reads the
-// way the API states it.
+// the orchestrator serves: add an item, read the work, read an item's kept
+// output, stop a running item, remove an item. The commands name the API's
+// address and present its token; the run's view of the items is the source
+// of truth, and a refusal reads the way the API states it.
 package main
 
 import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -40,7 +39,8 @@ func workCmd() *cobra.Command {
 		Short: "work the orchestrator's work list",
 		Long: `works the orchestrator's work list — the backlog it works — from
 the shell, as a client of the work list API the orchestrator serves: add an
-item, read the work, stop a running item, remove an item.
+item, read the work, read an item's kept output, stop a running item,
+remove an item.
 
 Each subcommand takes --url, the API's base address, and presents the API's
 token — from --api-token, else --api-token-file, else the SPINLOOP_API_TOKEN
@@ -54,6 +54,7 @@ fails before it calls the API, naming the flag.`,
 		workListCmd(),
 		workAbortCmd(),
 		workRemoveCmd(),
+		workLogsCmd(),
 	)
 	return c
 }
@@ -122,6 +123,17 @@ func workRequest(base, token, method, path string, body any) ([]byte, error) {
 	return data, nil
 }
 
+// workAPIErr is a non-2xx answer from the work list API: Error() reads the
+// way the API states the refusal, and status is kept so a caller that
+// cares — a follow noticing its item was removed — can tell a "not found"
+// apart from any other refusal without parsing the message.
+type workAPIErr struct {
+	status int
+	msg    string
+}
+
+func (e *workAPIErr) Error() string { return e.msg }
+
 // workAPIError is a non-2xx answer from the work list API, as the error the
 // command reports: the API's message where it states one — the refusal reads
 // the way the API states it — the status and the address where it does not.
@@ -131,10 +143,11 @@ func workAPIError(base string, status int, data []byte) error {
 			Message string `json:"message"`
 		} `json:"error"`
 	}
+	msg := fmt.Sprintf("the work list API at %s answered %d", base, status)
 	if err := json.Unmarshal(data, &out); err == nil && out.Error.Message != "" {
-		return errors.New(out.Error.Message)
+		msg = out.Error.Message
 	}
-	return fmt.Errorf("the work list API at %s answered %d", base, status)
+	return &workAPIErr{status: status, msg: msg}
 }
 
 // workAddBody is one item as the work list API takes it: the fields the items
@@ -366,6 +379,7 @@ the command reports its answer: a refusal reads the way the API states it.`,
 	}
 	fs := c.Flags()
 	workAPIFlags(fs, &base, &apiToken, &apiTokenFile)
+	c.ValidArgsFunction = itemIDSlot
 	return c
 }
 
@@ -401,5 +415,6 @@ reads the way the API states it.`,
 	}
 	fs := c.Flags()
 	workAPIFlags(fs, &base, &apiToken, &apiTokenFile)
+	c.ValidArgsFunction = itemIDSlot
 	return c
 }
