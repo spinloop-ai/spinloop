@@ -27,9 +27,9 @@ This file provides guidance to coding agents, such as Claude Code, when working 
 
 Architecture and design decisions are specified in **`openspec/specs/`** — one directory per feature area (`fleet-routing`, `alias-registry`, `provider-catalog`, `opencode-integration`, …), each a `spec.md` of `SHALL` requirements with scenarios. That is the source of truth for *behavior*: read the relevant spec before changing how something works, and update it as part of the change (see `openspec/changes/` and the `openspec-*` skills).
 
-Implementation gotchas and cross-cutting rationale that aren't behavior requirements — things worth knowing before you touch the code, not things a user or a spec scenario cares about — live in [`docs/internals.md`](docs/internals.md).
+Implementation gotchas and cross-cutting rationale that aren't behavior requirements — things worth knowing before you touch the code, not things a user or a spec scenario cares about — live in [`docs/maintainer/internals.md`](docs/maintainer/internals.md).
 
-User-facing documentation (install, commands, the Spinloop file format, the HTTP API) lives under `docs/` — see [`docs/README.md`](docs/README.md).
+User-facing documentation is the [docs site](https://docs.spinloop.ai), sourced from `docs/` and built with MkDocs Material (`mkdocs.yml` at the repo root; `scripts/docs-serve.sh` serves it locally; `.github/workflows/docs.yml` publishes it to GitHub Pages). Maintainer-facing pages sit under `docs/maintainer/`.
 
 This file stays an orientation map: what's where, and which spec or doc governs it.
 
@@ -41,6 +41,7 @@ go test ./... -cover           # with coverage (keep total >= 80%)
 go vet ./...                   # vet
 go build -o spinloop ./cmd/spinloop   # build the CLI binary
 gofmt -w ./...                 # format
+scripts/docs-serve.sh          # serve the docs site locally (Docker, :8000)
 ```
 
 Run a single test: `go test -run TestWriteConfig_Idempotent ./...`

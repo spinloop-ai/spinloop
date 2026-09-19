@@ -3,9 +3,9 @@
 Manage the **harness** — your coding agent — through its subcommands: six
 configure which providers and models the agent uses, `open` launches it, and
 `config` reports or stores which harness is the default. A bare `spinloop
-harness` shows this list. opencode is the default; Pi is also supported. The
-harness is chosen at runtime, never baked into a `Spinloop` file, so the same
-selection works for either.
+harness` shows this list. opencode is the default; Pi and lucinate are also
+supported. The harness is chosen at runtime, never baked into a `Spinloop`
+file, so the same selection works for any of them.
 
 ```sh
 spinloop harness                # show the subcommands
@@ -423,4 +423,5 @@ Notes:
 - [`spinloop code`](code.md) — this launch, as a one-word top-level shortcut
 - [`spinloop provider list`](provider.md#spinloop-provider-list) — what the harness could be configured with
 - [`spinloop fleet route`](fleet.md#which-node-would-i-get) — which node a launch would pick
-- [`examples/fleet-local/`](../../examples/fleet-local/) — routing at a single local node, end to end
+- [`examples/fleet-local/`](https://github.com/spinloop-ai/spinloop/tree/main/examples/fleet-local)
+  — routing at a single local node, end to end

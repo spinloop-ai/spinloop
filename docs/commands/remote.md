@@ -18,8 +18,9 @@ spinloop remote keep 4h    # prevent the idle sweep from stopping it for 4 hours
 spinloop remote stop       # terminate it now, rather than waiting for the idle timer
 ```
 
-The endpoint is the one [`remote/`](../../remote/) in this repository deploys: a
-GPU instance that exists only while you're using it. When it goes idle it is
+The endpoint is the one
+[`remote/`](https://github.com/spinloop-ai/spinloop/tree/main/remote) in this
+repository deploys: a GPU instance that exists only while you're using it. When it goes idle it is
 stopped (so a re-wake is fast), and terminated once it has been stopped long
 enough that the pause is over.
 

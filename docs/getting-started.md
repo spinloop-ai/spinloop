@@ -109,6 +109,14 @@ no Spinloop uses it — see [`spinloop alias`](commands/alias.md#naming-one-for-
 
 ## Where next
 
+- [Serve a model locally](guides/local-serving.md) — the engine, end to end
+- [From a Hugging Face model](guides/hugging-face.md) — a model page's
+  reference, into a `Spinloop`
+- [Run a daemon node](guides/daemon.md) — the engine under the control API
+- [Deploy to a cloud GPU](guides/remote.md) — the same `Spinloop`, on a
+  machine that stops when you do
+- [Run a fleet](guides/fleet.md) — every machine you run, from one place
 - [The `Spinloop` file](spinloop-file.md) — full syntax
-- [Command reference](README.md#commands) — a page per command
-- [Examples](../examples/) — ready-to-apply Spinloops, with walkthroughs
+- [Command reference](commands/index.md) — a page per command
+- [Examples](https://github.com/spinloop-ai/spinloop/tree/main/examples)
+  — ready-to-apply Spinloops, with walkthroughs

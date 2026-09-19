@@ -297,6 +297,7 @@ PROVIDER openai-compatible
 MODEL    my-model
 ```
 
-Ready-to-use Spinloops live under [`examples/`](../examples/), including
-[`examples/remote-spinloop/`](../examples/remote-spinloop/) for fetching one from
-a URL.
+Ready-to-use Spinloops live under
+[`examples/`](https://github.com/spinloop-ai/spinloop/tree/main/examples),
+including [`examples/remote-spinloop/`](https://github.com/spinloop-ai/spinloop/tree/main/examples/remote-spinloop)
+for fetching one from a URL.

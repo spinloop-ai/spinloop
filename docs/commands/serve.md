@@ -56,7 +56,7 @@ The engine's own exit closes the view and serve exits with the engine's exit
 status, exactly as a foreground serve does.
 
 Under the view, the engine's stdout and stderr are captured to the same
-`daemon/engine.log` [spinloop's daemon](#the-control-api---api-and-spinloop-daemon)
+`daemon/engine.log` [spinloop's daemon](#the-control-api-api-and-spinloop-daemon)
 writes, from the engine's first line — so with `--api` the control API's log
 endpoint serves the engine's output rather than reporting the log missing.
 
@@ -324,8 +324,8 @@ or the one stored from a previous ask. With neither, a start says so.
 
 That is why a node and a client want different files. A client's Spinloop names a
 model and a fleet; a node holds nothing. See
-[`examples/fleet-local/`](../../examples/fleet-local/) for the whole shape on one
-machine.
+[`examples/fleet-local/`](https://github.com/spinloop-ai/spinloop/tree/main/examples/fleet-local)
+for the whole shape on one machine.
 
 The API listens on `:4242` (change with `--api-addr`; on the daemon,
 `--loopback`/`-l` binds `127.0.0.1:4242` instead) and speaks JSON.
@@ -443,5 +443,6 @@ output.
   the Spinloop
 - [`spinloop fleet`](fleet.md) — one spinloop observing the daemons on every
   machine you run
-- Worked examples with real models: [`examples/`](../../examples/)
+- Worked examples with real models:
+  [`examples/`](https://github.com/spinloop-ai/spinloop/tree/main/examples)
 - [The `Spinloop` file](../spinloop-file.md) — full syntax

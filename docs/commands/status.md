@@ -36,7 +36,7 @@ The same three ways every command that acts on a fleet takes one:
 so. With none of the three resolvable the command fails naming all of them —
 it does not go looking for an engine on the machine you are sitting at. To
 watch a local engine, [`spinloop serve`](serve.md) shows the one it runs; to
-read it from elsewhere, run [`spinloop daemon`](serve.md#the-control-api---api-and-spinloop-daemon)
+read it from elsewhere, run [`spinloop daemon`](serve.md#the-control-api-api-and-spinloop-daemon)
 and name that machine in a `fleet.yaml`.
 
 ## What a row says
