@@ -55,20 +55,19 @@ jobs:
           name: site
           path: site
 
-      # GitHub Pages serves the custom domain from a CNAME file at the site
-      # root. Written here rather than committed under docs/ so the docs
-      # directory stays pure content and the domain lives with the
-      # deployment, where a change to it belongs.
-      - name: Custom domain
-        run: echo "docs.spinloop.ai" > site/CNAME
-
-      # Pages must be enabled on the repository once (Settings -> Pages ->
-      # Source: GitHub Actions), or via the API:
-      #   curl -X POST -H "Authorization: Bearer <token>" \
-      #     https://api.github.com/repos/<owner>/<repo>/pages \
-      #     -d '{"build_type":"workflow"}'
-      # The workflow token cannot create the site itself, so this is a
-      # one-time admin step before the first deploy.
+      # The custom domain is not part of the artifact: for a site published
+      # by a workflow, GitHub ignores any CNAME file and the domain lives in
+      # the repository's Pages setting. Both of these are one-time admin
+      # steps, because the workflow token cannot make them:
+      #   1. enable Pages (build type: workflow)
+      #      curl -X POST -H "Authorization: Bearer <token>" \
+      #        https://api.github.com/repos/<owner>/<repo>/pages \
+      #        -d '{"build_type":"workflow"}'
+      #   2. once the DNS CNAME points at the site's base domain
+      #      (docs.spinloop.ai -> spinloop-ai.github.io), register it
+      #      curl -X PUT -H "Authorization: Bearer <token>" \
+      #        https://api.github.com/repos/<owner>/<repo>/pages \
+      #        -d '{"cname":"docs.spinloop.ai","source":{"branch":"main","path":"/"}}'
       - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v5
         with:
