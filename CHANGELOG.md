@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [1.42.0] - 2026-09-20
+### Added
+- feat: make metrics and logs top-level verbs
+
+### Changed
+- ci: let the first docs deploy enable GitHub Pages itself
+- docs: build the site with MkDocs Material and publish to GitHub Pages
+- docs: record the one-time Pages enablement the workflow cannot do
+
 ## [1.41.0] - 2026-09-19
 ### Added
 - feat(orchestrator): print the work list on startup
