@@ -122,13 +122,28 @@ func TestParseVMStatMemory(t *testing.T) {
 	}
 }
 
-const llamacppMetricsFixture = `# HELP llamacpp:prompt_tokens_total Number of prompt tokens processed.
+// llamacppMetricsFixture carries the lines a real llama.cpp server run with
+// --metrics serves: the token, decode and speculative-decode counters and the
+// in-flight request gauges. It deliberately names no cumulative request
+// counter, because the engine exposes none.
+const llamacppMetricsFixture = `# HELP llamacpp:prompt_tokens_total Number of prompt tokens processed, excluding cached tokens
+# TYPE llamacpp:prompt_tokens_total counter
 llamacpp:prompt_tokens_total 4096
+# HELP llamacpp:tokens_predicted_total Number of generation tokens processed
+# TYPE llamacpp:tokens_predicted_total counter
 llamacpp:tokens_predicted_total 1024
+# HELP llamacpp:n_decode_total Total number of llama_decode() calls, excluding speculative decoding and multimodal decoding
+# TYPE llamacpp:n_decode_total counter
 llamacpp:n_decode_total 900
+# HELP llamacpp:requests_processing Number of requests processing
+# TYPE llamacpp:requests_processing gauge
 llamacpp:requests_processing 2
+# HELP llamacpp:requests_deferred Number of requests deferred
+# TYPE llamacpp:requests_deferred gauge
 llamacpp:requests_deferred 1
-llamacpp:request_success_total 17
+# HELP llamacpp:predicted_tokens_seconds Average generation throughput in tokens/s
+# TYPE llamacpp:predicted_tokens_seconds gauge
+llamacpp:predicted_tokens_seconds 12.5
 other:noise 5
 `
 
@@ -137,10 +152,12 @@ func TestParseTokenStatsLlamacpp(t *testing.T) {
 	if tokens == nil {
 		t.Fatal("got nil token stats")
 	}
-	want := TokenStats{Running: 3, Counter: 4096 + 1024 + 900,
-		PromptTokens: 4096, GenerationTokens: 1024, Requests: 17}
-	if *tokens != want {
-		t.Errorf("tokens = %+v, want %+v", *tokens, want)
+	if tokens.Running != 3 || tokens.Counter != 4096+1024+900 ||
+		tokens.PromptTokens != 4096 || tokens.GenerationTokens != 1024 {
+		t.Errorf("tokens = %+v", *tokens)
+	}
+	if tokens.Requests != nil {
+		t.Errorf("requests = %d, want absent: llama.cpp's metrics expose no cumulative request counter", *tokens.Requests)
 	}
 }
 
@@ -156,10 +173,27 @@ func TestParseTokenStatsVllm(t *testing.T) {
 	if tokens == nil {
 		t.Fatal("got nil token stats")
 	}
-	want := TokenStats{Running: 5, Counter: 159, PromptTokens: 100,
-		GenerationTokens: 50, Requests: 9}
-	if *tokens != want {
-		t.Errorf("tokens = %+v, want %+v", *tokens, want)
+	if tokens.Running != 5 || tokens.Counter != 159 ||
+		tokens.PromptTokens != 100 || tokens.GenerationTokens != 50 {
+		t.Errorf("tokens = %+v", *tokens)
+	}
+	if tokens.Requests == nil || *tokens.Requests != 9 {
+		t.Errorf("requests = %v, want 9", tokens.Requests)
+	}
+}
+
+// An engine that serves its request counter before it has served anything
+// reports a genuine zero: the figure is present, not absent.
+func TestParseTokenStatsVllmZeroRequests(t *testing.T) {
+	out := strings.Replace(vllmMetricsFixture,
+		`vllm:request_success_total{finished_reason="stop",model_name="m"} 9`,
+		`vllm:request_success_total{finished_reason="stop",model_name="m"} 0`, 1)
+	tokens := ParseTokenStats(out, "vllm")
+	if tokens == nil {
+		t.Fatal("got nil token stats")
+	}
+	if tokens.Requests == nil || *tokens.Requests != 0 {
+		t.Errorf("requests = %v, want a present 0", tokens.Requests)
 	}
 }
 

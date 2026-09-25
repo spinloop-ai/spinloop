@@ -81,7 +81,7 @@ func (f *fakeDashNode) Metrics(ctx context.Context) (metrics.Stats, error) {
 		s.UptimeSeconds = 60
 		s.CPU = &metrics.CpuStat{Utilization: 42}
 		s.GPUs = []metrics.GpuStat{{Index: 0, Name: "H100", Utilization: 10, MemoryUsed: 1, MemoryTotal: 10}}
-		s.Tokens = &metrics.TokenStats{Running: 1, PromptTokens: 100, GenerationTokens: 50, Requests: 3}
+		s.Tokens = &metrics.TokenStats{Running: 1, PromptTokens: 100, GenerationTokens: 50, Requests: ptrInt(3)}
 	}
 	return s, nil
 }
@@ -349,7 +349,7 @@ func TestDashTileRunningByteStable(t *testing.T) {
 			CPU:    &metrics.CpuStat{Utilization: 42},
 			Memory: &metrics.MemoryStat{Total: 1000, Used: 300},
 			GPUs:   []metrics.GpuStat{{Index: 0, Name: "H100", Utilization: 61, MemoryUsed: 80, MemoryTotal: 160}},
-			Tokens: &metrics.TokenStats{Running: 2, PromptTokens: 4096, GenerationTokens: 1024, Requests: 17},
+			Tokens: &metrics.TokenStats{Running: 2, PromptTokens: 4096, GenerationTokens: 1024, Requests: ptrInt(17)},
 		},
 	}
 	want := dashTileExpected([]string{
@@ -896,7 +896,7 @@ func TestDashTileTruncatesTallContent(t *testing.T) {
 			CPU:           &metrics.CpuStat{Utilization: 42},
 			Memory:        &metrics.MemoryStat{Total: 1000, Used: 300},
 			GPUs:          gpus,
-			Tokens:        &metrics.TokenStats{Running: 1, PromptTokens: 100, GenerationTokens: 50, Requests: 3},
+			Tokens:        &metrics.TokenStats{Running: 1, PromptTokens: 100, GenerationTokens: 50, Requests: ptrInt(3)},
 		},
 	}
 	lines := strings.Split(dashTestTile("many", r, false, dashAction{}), "\n")
@@ -3370,7 +3370,7 @@ func dashHistoryNode() fleet.NodeResult {
 			CPU:    &metrics.CpuStat{Utilization: 42},
 			Memory: &metrics.MemoryStat{Total: 1000, Used: 300},
 			GPUs:   []metrics.GpuStat{{Index: 0, Name: "H100", Utilization: 61, MemoryUsed: 80, MemoryTotal: 160}},
-			Tokens: &metrics.TokenStats{Running: 2, PromptTokens: 4096, GenerationTokens: 1024, Requests: 17},
+			Tokens: &metrics.TokenStats{Running: 2, PromptTokens: 4096, GenerationTokens: 1024, Requests: ptrInt(17)},
 			History: []metrics.HistorySample{
 				{Time: 1786276800, CPU: ptrPct(10), Mem: ptrPct(20), GPUs: []metrics.HistoryGPU{{Index: 0, Util: 50, Mem: ptrPct(40)}}},
 				{Time: 1786276815, CPU: ptrPct(20), Mem: ptrPct(30), GPUs: []metrics.HistoryGPU{{Index: 0, Util: 61, Mem: ptrPct(50)}}},

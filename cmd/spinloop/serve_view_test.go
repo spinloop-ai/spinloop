@@ -433,7 +433,7 @@ func TestServeViewFrame(t *testing.T) {
 		CPU:           &metrics.CpuStat{Utilization: 42},
 		Memory:        &metrics.MemoryStat{Total: 1000, Used: 500},
 		History:       []metrics.HistorySample{{Time: 1, CPU: f64ptr(10), Mem: f64ptr(40)}},
-		Tokens:        &metrics.TokenStats{PromptTokens: 10, GenerationTokens: 5, Requests: 2},
+		Tokens:        &metrics.TokenStats{PromptTokens: 10, GenerationTokens: 5, Requests: ptrInt(2)},
 	}
 	m := newTestServeView(
 		func() (metrics.Stats, error) { return stats, nil },
