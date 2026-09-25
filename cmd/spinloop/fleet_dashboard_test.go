@@ -371,6 +371,41 @@ func TestDashTileRunningByteStable(t *testing.T) {
 	}
 }
 
+// A llamacpp node's statistics carry no request figure, and the tile draws no
+// line for it — the block keeps its height, and the space the line would have
+// taken stays blank.
+func TestDashTileRunningNoRequestCount(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.Ascii)
+	r := fleet.NodeResult{
+		Name: "up", Outcome: fleet.OutcomeOK,
+		Metrics: metrics.Stats{
+			State: "running", Runner: "llamacpp", ModelID: "org/qwen:q4",
+			UptimeSeconds: 7200, LastActiveAt: "2026-08-21T10:00:00Z", IdleSeconds: 12,
+			CPU:    &metrics.CpuStat{Utilization: 42},
+			Memory: &metrics.MemoryStat{Total: 1000, Used: 300},
+			GPUs:   []metrics.GpuStat{{Index: 0, Name: "H100", Utilization: 61, MemoryUsed: 80, MemoryTotal: 160}},
+			Tokens: &metrics.TokenStats{Running: 2, PromptTokens: 4096, GenerationTokens: 1024},
+		},
+	}
+	want := dashTileExpected([]string{
+		dashExpectedHeader("up  running  (up 2h 0m 0s)", dashHealthy),
+		"llamacpp  org/qwen:q4",
+		"  active    12s ago",
+		dashBar("CPU", 42),
+		dashBar("RAM", 30),
+		dashBar("GPU util", 61),
+		dashBar("GPU mem", 50),
+		"",
+		"  running:          2",
+		"  prompt tokens:    4096",
+		"  generation tokens: 1024",
+		"",
+	})
+	if got := dashTestTile("up", r, false, dashAction{}); got != want {
+		t.Errorf("tile mismatch:\ngot:\n%q\nwant:\n%q", got, want)
+	}
+}
+
 func TestDashTileOutcomeAndEmpty(t *testing.T) {
 	lipgloss.SetColorProfile(termenv.Ascii)
 	dead := fleet.NodeResult{

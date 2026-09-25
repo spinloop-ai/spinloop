@@ -482,6 +482,36 @@ func TestServeViewFrame(t *testing.T) {
 	}
 }
 
+// Statistics without a request figure draw no requests line: the view shows
+// the figures the engine exposes and nothing it does not.
+func TestServeViewNoRequestCount(t *testing.T) {
+	fixDashNow(t, time.Date(2026, 9, 6, 12, 0, 0, 0, time.UTC))
+	stats := metrics.Stats{
+		State:         "running",
+		UptimeSeconds: 90,
+		Runner:        "llama.cpp",
+		ModelID:       "org/model",
+		CPU:           &metrics.CpuStat{Utilization: 42},
+		Tokens:        &metrics.TokenStats{PromptTokens: 10, GenerationTokens: 5},
+	}
+	m := newTestServeView(
+		func() (metrics.Stats, error) { return stats, nil },
+		func(offset int64, limit int) (daemon.LogsResponse, error) {
+			return daemon.LogsResponse{Content: "alpha\n", NextOffset: 6}, nil
+		},
+	)
+	m.Update(m.startMetricsRead()())
+	m.Update(m.startLogPoll()())
+
+	v := m.View()
+	if strings.Contains(v, "requests:") {
+		t.Errorf("a requests line drawn for statistics without the figure:\n%s", v)
+	}
+	if !strings.Contains(v, "prompt tokens:") {
+		t.Errorf("the prompt tokens line is missing:\n%s", v)
+	}
+}
+
 // The same frame, the follow paused: the title bar says so.
 func TestServeViewFramePaused(t *testing.T) {
 	fixDashNow(t, time.Date(2026, 9, 6, 12, 0, 0, 0, time.UTC))

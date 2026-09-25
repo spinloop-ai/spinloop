@@ -1,7 +1,9 @@
 package metrics
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -194,6 +196,41 @@ func TestParseTokenStatsVllmZeroRequests(t *testing.T) {
 	}
 	if tokens.Requests == nil || *tokens.Requests != 0 {
 		t.Errorf("requests = %v, want a present 0", tokens.Requests)
+	}
+}
+
+// The request figure's absence is a fact in the wire shape: a family without
+// a request counter serialises no requests field, and a genuine zero from a
+// family that has one still does.
+func TestTokenStatsSerialisesRequestCountOptionally(t *testing.T) {
+	absent, err := json.Marshal(TokenStats{Running: 1, PromptTokens: 10, GenerationTokens: 5})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(absent, []byte(`"requests"`)) {
+		t.Errorf("an absent request count still serialised: %s", absent)
+	}
+	zero := 0
+	present, err := json.Marshal(TokenStats{Running: 1, PromptTokens: 10, GenerationTokens: 5, Requests: &zero})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(present, []byte(`"requests":0`)) {
+		t.Errorf("a genuine zero did not serialise: %s", present)
+	}
+}
+
+// A line whose value matches a metric's shape but does not parse is skipped,
+// and the rest of the scrape still parses.
+func TestParseTokenStatsSkipsUnparsableValue(t *testing.T) {
+	out := llamacppMetricsFixture + "llamacpp:tokens_predicted_total +\n"
+	tokens := ParseTokenStats(out, "llamacpp")
+	if tokens == nil {
+		t.Fatal("got nil token stats")
+	}
+	if tokens.PromptTokens != 4096 || tokens.GenerationTokens != 1024 ||
+		tokens.Counter != 4096+1024+900 {
+		t.Errorf("tokens = %+v", *tokens)
 	}
 }
 
