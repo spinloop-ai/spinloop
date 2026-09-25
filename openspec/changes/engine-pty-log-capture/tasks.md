@@ -25,4 +25,4 @@
 
 ## 5. Docs
 
-- [ ] 5.1 Maintainer internals: why the capture presents stdout as a pseudo-terminal and how the normaliser records redrawing lines, so the next reader does not "simplify" the fallback away
+- [x] 5.1 Maintainer internals: why the capture presents stdout as a pseudo-terminal and how the normaliser records redrawing lines, so the next reader does not "simplify" the fallback away
