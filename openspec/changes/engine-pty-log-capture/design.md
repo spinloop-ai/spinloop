@@ -56,11 +56,19 @@ is exactly how this class of bug appears.
 ### 2. Only stdout goes to the pseudo-terminal; stderr keeps its file
 
 The engine's stderr writes straight to the log file as today. Two reasons:
-stderr is plain log lines (llama.cpp's `LOG_*` prints unconditionally, no TTY
-gate), and — more importantly — a file write blocks the engine only on a full
-disk, while a pseudo-terminal blocks a writer that outpaces its reader. The
-pump drains continuously, but liveness should not depend on a reader being
-fast: stderr keeps the engine's only truly unblocked output path.
+stderr is the engine's log lines (llama.cpp's `common_log` routes them to
+stderr), and — more importantly — a file write blocks the engine only on a
+full disk, while a pseudo-terminal blocks a writer that outpaces its reader.
+The pump drains continuously, but liveness should not depend on a reader
+being fast: stderr keeps the engine's only truly unblocked output path.
+
+Because the engine's stdout is now a terminal, the engine is told
+`NO_COLOR=1` in its environment. An engine that colours by terminal
+presence — and colours stderr by whether *stdout* is a terminal, which is
+llama.cpp's rule — would otherwise write escapes to the log through the
+stderr path, the one the normaliser never sees. A download bar draws no
+colour, so nothing is lost; and the forwarding path (no log file) sets
+nothing, so a foreground engine on a real terminal keeps its colour.
 
 ### 3. `creack/pty`, build-tagged, with a direct-file fallback
 
@@ -77,32 +85,52 @@ Rejected — the dependency buys the edge cases (winsize, fd handoff, the
 master-read end-of-stream behaviour per platform) for less code; `x/sys` is
 already in the module.
 
-### 4. The normaliser: line states, not terminal emulation
+### 4. The normaliser: a column of lines, and the states of the ones redrawn
 
-A small state machine turns the pseudo-terminal stream into log lines. It is
-a line model, not a screen:
+A small state machine turns the pseudo-terminal stream into log lines. It
+keeps the terminal's lines as a column, top down, the way the screen holds
+them; it is a line model, not a screen emulator:
 
-- Bytes are normalised first: CRLF becomes LF (the terminal's output
-  translation), then processed.
-- A byte run without `\r` or `\n` is the line being written; `\n` commits it
-  as a plain log line.
-- `\r` starts a **redraw** of the current line: what follows is a new state
-  of that line, not new output. Erase sequences (clear-to-end, clear-line)
-  truncate the pending state; cursor moves (up/down) end the current
-  redraw and begin a new one, so a multi-file download's several bars record
-  as interleaved states rather than corrupting each other. Every other
-  escape sequence is dropped: no escape ever reaches the log.
+- The terminal's CRLF becomes the log's LF; a newline (CRLF or bare) commits
+  the line the drawing is on — a plain line as written, a redrawing line as
+  its final state — and moves the drawing to the line below. A committed
+  line stays in the column: a cursor move may come back to it, and a line
+  touched after its commit is recorded again, as the terminal shows it.
+- A carriage return that is not a line ending starts a **redraw** of the
+  line the engine is drawing: what follows is a new state of that line,
+  replacing the state, not appending to it. A state is complete when the
+  engine moves on — a new state, a newline, an erase, or the end of the
+  stream — so it is never recorded half-drawn.
+- Cursor moves do not end a line: up, down and home move the drawing between
+  the column's lines. That is how the engines redraw a bar in place —
+  llama.cpp's `ProgressBar` parks its cursor on an anchor line and, for
+  every update, moves up to the bar's line, draws the state, and moves back
+  down —
+  so a bar's line is redrawn in place, and a multi-file download's several
+  bars sit on separate lines, each recording its own states. Committing on a
+  cursor move was the first design, and the first real engine run showed why
+  it is wrong: the engine's up-down dance is part of each redraw, so a
+  commit per move records every state as a "final" one and resets the
+  dedup — the whole download, state for state, in the log.
+- Erase sequences shape the state the way they shape the terminal's line: a
+  whole-line erase (2K, J) ends the state drawn on the line and clears what
+  it holds; an erase to the end of the line (a bare K) erases from the
+  cursor, which sits at the end of the state, and changes nothing.
 - A redrawing line is recorded as its state under a frequency rule: the
   first state is always recorded, the final state always, and a further
   distinct state at most once per fixed interval (2 s). Identical states are
   never repeated. A 2-second interval bounds a chatty bar — 1,000 updates a
   download makes — to a legible run of lines, and sits under the view's own
   3 s poll so the pane sees fresh states as they land.
-- Because the final state can arrive and then no byte ever follow (the
-  download finishes and the engine goes quiet on stdout while it loads), a
-  tick at the interval's half-rate records a pending state whose time has
-  come; dedup makes the tick a no-op once nothing is pending. End of stream
-  records the pending state and the run is done.
+- Because a final state can arrive and then no byte ever follow (the
+  download finishes and the engine goes quiet on stdout while it loads, the
+  cursor on its anchor), the tick at the interval's half-rate records a
+  pending state whose time has come on every line of the column; dedup makes
+  the tick a no-op once nothing is pending. End of stream commits the whole
+  column, each line's final state unthrottled.
+- Every other escape sequence is dropped, and one that is not part of the
+  redraw's own unit — the erase and the cursor moves — ends the state drawn
+  before it. No escape ever reaches the log.
 
 The rule is engine-agnostic — it reads line states, never their content — so
 it serves whatever bar an engine draws, now or later.
@@ -125,14 +153,17 @@ lines stay compact for the pane and for log consumers.
 ### 6. Tests: a fake clock and a fake engine
 
 - The normaliser is a plain function over a byte stream with an injected
-  clock: unit tests feed it captured-terminal bytes (a progress run, an
-  erase, a cursor move, CRLF, a pending final state at end of stream) and
-  assert the exact recorded lines and the frequency rule's boundaries.
+  clock: unit tests feed it captured-terminal bytes — a progress run, the
+  bar the engines actually draw (the cursor up-down around the anchor),
+  interleaved bars, an erase, CRLF, a pending final state at end of stream —
+  and assert the exact recorded lines and the frequency rule's boundaries.
 - The supervisor test uses a shell one-liner as the engine: it prints a plain
   line, prints a line only when `[ -t 1 ]` holds, and redraws a progress
   line with raw `\r` bytes. The assertions read the log file: the TTY-gated
   line is present (the pseudo-terminal worked), the redraws recorded as
-  states without escapes, and the plain line untouched.
+  states without escapes, the plain line untouched, and the engine carried
+  `NO_COLOR` (the forwarding test asserts the opposite: the engine it
+  forwards was told nothing).
 
 ## Risks / Trade-offs
 
