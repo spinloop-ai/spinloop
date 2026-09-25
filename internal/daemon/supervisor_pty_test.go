@@ -3,6 +3,7 @@
 package daemon
 
 import (
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -64,6 +65,61 @@ echo 'a stderr line' 1>&2`)
 	}
 	if strings.Contains(got, "\r") {
 		t.Errorf("a carriage return reached the log:\n%q", got)
+	}
+}
+
+// TestSupervisorFallsBackWithoutAPTY covers the capture's fallback: where no
+// pseudo-terminal can be opened, the engine's stdout goes to the log file as
+// written — the carriage returns among them — and the engine is told its
+// output is going to a file the same way. The spec's no-pseudo-terminal
+// scenario, run with the opening stood in for so the branch is reachable
+// whatever platform the test runs on.
+func TestSupervisorFallsBackWithoutAPTY(t *testing.T) {
+	previous := attachPTY
+	attachPTY = func() (*os.File, *os.File, error) {
+		return nil, nil, errors.New("no pseudo-terminal on this platform")
+	}
+	t.Cleanup(func() { attachPTY = previous })
+
+	logPath := filepath.Join(t.TempDir(), "engine.log")
+	s := NewSupervisor(logPath)
+	engine := stubEngine(t, `if [ -t 1 ]; then echo 'a line only a terminal gets'; fi
+printf '\rDownloading m.gguf   1%%\r'
+printf '\rDownloading m.gguf 100%%\r'
+printf '\n'
+echo 'a plain line'
+echo "no_color=${NO_COLOR:-unset}"`)
+
+	if err := s.Start([]string{engine}); err != nil {
+		t.Fatal(err)
+	}
+	waitForState(t, s, StateStopped)
+
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(data)
+	// The engine never saw a terminal on its stdout: the output it gates on
+	// one is absent, and the bar's carriage returns stand in the log as
+	// written — the redraw's own double among them, the normaliser being
+	// what the fallback has no part in.
+	if strings.Contains(got, "a line only a terminal gets") {
+		t.Errorf("the engine saw a terminal it was not given:\n%s", got)
+	}
+	if !strings.Contains(got, "\rDownloading m.gguf   1%\r\rDownloading m.gguf 100%\r\n") {
+		t.Errorf("the fallback altered the engine's stdout:\n%q", got)
+	}
+	if !strings.Contains(got, "a plain line\n") {
+		t.Errorf("the log is missing a plain line:\n%s", got)
+	}
+	// The fallback is still the capture: the engine was told its output is
+	// going to a file.
+	if !strings.Contains(got, "no_color=1") {
+		t.Errorf("the fallback changed the engine's environment:\n%s", got)
+	}
+	if strings.Contains(got, "\033") {
+		t.Errorf("an escape reached the log:\n%q", got)
 	}
 }
 

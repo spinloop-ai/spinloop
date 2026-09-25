@@ -38,7 +38,10 @@ const ptyRedrawInterval = 2 * time.Second
 //   - Cursor moves do not end a line: up and down move the drawing between
 //     the column's lines, which is how the engines redraw a bar in place —
 //     up to its line, the state, the cursor back down to the anchor. A home
-//     returns the drawing to the top of the column.
+//     returns the drawing to the top of the column. A move lands the
+//     drawing on the line it arrives at: the state the line holds stands,
+//     and whatever the engine writes there next begins a new state of the
+//     line, not an extension of what it held.
 //   - Erase sequences shape the state the way they shape the terminal's
 //     line: a whole-line erase ends the state drawn on it and clears what
 //     it holds; an erase to the end of the line erases from the cursor,
@@ -249,11 +252,14 @@ func (p *ptyLog) csiFinal(c byte) {
 		} else {
 			p.row = 0
 		}
+		p.land()
 	case 'B': // the drawing moves down
 		p.row += p.csiCount()
 		p.extend(p.row)
+		p.land()
 	case 'H': // home: the top of the column
 		p.row = 0
+		p.land()
 	case 'K':
 		if p.csiParam == '2' { // the whole line is erased: the state drawn is done
 			l := p.line()
@@ -275,6 +281,19 @@ func (p *ptyLog) csiFinal(c byte) {
 		// A colour, a position the log does not model, a mode: the
 		// state drawn before the escape is done.
 		p.settleOnEscape()
+	}
+}
+
+// land is what a cursor move does to the line it arrives at: the state the
+// line is drawing stands — recorded if the time has come — and whatever the
+// engine writes there next begins a new state of the line. Without the
+// replacement, a home or an up onto a committed line would extend the
+// content the line already holds.
+func (p *ptyLog) land() {
+	l := p.line()
+	p.settle(l)
+	if len(l.content) > 0 {
+		l.replacing = true
 	}
 }
 

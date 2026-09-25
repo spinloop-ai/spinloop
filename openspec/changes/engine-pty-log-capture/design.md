@@ -107,10 +107,14 @@ them; it is a line model, not a screen emulator:
   every update, moves up to the bar's line, draws the state, and moves back
   down —
   so a bar's line is redrawn in place, and a multi-file download's several
-  bars sit on separate lines, each recording its own states. Committing on a
-  cursor move was the first design, and the first real engine run showed why
-  it is wrong: the engine's up-down dance is part of each redraw, so a
-  commit per move records every state as a "final" one and resets the
+  bars sit on separate lines, each recording its own states. A move lands
+  the drawing on the line it arrives at: whatever the engine writes there
+  next begins a new state of the line — the terminal's rewrite, not an
+  append — so a home or an up onto a committed line corrects the line
+  rather than extending its content. Committing on a cursor move was the
+  first design, and the first real engine run showed why it is wrong: the
+  engine's up-down dance is part of each redraw, so a commit per move
+  records every state as a "final" one and resets the
   dedup — the whole download, state for state, in the log.
 - Erase sequences shape the state the way they shape the terminal's line: a
   whole-line erase (2K, J) ends the state drawn on the line and clears what
@@ -155,8 +159,12 @@ lines stay compact for the pane and for log consumers.
 - The normaliser is a plain function over a byte stream with an injected
   clock: unit tests feed it captured-terminal bytes — a progress run, the
   bar the engines actually draw (the cursor up-down around the anchor),
-  interleaved bars, an erase, CRLF, a pending final state at end of stream —
+  interleaved bars, a cursor move onto a committed line, the escape
+  sequences the engines may send, an erase, CRLF, a pending final state at
+  end of stream —
   and assert the exact recorded lines and the frequency rule's boundaries.
+  The pump's end-of-stream drain is tested with the error arriving with,
+  and before, the last bytes.
 - The supervisor test uses a shell one-liner as the engine: it prints a plain
   line, prints a line only when `[ -t 1 ]` holds, and redraws a progress
   line with raw `\r` bytes. The assertions read the log file: the TTY-gated
@@ -164,6 +172,10 @@ lines stay compact for the pane and for log consumers.
   states without escapes, the plain line untouched, and the engine carried
   `NO_COLOR` (the forwarding test asserts the opposite: the engine it
   forwards was told nothing).
+- With the pseudo-terminal's opening stood in for with a failure, the
+  fallback test asserts the spec's no-pseudo-terminal scenario: the
+  engine's stdout in the log as written, and the engine told its output is
+  going to a file the same way.
 
 ## Risks / Trade-offs
 

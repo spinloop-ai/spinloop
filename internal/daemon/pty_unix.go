@@ -17,8 +17,12 @@ var ptyWindow = &pty.Winsize{Rows: 50, Cols: 80}
 // attachPTY opens a pseudo-terminal for a captured engine's stdout: the
 // master is what the supervisor reads, the slave is what the engine's stdout
 // holds. An error means no pseudo-terminal could be opened — the unsupported
-// platform among them — and the capture falls back to the log file.
-func attachPTY() (master, slave *os.File, err error) {
+// platform among them — and the capture falls back to the log file. It is a
+// variable so a test can stand in for the opening and exercise that
+// fallback.
+var attachPTY = openPTY
+
+func openPTY() (master, slave *os.File, err error) {
 	master, slave, err = pty.Open()
 	if err != nil {
 		return nil, nil, err
