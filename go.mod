@@ -10,11 +10,11 @@ require (
 	github.com/aws/aws-sdk-go-v2/credentials v1.20.5
 	github.com/aws/aws-sdk-go-v2/service/cloudformation v1.81.0
 	github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs v1.88.0
-	github.com/aws/aws-sdk-go-v2/service/ec2 v1.332.0
+	github.com/aws/aws-sdk-go-v2/service/ec2 v1.335.0
 	github.com/aws/aws-sdk-go-v2/service/iam v1.64.0
 	github.com/aws/aws-sdk-go-v2/service/pricing v1.49.0
 	github.com/aws/aws-sdk-go-v2/service/sts v1.51.0
-	github.com/aws/smithy-go v1.28.1
+	github.com/aws/smithy-go v1.28.2
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/charmbracelet/x/ansi v0.11.8
