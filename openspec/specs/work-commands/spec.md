@@ -4,21 +4,20 @@ Work the items of a running orchestrator from the shell — add an item, read
 the backlog, stop a running item, remove an item — as a client of the
 orchestrator's work list API: the commands name the API's address, present its
 token, and the run's view of the items is the source of truth.
-
 ## Requirements
-
 ### Requirement: The work commands as work list clients
 
-`spinloop work` SHALL be a top-level command group with the subcommands add,
-list, abort, remove and logs, each a client of the orchestrator's work list API. Every
-subcommand SHALL take a `--url` flag naming the API's base address, and SHALL
-present the API's token as a bearer on every request it makes — resolved from
-`--api-token`, else `--api-token-file`, else the `SPINLOOP_API_TOKEN`
-environment variable, two of the flags given at once being a refusal naming
-both. A subcommand that names no `--url` SHALL fail before it calls the API,
-naming the flag. The commands SHALL be clients of the API alone: they SHALL NOT
-read or write the items file, the state, or the logs directly, and SHALL NOT
-take any lock beside them.
+`spinloop work` SHALL be a top-level command group with the subcommands
+add, list, abort, remove, logs and board, each a client of the
+orchestrator's work list API. Every subcommand SHALL take a `--url` flag
+naming the API's base address, and SHALL present the API's token as a
+bearer on every request it makes — resolved from `--api-token`, else
+`--api-token-file`, else the `SPINLOOP_API_TOKEN` environment variable,
+two of the flags given at once being a refusal naming both. A subcommand
+that names no `--url` SHALL fail before it calls the API, naming the flag.
+The commands SHALL be clients of the API alone: they SHALL NOT read or
+write the items file, the state, or the logs directly, and SHALL NOT take
+any lock beside them.
 
 #### Scenario: The API's address is named
 
@@ -233,3 +232,4 @@ in: the API's call is the whole ask, and it answers once the item is out.
 
 - **WHEN** the operator removes an id the items file does not carry
 - **THEN** the API refuses, naming the id, and the command fails naming it
+

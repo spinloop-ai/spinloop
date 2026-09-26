@@ -43,9 +43,11 @@ Cobra command (registered on `workCmd()` beside its siblings, `--url` and
 token flags via `workAPIFlags`, `Args: cobra.NoArgs`), checks
 `term.IsTerminal(os.Stdout.Fd())` before anything else — refusing and
 naming `spinloop work list`, the way `runFleetDashboard` names
-`fleet metrics --watch` — and runs `tea.NewProgram(&m, tea.WithAltScreen())`
-with `m.send = prog.Send` so worker goroutines can feed messages.
-`work_board_model.go` holds the model, ticks and keys;
+`fleet metrics --watch` — and runs `tea.NewProgram(&m, tea.WithAltScreen())`. Background work
+reaches the loop only through the `tea.Cmd`s `Update` returns — the model
+carries no `prog.Send` handle, because calling `Send` from inside
+`Update` deadlocks the event loop (the loop reads its own channel on the
+`Update` goroutine). `work_board_model.go` holds the model, ticks and keys;
 `work_board_render.go` the drawing. Alternative: one file — rejected for
 the same reason the dashboard's three exist: the renderers are byte-tested
 in isolation.
@@ -92,9 +94,11 @@ that arrive after the pane closed or reopened on another item. Escape
 returns; the detail pane offers no quit, as the dashboard detail does not.
 
 **Actions ride the model's action slot, not the tick.** `a` and `x` call
-`beginAction`-style goroutines through `m.send`: status line "aborting
-item X…" plus the one spinner (`spinnerFrame`) on a 100ms repaint chain
-while the call is in flight — abort can block server-side for the stop
+`beginAction`, which returns `tea.Batch(workCmd, workBoardSpinCmd())`:
+status line "aborting item X…" plus the one spinner (`spinnerFrame`) on a
+100ms repaint chain. The spin chain re-arms through the Batch, never
+through `prog.Send` from inside `Update` — that deadlocks the loop. This
+runs while the call is in flight — abort can block server-side for the stop
 grace, and the cli-ux long-operation rule wants motion. `workRequestBound`
 (30s) bounds the call; a timeout lands on the status line as a fault and
 the board goes on drawing. Refusals come back as `workAPIErr` and are

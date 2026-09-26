@@ -4,7 +4,7 @@
 
 - [x] 1.1 Create `cmd/spinloop/work_board.go`: `workBoardCmd()` with `workAPIFlags`, `Args: cobra.NoArgs`, a lowercase imperative short/long help in the family's voice; register it on `workCmd()` in `work.go` beside its siblings.
 - [x] 1.2 Gate on `term.IsTerminal(os.Stdout.Fd())` before anything else: refuse with an error naming `spinloop work list` as the pipe's command, tested through `cmdWork` under `captureStdout`.
-- [x] 1.3 Start the program: `tea.NewProgram(&m, tea.WithAltScreen())`, `m.send = prog.Send`; wire `--url`/token through `workTarget` so a missing `--url` fails naming the flag before any call.
+- [x] 1.3 Start the program: `tea.NewProgram(&m, tea.WithAltScreen())` — no `prog.Send` handle on the model, background work returns through the `tea.Cmd`s `Update` yields; wire `--url`/token through `workTarget` so a missing `--url` fails naming the flag before any call.
 
 ## 2. Model: reads and ticks
 
@@ -26,7 +26,7 @@
 
 ## 5. Actions and status line
 
-- [x] 5.1 `beginAction`-style in-flight slot: `a` aborts a running card, `x` removes a selected non-running card, each calling the API's path through `workRequest` in a goroutine feeding `m.send`.
+- [x] 5.1 `beginAction`-style in-flight slot: `a` aborts a running card, `x` removes a selected non-running card, each calling the API's path through `workRequest` in a `tea.Cmd` goroutine batched with the spinner chain (`tea.Batch`, fed back through the queue — not `prog.Send` from `Update`).
 - [x] 5.2 Status line underway while in flight with `spinnerFrame` on a repaint chain; answer (or `workAPIErr` refusal, verbatim; or the 30s bound's fault) lands on the status line and the board keeps drawing.
 - [x] 5.3 Removal confirm in the footer: `y` sends, `n`/`esc`/anything else declines, defaulting to no; a declined question sends nothing and says so.
 

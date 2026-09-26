@@ -1,12 +1,11 @@
-## Purpose
+# work-board Specification
 
+## Purpose
 Watches a running orchestrator's work list as a full-screen kanban board —
 one column per state, a card per item, kept current as the run works — and
 lets the operator add, abort, remove and read items, all through the same
 work list API the one-shot work commands use.
-
-## ADDED Requirements
-
+## Requirements
 ### Requirement: The board is a full-screen view of the run's work
 
 `spinloop work board` SHALL open an interactive, full-screen view of the
@@ -100,8 +99,13 @@ brand accent.
 The operator SHALL move the selection between cards with the arrow keys —
 between columns sideways, within a column up and down — and the board SHALL
 mark the selected card with the brand accent alone. Enter SHALL open that
-item's detail: its instructions in full, its directory, its tags, every
-time its record carries, and, where it failed, the reason. While the detail
+item's detail: its instructions — wrapped to the frame's width rather than
+clipped — its directory, its tags, every time its record carries, and,
+where it failed, the reason, likewise wrapped rather than cut at the
+edge. The detail SHALL keep its frame inside the terminal: where a record
+is taller than the room the frame has, the fields show what fits and a
+note counts the rows left behind, and the keys offered there stay
+reachable on screen. While the detail
 stands open the command SHALL keep asking the API for the item's kept
 output and show whatever arrives, an item with no output yet shown as empty
 rather than as a fault; once the item has ended, or dropped out of the
@@ -114,7 +118,16 @@ there are only those that do something there.
 - **WHEN** the operator opens the detail of a failed item with long
   instructions
 - **THEN** the full instructions, its directory, tags, timings and failure
-  reason are all shown
+  reason are all shown, each wrapped to the frame where it is wider than
+  the frame is wide
+
+#### Scenario: A record taller than the terminal is truncated honestly
+
+- **WHEN** the operator opens the detail of an item whose instructions fill
+  more rows than the terminal has
+- **THEN** the frame closes inside the terminal with its keys on screen,
+  what does not fit is replaced by a note counting its rows, and nothing
+  falls past the bottom edge unseen
 
 #### Scenario: The open detail tails the kept output
 
@@ -258,3 +271,4 @@ SHALL end the board cleanly, restoring the terminal.
 - **WHEN** the operator quits the board
 - **THEN** the command ends cleanly and the terminal is the terminal that
   was there before
+
