@@ -3,7 +3,8 @@
 Work the [orchestrator](orchestrator.md)'s work list — the backlog it works —
 from the shell, as a client of the [work list API](orchestrator.md#the-work-list-api)
 the orchestrator serves: add an item, read the work, read an item's kept
-output, stop a running item, remove an item.
+output, stop a running item, remove an item — or watch the whole run on a
+live board.
 
 ```sh
 spinloop work add --url http://127.0.0.1:4010 --id fix-parser --instructions "fix the failing tests" --dir ./parser
@@ -11,6 +12,7 @@ spinloop work list --url http://127.0.0.1:4010
 spinloop work logs --url http://127.0.0.1:4010 fix-parser -f
 spinloop work abort --url http://127.0.0.1:4010 fix-parser
 spinloop work remove --url http://127.0.0.1:4010 docs-refresh
+spinloop work board --url http://127.0.0.1:4010
 ```
 
 Each subcommand takes `--url`, the API's base address — the one the
@@ -129,6 +131,53 @@ A running item cannot be removed: the refusal names it and the abort that goes
 first. An id the file does not carry is refused, naming it. The API answers
 once the item is out, and the command reports its answer.
 
+## Watching the board
+
+```sh
+spinloop work board --url http://127.0.0.1:4010
+```
+
+The board: the same work list as a live kanban — four columns,
+`Backlog`, `Running`, `Done`, `Failed`, a card per item — re-read from
+the API on a cadence, so a card moves as the run works it. It is a
+client of the API like every other command here: it reads no file and
+writes no file, and every action it offers goes through the same paths
+the one-shot commands call.
+
+Each card carries the item's id, its instructions clipped to the card's
+width, and its priority where it has one; a running card adds the node
+it is on and how long it has been up, counting up as you watch. States
+wear the colours `work list` gives them.
+
+Keys are offered in the footer only where they would do something for
+what the cursor stands on:
+
+- `↑`/`↓`/`←`/`→` move the selection — sideways to the next column
+  holding a card.
+- `enter` opens the item's detail: its full instructions, dir, tags,
+  timings and failure reason, with its kept output tailed beneath as
+  `work logs -f` tails it, ending when the item ends or drops out.
+  `esc` returns; the board cannot be quit from inside the detail.
+- `a` aborts a running item, `x` removes one that is not — the removal
+  asks first, and declining sends nothing. A refusal from the API
+  reads on the status line the way the API states it.
+- `n` opens the add form — the same add `work add` sends, through the
+  API's add path. Its five fields stand before you at once (id,
+  instructions and dir marked required); `up`/`down` step the field
+  cursor, `enter` advances, and on the last field sends. The form
+  keeps the API's refusal visible for a corrected send; `esc` closes
+  an empty form and, with anything typed, asks before discarding.
+  The board keeps moving behind it.
+- `r` reads again at once; `q` or `Ctrl+C` leaves.
+
+When the API goes quiet the board does not go with it: it keeps
+drawing its last reading and marks the title bar with its age until a
+good read returns.
+
+The board needs an interactive terminal. Piped or redirected, it
+refuses and names `spinloop work list` as the command for the same
+work into a pipe.
+
 ## What it does not do
 
 - It reads no file and writes no file: the commands never touch the items file,
@@ -145,7 +194,7 @@ once the item is out, and the command reports its answer.
 
 | Flag | Meaning |
 | ---- | ------- |
-| `--url <address>` | The work list API's base address — `add`, `list`, `logs`, `abort`, `remove` |
+| `--url <address>` | The work list API's base address — `add`, `list`, `logs`, `abort`, `remove`, `board` |
 | `--api-token <value>` | The work list API's bearer token — every subcommand |
 | `--api-token-file <path>` | The file the work list API's bearer token stands in — every subcommand |
 | `--id <id>` | The item's id — `add` |
