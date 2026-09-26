@@ -13,6 +13,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	teatest "github.com/charmbracelet/x/exp/teatest"
 
 	"github.com/spinloop-ai/spinloop/internal/orchestrator"
@@ -803,6 +804,39 @@ func TestWorkBoard_DetailShowsTheWholeFailedItem(t *testing.T) {
 	for _, want := range []string{"FULLSTOP", "./bust", "kind=fix", "area=api", "the agent gave up", "esc back"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("detail missing %q:\n%s", want, view)
+		}
+	}
+}
+
+func TestWorkBoard_DetailWrapsTheFailureReason(t *testing.T) {
+	failed := wbItem("bust", orchestrator.StateFailed)
+	// A reason far wider than the frame: its tail must still be readable,
+	// not chopped at the edge — the whole point of wrapping it.
+	failed.Why = "the agent gave up because " + strings.Repeat("the harness demanded more ", 20) + "ENDREASON"
+	a := newWBAPI(t, []orchestrator.ItemView{failed}, nil)
+	m := newWBTestModel(t, a)
+	wbRound(t, m)
+	wbKeys(t, m, "right", "right", "right", "enter")
+	lines := strings.Split(wbPlain(m.View()), "\n")
+	if !strings.Contains(strings.Join(lines, "\n"), "ENDREASON") {
+		t.Fatalf("the reason was cut off at the frame's edge:\n%s", strings.Join(lines, "\n"))
+	}
+	// The reason holds together on its own rows under the label, and no
+	// line overruns the frame it is clipped to.
+	var reasonRows int
+	for _, l := range lines {
+		if strings.HasPrefix(l, "why") || strings.HasPrefix(l, "     ") {
+			if strings.Contains(l, "harness demanded") || strings.Contains(l, "agent gave up") || strings.Contains(l, "ENDREASON") {
+				reasonRows++
+			}
+		}
+	}
+	if reasonRows < 2 {
+		t.Errorf("the reason did not wrap across rows (saw %d):\n%s", reasonRows, strings.Join(lines, "\n"))
+	}
+	for _, l := range lines {
+		if n := lipgloss.Width(l); n > m.effWidth() {
+			t.Errorf("a detail line ran to %d columns, past the frame of %d:\n%q", n, m.effWidth(), l)
 		}
 	}
 }

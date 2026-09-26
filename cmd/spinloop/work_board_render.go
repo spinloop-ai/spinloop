@@ -487,8 +487,19 @@ func (m workBoardModel) detailFields() []string {
 	add("node", v.Node)
 	add("started", workBoardClock(v.StartedAt))
 	add("ended", workBoardClock(v.EndedAt))
-	if v.State == orchestrator.StateFailed {
-		add("why", ansiRed+v.Why+ansiReset)
+	if v.State == orchestrator.StateFailed && v.Why != "" {
+		// The reason has something to say, unlike the one-line fields:
+		// the label carries its first line and the rest wraps beneath
+		// the label's room, its red kept on every row.
+		const indent = "     " // as wide as "why  ", the label's room
+		w := m.effWidth() - len(indent)
+		for i, line := range workBoardWrap(v.Why, w) {
+			if i == 0 {
+				out = append(out, label("why  ")+ansiRed+line+ansiReset)
+			} else {
+				out = append(out, indent+ansiRed+line+ansiReset)
+			}
+		}
 	}
 	if m.readingAge(workBoardNow()) != "" {
 		add("reading", dim.Render(m.readingAge(workBoardNow())))
