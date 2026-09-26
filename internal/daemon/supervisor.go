@@ -79,7 +79,12 @@ func (s *Supervisor) Start(argv []string) error {
 	}
 
 	cmd := exec.Command(argv[0], argv[1:]...)
-	var logFile *os.File
+	var (
+		logFile   *os.File
+		ptyMaster *os.File
+		ptySlave  *os.File
+		ptyDone   chan struct{}
+	)
 	if s.LogPath == "" {
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
@@ -92,15 +97,47 @@ func (s *Supervisor) Start(argv []string) error {
 			return err
 		}
 		logFile = f
-		cmd.Stdout = f
 		cmd.Stderr = f
+		// The output is being written to a file, so the engine is told not
+		// to colour it: an engine that colours by whether it sees a
+		// terminal — and colours stderr by whether *stdout* is one, among
+		// other rules — would otherwise write escapes to the log through
+		// the stderr path, which the normaliser never sees.
+		cmd.Env = append(os.Environ(), "NO_COLOR=1")
+		// The engine's stdout is presented to it as a terminal: an engine
+		// that gates terminal output — a model download's progress among
+		// them — produces it, and the pump normalises it into the log's
+		// lines. Where no pseudo-terminal can be opened, stdout goes to
+		// the log directly, as before.
+		if master, slave, perr := attachPTY(); perr == nil {
+			cmd.Stdout = slave
+			ptyMaster, ptySlave = master, slave
+			ptyDone = make(chan struct{})
+			go pumpPTYLog(master, f, ptyDone)
+		} else {
+			cmd.Stdout = f
+			s.log().Debug("no pseudo-terminal for the engine's stdout; it goes to the log file directly",
+				slog.String("error", perr.Error()))
+		}
 	}
 	setProcAttr(cmd)
 	if err := cmd.Start(); err != nil {
+		if ptySlave != nil {
+			ptySlave.Close()
+		}
+		if ptyMaster != nil {
+			ptyMaster.Close()
+			<-ptyDone
+		}
 		if logFile != nil {
 			logFile.Close()
 		}
 		return err
+	}
+	// The parent's copy of the slave is closed now: the engine holds its
+	// own, and the master's end of stream follows the engine's exit.
+	if ptySlave != nil {
+		ptySlave.Close()
 	}
 
 	s.cmd = cmd
@@ -123,6 +160,13 @@ func (s *Supervisor) Start(argv []string) error {
 
 	go func() {
 		err := cmd.Wait()
+		// The engine is gone: end the pseudo-terminal's read, wait for
+		// the pump's final record, and only then close the log the pump
+		// wrote to.
+		if ptyMaster != nil {
+			ptyMaster.Close()
+			<-ptyDone
+		}
 		if logFile != nil {
 			logFile.Close()
 		}

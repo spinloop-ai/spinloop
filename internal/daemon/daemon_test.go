@@ -127,6 +127,51 @@ func TestSupervisorCleanExitIsStopped(t *testing.T) {
 	}
 }
 
+func TestStartRefusesAnEmptyCommand(t *testing.T) {
+	s := NewSupervisor(filepath.Join(t.TempDir(), "engine.log"))
+	if err := s.Start(nil); err == nil {
+		t.Fatal("starting with no engine command succeeded")
+	}
+	if state, _, _ := s.Status(); state != StateIdle {
+		t.Errorf("state = %s, want idle", state)
+	}
+	// And a wait on a supervisor that never started is already over.
+	if err := s.Wait(); err != nil {
+		t.Errorf("Wait = %v, want nil, on a supervisor that never started", err)
+	}
+}
+
+func TestStartRefusesAnUnreachableLogPath(t *testing.T) {
+	dir := t.TempDir()
+
+	// A file where the log's directory must be: the directory cannot be
+	// made, and the start must fail saying nothing ran.
+	blocker := filepath.Join(dir, "in the way")
+	if err := os.WriteFile(blocker, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s := NewSupervisor(filepath.Join(blocker, "engine.log"))
+	if err := s.Start([]string{"/bin/sh"}); err == nil {
+		t.Fatal("starting with an unreachable log directory succeeded")
+	}
+	if state, _, _ := s.Status(); state != StateIdle {
+		t.Errorf("state = %s, want idle", state)
+	}
+
+	// A directory where the log's file must be: the file cannot be opened.
+	logDir := filepath.Join(dir, "engine.log")
+	if err := os.Mkdir(logDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	s = NewSupervisor(logDir)
+	if err := s.Start([]string{"/bin/sh"}); err == nil {
+		t.Fatal("starting with a directory for the log succeeded")
+	}
+	if state, _, _ := s.Status(); state != StateIdle {
+		t.Errorf("state = %s, want idle", state)
+	}
+}
+
 func TestSupervisorStopEscalatesToKill(t *testing.T) {
 	s := NewSupervisor(filepath.Join(t.TempDir(), "engine.log"))
 	s.Grace = 100 * time.Millisecond
