@@ -429,19 +429,28 @@ func (m workBoardModel) boardKeys() string {
 
 // detailView is the full-screen item: the fields the reading carries, the
 // instructions whole, and the kept log tailed into what remains.
+// detailLayout is the detail's one arithmetic: the fields that fit the
+// frame, and the log rows the rest of the frame can show. The view and
+// the tail both ask here, so the buffer never holds lines the pane
+// could not draw.
+func (m workBoardModel) detailLayout() (fields []string, logAvail int) {
+	fields = workBoardFitFields(m.detailFields(), m.effHeight())
+	logAvail = m.effHeight() - 5 - len(fields)
+	if logAvail < 1 {
+		logAvail = 1
+	}
+	return fields, logAvail
+}
+
 func (m workBoardModel) detailView() string {
-	w, h := m.effWidth(), m.effHeight()
+	w := m.effWidth()
 	v := m.detailItem
-	fields := m.detailFields()
+	fields, logAvail := m.detailLayout()
 
 	state := workListColouredState(v.State, true)
 	header := dashTitleBar("work board  ·  "+v.ID, state, w)
 	divider := strings.Repeat("─", w)
 
-	logAvail := h - 5 - len(fields) // header, divider, divider, divider, footer
-	if logAvail < 1 {
-		logAvail = 1
-	}
 	logLines := strings.Split(strings.TrimRight(m.detailLog, "\n"), "\n")
 	if m.detailLog == "" {
 		note := m.detailNote
@@ -509,15 +518,30 @@ func (m workBoardModel) detailFields() []string {
 	return out
 }
 
+// workBoardFitFields keeps the field section inside the frame. The log
+// pane already trims itself to what it can show; the fields owe the
+// terminal the same honesty — what fits is drawn, and a dim note counts
+// the rows the frame left behind rather than letting them pile past the
+// bottom edge unseen.
+func workBoardFitFields(fields []string, h int) []string {
+	room := h - 6 // header, three dividers, a line of log, footer
+	if room < 1 {
+		room = 1
+	}
+	if len(fields) <= room {
+		return fields
+	}
+	dim := lipgloss.NewStyle().Foreground(lipgloss.Color(brandInkDim))
+	note := dim.Render("⋯ +" + fmt.Sprintf("%d", len(fields)-(room-1)) + " lines")
+	return append(append([]string{}, fields[:room-1]...), note)
+}
+
 // detailCapacity is how many log lines the pane can show — the same
 // figure the tail trims its buffer to, so the buffer never holds what
 // the view could never draw.
 func (m workBoardModel) detailCapacity() int {
-	h := m.effHeight() - 5 - len(m.detailFields())
-	if h < 1 {
-		return 1
-	}
-	return h
+	_, logAvail := m.detailLayout()
+	return logAvail
 }
 
 // formFieldWidth is the width each textinput is given inside the form:

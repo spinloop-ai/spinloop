@@ -808,6 +808,32 @@ func TestWorkBoard_DetailShowsTheWholeFailedItem(t *testing.T) {
 	}
 }
 
+func TestWorkBoard_DetailKeepsTallInstructionsInsideTheFrame(t *testing.T) {
+	big := wbItem("bust", orchestrator.StateFailed)
+	big.Instructions = strings.Repeat("sentence that keeps going and going. ", 120) + "ENDSTOP"
+	a := newWBAPI(t, []orchestrator.ItemView{big}, nil)
+	m := newWBTestModel(t, a)
+	wbRound(t, m)
+	wbKeys(t, m, "right", "right", "right", "enter")
+	view := wbPlain(m.View())
+	lines := strings.Split(view, "\n")
+	// Nothing may fall past the bottom edge unseen: the frame closes at
+	// the terminal's height, footer and all.
+	if len(lines) != m.effHeight() {
+		t.Errorf("the detail drew %d lines in a frame of %d:\n%s", len(lines), m.effHeight(), view)
+	}
+	for _, want := range []string{"esc back", "./bust", "⋯ +"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("detail missing %q — the frame did not close honestly:\n%s", want, view)
+		}
+	}
+	// What does not fit is counted, not silently shown in part: the
+	// tail of the instructions yields to the note.
+	if strings.Contains(view, "ENDSTOP") {
+		t.Error("the overflow past the note still showed its tail")
+	}
+}
+
 func TestWorkBoard_DetailWrapsTheFailureReason(t *testing.T) {
 	failed := wbItem("bust", orchestrator.StateFailed)
 	// A reason far wider than the frame: its tail must still be readable,
