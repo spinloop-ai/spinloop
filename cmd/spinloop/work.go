@@ -55,6 +55,7 @@ fails before it calls the API, naming the flag.`,
 		workAbortCmd(),
 		workRemoveCmd(),
 		workLogsCmd(),
+		workBoardCmd(),
 	)
 	return c
 }
