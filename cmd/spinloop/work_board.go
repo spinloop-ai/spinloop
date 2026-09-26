@@ -73,7 +73,6 @@ func runWorkBoard(base, token string) error {
 // restores the terminal on the way out, whatever key got here.
 func runWorkBoardProgram(m *workBoardModel) error {
 	prog := tea.NewProgram(m, tea.WithAltScreen())
-	m.send = prog.Send
 	if _, err := prog.Run(); err != nil {
 		return fmt.Errorf("work board: %w", err)
 	}

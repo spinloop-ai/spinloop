@@ -235,26 +235,33 @@ func wbKeys(t *testing.T, m *workBoardModel, keys ...string) tea.Cmd {
 // wbRound runs one read of the list to its answer and folds it in.
 func wbRound(t *testing.T, m *workBoardModel) {
 	t.Helper()
-	cmd := m.startRound()
-	if cmd == nil {
-		t.Fatal("no round could start (busy?)")
-	}
-	m.Update(cmd())
+	wbLand(t, m, m.startRound())
 }
 
-// wbAct presses the keys that set an action off, runs the call to its
-// answer, and runs the follow-up read the answer triggers — the whole
-// round trip the program would play.
-func wbAct(t *testing.T, m *workBoardModel, keys ...string) {
+// wbLand lands the call a key set off: the answer is folded in, and the
+// read the answer kicks is landed too — the round trip the program would
+// play. An action's command is a batch when it also starts the spinner's
+// repaint chain: the call is the chain's first command, and its timer is
+// left unrun — a test would only wait on it.
+func wbLand(t *testing.T, m *workBoardModel, cmd tea.Cmd) {
 	t.Helper()
-	cmd := wbKeys(t, m, keys...)
 	if cmd == nil {
-		t.Fatal("the keys started no call")
+		t.Fatal("no call to land (busy?)")
 	}
-	_, next := m.Update(cmd())
+	msg := cmd()
+	if batch, ok := msg.(tea.BatchMsg); ok {
+		msg = batch[0]()
+	}
+	_, next := m.Update(msg)
 	if next != nil {
 		m.Update(next())
 	}
+}
+
+// wbAct is press-and-land: keys, then the call they started.
+func wbAct(t *testing.T, m *workBoardModel, keys ...string) {
+	t.Helper()
+	wbLand(t, m, wbKeys(t, m, keys...))
 }
 
 var wbANSI = regexp.MustCompile("\x1b\\[[0-9;]*m")
@@ -330,18 +337,16 @@ func TestWorkBoard_ActionProgressAndSpinChain(t *testing.T) {
 	a := newWBAPI(t, []orchestrator.ItemView{wbItem("crank", orchestrator.StateRunning)}, nil)
 	m := newWBTestModel(t, a)
 	wbRound(t, m)
-	var sent []tea.Msg
-	m.send = func(msg tea.Msg) { sent = append(sent, msg) }
 	wbKeys(t, m, "right")
 	cmd := wbKeys(t, m, "a") // the call goes out and stays unanswered
 	if cmd == nil {
 		t.Fatal("the abort started nothing")
 	}
-	if len(sent) != 1 {
-		t.Fatalf("the action woke the repaint with %d messages", len(sent))
-	}
-	if _, ok := sent[0].(workBoardSpinMsg); !ok {
-		t.Errorf("the action sent %T, want the spin message", sent[0])
+	// The repaint chain rides a command alongside the call — never the
+	// program's Send, which from inside Update would deadlock the loop.
+	batch, ok := cmd().(tea.BatchMsg)
+	if !ok || len(batch) != 2 {
+		t.Fatalf("the abort is %T, want a two-part batch", cmd())
 	}
 	// While the call is out the chain keeps going…
 	_, cmd = m.Update(workBoardSpinMsg{})
@@ -379,7 +384,7 @@ func TestWorkBoard_SecondActionWhileOneIsOutSendsNothing(t *testing.T) {
 	if !strings.Contains(m.statusLine, "still aborting") {
 		t.Errorf("status = %q, want the still-busy line", m.statusLine)
 	}
-	m.Update(cmd())
+	wbLand(t, m, cmd)
 }
 
 func TestWorkBoard_GeometryKeepsItsFloors(t *testing.T) {
@@ -472,10 +477,7 @@ func TestWorkBoard_PriorityThatCouldNotParseIsCaughtBeforeTheAPI(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("the corrected send went nowhere")
 	}
-	_, next := m.Update(cmd())
-	if next != nil {
-		m.Update(next())
-	}
+	wbLand(t, m, cmd)
 	if a.callCount("POST /v1/items") != 1 {
 		t.Error("the corrected send did not reach the API")
 	}
@@ -758,7 +760,7 @@ func TestWorkBoard_RReadsAtOnce(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("r started no round")
 	}
-	m.Update(cmd())
+	wbLand(t, m, cmd)
 	if a.callCount("GET /v1/items") != before+1 {
 		t.Error("r did not ask the API at once")
 	}
@@ -1034,10 +1036,7 @@ func TestWorkBoard_FormAddsEndToEnd(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("the last enter sent nothing")
 	}
-	_, next := m.Update(cmd())
-	if next != nil {
-		m.Update(next()) // the read the accepted add kicks
-	}
+	wbLand(t, m, cmd)
 	if a.callCount("POST /v1/items") != 1 {
 		t.Fatal("the send reached no POST")
 	}
@@ -1067,10 +1066,7 @@ func TestWorkBoard_FormRefusalIsCorrectedInPlace(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("the first enter sent nothing")
 	}
-	_, next := m.Update(cmd())
-	if next != nil {
-		m.Update(next()) // the refused send still spends its follow-up read
-	}
+	wbLand(t, m, cmd) // a refused send still spends its follow-up read
 	if !m.formOpen {
 		t.Fatal("a refusal closed the form")
 	}
@@ -1085,10 +1081,7 @@ func TestWorkBoard_FormRefusalIsCorrectedInPlace(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("the second enter sent nothing")
 	}
-	_, next = m.Update(cmd())
-	if next != nil {
-		m.Update(next())
-	}
+	wbLand(t, m, cmd)
 	if m.formOpen {
 		t.Error("the corrected send did not close the form")
 	}
@@ -1252,10 +1245,10 @@ func TestWorkBoard_ProgramSmoke(t *testing.T) {
 	feed := newWBFeed(t, tm.Output())
 	feed.until(t, "Backlog 1")
 	feed.until(t, "crank")
-	// The real loop now, not the test's hand: an abort rides the
-	// program's own send — the spin chain waking through prog.Send,
-	// the answer landing on the status line, the kicked read moving the
-	// card. No directly-driven test can prove that wiring.
+	// The real loop now, not the test's hand: an abort's call and its
+	// spinner tick ride a batch, which only the program itself expands
+	// — the answer lands on the status line and the kicked read moves
+	// the card through the very loop the binary runs.
 	tm.Send(tea.KeyMsg{Type: tea.KeyRight})
 	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
 	feed.until(t, `item "crank" stopped`)

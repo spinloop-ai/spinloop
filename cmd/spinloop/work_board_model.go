@@ -211,7 +211,6 @@ type workBoardModel struct {
 
 	confirm bool // a removal stands in front of the board, waiting on its yes
 
-	send          func(msg tea.Msg)
 	width, height int
 }
 
@@ -562,26 +561,25 @@ func (m *workBoardModel) beginAction(verb workBoardVerb, id string) tea.Cmd {
 	}
 	base, token := m.base, m.token
 	m.action = workBoardAction{verb: verb, id: id, since: workBoardNow()}
-	// The repaint chain that animates the spinner runs through the
-	// program: this message restarts it, and its handler keeps it going
-	// while a call is out. Driven directly, as a test drives it, there is
-	// nothing to animate and no chain starts.
-	if m.send != nil {
-		m.send(workBoardSpinMsg(workBoardNow()))
-	}
+	// The repaint chain that animates the spinner is scheduled as a
+	// command, not pushed through the program's Send: a Send from inside
+	// Update deadlocks the loop — it cannot read a message until Update
+	// returns, and Update is the one sending. The tick handler keeps
+	// the chain restacking while the call is out.
+	var run tea.Cmd
 	switch verb {
 	case workAbort:
-		return func() tea.Msg {
+		run = func() tea.Msg {
 			_, err := workRequest(base, token, "POST", "/v1/items/"+url.PathEscape(id)+"/abort", nil)
 			return workBoardActionMsg{verb: verb, id: id, err: err}
 		}
 	case workRemove:
-		return func() tea.Msg {
+		run = func() tea.Msg {
 			_, err := workRequest(base, token, "DELETE", "/v1/items/"+url.PathEscape(id), nil)
 			return workBoardActionMsg{verb: verb, id: id, err: err}
 		}
 	}
-	return nil
+	return tea.Batch(run, workBoardSpinCmd())
 }
 
 // beginAdd sends the form's item to the API's own add path. The form
@@ -595,13 +593,11 @@ func (m *workBoardModel) beginAdd(body workAddBody) tea.Cmd {
 	}
 	base, token := m.base, m.token
 	m.action = workBoardAction{verb: workAdd, id: body.ID, since: workBoardNow()}
-	if m.send != nil {
-		m.send(workBoardSpinMsg(workBoardNow()))
-	}
-	return func() tea.Msg {
+	run := func() tea.Msg {
 		_, err := workRequest(base, token, "POST", "/v1/items", body)
 		return workBoardActionMsg{verb: workAdd, id: body.ID, err: err}
 	}
+	return tea.Batch(run, workBoardSpinCmd())
 }
 
 // workBoardActionLine is the status line's account of a finished action:
