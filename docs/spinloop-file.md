@@ -81,7 +81,7 @@ Spinloop says what the endpoint serves:
 PROVIDER llamacpp        # the engine to run there, as it would run here
 ALIAS    qwen3.6-27b
 CONTEXT  131072
-PRESET   ./preset.ini
+PRESET   ./preset.ini    # or PARAM lines in this file instead
 ```
 
 The Spinloop says *what*; it no longer says *where*. Where is an
@@ -198,12 +198,13 @@ One instruction per line: a keyword followed by a single value.
 | `PARALLEL` | no                               | `spinloop serve`, `spinloop cloud deploy` | `PARALLEL 2` |
 | `BASEURL`  | no                               | `--base-url`   | `BASEURL https://gateway/v1`   |
 | `PRESET`   | no                               | `spinloop serve` | `PRESET ./preset.ini`          |
+| `PARAM`    | no (repeatable)                  | `spinloop serve`, `spinloop cloud deploy` | `PARAM ngl = 99`    |
 | `ENV`      | no (repeatable)                  | `spinloop cloud`, `spinloop harness` | `ENV AWS_PROFILE=prod` |
 
 Rules:
 
 - A Spinloop describes **exactly one provider**. `PROVIDER` is required and may
-  appear only once; so may every other keyword, except `ENV`.
+  appear only once; so may every other keyword, except `ENV` and `PARAM`.
 - You need **at least one** of `MODEL` or `ALIAS`. Give a `MODEL` to add a
   specific model; give an `ALIAS` to name it.
 - `MODEL` is the reference the **provider itself** understands: an
@@ -244,6 +245,24 @@ Rules:
   launch command — never merely because the Spinloop was read. The file is read
   in the flag vocabulary of the engine `PROVIDER` names, so a preset written
   for llama.cpp is not portable to oMLX and vice versa.
+- `PARAM` sets engine flags the Spinloop's typed instructions don't cover. It
+  is repeatable — one `key = value` per line — in the same flag vocabulary a
+  `PRESET` is read in, so `ngl` becomes `--n-gpu-layers` and `fa` becomes
+  `--flash-attn` for a llama.cpp Spinloop. The key is a single token; the value
+  is the rest of the line, so it may hold spaces and `=` signs, and may be empty
+  for a flag that takes none. Where a PARAM and a preset set the same flag, the
+  PARAM stands over the preset; where the Spinloop states an instruction of its
+  own, the instruction stands over the PARAM — `PARAM ctx-size = 65536` loses
+  to `CONTEXT 131072`. Used only by
+  [`spinloop serve`](commands/serve.md) and
+  [`spinloop cloud deploy`](commands/cloud.md); `apply` ignores it, as it does
+  `PRESET`.
+- A PARAM may also name the model. For an engine whose model is a flag —
+  llama.cpp's `hf`/`model`/`hf-file`, MTPLX's `model` — a PARAM with such a key
+  stands in for `MODEL`, and `serve` and `spinloop cloud deploy` read it the way
+  they read a preset's model reference, so a Spinloop with no preset file
+  still deploys what it serves. vLLM takes its model positionally, so a PARAM
+  cannot stand in for `MODEL` there.
 - `ENV` sets an environment variable on the machine running `spinloop` and is the
   one keyword that **may repeat**. Its value is a single `KEY=VALUE` token (no
   spaces). The `spinloop cloud` commands read it — along with a `.env` beside the
@@ -280,6 +299,16 @@ also want `spinloop serve` to launch it:
 ```dockerfile
 PROVIDER llamacpp
 ALIAS    qwen3.6-35b-a3b
+```
+
+The same server with the engine's flags written in the Spinloop itself, in
+place of a preset file — a PARAM may name the model:
+
+```dockerfile
+PROVIDER llamacpp
+ALIAS    qwen3.8-27b
+PARAM hf = unsloth/Qwen3.8-27B-GGUF:UD-Q5_K_XL
+PARAM ngl = 99
 ```
 
 A single model from OpenRouter (its key comes from your `.env` or

@@ -81,9 +81,48 @@ GPU:
 Any other provider is an error: `serve` launches a self-hosted engine, and the
 rest of the catalogue names endpoints somebody else runs.
 
-Each engine reads its `PRESET` in its **own** flag vocabulary. That matters:
-llama.cpp's short aliases would rewrite another engine's keys (`m` to `--model`,
-`c` to `--ctx-size`), so a preset is never portable between engines.
+Each engine reads its `PRESET` — and its `PARAM` lines — in its **own** flag
+vocabulary. That matters: llama.cpp's short aliases would rewrite another
+engine's keys (`m` to `--model`, `c` to `--ctx-size`), so a preset is never
+portable between engines, and neither are PARAM lines.
+
+## PARAM: engine flags in the Spinloop
+
+A `PARAM` passes one engine flag the Spinloop's typed instructions don't cover,
+straight in the Spinloop. It is repeatable — one `key = value` per line — and is
+read in the same flag vocabulary a `PRESET` is read in, so for a llama.cpp
+Spinloop `ngl` becomes `--n-gpu-layers` and `fa` becomes `--flash-attn`, while
+vLLM's and MTPLX's long-form keys (`gpu-memory-utilization`,
+`context-window`, …) pass through unchanged. The key is a single token; the
+value is the rest of the line, so it may hold spaces and `=` signs:
+
+```dockerfile
+PROVIDER llamacpp
+ALIAS    qwen3.8-27b
+CONTEXT  131072
+PARAM hf = unsloth/Qwen3.8-27B-GGUF:UD-Q5_K_XL
+PARAM ngl = 99
+PARAM fa = on
+PARAM jinja = 1
+```
+
+Each PARAM renders the way a preset's flag does: an empty value renders the
+flag bare (`PARAM mmap =` becomes `--mmap`); a value-taking flag with a truthy
+value does the same (`PARAM jinja = 1` becomes a bare `--jinja`), and a falsy
+value (`0`, `off`, `false`, `no`) omits the flag altogether. Where the same
+flag is set in more than one place, the Spinloop's own instructions win, then a
+PARAM, then the preset — `PARAM ctx-size = 65536` loses to `CONTEXT 131072`.
+
+A PARAM may also name the model: for llama.cpp (`hf`/`model`/`hf-file`) and
+MTPLX (`model`), a PARAM with such a key stands in for `MODEL`, read the way a
+preset's model reference is read — so a Spinloop with no preset file at all
+still serves (and deploys) its model. vLLM takes its model positionally, so a
+PARAM cannot stand in for `MODEL` there, and `serve` says exactly that.
+
+The same PARAMs ride into [`spinloop cloud deploy`](cloud.md), which reads the
+model and the runner's flags from them the way it reads a preset — dropping the
+settings the cloud owns. See [the `Spinloop` file](../spinloop-file.md) for the
+full rules.
 
 ## Parallelism
 
@@ -114,11 +153,11 @@ at all, so there is nothing to compensate there either.
 
 If `PARALLEL` is left out entirely, it changes nothing — no `--parallel`-family
 flag is added, and `CONTEXT` maps to the engine's context flag exactly as it
-always has. It only applies to a Spinloop-stated `CONTEXT`: a `PRESET`'s own
-`ctx-size`, left unstated by the Spinloop, is not retroactively scaled — the
-preset is trusted to already account for its own slots. Like `CONTEXT`,
-`PARALLEL` overrides a preset's own `np`/`parallel`, `max-num-seqs`, or
-`max-concurrent-requests` value by the usual override rule.
+always has. It only applies to a Spinloop-stated `CONTEXT`: a `PRESET`'s (or a
+PARAM's) own `ctx-size`, left unstated by the Spinloop, is not retroactively
+scaled — the preset is trusted to already account for its own slots. Like
+`CONTEXT`, `PARALLEL` overrides a preset's or a PARAM's own `np`/`parallel`,
+`max-num-seqs`, or `max-concurrent-requests` value by the usual override rule.
 
 `PARALLEL` is Spinloop-file-only — like `PRESET`, it has no meaning for a hosted
 provider selection, so there is no `spinloop harness add --parallel`.
@@ -127,7 +166,8 @@ provider selection, so there is no `spinloop harness add --parallel`.
 
 ### Simple case — straight from the Spinloop
 
-With no `PRESET`, `serve` builds the command from the Spinloop itself:
+With no `PRESET`, `serve` builds the command from the Spinloop itself — its
+typed instructions, and any `PARAM` lines:
 
 ```dockerfile
 PROVIDER llamacpp
@@ -144,7 +184,8 @@ path or ends in `.gguf`); `ALIAS`, `CONTEXT`, and `BASEURL` fill in the rest.
 ### Full control — a llama.cpp preset
 
 For flags a Spinloop doesn't model — `-ngl`, `--jinja`, KV-cache types, draft
-models — point at a llama.cpp
+models — write them as [PARAM](#param-engine-flags-in-the-spinloop) lines in the
+Spinloop, or point at a llama.cpp
 [preset `.ini`](https://github.com/ggml-org/llama.cpp/blob/master/docs/preset.md):
 a set of `llama-server` flags grouped under named `[model]` sections, with a
 `[*]` section for shared defaults. Presets are built for the server's router
@@ -197,8 +238,8 @@ BASEURL  http://127.0.0.1:8000/v1   # omlx-cli serve --host/--port
   [Parallelism](#parallelism) above.
 
 Everything else — the model directory, the memory guard, the SSD cache — comes
-from a `PRESET` written in oMLX's own flags, or from oMLX's settings
-(`~/.omlx/settings.json`, and its admin panel):
+from `PARAM` lines, a `PRESET` written in oMLX's own flags, or from oMLX's
+settings (`~/.omlx/settings.json`, and its admin panel):
 
 ```ini
 [*]
@@ -249,7 +290,7 @@ it, unlike llama.cpp's.
 
 `--tensor-parallel-size`/`--pipeline-parallel-size` (sharding a model across
 GPUs) are a different concept from `PARALLEL` and are not derived from it —
-set them by hand in a `PRESET`.
+set them by hand as `PARAM` lines or in a `PRESET`.
 
 ## MTPLX
 
@@ -277,7 +318,8 @@ BASEURL  http://127.0.0.1:8000/v1                       # mtplx serve --host/--p
   MTPLX's own defaults stand.
 
 The scheduling mode (`--scheduler-mode`) is per-deployment tuning, not a
-Spinloop field — set it in a `PRESET`, written in MTPLX's own long-form flags.
+Spinloop field — set it as a `PARAM` line or in a `PRESET`, written in
+MTPLX's own long-form flags.
 `serve` passes the value through without checking it, so it must be valid for
 the installed `mtplx` (`mtplx serve --help` lists the current modes). Every
 preset key is passed through unchanged, so a preset is portable only to MTPLX,
@@ -436,8 +478,8 @@ output.
 
 - `serve` needs the engine installed: `llama-server` on your `PATH` (e.g.
   `brew install llama.cpp`), or [oMLX](https://omlx.ai).
-- For llama.cpp, a Spinloop with no `PRESET` must name a `MODEL`. oMLX needs
-  neither.
+- For llama.cpp, a Spinloop with no `PRESET` must name a `MODEL` — or have a
+  PARAM that names one (a `hf`/`model`/`hf-file` key). oMLX needs neither.
 
 ## See also
 

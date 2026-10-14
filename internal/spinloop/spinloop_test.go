@@ -72,6 +72,50 @@ func TestParse(t *testing.T) {
 			in:   "PROVIDER llamacpp\nMODEL m\nENV TOKEN=a=b=c\n",
 			want: Selection{Provider: "llamacpp", Model: "m", Env: []EnvVar{{Key: "TOKEN", Value: "a=b=c"}}},
 		},
+		{
+			name: "a param",
+			in:   "PROVIDER llamacpp\nMODEL m\nPARAM jinja = 1\n",
+			want: Selection{Provider: "llamacpp", Model: "m", Params: []Param{{Key: "jinja", Value: "1"}}},
+		},
+		{
+			name: "repeated params with a trailing comment",
+			in: "PROVIDER llamacpp\nPARAM jinja = 1\nPARAM temp = 1.0\n" +
+				"PARAM hf = unsloth/Qwen3.8-27B-GGUF:UD-Q5_K_XL   # repo and quant\n" +
+				"PARAM no-mmproj = 1\n",
+			want: Selection{
+				Provider: "llamacpp",
+				Params: []Param{
+					{Key: "jinja", Value: "1"},
+					{Key: "temp", Value: "1.0"},
+					{Key: "hf", Value: "unsloth/Qwen3.8-27B-GGUF:UD-Q5_K_XL"},
+					{Key: "no-mmproj", Value: "1"},
+				},
+			},
+		},
+		{
+			name: "repeated param keys keep file order",
+			in:   "PROVIDER llamacpp\nMODEL m\nPARAM temp = 0.5\nPARAM temp = 1.0\n",
+			want: Selection{Provider: "llamacpp", Model: "m", Params: []Param{{Key: "temp", Value: "0.5"}, {Key: "temp", Value: "1.0"}}},
+		},
+		{
+			name: "param with an empty value",
+			in:   "PROVIDER llamacpp\nMODEL m\nPARAM no-mmap =\n",
+			want: Selection{Provider: "llamacpp", Model: "m", Params: []Param{{Key: "no-mmap", Value: ""}}},
+		},
+		{
+			name: "param value keeps spaces and later equals signs",
+			in:   "PROVIDER llamacpp\nMODEL m\nPARAM stop = a b = c\n",
+			want: Selection{Provider: "llamacpp", Model: "m", Params: []Param{{Key: "stop", Value: "a b = c"}}},
+		},
+		{
+			name: "param alongside preset and env",
+			in:   "PROVIDER llamacpp\nMODEL m\nPRESET ./preset.ini\nPARAM ngl = 99\nENV AWS_PROFILE=dev\n",
+			want: Selection{
+				Provider: "llamacpp", Model: "m", Preset: "./preset.ini",
+				Params: []Param{{Key: "ngl", Value: "99"}},
+				Env:    []EnvVar{{Key: "AWS_PROFILE", Value: "dev"}},
+			},
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -99,6 +143,9 @@ func TestParse_Errors(t *testing.T) {
 		"env without equals":    "PROVIDER a\nMODEL m\nENV JUST_A_NAME\n",
 		"env empty key":         "PROVIDER a\nMODEL m\nENV =value\n",
 		"env value with spaces": "PROVIDER a\nMODEL m\nENV KEY=hello world\n",
+		"param without equals":  "PROVIDER a\nMODEL m\nPARAM jinja\n",
+		"param empty key":       "PROVIDER a\nMODEL m\nPARAM =1\n",
+		"param key with spaces": "PROVIDER a\nMODEL m\nPARAM hf repo = m\n",
 	}
 	for name, in := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -119,11 +166,20 @@ func TestFormatRoundTrip(t *testing.T) {
 		Parallel: "2",
 		BaseURL:  "https://gateway.example/v1",
 		Preset:   "./preset.ini",
+		Params:   []Param{{Key: "jinja", Value: "1"}, {Key: "temp", Value: "1.0"}},
 		Env:      []EnvVar{{Key: "AWS_PROFILE", Value: "dev"}, {Key: "AWS_REGION", Value: "eu-west-2"}},
 	}
 	out := Format(sel)
 	if !strings.HasPrefix(out, "PROVIDER openrouter\n") {
 		t.Errorf("export not canonical:\n%s", out)
+	}
+	if !strings.Contains(out, "PARAM    jinja = 1") {
+		t.Errorf("Format should emit PARAM lines, got:\n%s", out)
+	}
+	// PARAM sits after PRESET and before ENV in the canonical order.
+	presetAt, paramAt, envAt := strings.Index(out, "PRESET"), strings.Index(out, "PARAM"), strings.Index(out, "ENV")
+	if !(presetAt >= 0 && paramAt > presetAt && envAt > paramAt) {
+		t.Errorf("Format should order PRESET before PARAM before ENV, got:\n%s", out)
 	}
 	if !strings.Contains(out, "ENV      AWS_PROFILE=dev") {
 		t.Errorf("Format should emit ENV lines, got:\n%s", out)
@@ -205,5 +261,29 @@ func TestParse_FleetIsAnUnknownKeyword(t *testing.T) {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error should contain %q, got %q", want, err)
 		}
+	}
+}
+
+// The unknown-keyword error lists the accepted keywords, PARAM among them.
+func TestParse_UnknownKeywordNamesParam(t *testing.T) {
+	_, err := Parse([]byte("PROVIDER x\nWIDGET w\n"))
+	if err == nil {
+		t.Fatal("an unknown keyword should error")
+	}
+	if !strings.Contains(err.Error(), "PRESET, PARAM, or ENV") {
+		t.Errorf("error should name PARAM among the accepted keywords, got %q", err)
+	}
+}
+
+// PARAM's value may hold spaces, so it is carved from the rest of the line
+// rather than fielded like every other instruction.
+func TestParse_ParamValueFromRestOfLine(t *testing.T) {
+	sel, err := Parse([]byte("PROVIDER llamacpp\nPARAM chat-template = {\"a\": 1} = {\"b\": 2}\n"))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	want := []Param{{Key: "chat-template", Value: `{"a": 1} = {"b": 2}`}}
+	if !reflect.DeepEqual(sel.Params, want) {
+		t.Errorf("Params = %+v, want %+v", sel.Params, want)
 	}
 }

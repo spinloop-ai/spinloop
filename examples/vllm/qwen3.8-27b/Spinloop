@@ -1,0 +1,9 @@
+# Qwen3.8-27B served locally by vLLM, or on a cloud GPU via spinloop cloud.
+# vLLM takes its model positionally, so a MODEL is required here — unlike
+# llama.cpp or MTPLX, a PARAM cannot stand in for it.
+PROVIDER vllm
+MODEL    Qwen/Qwen3.8-27B-FP8   # adjust to the FP8 build you run
+ALIAS    qwen3.8-27b
+CONTEXT  32768            # vllm serve --max-model-len
+PARAM gpu-memory-utilization = 0.9
+# BASEURL http://0.0.0.0:8000/v1   # uncomment for a non-default host/port

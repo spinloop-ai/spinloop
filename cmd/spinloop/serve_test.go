@@ -892,3 +892,206 @@ func TestCmdServe_UnsupportedProvider(t *testing.T) {
 		}
 	}
 }
+
+// TestCmdServe_ParamOverridesPreset is the rule the keyword exists for: where a
+// param is set both in the preset and as a PARAM, the Spinloop file wins.
+func TestCmdServe_ParamOverridesPreset(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "preset.ini"), "[qwen]\nhf = org/model\ntemp = 0.7\n")
+	spinloopPath := filepath.Join(dir, "Spinloop")
+	mustWrite(t, spinloopPath, "PROVIDER llamacpp\nALIAS qwen\nPARAM temp = 1.0\nPRESET preset.ini\n")
+
+	out := captureStdout(t, func() {
+		if err := cmdServe([]string{"--dry-run", spinloopPath}); err != nil {
+			t.Fatalf("cmdServe: %v", err)
+		}
+	})
+	if !strings.Contains(out, "--temp 1.0") {
+		t.Errorf("PARAM should override the preset's temp, missing --temp 1.0:\n%s", out)
+	}
+	if strings.Contains(out, "--temp 0.7") {
+		t.Errorf("the preset's temp should have lost to the PARAM:\n%s", out)
+	}
+}
+
+// TestCmdServe_InstructionOverridesParam checks the other side of the same
+// rule: a typed instruction stands over a PARAM, so CONTEXT wins over a
+// PARAM's own ctx-size — and unscaled, since it is the Spinloop's own.
+func TestCmdServe_InstructionOverridesParam(t *testing.T) {
+	dir := t.TempDir()
+	spinloopPath := filepath.Join(dir, "Spinloop")
+	mustWrite(t, spinloopPath, "PROVIDER llamacpp\nMODEL org/model\nCONTEXT 32768\nPARAM ctx-size = 5000\n")
+
+	out := captureStdout(t, func() {
+		if err := cmdServe([]string{"--dry-run", spinloopPath}); err != nil {
+			t.Fatalf("cmdServe: %v", err)
+		}
+	})
+	if !strings.Contains(out, "--ctx-size 32768") {
+		t.Errorf("CONTEXT should stand over the PARAM's ctx-size, missing --ctx-size 32768:\n%s", out)
+	}
+	if strings.Contains(out, "--ctx-size 5000") {
+		t.Errorf("the PARAM's ctx-size should have lost to CONTEXT:\n%s", out)
+	}
+}
+
+// TestCmdServe_ParamNamesModel is the issue's own configuration: no MODEL and
+// no PRESET, the model named entirely by a PARAM, with the PARAMs rendering in
+// llama.cpp's dialect (alias-normalised, booleans bare).
+func TestCmdServe_ParamNamesModel(t *testing.T) {
+	dir := t.TempDir()
+	spinloopPath := filepath.Join(dir, "Spinloop")
+	mustWrite(t, spinloopPath,
+		"PROVIDER llamacpp\n"+
+			"ALIAS qwen3.8-27b\n"+
+			"PARAM jinja = 1\n"+
+			"PARAM temp = 1.0\n"+
+			"PARAM hf = unsloth/Qwen3.8-27B-GGUF:UD-Q5_K_XL\n"+
+			"PARAM no-mmproj = 1\n")
+
+	out := captureStdout(t, func() {
+		if err := cmdServe([]string{"--dry-run", spinloopPath}); err != nil {
+			t.Fatalf("cmdServe: %v", err)
+		}
+	})
+	for _, want := range []string{
+		"--hf-repo unsloth/Qwen3.8-27B-GGUF:UD-Q5_K_XL",
+		"--alias qwen3.8-27b",
+		"--jinja",
+		"--temp 1.0",
+		"--no-mmproj",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("command missing %q:\n%s", want, out)
+		}
+	}
+	if !strings.Contains(out, "Serving unsloth/Qwen3.8-27B-GGUF:UD-Q5_K_XL") {
+		t.Errorf("the narration should name the model the PARAM gives:\n%s", out)
+	}
+}
+
+// TestCmdServe_MTPPLXParamNamesModel is the same model-sourcing for MTPLX,
+// whose dialect passes keys through unchanged.
+func TestCmdServe_MTPPLXParamNamesModel(t *testing.T) {
+	dir := t.TempDir()
+	spinloopPath := filepath.Join(dir, "Spinloop")
+	mustWrite(t, spinloopPath, "PROVIDER mtplx\nPARAM model = org/mtplx-pack\nPARAM scheduler-mode = ar_batch\n")
+
+	out := captureStdout(t, func() {
+		if err := cmdServe([]string{"--dry-run", spinloopPath}); err != nil {
+			t.Fatalf("cmdServe: %v", err)
+		}
+	})
+	for _, want := range []string{"--model org/mtplx-pack", "--scheduler-mode ar_batch"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("command missing %q:\n%s", want, out)
+		}
+	}
+}
+
+// TestCmdServe_VllmNeedsModelDespiteParams pins the one engine a PARAM cannot
+// name the model for: vLLM takes it positionally, so the MODEL requirement
+// stands even with PARAMs present, and the error says why.
+func TestCmdServe_VllmNeedsModelDespiteParams(t *testing.T) {
+	dir := t.TempDir()
+	spinloopPath := filepath.Join(dir, "Spinloop")
+	mustWrite(t, spinloopPath, "PROVIDER vllm\nPARAM gpu-memory-utilization = 0.9\n")
+
+	var err error
+	captureStdout(t, func() { err = cmdServe([]string{"--dry-run", spinloopPath}) })
+	if err == nil {
+		t.Fatal("expected an error: a PARAM cannot stand in for vLLM's positional model")
+	}
+	if !strings.Contains(err.Error(), "positionally") {
+		t.Errorf("error should name the positional argument, got: %v", err)
+	}
+}
+
+// TestCmdServe_NoModelErrorNamesTheWays checks the no-model failure explains
+// all three ways a model can be named, not just MODEL.
+func TestCmdServe_NoModelErrorNamesTheWays(t *testing.T) {
+	dir := t.TempDir()
+	spinloopPath := filepath.Join(dir, "Spinloop")
+	mustWrite(t, spinloopPath, "PROVIDER llamacpp\n")
+
+	var err error
+	captureStdout(t, func() { err = cmdServe([]string{"--dry-run", spinloopPath}) })
+	if err == nil {
+		t.Fatal("expected an error when there is neither a PRESET nor a MODEL")
+	}
+	for _, want := range []string{"PRESET", "MODEL", "PARAM"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error should name %s as a way to supply the model, got: %v", want, err)
+		}
+	}
+}
+
+// TestCmdServe_VllmParamsRender checks PARAMs ride into a vLLM command as its
+// own flags: the value-taking ones with their values, and an empty value as a
+// bare flag, which is how a dialect with no boolean table spells one.
+func TestCmdServe_VllmParamsRender(t *testing.T) {
+	dir := t.TempDir()
+	spinloopPath := filepath.Join(dir, "Spinloop")
+	mustWrite(t, spinloopPath,
+		"PROVIDER vllm\nMODEL org/model\nALIAS friendly\n"+
+			"PARAM gpu-memory-utilization = 0.9\n"+
+			"PARAM enable-chunked-prefill =\n")
+
+	out := captureStdout(t, func() {
+		if err := cmdServe([]string{"--dry-run", spinloopPath}); err != nil {
+			t.Fatalf("cmdServe: %v", err)
+		}
+	})
+	for _, want := range []string{"vllm serve org/model", "--gpu-memory-utilization 0.9", "--enable-chunked-prefill", "--served-model-name friendly"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("command missing %q:\n%s", want, out)
+		}
+	}
+}
+
+// TestCmdServe_ParamContextUnscaledByParallel checks a PARAM's own ctx-size
+// holds the same place a preset's does: PARALLEL emits its flag, but the
+// PARAM's context passes through unscaled.
+func TestCmdServe_ParamContextUnscaledByParallel(t *testing.T) {
+	dir := t.TempDir()
+	spinloopPath := filepath.Join(dir, "Spinloop")
+	mustWrite(t, spinloopPath,
+		"PROVIDER llamacpp\nPARAM model = org/model\nPARALLEL 2\nPARAM ctx-size = 4096\n")
+
+	out := captureStdout(t, func() {
+		if err := cmdServe([]string{"--dry-run", spinloopPath}); err != nil {
+			t.Fatalf("cmdServe: %v", err)
+		}
+	})
+	if !strings.Contains(out, "--parallel 2") {
+		t.Errorf("command missing --parallel 2:\n%s", out)
+	}
+	if !strings.Contains(out, "--ctx-size 4096") {
+		t.Errorf("the PARAM's ctx-size should pass through unscaled, missing --ctx-size 4096:\n%s", out)
+	}
+	if strings.Contains(out, "--ctx-size 8192") {
+		t.Errorf("PARALLEL must not rescale a PARAM's ctx-size:\n%s", out)
+	}
+}
+
+// TestCmdServe_ParallelOverridesParamValue checks a Spinloop's PARALLEL wins
+// over a PARAM's own np, by the same override-by-canonical-name rule it uses
+// against a preset.
+func TestCmdServe_ParallelOverridesParamValue(t *testing.T) {
+	dir := t.TempDir()
+	spinloopPath := filepath.Join(dir, "Spinloop")
+	mustWrite(t, spinloopPath,
+		"PROVIDER llamacpp\nPARAM model = org/model\nPARALLEL 2\nPARAM np = 4\n")
+
+	out := captureStdout(t, func() {
+		if err := cmdServe([]string{"--dry-run", spinloopPath}); err != nil {
+			t.Fatalf("cmdServe: %v", err)
+		}
+	})
+	if !strings.Contains(out, "--parallel 2") {
+		t.Errorf("the Spinloop's PARALLEL should win, missing --parallel 2:\n%s", out)
+	}
+	if strings.Contains(out, "--parallel 4") {
+		t.Errorf("the PARAM's np=4 should have been overridden:\n%s", out)
+	}
+}

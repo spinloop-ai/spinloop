@@ -294,6 +294,213 @@ func TestDeployConfigFor_Rejects(t *testing.T) {
 	}
 }
 
+// A PARAM is a layer of its own in the deployment: it supplies the model, the
+// window, and the slot count when the Spinloop does not state them, and its
+// remaining values ride into ServeArgs with the same owned-flag dropping a
+// preset gets — so a Spinloop with no preset file at all can still be
+// deployed, on the same terms `spinloop serve` runs it.
+func TestDeployConfigFor_FromParams(t *testing.T) {
+	dc := deployConfigFrom(t,
+		"PROVIDER llamacpp\nALIAS qwen3.8-27b\n"+
+			"PARAM hf = unsloth/Qwen3.8-27B-GGUF:UD-Q5_K_XL\n"+
+			"PARAM ctx-size = 131072\n"+
+			"PARAM np = 2\n"+
+			"PARAM ngl = 99\n"+
+			"PARAM fa = on\n", "")
+
+	if dc.Runner != "llamacpp" {
+		t.Errorf("runner = %q, want llamacpp", dc.Runner)
+	}
+	if dc.ModelID != "unsloth/Qwen3.8-27B-GGUF" || dc.Quant != "UD-Q5_K_XL" {
+		t.Errorf("model = %q quant = %q, want the PARAM's repo and quant split", dc.ModelID, dc.Quant)
+	}
+	if dc.ContextSize != 131072 {
+		t.Errorf("contextSize = %d, want the PARAM's ctx-size", dc.ContextSize)
+	}
+	if dc.Parallel != 2 {
+		t.Errorf("parallel = %d, want the PARAM's np", dc.Parallel)
+	}
+	if dc.ServedModelName != "qwen3.8-27b" {
+		t.Errorf("servedModelName = %q, want the ALIAS", dc.ServedModelName)
+	}
+	args := strings.Join(dc.ServeArgs, " ")
+	// The PARAMs the deployment does not compute itself ride through.
+	for _, want := range []string{"--n-gpu-layers 99", "--flash-attn on"} {
+		if !strings.Contains(args, want) {
+			t.Errorf("serveArgs %q is missing the PARAM's %q", args, want)
+		}
+	}
+	// Set by the cloud, so the PARAMs' values must not be echoed back — the
+	// model travels as ModelID and Quant, not as a flag.
+	for _, unwanted := range []string{"--hf-repo", "--ctx-size", "--parallel", "unsloth/Qwen3.8-27B-GGUF"} {
+		if strings.Contains(args, unwanted) {
+			t.Errorf("serveArgs %q should not carry the cloud-owned %q", args, unwanted)
+		}
+	}
+}
+
+// Where a flag is set both in the preset and as a PARAM, the Spinloop's own
+// PARAM stands over the preset — the same precedence a local serve gives it —
+// and a preset value the PARAM does not set still rides through.
+func TestDeployConfigFor_ParamBeatsPreset(t *testing.T) {
+	preset := "[*]\n" +
+		"ngl = 10\n" +
+		"\n" +
+		"[q]\n" +
+		"hf       = org/model:Q4_K_M\n" +
+		"ctx-size = 4096\n" +
+		"np       = 4\n" +
+		"temp     = 0.7\n"
+	dc := deployConfigFrom(t,
+		"PROVIDER llamacpp\nALIAS q\n"+
+			"PARAM hf = org/other:Q8_0\n"+
+			"PARAM ctx-size = 8192\n"+
+			"PARAM temp = 1.0\n"+
+			"PRESET ./preset.ini\n", preset)
+
+	// The model falls back MODEL, then PARAM, then the preset: the PARAM's
+	// repo deploys.
+	if dc.ModelID != "org/other" || dc.Quant != "Q8_0" {
+		t.Errorf("the PARAM's hf should win over the preset's, got %q:%q", dc.ModelID, dc.Quant)
+	}
+	// The window: the PARAM stands over the preset's ctx-size.
+	if dc.ContextSize != 8192 {
+		t.Errorf("contextSize = %d, want the PARAM's ctx-size, not the preset's", dc.ContextSize)
+	}
+	// The slot count: the PARAM does not set it, so the preset's np stands.
+	if dc.Parallel != 4 {
+		t.Errorf("parallel = %d, want the preset's np (no PARAM sets it)", dc.Parallel)
+	}
+	args := strings.Join(dc.ServeArgs, " ")
+	if !strings.Contains(args, "--temp 1.0") || strings.Contains(args, "0.7") {
+		t.Errorf("the PARAM's temp should stand over the preset's, got %q", args)
+	}
+	// A preset value no PARAM sets still rides through, from the [*] globals.
+	if !strings.Contains(args, "--n-gpu-layers 10") {
+		t.Errorf("the preset's ngl should ride through, got %q", args)
+	}
+}
+
+// The owned-flag drop is per-destination, and the PARAM layer goes through it
+// exactly as the preset's layers do: a PARAM's bind is dropped for a cloud
+// deploy (the cloud assigns its own) and stands for a node wake (the machine
+// is the operator's), and the node wake derives the model, the window, and the
+// slot count from PARAMs the same way a deploy does.
+func TestDeployConfigForNode_ParamsLikePreset(t *testing.T) {
+	spinloopPath := writeDeploySpinloop(t,
+		"PROVIDER llamacpp\nALIAS qwen\n"+
+			"PARAM hf = org/model:Q4_K_M\n"+
+			"PARAM ctx-size = 4096\n"+
+			"PARAM np = 4\n"+
+			"PARAM host = 0.0.0.0\n"+
+			"PARAM port = 9090\n", "")
+	sel, _, err := readSpinloop("test", spinloopPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	node, err := deployConfigForNode(sel, spinloopPath)
+	if err != nil {
+		t.Fatalf("deployConfigForNode: %v", err)
+	}
+	if node.ModelID != "org/model" || node.Quant != "Q4_K_M" {
+		t.Errorf("model = %q:%q, want the PARAM's hf", node.ModelID, node.Quant)
+	}
+	if node.ContextSize != 4096 {
+		t.Errorf("contextSize = %d, want the PARAM's ctx-size", node.ContextSize)
+	}
+	if node.Parallel != 4 {
+		t.Errorf("parallel = %d, want the PARAM's np", node.Parallel)
+	}
+	nodeArgs := strings.Join(node.ServeArgs, " ")
+	for _, want := range []string{"--host 0.0.0.0", "--port 9090"} {
+		if !strings.Contains(nodeArgs, want) {
+			t.Errorf("a node's serve args should keep the PARAM's bind %q, got: %s", want, nodeArgs)
+		}
+	}
+	for _, unwanted := range []string{"--hf-repo", "--ctx-size", "--parallel"} {
+		if strings.Contains(nodeArgs, unwanted) {
+			t.Errorf("a node's serve args should not repeat %q, got: %s", unwanted, nodeArgs)
+		}
+	}
+
+	// The cloud still drops the same bind: it assigns its own.
+	sel.Context = "4096" // the cloud requires one
+	cloud, err := deployConfigFor(sel, spinloopPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cloudArgs := strings.Join(cloud.ServeArgs, " ")
+	for _, unwanted := range []string{"--host", "--port", "0.0.0.0", "9090"} {
+		if strings.Contains(cloudArgs, unwanted) {
+			t.Errorf("the cloud sets its own bind, so %q should be dropped, got: %s", unwanted, cloudArgs)
+		}
+	}
+}
+
+// A PARAM naming the model may be a local path, the way a MODEL may be: the
+// cloud refuses it (it cannot ship a file), and a node wake carries it, the
+// machine having the file the Spinloop points at.
+func TestDeployConfigFor_ParamNamesLocalModelPath(t *testing.T) {
+	spinloopPath := writeDeploySpinloop(t,
+		"PROVIDER llamacpp\nCONTEXT 32k\nPARAM hf = ./models/qwen.gguf\n", "")
+	sel, _, err := readSpinloop("test", spinloopPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	node, err := deployConfigForNode(sel, spinloopPath)
+	if err != nil {
+		t.Fatalf("a node wake with a PARAM's local model path should succeed: %v", err)
+	}
+	if node.ModelID != "./models/qwen.gguf" {
+		t.Errorf("modelId = %q, want the local path", node.ModelID)
+	}
+
+	// The cloud still refuses the same file: it downloads from Hugging Face.
+	if _, err := deployConfigFor(sel, spinloopPath); err == nil ||
+		!strings.Contains(err.Error(), "cannot deploy the local model file") {
+		t.Errorf("the cloud should refuse a PARAM's local model path, got %v", err)
+	}
+}
+
+// vLLM takes its model positionally, so a PARAM naming one is not a model to
+// it: the error stays MODEL-and-preset, unlike the flag-taking engines whose
+// error names a PARAM as a third way.
+func TestDeployConfigFor_VllmParamsAreNotAModel(t *testing.T) {
+	spinloopPath := writeDeploySpinloop(t,
+		"PROVIDER vllm\nCONTEXT 32k\nPARAM hf = org/model\n", "")
+	sel, _, err := readSpinloop("test", spinloopPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = deployConfigFor(sel, spinloopPath)
+	if err == nil || !strings.Contains(err.Error(), "nothing to deploy") {
+		t.Fatalf("want a nothing-to-deploy error, got %v", err)
+	}
+	if strings.Contains(err.Error(), "PARAM") {
+		t.Errorf("vLLM takes its model positionally, so the error should not name a PARAM: %v", err)
+	}
+}
+
+// The flag-taking engines' error does name the PARAM, as the third way a model
+// may be given.
+func TestDeployConfigFor_NoModelErrorNamesAParam(t *testing.T) {
+	spinloopPath := writeDeploySpinloop(t,
+		"PROVIDER llamacpp\nCONTEXT 32k\n", "")
+	sel, _, err := readSpinloop("test", spinloopPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = deployConfigFor(sel, spinloopPath)
+	if err == nil || !strings.Contains(err.Error(), "nothing to deploy") {
+		t.Fatalf("want a nothing-to-deploy error, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "a PARAM naming the model") {
+		t.Errorf("the error should name a PARAM as an alternative: %v", err)
+	}
+}
+
 func TestSplitModelQuant(t *testing.T) {
 	for _, tc := range []struct{ in, repo, quant string }{
 		{"org/model:Q4_K_M", "org/model", "Q4_K_M"},

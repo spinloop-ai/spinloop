@@ -14,6 +14,7 @@
 //	PARALLEL 2                          # optional; concurrent request slots for `serve`
 //	BASEURL  https://gateway/v1         # optional; API base URL override
 //	PRESET   ./preset.ini               # optional; llama.cpp preset for `serve`
+//	PARAM    jinja = 1                  # optional, repeatable; engine flag for `serve`
 //	ENV      AWS_PROFILE=dev            # optional, repeatable; local env var
 //
 // MODEL is the reference the provider itself understands: an OpenRouter/Bedrock
@@ -21,10 +22,16 @@
 // (org/model:quant) or a path to a .gguf. ALIAS overrides the friendly name the
 // harness shows for it (and the name llama-server reports under `serve`).
 //
-// ENV sets an environment variable for the local `spinloop` process — the one
-// keyword that may appear more than once. It carries a single KEY=VALUE token
-// and is used by the cloud commands (which read it before signing AWS calls);
-// it is local-only and never reaches a deployed instance.
+// ENV sets an environment variable for the local `spinloop` process — one of
+// two keywords that may appear more than once. It carries a single KEY=VALUE
+// token and is used by the cloud commands (which read it before signing AWS
+// calls); it is local-only and never reaches a deployed instance.
+//
+// PARAM names one engine flag, in the engine's own vocabulary — `PARAM
+// jinja = 1`, `PARAM hf = org/model:QUANT` — the inline alternative to a
+// preset file for the same options. Like ENV it may repeat; what a PARAM does
+// to the served engine's command is the concern of the command that consumes
+// it (`serve`, `cloud deploy`), never of this parser.
 //
 // Keywords are matched case-insensitively, but UPPERCASE is canonical (it is
 // what `spinloop export` emits). Blank lines, full-line `#` comments, and
@@ -65,6 +72,10 @@ type Selection struct {
 	// Env holds the Spinloop's ENV instructions in file order. Unlike the other
 	// fields it may carry several entries, since ENV may repeat.
 	Env []EnvVar
+	// Params holds the Spinloop's PARAM instructions in file order. Like Env
+	// it may carry several entries, since PARAM may repeat: where the same key
+	// is set twice, the consumer's layer merge lets the later line stand.
+	Params []Param
 	// DiscoveredModels is set at apply time, like DisplayName, never parsed
 	// from a Spinloop file: the model IDs a gateway reported when the
 	// selection named neither a model nor an alias to route by. A harness
@@ -80,6 +91,14 @@ type EnvVar struct {
 	Value string
 }
 
+// Param is one PARAM instruction: a single engine flag, in the engine's own
+// vocabulary (e.g. `jinja`, `ctx-size`, `hf`), with its value. The value may
+// be empty, naming a bare flag.
+type Param struct {
+	Key   string
+	Value string
+}
+
 // Spinloop keywords, in their canonical (lower-cased) form for matching.
 const (
 	kwProvider = "provider"
@@ -90,6 +109,7 @@ const (
 	kwParallel = "parallel"
 	kwBaseURL  = "baseurl"
 	kwPreset   = "preset"
+	kwParam    = "param"
 	kwEnv      = "env"
 )
 
@@ -98,7 +118,7 @@ const (
 // "" for an unrecognised keyword.
 func canonicalKeyword(kw string) string {
 	switch kw {
-	case kwProvider, kwModel, kwAlias, kwContext, kwOutput, kwParallel, kwPreset, kwEnv:
+	case kwProvider, kwModel, kwAlias, kwContext, kwOutput, kwParallel, kwPreset, kwParam, kwEnv:
 		return kw
 	case kwBaseURL, "base-url", "base_url", "url":
 		return kwBaseURL
@@ -132,8 +152,23 @@ func Parse(data []byte) (Selection, error) {
 					"line %d: the REMOTE instruction was removed: name the environment with `spinloop cloud deploy --env <name>` at deploy time, and pass --env <name> to the commands that act on it (cloud subcommands, apply, unapply, harness)",
 					line)
 			}
-			return Selection{}, fmt.Errorf("line %d: unknown keyword %q (expected PROVIDER, MODEL, ALIAS, CONTEXT, OUTPUT, PARALLEL, BASEURL, PRESET, or ENV)", line, fields[0])
+			return Selection{}, fmt.Errorf("line %d: unknown keyword %q (expected PROVIDER, MODEL, ALIAS, CONTEXT, OUTPUT, PARALLEL, BASEURL, PRESET, PARAM, or ENV)", line, fields[0])
 		}
+		// PARAM, like ENV, may repeat, and its value — `key = value` — may
+		// itself hold spaces, so it is parsed from the rest of the line and
+		// sidesteps the single-value check. The key is one non-empty token;
+		// the value may be empty, naming a bare flag.
+		if canon == kwParam {
+			rest := strings.TrimSpace(text[len(fields[0]):])
+			key, value, ok := strings.Cut(rest, "=")
+			key = strings.TrimSpace(key)
+			if !ok || key == "" || strings.ContainsAny(key, " \t") {
+				return Selection{}, fmt.Errorf("line %d: PARAM takes key = value with a non-empty key, got %q", line, text)
+			}
+			sel.Params = append(sel.Params, Param{Key: key, Value: strings.TrimSpace(value)})
+			continue
+		}
+
 		switch {
 		case len(fields) < 2:
 			return Selection{}, fmt.Errorf("line %d: %s needs a value", line, strings.ToUpper(canon))
@@ -221,6 +256,9 @@ func Format(sel Selection) string {
 	line("PARALLEL", sel.Parallel)
 	line("BASEURL", sel.BaseURL)
 	line("PRESET", sel.Preset)
+	for _, p := range sel.Params {
+		line("PARAM", p.Key+" = "+p.Value)
+	}
 	for _, e := range sel.Env {
 		line("ENV", e.Key+"="+e.Value)
 	}

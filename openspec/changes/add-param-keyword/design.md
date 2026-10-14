@@ -92,8 +92,13 @@ names that name the engine's model: llamacpp `hf-repo`, `model`, `hf-file`;
 mtplx `model`; vllm none (the model is positional, so `PARAM` cannot stand in
 for `MODEL`). One definition serves both sides: serve's `needsModel` check
 (`MODEL` or a PARAM naming the model, for engines with model flags) and
-cloud's PARAM model fallback (`sel.Model` → preset's model key → PARAM's
-model keys). A PARAM whose model value is a local path deploys exactly like a
+deploy's model fallback (`sel.Model` → PARAM's model keys → preset's model
+key) — a PARAM standing over the preset, as decision 2 mandates and as a
+local serve layers the PARAM over the preset's own model flag, so the same
+file deploys what it serves. The PARAM is read in the engine's dialect
+through `paramModel(engine, params)`, the core the serve path calls with the
+same selection's PARAMs. A PARAM whose model value is a local path deploys
+exactly like a
 `MODEL` local path does today: the cloud refuses it naming a repo.
 
 ### 5. Cloud parity is layer addition, not a new path
