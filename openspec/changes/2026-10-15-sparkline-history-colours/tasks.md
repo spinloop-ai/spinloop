@@ -2,7 +2,7 @@
 
 ## 1. Spec delta
 
-- [x] 1.1 Rewrite the "Colour thresholds" requirement in the change's `remote-metrics-bar-format` spec delta: every point colour-coded by its own value — yellow from 80% to 90%, red above 90%, the terminal's default colour below 80% — with scenarios for a historical red point, a historical yellow point, the latest point coloured by its own value, and a fully below-threshold window. The main spec is updated when the change is archived.
+- [x] 1.1 Rework the "Colour thresholds" requirement in the change's `remote-metrics-bar-format` spec delta: remove it (a modified block cannot drop the "Green bar for low utilization" scenario, and the sparkline no longer draws green) and re-add it as "Per-point colour thresholds" — every point colour-coded by its own value, yellow from 80% to 90%, red above 90%, the terminal's default colour below 80% — with scenarios for a historical red point, a historical yellow point, the latest point coloured by its own value, and a fully below-threshold window. The main spec is updated when the change is archived.
 - [x] 1.2 Update the bar-format sentence of the "The metrics report's tabular display" requirement in the change's `remote-stats` spec delta, from the "latest point colour-coded" wording to the per-point wording.
 
 ## 2. Rendering (cmd/spinloop/metrics_render.go)

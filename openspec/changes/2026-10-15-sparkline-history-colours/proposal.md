@@ -32,9 +32,12 @@ user sees a calm line that just happened to be at 95%.
 ### Modified Capabilities
 
 - `remote-metrics-bar-format`: the "Colour thresholds" requirement is
-  rewritten — every point of the sparkline is colour-coded by its own
-  utilisation, not only the latest, and the scenarios cover historical
-  points as well as the final one.
+  removed and re-added as "Per-point colour thresholds" — every point of
+  the sparkline is colour-coded by its own utilisation, not only the
+  latest, and the scenarios cover historical points as well as the final
+  one. The removal is forced by the validator, which would not let a
+  modified block drop the "Green bar for low utilization" scenario, and
+  that scenario can no longer hold: the sparkline no longer draws green.
 - `remote-stats`: the one sentence of the "The metrics report's tabular
   display" requirement that describes the bar format's colouring (the
   "latest point") is updated to the per-point wording.

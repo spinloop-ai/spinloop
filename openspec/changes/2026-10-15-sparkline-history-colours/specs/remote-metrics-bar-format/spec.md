@@ -1,10 +1,31 @@
 # Spec Delta
 
-## MODIFIED Requirements
+## REMOVED Requirements
 
 ### Requirement: Colour thresholds
 
-The sparkline's points SHALL be colour-coded based on utilization: yellow for values from 80% to 90%, and red for values above 90%. Every point SHALL take the colour of its own value, the latest point included, and every point below 80% SHALL appear in the terminal's default colour, so the threshold crossings — wherever in the window they sit — are the ones to read.
+**Reason**: It coloured the latest point only — green at or below 80%,
+yellow to 90%, red above — and left every earlier point plain. The
+sparkline now colour-codes every point by its own value, and green no
+longer appears at all: the "Green bar for low utilization" scenario
+asserts a glyph colour the sparkline no longer draws, and the other two
+single out the latest point as though it were special.
+
+**Migration**: Replaced by the "Per-point colour thresholds" requirement.
+The 80/90 boundaries are unchanged — red above 90%, yellow from 80% to
+90% — and the band below 80% takes the terminal's default colour instead
+of green. The gauge is untouched: its fill keeps green/yellow/red.
+
+## ADDED Requirements
+
+### Requirement: Per-point colour thresholds
+
+The sparkline's points SHALL be colour-coded based on utilization: yellow
+for values from 80% to 90%, and red for values above 90%. Every point
+SHALL take the colour of its own value, the latest point included, and
+every point below 80% SHALL appear in the terminal's default colour, so
+the threshold crossings — wherever in the window they sit — are the ones
+to read.
 
 #### Scenario: A historical point above 90% stays red
 
