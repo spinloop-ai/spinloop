@@ -79,23 +79,42 @@ func TestRenderSparkline(t *testing.T) {
 	var b bytes.Buffer
 	renderSparkline(&b, "CPU", []float64{20, 30}, 40)
 	// The trailing figure is the latest sample's percentage — the exact value
-	// the last glyph approximates — not the series' first.
-	want := "  CPU       " + strings.Repeat(" ", 38) + "▂" + ansiGreen + "▃" + ansiReset + " 30%\n"
+	// the last glyph approximates — not the series' first. Both points sit
+	// below the 80% threshold, so neither takes a colour.
+	want := "  CPU       " + strings.Repeat(" ", 38) + "▂▃" + " 30%\n"
 	if got := b.String(); got != want {
 		t.Errorf("sparkline = %q, want %q", got, want)
 	}
 }
 
-// Only the final glyph takes the state colour, on the gauge's 80/90
+// Every point takes the state colour of its own value, on the gauge's 80/90
 // thresholds, whatever the rest of the window did — the window here holds a
-// red spike earlier that must stay uncoloured.
-func TestRenderSparklineColoursOnlyTheLastPoint(t *testing.T) {
+// red spike and a yellow reading earlier, and they keep their colour where
+// they sit while the calm points around them do not.
+func TestRenderSparklineColoursEveryPoint(t *testing.T) {
+	var b bytes.Buffer
+	renderSparkline(&b, "CPU", []float64{5, 95, 85, 30}, 40)
+	want := "  CPU       " + strings.Repeat(" ", 36) +
+		"▁" + ansiRed + "▇" + ansiReset +
+		ansiYellow + "▆" + ansiReset +
+		"▃" + " 30%\n"
+	if got := b.String(); got != want {
+		t.Errorf("sparkline = %q, want %q", got, want)
+	}
+}
+
+// The latest point takes the colour of its own value, like any other point,
+// on the gauge's thresholds with their boundaries: 80 itself is yellow, 90
+// itself still is, and only above 90 turns red.
+func TestRenderSparklineColoursTheLastPointByItsValue(t *testing.T) {
 	cases := []struct {
 		last float64
 		want string
 	}{
-		{79.9, ansiGreen + "▆" + ansiReset + " 80%\n"},
+		{79.9, "▆" + " 80%\n"},
+		{80, ansiYellow + "▆" + ansiReset + " 80%\n"},
 		{85, ansiYellow + "▆" + ansiReset + " 85%\n"},
+		{90, ansiYellow + "▇" + ansiReset + " 90%\n"},
 		{95, ansiRed + "▇" + ansiReset + " 95%\n"},
 	}
 	for _, c := range cases {
@@ -103,11 +122,6 @@ func TestRenderSparklineColoursOnlyTheLastPoint(t *testing.T) {
 		renderSparkline(&b, "CPU", []float64{5, 95, c.last}, 40)
 		if !strings.HasSuffix(b.String(), c.want) {
 			t.Errorf("last point %v: %q, want suffix %q", c.last, b.String(), c.want)
-		}
-		// Every earlier glyph is uncoloured: the escapes appear once, around
-		// the final glyph only.
-		if n := strings.Count(b.String(), "\033["); n != 2 {
-			t.Errorf("last point %v: %d escape sequences, want 2", c.last, n)
 		}
 	}
 }
@@ -170,11 +184,20 @@ func TestRenderStatBarsDrawsHistory(t *testing.T) {
 	if len(lines) != 2 {
 		t.Fatalf("drew %d lines, want CPU and RAM: %q", len(lines), b.String())
 	}
+	// The spike is the latest reading, so it is the last point and red; the
+	// earlier, calm points carry no colour.
 	if !strings.Contains(lines[0], ansiRed+"▇"+ansiReset+" 95%") {
-		t.Errorf("CPU line lost its spike or its red last point: %q", lines[0])
+		t.Errorf("CPU line lost its red spike: %q", lines[0])
 	}
-	if !strings.Contains(lines[1], ansiGreen+"▃"+ansiReset+" 40%") {
+	if strings.Contains(lines[0], ansiGreen) {
+		t.Errorf("CPU line coloured a below-threshold point green: %q", lines[0])
+	}
+	// The RAM readings sit below the thresholds, so none takes a colour.
+	if !strings.Contains(lines[1], "▃ 40%") {
 		t.Errorf("RAM line: %q", lines[1])
+	}
+	if strings.Contains(lines[1], "\033[") {
+		t.Errorf("RAM line coloured a below-threshold point: %q", lines[1])
 	}
 }
 
@@ -344,14 +367,18 @@ func TestRenderStatCombined(t *testing.T) {
 		t.Errorf("CPU line:\ngot  %q\nwant %q", lines[0], wantCPU)
 	}
 	// Both halves take the state colour: the gauge over its whole fill, the
-	// sparkline on its last glyph only — and the sparkline stops one grade
-	// short of the full block, so the 95% sample draws the top of the seven
-	// sub-full glyphs.
+	// sparkline on the point that crosses the threshold — and the sparkline
+	// stops one grade short of the full block, so the 95% sample draws the
+	// top of the seven sub-full glyphs. Two colour pairs only: one around
+	// the gauge's fill, one around the red spike.
 	if !strings.Contains(lines[0], ansiGreen+strings.Repeat("█", 8)+ansiReset+strings.Repeat("░", 12)) {
 		t.Errorf("CPU gauge: %q", lines[0])
 	}
 	if !strings.Contains(lines[0], ansiRed+"▇"+ansiReset) {
 		t.Errorf("CPU sparkline: %q", lines[0])
+	}
+	if n := strings.Count(lines[0], "\033["); n != 4 {
+		t.Errorf("CPU line has %d escape sequences, want 4: %q", n, lines[0])
 	}
 	// Every line is label, gauge half, figure and bar half: the halves sit
 	// side by side, aligned across the series. 62 is label (12), gauge half,
@@ -428,18 +455,16 @@ func TestRenderStatCombinedStoppedEngineDrawsHistoryAlone(t *testing.T) {
 			t.Errorf("line %d:\ngot  %q\nwant prefix %q", i, lines[i], want)
 		}
 	}
-	// The bar ends the line, its two samples as its two right-most glyphs,
-	// the newest in the state colour.
-	wantSuffix := []string{
-		"▁" + ansiGreen + "▂" + ansiReset,
-		"▂" + ansiGreen + "▃" + ansiReset,
-		"▄" + ansiGreen + "▅" + ansiReset,
-		"▄" + ansiGreen + "▅" + ansiReset,
-	}
+	// The bar ends the line, its two samples as its two right-most glyphs;
+	// every reading sits below the thresholds, so none takes a colour.
+	wantSuffix := []string{"▁▂", "▂▃", "▄▅", "▄▅"}
 	for i, want := range wantSuffix {
 		if !strings.HasSuffix(lines[i], want) {
 			t.Errorf("line %d must end with the bar's two samples:\ngot %q", i, lines[i])
 		}
+	}
+	if strings.Contains(b.String(), "\033[") {
+		t.Errorf("a below-threshold point took a colour:\n%s", b.String())
 	}
 }
 
@@ -461,7 +486,7 @@ func TestFormatMetricsBarStoppedWithHistory(t *testing.T) {
 	}
 	want := "prod  stopped  org/qwen:q4\n" +
 		"  active    12s ago\n" +
-		"  CPU       " + strings.Repeat(" ", 38) + "▁" + ansiGreen + "▂" + ansiReset + " 20%\n"
+		"  CPU       " + strings.Repeat(" ", 38) + "▁▂" + " 20%\n"
 	if got := b.String(); got != want {
 		t.Errorf("stopped bar = %q, want %q", got, want)
 	}

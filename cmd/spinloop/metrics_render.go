@@ -193,9 +193,9 @@ func poolMax(values []float64, width int) []float64 {
 
 // renderSparkline draws one resource series across width columns, one glyph
 // per sample, newest on the right. The window's leading columns are blank
-// while it still fills, the final glyph takes the state colour on the
-// gauge's 80/90 thresholds, and the trailing figure is the latest sample's
-// percentage — the exact value the last glyph approximates.
+// while it still fills, each glyph takes the state colour of its own value
+// on the gauge's 80/90 thresholds, and the trailing figure is the latest
+// sample's percentage — the exact value the last glyph approximates.
 func renderSparkline(w io.Writer, label string, samples []float64, width int) {
 	block, last := sparklineBlock(samples, width)
 	fmt.Fprintf(w, "  %-9s %s %.0f%%\n", label, block, last)
@@ -203,21 +203,23 @@ func renderSparkline(w io.Writer, label string, samples []float64, width int) {
 
 // sparklineBlock returns the sparkline's drawing across width, one glyph per
 // sample newest on the right, the window's leading columns blank while it
-// still fills, and the final glyph in the state colour — the label and the
-// trailing figure excluded — along with the latest sample the figure reports.
+// still fills, and each glyph in the state colour of its own value — the
+// label and the trailing figure excluded — along with the latest sample the
+// figure reports. A value below 80 takes no colour: the threshold crossings
+// are the ones to read, wherever in the window they sit.
 func sparklineBlock(samples []float64, width int) (string, float64) {
 	pooled := poolMax(samples, width)
 	last := pooled[len(pooled)-1]
-	colour := ansiGreen
-	if last > 90 {
-		colour = ansiRed
-	} else if last >= 80 {
-		colour = ansiYellow
-	}
 	var b strings.Builder
 	b.WriteString(strings.Repeat(" ", width-len(pooled)))
-	for i, v := range pooled {
-		if i == len(pooled)-1 {
+	for _, v := range pooled {
+		colour := ""
+		if v > 90 {
+			colour = ansiRed
+		} else if v >= 80 {
+			colour = ansiYellow
+		}
+		if colour != "" {
 			b.WriteString(fmt.Sprintf("%s%c%s", colour, barGlyph(v), ansiReset))
 		} else {
 			b.WriteRune(barGlyph(v))
