@@ -394,9 +394,13 @@ const (
 // and its bar of the retained history — so "now" and "trend" sit together
 // per resource instead of being a toggle. The figure is the current reading,
 // falling back to the bar's latest sample where the reading carries no
-// current one; a series with no history leaves its bar half blank and a
-// series with no current reading its gauge half blank, so the lines align
-// and the figure never draws a half's own number twice.
+// current one. The figure draws in a fixed-width field — three digits,
+// right-aligned, plus the percent sign — so a reading that crosses a digit
+// boundary keeps the line the same width and the bar half starts in the same
+// column instead of shifting with the figure's digit count. A series with no
+// history leaves its bar half blank and a series with no current reading its
+// gauge half blank, so the lines align and the figure never draws a half's
+// own number twice.
 func renderStatCombined(w io.Writer, cpu *metrics.CpuStat, mem *metrics.MemoryStat, gpus []metrics.GpuStat, history []metrics.HistorySample) {
 	for _, s := range barSeriesList(cpu, mem, gpus, history) {
 		gaugeHalf := strings.Repeat(" ", serveGaugeW)
@@ -413,7 +417,7 @@ func renderStatCombined(w io.Writer, cpu *metrics.CpuStat, mem *metrics.MemorySt
 				figure = last
 			}
 		}
-		fmt.Fprintf(w, "  %-9s %s %.0f%% %s\n", s.label, gaugeHalf, figure, barHalf)
+		fmt.Fprintf(w, "  %-9s %s %3.0f%% %s\n", s.label, gaugeHalf, figure, barHalf)
 	}
 }
 

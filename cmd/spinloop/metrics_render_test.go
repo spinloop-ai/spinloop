@@ -362,7 +362,7 @@ func TestRenderStatCombined(t *testing.T) {
 	// the two halves, and it is the current reading, not the bar's last
 	// sample.
 	cpuBar, _ := sparklineBlock([]float64{10, 95}, serveBarW)
-	wantCPU := "  CPU       " + gaugeBlock(42, serveGaugeW) + " 42% " + cpuBar
+	wantCPU := "  CPU       " + gaugeBlock(42, serveGaugeW) + "  42% " + cpuBar
 	if lines[0] != wantCPU {
 		t.Errorf("CPU line:\ngot  %q\nwant %q", lines[0], wantCPU)
 	}
@@ -381,11 +381,45 @@ func TestRenderStatCombined(t *testing.T) {
 		t.Errorf("CPU line has %d escape sequences, want 4: %q", n, lines[0])
 	}
 	// Every line is label, gauge half, figure and bar half: the halves sit
-	// side by side, aligned across the series. 62 is label (12), gauge half,
-	// " 42%"-style figure (4, two digits in this data), a space, bar half.
+	// side by side, aligned across the series. The width is label (12),
+	// gauge half, a space, the figure's fixed-width field (4: three digits
+	// right-aligned plus the percent sign), a space, bar half.
 	for i, line := range lines {
-		if w := lipgloss.Width(line); w != 12+serveGaugeW+4+1+serveBarW {
-			t.Errorf("line %d is %d columns wide, want %d: %q", i, w, 12+serveGaugeW+4+1+serveBarW, line)
+		if w := lipgloss.Width(line); w != 12+serveGaugeW+1+4+1+serveBarW {
+			t.Errorf("line %d is %d columns wide, want %d: %q", i, w, 12+serveGaugeW+1+4+1+serveBarW, line)
+		}
+	}
+}
+
+// The figure is a fixed-width field, so the bar half starts in the same
+// column whatever the reading's digit count: a value crossing a digit
+// boundary keeps the line the same width instead of shifting the series'
+// bar.
+func TestRenderStatCombinedFigureDoesNotShiftTheBar(t *testing.T) {
+	history := []metrics.HistorySample{
+		{Time: 1, CPU: ptrPct(10)},
+		{Time: 2, CPU: ptrPct(40)},
+	}
+	cpuBar, _ := sparklineBlock([]float64{10, 40}, serveBarW)
+	cases := []struct {
+		value  float64
+		figure string
+	}{
+		{0, "  0%"}, {7, "  7%"}, {42, " 42%"}, {100, "100%"},
+	}
+	for _, c := range cases {
+		var b bytes.Buffer
+		renderStatCombined(&b, &metrics.CpuStat{Utilization: c.value}, nil, nil, history)
+		lines := strings.Split(strings.TrimSuffix(b.String(), "\n"), "\n")
+		if len(lines) != 1 {
+			t.Fatalf("figure %s drew %d lines, want 1: %q", c.figure, len(lines), b.String())
+		}
+		want := "  CPU       " + gaugeBlock(c.value, serveGaugeW) + " " + c.figure + " " + cpuBar
+		if lines[0] != want {
+			t.Errorf("figure %s:\ngot  %q\nwant %q", c.figure, lines[0], want)
+		}
+		if w := lipgloss.Width(lines[0]); w != 12+serveGaugeW+1+4+1+serveBarW {
+			t.Errorf("figure %s drew a %d-column line, want %d: %q", c.figure, w, 12+serveGaugeW+1+4+1+serveBarW, lines[0])
 		}
 	}
 }
@@ -395,7 +429,7 @@ func TestRenderStatCombined(t *testing.T) {
 func TestRenderStatCombinedMemoryWithoutTotal(t *testing.T) {
 	var b bytes.Buffer
 	renderStatCombined(&b, nil, &metrics.MemoryStat{Total: 0, Used: 100}, nil, nil)
-	if !strings.Contains(b.String(), " 0%") || strings.Contains(b.String(), "NaN") {
+	if !strings.Contains(b.String(), "  0%") || strings.Contains(b.String(), "NaN") {
 		t.Errorf("a memory reading with no total: %q", b.String())
 	}
 }
@@ -411,10 +445,10 @@ func TestRenderStatCombinedWithoutHistory(t *testing.T) {
 	lines := strings.Split(strings.TrimSuffix(b.String(), "\n"), "\n")
 	blankBar := strings.Repeat(" ", serveBarW)
 	want := []string{
-		"  CPU       " + gaugeBlock(42, serveGaugeW) + " 42% " + blankBar,
-		"  RAM       " + gaugeBlock(30, serveGaugeW) + " 30% " + blankBar,
-		"  GPU util  " + gaugeBlock(61, serveGaugeW) + " 61% " + blankBar,
-		"  GPU mem   " + gaugeBlock(50, serveGaugeW) + " 50% " + blankBar,
+		"  CPU       " + gaugeBlock(42, serveGaugeW) + "  42% " + blankBar,
+		"  RAM       " + gaugeBlock(30, serveGaugeW) + "  30% " + blankBar,
+		"  GPU util  " + gaugeBlock(61, serveGaugeW) + "  61% " + blankBar,
+		"  GPU mem   " + gaugeBlock(50, serveGaugeW) + "  50% " + blankBar,
 	}
 	if len(lines) != len(want) {
 		t.Fatalf("drew %d lines, want %d: %q", len(lines), len(want), b.String())
@@ -445,10 +479,10 @@ func TestRenderStatCombinedStoppedEngineDrawsHistoryAlone(t *testing.T) {
 	}
 	blankGauge := strings.Repeat(" ", serveGaugeW)
 	wantPrefix := []string{
-		"  CPU       " + blankGauge + " 20% ",
-		"  RAM       " + blankGauge + " 30% ",
-		"  GPU util  " + blankGauge + " 60% ",
-		"  GPU mem   " + blankGauge + " 60% ",
+		"  CPU       " + blankGauge + "  20% ",
+		"  RAM       " + blankGauge + "  30% ",
+		"  GPU util  " + blankGauge + "  60% ",
+		"  GPU mem   " + blankGauge + "  60% ",
 	}
 	for i, want := range wantPrefix {
 		if !strings.HasPrefix(lines[i], want) {
