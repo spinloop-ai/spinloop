@@ -248,8 +248,10 @@ spinloop metrics --env <name> -w               # the same, redrawn every 60 seco
 current reading per series as a filled progress gauge, coloured green at or
 below 80%, yellow to 90%, red above. `--format=bar` draws each series as a
 sparkline of the last 10 minutes instead, taken by the on-instance daemon at
-its sampler's cadence while the engine ran, with only the latest point
-coloured; a daemon that predates the history, or an engine with no reading
+its sampler's cadence while the engine ran, with each point coloured by its
+own value on the gauge's thresholds — yellow from 80% to 90%, red above 90%
+— so a spike that passed earlier in the window stays visible where it
+happened; a daemon that predates the history, or an engine with no reading
 yet, falls back to the gauge drawing of the current reading, so the bar
 output degrades rather than goes blank. `--format=table` is a key-value
 table, and `--format=json` is the raw reply. A stopped engine keeps its

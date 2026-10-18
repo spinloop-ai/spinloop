@@ -3441,8 +3441,9 @@ func TestDashModelFormatToggle(t *testing.T) {
 	}
 	// The bar format draws the retained readings: a fresh window, so leading
 	// blank columns, ending on the last retained sample — the current reading
-	// is the next point, not in the history yet.
-	cpuLine := "  CPU       " + strings.Repeat(" ", 23) + "▁" + ansiGreen + "▂" + ansiReset + " 20%"
+	// is the next point, not in the history yet. Both samples sit below the
+	// thresholds, so neither takes a colour.
+	cpuLine := "  CPU       " + strings.Repeat(" ", 23) + "▁▂" + " 20%"
 	if !strings.Contains(bar, cpuLine) {
 		t.Errorf("bar tile did not draw the history, want %q in:\n%s", cpuLine, bar)
 	}

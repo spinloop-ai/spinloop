@@ -35,24 +35,39 @@ The system SHALL support a `--format=bar` option that renders each resource seri
 - **WHEN** the user runs `spinloop cloud metrics --format=bar` with a running instance
 - **THEN** the first line shows the environment, state, instance type, and model ID separated by double spaces
 
-### Requirement: Colour thresholds
+### Requirement: Per-point colour thresholds
 
-The sparkline's latest point SHALL be colour-coded based on utilization: green for values at or below 80%, yellow for values from 80% to 90%, and red for values above 90%. Every earlier point SHALL appear in the terminal's default colour, so the coloured point is the one to read.
+The sparkline's points SHALL be colour-coded based on utilization: yellow for values from 80% to 90%, and red for values above 90%. Every point SHALL take the colour of its own value, the latest point included, and every point below 80% SHALL appear in the terminal's default colour, so the threshold crossings — wherever in the window they sit — are the ones to read.
 
-#### Scenario: Green bar for low utilization
+#### Scenario: A historical point above 90% stays red
 
-- **WHEN** the latest sample of a series is 70%
-- **THEN** the sparkline's final glyph appears in green and the earlier glyphs appear in the terminal's default colour
+- **WHEN** a series' retained history holds a sample above 90% earlier in the window and later samples fall below 80%
+- **THEN** the earlier glyph appears in red and the later glyphs appear in the terminal's default colour
 
-#### Scenario: Yellow bar for high utilization
+#### Scenario: A historical point at 80% to 90% stays yellow
+
+- **WHEN** a series' retained history holds a sample from 80% to 90% earlier in the window and later samples fall below 80%
+- **THEN** the earlier glyph appears in yellow and the later glyphs appear in the terminal's default colour
+
+#### Scenario: The latest point takes the colour of its own value
+
+- **WHEN** the latest sample of a series is 95%
+- **THEN** the sparkline's final glyph appears in red
+
+#### Scenario: The latest point at 80% to 90% is yellow
 
 - **WHEN** the latest sample of a series is 85%
 - **THEN** the sparkline's final glyph appears in yellow
 
-#### Scenario: Red bar for critical utilization
+#### Scenario: A latest point below 80% is uncoloured
 
-- **WHEN** the latest sample of a series is 95%
-- **THEN** the sparkline's final glyph appears in red
+- **WHEN** the latest sample of a series is 70%
+- **THEN** the sparkline's final glyph appears in the terminal's default colour
+
+#### Scenario: A window below the thresholds stays uncoloured
+
+- **WHEN** every sample of a series is below 80%, the latest included
+- **THEN** every glyph of the sparkline appears in the terminal's default colour
 
 ### Requirement: Gauge format is default
 
