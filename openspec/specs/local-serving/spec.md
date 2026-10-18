@@ -383,10 +383,14 @@ rather than drawn identically to one just read.
 
 The view SHALL draw every resource series the reading carries in both formats
 at once, each series on one line: its gauge of the current reading and its
-bar of the retained history side by side — the same series and labelling the
-bar and gauge formats use, with the bar format's no-history rule where a
-series has no history to draw, so a series with none carries its gauge
-alone, its bar half blank.
+bar of the retained history side by side, the figure of the current reading
+between the two halves — the same series and labelling the bar and gauge
+formats use, with the bar format's no-history rule where a series has no
+history to draw, so a series with none carries its gauge alone, its bar half
+blank. The figure SHALL draw in a fixed-width field, so a reading of one, two
+or three digits keeps the line the same width and the bar half in the same
+column: a reading that crosses a digit boundary SHALL NOT shift the series'
+bar.
 
 #### Scenario: The view opens on a terminal
 
@@ -417,6 +421,13 @@ alone, its bar half blank.
 - **WHEN** a series has no retained history to draw
 - **THEN** the view draws its gauge of the current reading only, its bar
   half left blank
+
+#### Scenario: A reading that crosses a digit boundary does not shift the bar
+
+- **WHEN** a series' reading is 7, then 42, then 100, with the same retained
+  history each time
+- **THEN** the line is drawn the same width at each reading, with the bar
+  half starting in the same column
 
 ### Requirement: The serve view's log
 
