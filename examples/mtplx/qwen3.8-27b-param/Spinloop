@@ -1,0 +1,11 @@
+# Qwen3.8-27B served locally by MTPLX on Apple Silicon — the engine options
+# as PARAMs in this file, no preset.
+PROVIDER mtplx
+ALIAS    qwen3.8-27b
+CONTEXT  32768            # --context-window; raise it on a bigger box
+PARALLEL 4                # --max-active-requests
+PARAM model = Youssofal/Qwen3.8-27B-MTPLX-Optimized-Speed   # a PARAM may name the model
+PARAM scheduler-mode = ar_batch   # per-deployment; `mtplx serve --help` lists the modes
+# BASEURL http://127.0.0.1:8000/v1   # uncomment for a non-default host/port
+# `spinloop cloud` cannot deploy this: mtplx is Apple-Silicon-only and has no
+# machine image to run it on a cloud GPU
