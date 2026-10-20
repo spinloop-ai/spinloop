@@ -1,0 +1,14 @@
+# Qwen3.6-35B-A3B served locally by oMLX on Apple Silicon — the engine options
+# as PARAMs in this file, no preset.
+# oMLX loads a whole model directory and picks per request, so MODEL names what
+# opencode asks for — it is not a launch flag, and no PARAM can stand in for it.
+PROVIDER omlx
+MODEL    Qwen3.6-35B-A3B-4bit
+CONTEXT  32768                  # opencode's context window
+# Paths are passed to the server verbatim, so `~` is not expanded — spell them
+# out in full.
+PARAM model-dir = /Users/you/models            # the directory of models to serve
+PARAM memory-guard = safe                      # leave headroom for the rest of the machine
+PARAM paged-ssd-cache-dir = /Users/you/.omlx/cache   # persist KV blocks across requests
+PARAM max-concurrent-requests = 8
+# BASEURL http://127.0.0.1:8000/v1   # uncomment for a non-default host/port

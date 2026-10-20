@@ -196,11 +196,10 @@ var OMLX = Dialect{}
 // applied and keys pass through as written.
 var MTPLX = Dialect{}
 
-// Flags merges ordered layers of params into flag tokens. Later layers override
+// Merge folds ordered layers of params into one layer. Later layers override
 // earlier ones by canonical flag name, in place, so the first layer fixes the
-// order: pass globals, then the section, then any overrides. It does not
-// include the binary name; see Command.
-func (d Dialect) Flags(layers ...[]Param) []string {
+// order: pass globals, then the section, then any overrides.
+func (d Dialect) Merge(layers ...[]Param) []Param {
 	var ordered []Param
 	at := map[string]int{} // canonical flag name -> index in ordered
 	for _, layer := range layers {
@@ -214,9 +213,16 @@ func (d Dialect) Flags(layers ...[]Param) []string {
 			ordered = append(ordered, kv)
 		}
 	}
+	return ordered
+}
 
+// Flags merges ordered layers of params into flag tokens. Later layers override
+// earlier ones by canonical flag name, in place, so the first layer fixes the
+// order: pass globals, then the section, then any overrides. It does not
+// include the binary name; see Command.
+func (d Dialect) Flags(layers ...[]Param) []string {
 	var args []string
-	for _, kv := range ordered {
+	for _, kv := range d.Merge(layers...) {
 		args = append(args, d.flagFor(kv.Key, kv.Value)...)
 	}
 	return args
