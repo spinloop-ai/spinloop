@@ -186,9 +186,10 @@ value SHALL stand.
 
 #### Scenario: PARAM booleans render as the engine's dialect allows
 
-- **WHEN** the Spinloop says `PARAM jinja = 1` and `PARAM no-mmproj = 1` for
+- **WHEN** the Spinloop says `PARAM jinja` and `PARAM no-mmproj = 1` for
   llamacpp
-- **THEN** the command includes a bare `--jinja` and a bare `--no-mmproj`
+- **THEN** the command includes a bare `--jinja` and a bare `--no-mmproj`, the
+  bare key and the `key = 1` form rendering alike
 
 #### Scenario: A PARAM's context is not rescaled
 

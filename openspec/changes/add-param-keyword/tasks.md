@@ -13,6 +13,10 @@
 - [x] 1.5 Tests: parse with trailing comment, repetition, repeated key,
   malformed values (no `=`, empty key, whitespace in key), unknown-keyword
   list, `Format` round-trip
+- [x] 1.6 Accept a bare `PARAM key` — the ` = value` left off — as the bare
+  form of `PARAM key =` (key is the rest of the line, value empty); the
+  empty-key and whitespace-in-key errors apply to both forms. `Format` renders
+  an empty-valued PARAM bare
 
 ## 2. Engine command — `internal/preset`, `cmd/spinloop/serve.go`
 
@@ -58,6 +62,8 @@
 - [x] 4.2 `examples/vllm/qwen3.8-27b/`: `Spinloop` (first vLLM example:
   `PROVIDER vllm`, `MODEL`, `ALIAS`, `CONTEXT`, PARAMs with value-taking
   flags) and a `README.md`
+- [x] 4.3 `examples/llamacpp/qwen3.8-27b-mtp/`: `PARAM jinja` written in the
+  bare form, shown in the README
 
 ## 5. Docs
 
@@ -66,6 +72,8 @@
   and the model-sourcing note
 - [x] 5.2 Serve docs/help: `PARAM` alongside `PRESET` wherever the preset is
   described as the way to pass engine options
+- [x] 5.3 The bare PARAM form (`PARAM jinja`) in `spinloop-file.md` and the
+  serve docs' PARAM section
 
 ## 6. Verify
 

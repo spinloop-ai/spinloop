@@ -94,7 +94,8 @@ read in the same flag vocabulary a `PRESET` is read in, so for a llama.cpp
 Spinloop `ngl` becomes `--n-gpu-layers` and `fa` becomes `--flash-attn`, while
 vLLM's and MTPLX's long-form keys (`gpu-memory-utilization`,
 `context-window`, …) pass through unchanged. The key is a single token; the
-value is the rest of the line, so it may hold spaces and `=` signs:
+value is the rest of the line, so it may hold spaces and `=` signs, and a flag
+that takes none may be written bare instead of given an empty value:
 
 ```dockerfile
 PROVIDER llamacpp
@@ -103,15 +104,16 @@ CONTEXT  131072
 PARAM hf = unsloth/Qwen3.8-27B-GGUF:UD-Q5_K_XL
 PARAM ngl = 99
 PARAM fa = on
-PARAM jinja = 1
+PARAM jinja
 ```
 
-Each PARAM renders the way a preset's flag does: an empty value renders the
-flag bare (`PARAM mmap =` becomes `--mmap`); a value-taking flag with a truthy
-value does the same (`PARAM jinja = 1` becomes a bare `--jinja`), and a falsy
-value (`0`, `off`, `false`, `no`) omits the flag altogether. Where the same
-flag is set in more than one place, the Spinloop's own instructions win, then a
-PARAM, then the preset — `PARAM ctx-size = 65536` loses to `CONTEXT 131072`.
+Each PARAM renders the way a preset's flag does: a flag that takes no value
+renders bare, whether written bare (`PARAM jinja`) or given a truthy value
+(`PARAM jinja = 1`), and a falsy value (`0`, `off`, `false`, `no`) omits the
+flag altogether; an empty value on any other flag renders it bare too
+(`PARAM mmap =` becomes `--mmap`). Where the same flag is set in more than one
+place, the Spinloop's own instructions win, then a PARAM, then the preset —
+`PARAM ctx-size = 65536` loses to `CONTEXT 131072`.
 
 A PARAM may also name the model: for llama.cpp (`hf`/`model`/`hf-file`) and
 MTPLX (`model`), a PARAM with such a key stands in for `MODEL`, read the way a

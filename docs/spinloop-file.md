@@ -249,8 +249,9 @@ Rules:
   is repeatable — one `key = value` per line — in the same flag vocabulary a
   `PRESET` is read in, so `ngl` becomes `--n-gpu-layers` and `fa` becomes
   `--flash-attn` for a llama.cpp Spinloop. The key is a single token; the value
-  is the rest of the line, so it may hold spaces and `=` signs, and may be empty
-  for a flag that takes none. Where a PARAM and a preset set the same flag, the
+  is the rest of the line, so it may hold spaces and `=` signs, and a flag that
+  takes none may be written bare — `PARAM jinja` — as well as with an empty
+  value (`PARAM jinja =`). Where a PARAM and a preset set the same flag, the
   PARAM stands over the preset; where the Spinloop states an instruction of its
   own, the instruction stands over the PARAM — `PARAM ctx-size = 65536` loses
   to `CONTEXT 131072`. Used only by
@@ -309,6 +310,7 @@ PROVIDER llamacpp
 ALIAS    qwen3.8-27b
 PARAM hf = unsloth/Qwen3.8-27B-GGUF:UD-Q5_K_XL
 PARAM ngl = 99
+PARAM jinja
 ```
 
 A single model from OpenRouter (its key comes from your `.env` or

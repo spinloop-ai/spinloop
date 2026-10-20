@@ -93,7 +93,7 @@ type EnvVar struct {
 
 // Param is one PARAM instruction: a single engine flag, in the engine's own
 // vocabulary (e.g. `jinja`, `ctx-size`, `hf`), with its value. The value may
-// be empty, naming a bare flag.
+// be empty — the PARAM written `key =` or bare `key` — naming a bare flag.
 type Param struct {
 	Key   string
 	Value string
@@ -157,13 +157,14 @@ func Parse(data []byte) (Selection, error) {
 		// PARAM, like ENV, may repeat, and its value — `key = value` — may
 		// itself hold spaces, so it is parsed from the rest of the line and
 		// sidesteps the single-value check. The key is one non-empty token;
-		// the value may be empty, naming a bare flag.
+		// the ` = value` may be left off, as may the value after it — a bare
+		// key names a bare flag, the way `key =` does.
 		if canon == kwParam {
 			rest := strings.TrimSpace(text[len(fields[0]):])
-			key, value, ok := strings.Cut(rest, "=")
+			key, value, _ := strings.Cut(rest, "=")
 			key = strings.TrimSpace(key)
-			if !ok || key == "" || strings.ContainsAny(key, " \t") {
-				return Selection{}, fmt.Errorf("line %d: PARAM takes key = value with a non-empty key, got %q", line, text)
+			if key == "" || strings.ContainsAny(key, " \t") {
+				return Selection{}, fmt.Errorf("line %d: PARAM takes a non-empty key, optionally followed by ` = value`, got %q", line, text)
 			}
 			sel.Params = append(sel.Params, Param{Key: key, Value: strings.TrimSpace(value)})
 			continue
@@ -257,7 +258,11 @@ func Format(sel Selection) string {
 	line("BASEURL", sel.BaseURL)
 	line("PRESET", sel.Preset)
 	for _, p := range sel.Params {
-		line("PARAM", p.Key+" = "+p.Value)
+		if p.Value == "" { // a bare flag, written without its ` = value`
+			line("PARAM", p.Key)
+		} else {
+			line("PARAM", p.Key+" = "+p.Value)
+		}
 	}
 	for _, e := range sel.Env {
 		line("ENV", e.Key+"="+e.Value)

@@ -103,6 +103,11 @@ func TestParse(t *testing.T) {
 			want: Selection{Provider: "llamacpp", Model: "m", Params: []Param{{Key: "no-mmap", Value: ""}}},
 		},
 		{
+			name: "bare param names a flag with no value",
+			in:   "PROVIDER llamacpp\nMODEL m\nPARAM jinja\n",
+			want: Selection{Provider: "llamacpp", Model: "m", Params: []Param{{Key: "jinja", Value: ""}}},
+		},
+		{
 			name: "param value keeps spaces and later equals signs",
 			in:   "PROVIDER llamacpp\nMODEL m\nPARAM stop = a b = c\n",
 			want: Selection{Provider: "llamacpp", Model: "m", Params: []Param{{Key: "stop", Value: "a b = c"}}},
@@ -132,20 +137,21 @@ func TestParse(t *testing.T) {
 
 func TestParse_Errors(t *testing.T) {
 	cases := map[string]string{
-		"missing provider":      "MODEL llama3.2\n",
-		"unknown keyword":       "PROVIDER ollama\nFLAVOUR vanilla\n",
-		"family retired":        "PROVIDER openrouter\nFAMILY deepseek-v4\n",
-		"keyword no value":      "PROVIDER\n",
-		"too many values":       "PROVIDER a b\n",
-		"duplicate keyword":     "PROVIDER a\nPROVIDER b\n",
-		"duplicate parallel":    "PROVIDER a\nMODEL m\nPARALLEL 1\nPARALLEL 2\n",
-		"duplicate alias":       "PROVIDER a\nMODEL m\nBASEURL u1\nURL u2\n",
-		"env without equals":    "PROVIDER a\nMODEL m\nENV JUST_A_NAME\n",
-		"env empty key":         "PROVIDER a\nMODEL m\nENV =value\n",
-		"env value with spaces": "PROVIDER a\nMODEL m\nENV KEY=hello world\n",
-		"param without equals":  "PROVIDER a\nMODEL m\nPARAM jinja\n",
-		"param empty key":       "PROVIDER a\nMODEL m\nPARAM =1\n",
-		"param key with spaces": "PROVIDER a\nMODEL m\nPARAM hf repo = m\n",
+		"missing provider":           "MODEL llama3.2\n",
+		"unknown keyword":            "PROVIDER ollama\nFLAVOUR vanilla\n",
+		"family retired":             "PROVIDER openrouter\nFAMILY deepseek-v4\n",
+		"keyword no value":           "PROVIDER\n",
+		"too many values":            "PROVIDER a b\n",
+		"duplicate keyword":          "PROVIDER a\nPROVIDER b\n",
+		"duplicate parallel":         "PROVIDER a\nMODEL m\nPARALLEL 1\nPARALLEL 2\n",
+		"duplicate alias":            "PROVIDER a\nMODEL m\nBASEURL u1\nURL u2\n",
+		"env without equals":         "PROVIDER a\nMODEL m\nENV JUST_A_NAME\n",
+		"env empty key":              "PROVIDER a\nMODEL m\nENV =value\n",
+		"env value with spaces":      "PROVIDER a\nMODEL m\nENV KEY=hello world\n",
+		"param empty key":            "PROVIDER a\nMODEL m\nPARAM =1\n",
+		"param key with spaces":      "PROVIDER a\nMODEL m\nPARAM hf repo = m\n",
+		"bare param key with spaces": "PROVIDER a\nMODEL m\nPARAM hf repo\n",
+		"bare param with no key":     "PROVIDER a\nMODEL m\nPARAM \n",
 	}
 	for name, in := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -166,7 +172,7 @@ func TestFormatRoundTrip(t *testing.T) {
 		Parallel: "2",
 		BaseURL:  "https://gateway.example/v1",
 		Preset:   "./preset.ini",
-		Params:   []Param{{Key: "jinja", Value: "1"}, {Key: "temp", Value: "1.0"}},
+		Params:   []Param{{Key: "jinja", Value: "1"}, {Key: "temp", Value: "1.0"}, {Key: "no-mmap", Value: ""}},
 		Env:      []EnvVar{{Key: "AWS_PROFILE", Value: "dev"}, {Key: "AWS_REGION", Value: "eu-west-2"}},
 	}
 	out := Format(sel)
@@ -175,6 +181,9 @@ func TestFormatRoundTrip(t *testing.T) {
 	}
 	if !strings.Contains(out, "PARAM    jinja = 1") {
 		t.Errorf("Format should emit PARAM lines, got:\n%s", out)
+	}
+	if !strings.Contains(out, "PARAM    no-mmap\n") {
+		t.Errorf("Format should render an empty-valued PARAM bare, got:\n%s", out)
 	}
 	// PARAM sits after PRESET and before ENV in the canonical order.
 	presetAt, paramAt, envAt := strings.Index(out, "PRESET"), strings.Index(out, "PARAM"), strings.Index(out, "ENV")

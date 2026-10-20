@@ -8,7 +8,7 @@ CONTEXT  131072          # keep in step with the PARAMs below; raise it on a big
 PARAM hf = unsloth/Qwen3.8-27B-GGUF:UD-Q5_K_XL   # the model: repo:QUANT, as a PARAM
 PARAM ngl = 99           # offload every layer to the GPU; lower for limited VRAM
 PARAM fa = on            # flash attention
-PARAM jinja = 1          # required for Qwen3 tool calling
+PARAM jinja                # required for Qwen3 tool calling
 PARAM spec-type = draft-mtp       # MTP: the draft is inside this GGUF, no separate file
 PARAM spec-draft-n-max = 2        # draft tokens proposed per step
 # BASEURL http://127.0.0.1:9090/v1   # uncomment for a non-default host/port

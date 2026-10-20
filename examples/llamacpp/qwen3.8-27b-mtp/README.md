@@ -18,14 +18,15 @@ CONTEXT  131072
 PARAM hf = unsloth/Qwen3.8-27B-GGUF:UD-Q5_K_XL
 PARAM ngl = 99
 PARAM fa = on
-PARAM jinja = 1
+PARAM jinja
 PARAM spec-type = draft-mtp
 PARAM spec-draft-n-max = 2
 ```
 
-Each `PARAM` is the same `key = value` pair a preset section would hold,
-rendered into the `llama-server` command in llama.cpp's own dialect — `fa`
-becomes `--flash-attn`, `ngl` becomes `--n-gpu-layers`, and so on. `PARAM`
+Each `PARAM` names one engine flag — a `key = value` pair, or a bare key where
+the flag takes no value — rendered into the `llama-server` command in
+llama.cpp's own dialect — `fa` becomes `--flash-attn`, `ngl` becomes
+`--n-gpu-layers`, and so on. `PARAM`
 may repeat, and a PARAM stands over a preset when both set the same flag —
 a Spinloop can mix the two. Where the Spinloop states an instruction of its
 own (`MODEL`, `CONTEXT`, `PARALLEL`, …), the instruction wins over a PARAM.
@@ -74,8 +75,8 @@ What the PARAMs do:
 - `fa = on` — flash attention, which also keeps the quantised KV cache an
   option (see the sibling example's [KV-cache section](../qwen3.8-27b/README.md#optional-quantise-the-kv-cache)
   if 128k does not fit).
-- `jinja = 1` — use the model's built-in chat template. Required for Qwen3
-  tool calling to work correctly.
+- `jinja` — use the model's built-in chat template, written bare because the
+  flag takes no value. Required for Qwen3 tool calling to work correctly.
 - `spec-type = draft-mtp` — speculative decoding with the model's own
   multi-token-prediction head. Worth roughly 1.5–2× on decode;
   `llama-server` logs the acceptance rate.

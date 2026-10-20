@@ -11,9 +11,10 @@ case-insensitively, with UPPERCASE as the canonical form. Blank lines, full-line
 ignored. Each instruction SHALL take exactly one value; every instruction SHALL
 appear at most once, except `ENV` and `PARAM`, which MAY be repeated. An `ENV`
 instruction's value SHALL be a single `KEY=VALUE` token with a non-empty key and
-no whitespace. A `PARAM` instruction's value SHALL be `key = value`, split at
-the first `=`: the key SHALL be a single token with no whitespace, and the value
-MAY be empty or contain whitespace. A PARAM names one engine flag in the
+no whitespace. A `PARAM` instruction SHALL be a key — a single token with no
+whitespace — optionally followed by ` = value`, split at the first `=`: the
+value MAY be empty or contain whitespace, and a key with no value names a bare
+flag. A PARAM names one engine flag in the
 engine's own vocabulary — what it does to the served engine's command is
 defined by the `local-serving` capability — and where the same key is set by
 several PARAM lines the later line's value SHALL stand. `PARALLEL`'s value SHALL
@@ -96,10 +97,16 @@ the offending line.
   a later line
 - **THEN** it parses, and the later line's value is the one that stands
 
+#### Scenario: A bare PARAM names a flag without a value
+
+- **WHEN** a Spinloop contains `PARAM jinja` on a line by itself
+- **THEN** it parses as the bare form of `PARAM jinja =`, yielding an entry
+  whose empty value names a bare flag
+
 #### Scenario: Malformed PARAM value
 
-- **WHEN** a Spinloop contains a `PARAM` instruction whose value has no `=`, an
-  empty key, or a key containing whitespace
+- **WHEN** a Spinloop contains a `PARAM` instruction with an empty key, or a
+  key containing whitespace, with or without a value
 - **THEN** parsing fails, naming the offending line
 
 ### Requirement: Applying and unapplying a Spinloop
