@@ -63,7 +63,7 @@ func TestEngineSpeedFoldAndLapse(t *testing.T) {
 // the metrics reply — every seam in one wire.
 func TestSpeedEndToEnd(t *testing.T) {
 	d := testDaemon(t, `trap 'exit 0' TERM
-echo "86.15.860.290 I slot print_timing: id  0 | task 326 | n_gen =   9438, tg =   3.87 t/s, tg_3s =   5.29 t/s" >&2
+echo "slot print_timing: id  0 | task 326 | n_gen =   9438, tg =   3.87 t/s, tg_3s =   5.29 t/s" >&2
 while true; do sleep 0.05; done`)
 	d.Now = func() time.Time { return baseTime }
 	d.Collector = linuxCollector()

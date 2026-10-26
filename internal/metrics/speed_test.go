@@ -11,7 +11,7 @@ func TestParseGenerationSpeed(t *testing.T) {
 	}{
 		{
 			name:  "llama.cpp print_timing line as the engine prints it",
-			line:  "86.15.860.290 I slot print_timing: id  0 | task 326 | n_gen =   9438, tg =   3.87 t/s, tg_3s =   5.29 t/s",
+			line:  "slot print_timing: id  0 | task 326 | n_gen =   9438, tg =   3.87 t/s, tg_3s =   5.29 t/s",
 			want:  3.87,
 			found: true,
 		},
@@ -29,7 +29,7 @@ func TestParseGenerationSpeed(t *testing.T) {
 		},
 		{
 			name: "the average alone is not the current rate",
-			line: "86.19.263.970 I slot print_timing: id  0 | task 326 | tg_3s =   5.29 t/s",
+			line: "slot print_timing: id  0 | task 326 | tg_3s =   5.29 t/s",
 		},
 		{
 			name: "a prompt-evaluation rate is not a generation rate",

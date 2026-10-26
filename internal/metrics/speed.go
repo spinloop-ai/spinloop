@@ -9,7 +9,7 @@ import (
 // generationSpeed matches the instantaneous generation-rate figure in an
 // engine's timing line, e.g. llama.cpp's
 //
-//	86.15.860.290 I slot print_timing: id  0 | task 326 | n_gen = 9438, tg =   3.87 t/s, tg_3s =   5.29 t/s
+//	slot print_timing: id  0 | task 326 | n_gen = 9438, tg =   3.87 t/s, tg_3s =   5.29 t/s
 //
 // The figure read is the current rate the engine names `tg`. The pattern is
 // deliberately narrow: `tg\s*=` cannot match `tg_3s =` — the underscore that
