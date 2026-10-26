@@ -58,7 +58,8 @@ Stops the engine.
 Returns the current metrics:
 - Token usage counters (from the engine's Prometheus `/metrics` endpoint)
 - Host system metrics (GPU, CPU, RAM). On macOS a GPU carries utilisation and name only; its `memoryUsed`, `memoryTotal` and `temperature` are `0`, meaning the host reports none
-- `history`, the daemon's retained system readings — one per sampler tick while an engine ran, each a 0–100% figure per series (`t` time, `c` CPU, `m` memory, `g` per-GPU utilisation and memory), covering at most the last 10 minutes
+- `speed`, the engine's own generation rate in tokens per second, parsed from the timing lines it prints into its captured output (llama.cpp's `print_timing` `tg` figure today). Present only while the engine runs and has printed a figure within the last sampler interval — a stopped or quiet engine omits it rather than reporting zero, and so does an engine that prints no rate
+- `history`, the daemon's retained system readings — one per sampler tick while an engine ran, each a 0–100% figure per series (`t` time, `c` CPU, `m` memory, `g` per-GPU utilisation and memory) plus an optional `s` speed point for a tick whose interval saw the engine print a generation rate, covering at most the last 10 minutes
 - `lastActiveAt` and `idleSeconds`, the same pair `/v1/status` reports
 
 The history survives a stop — the readings up to the stop say what the engine

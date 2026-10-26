@@ -75,8 +75,8 @@ Start the whole fleet with `spinloop up` or just one with `spinloop fleet start 
 
 > In this screenshot, five nodes are configured and four are up, each serving the same
 > `Qwen3.8-27B` model through llama.cpp. Three of them — `dev-2`, `dev-3`,
-> `dev-4` — are mid-request: one slot running apiece, GPU util between 91% and
-> 98%. `dev-1` finished about a minute ago, so its GPU util has dropped to 0%
+> `dev-4` — are mid-request: one slot running apiece, GPU between 91% and
+> 98%. `dev-1` finished about a minute ago, so its GPU has dropped to 0%
 > while GPU memory stays at 89% — the weights are still loaded, and the next
 > request it takes starts generating without a reload.
 > 

@@ -173,7 +173,8 @@ silently missing whatever was down:
 `spinloop dashboard` is that same board as a live view: one tile per
 node, repainted in place, each drawing exactly what `metrics`' gauge
 format prints for the node — state and uptime, what it serves, the CPU/GPU/RAM
-gauges, the token counters — so the view and the one-shot command never
+gauges, the speed its engine reports, the token counters — so the view and the
+one-shot command never
 word a number differently. `g` toggles every tile between the gauge drawing
 of the current reading and the sparklines; the board opens in gauge. A node
 that

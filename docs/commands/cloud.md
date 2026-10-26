@@ -257,6 +257,13 @@ output degrades rather than goes blank. `--format=table` is a key-value
 table, and `--format=json` is the raw reply. A stopped engine keeps its
 readings: the sparkline runs to the stop, ending at it.
 
+An engine that reports its own generation rate (llama.cpp does) adds a
+**Speed** row beside the resource series: the figure in tokens per second,
+and in bar format a sparkline of the rate across the window, scaled to the
+window's own high watermark and drawn in the default colour throughout — a
+rate has no ceiling for the utilisation thresholds to cross. Where neither
+the current reading nor the history carries a rate, there is no row.
+
 While a start is under way, `status` shows **`starting`** for the endpoint,
 whichever machine began the start, until the instance is running. Once it is
 running but still loading the model it reads `running` and not ready, as
