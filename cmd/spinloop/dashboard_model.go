@@ -109,6 +109,7 @@ type dashModel struct {
 	detailLogGen     int    // bumped on every open, so a reply from a closed or superseded view is discarded
 	detailLogBusy    bool   // a log round is in flight for the node in view
 	detailLogFollow  bool   // whether the tick is allowed to start a round; f toggles it
+	detailLogClip    bool   // whether long log lines are cut rather than wrapped; w toggles it, and the view opens wrapped, so the zero value is the default
 	detailLogOffset  int64  // where the next log round resumes from
 	detailLogContent string // the tailed content, trimmed to what the pane can show
 	detailLogNote    string // why the pane has no content — empty once it does
@@ -835,7 +836,7 @@ func (m dashModel) detailKeys() string {
 	if m.canAbort() {
 		parts = append(parts, "a abort")
 	}
-	return strings.Join(append(parts, "f follow"), dashHintGap)
+	return strings.Join(append(parts, "f follow", "w wrap"), dashHintGap)
 }
 
 // indexOf finds an entry by name. Fleet-file names are unique — the fleet

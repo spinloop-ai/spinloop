@@ -52,6 +52,7 @@ func (m *dashModel) openDetail() tea.Cmd {
 	m.detailLogGen++
 	m.detailLogBusy = false
 	m.detailLogFollow = true
+	m.detailLogClip = false
 	m.detailLogOffset = daemon.TailLog
 	m.detailLogContent = ""
 	m.detailLogNote = ""
@@ -69,11 +70,11 @@ func (m *dashModel) openDetail() tea.Cmd {
 // updateDetailKey answers the keys the detail view reads: the same
 // start/stop/abort the grid applies to the node under the cursor — which is
 // the node in view, since the cursor never moves while the view is open —
-// escape to close it, and f to pause or resume the log tail. Quit lives on
-// the grid only: leaving the dashboard from inside the detail view means
-// escaping back to it first, the same as any other nested screen. Navigation
-// and the manual refresh are the grid's own keys and are not read here
-// either.
+// escape to close it, f to pause or resume the log tail, and w to turn log
+// wrapping on and off. Quit lives on the grid only: leaving the dashboard
+// from inside the detail view means escaping back to it first, the same as
+// any other nested screen. Navigation and the manual refresh are the grid's
+// own keys and are not read here either.
 func (m *dashModel) updateDetailKey(msg tea.KeyMsg) tea.Cmd {
 	switch msg.String() {
 	case "esc":
@@ -83,6 +84,8 @@ func (m *dashModel) updateDetailKey(msg tea.KeyMsg) tea.Cmd {
 		// standing node) for the life of the view; flipping the flag is all
 		// a resume needs — the next tick picks it straight back up.
 		m.detailLogFollow = !m.detailLogFollow
+	case "w":
+		m.detailLogClip = !m.detailLogClip
 	case "s":
 		if len(m.entries) > 0 && m.actions[m.cursor].verb == "" {
 			return m.beginAction("start")
@@ -210,7 +213,8 @@ func detailLogLines(content, note string) []string {
 
 // detailView draws the full-screen frame: header, the node's metrics
 // unclipped to terminal width, a divider, the tailed log filling the
-// remaining rows, a divider, and the footer naming the view's keys.
+// remaining rows — wrapped, by default, the way a terminal wraps its own
+// output — a divider, and the footer naming the view's keys.
 func (m dashModel) detailView() string {
 	w := m.effWidth()
 	e := m.entries[m.cursor]
@@ -226,6 +230,13 @@ func (m dashModel) detailView() string {
 		}
 		detail += "   log: " + logState
 	}
+	// Wrapping is a rendering fact, not a polling one: it holds the pane
+	// together for a standing node's note as much as for a live tail.
+	wrapState := "on"
+	if m.detailLogClip {
+		wrapState = "off"
+	}
+	detail += "   wrap: " + wrapState
 	header := dashTitleBar("fleet dashboard  ·  node: "+e.name, detail, w)
 	divider := strings.Repeat("─", w)
 
@@ -234,19 +245,20 @@ func (m dashModel) detailView() string {
 		content = append(content, "")
 	}
 	logLines := detailLogLines(m.detailLogContent, m.detailLogNote)
-	if len(logLines) > avail {
-		logLines = logLines[len(logLines)-avail:]
+	// The pane counts rows, not lines: a wrapped line contributes as many
+	// rows as it needs, and the tail's newest rows sit at the bottom.
+	logRows := dashLogRows(logLines, w, !m.detailLogClip)
+	if len(logRows) > avail {
+		logRows = logRows[len(logRows)-avail:]
 	}
 
-	parts := make([]string, 0, len(content)+len(logLines)+4)
+	parts := make([]string, 0, len(content)+len(logRows)+4)
 	parts = append(parts, header, divider)
 	for _, line := range content {
 		parts = append(parts, dashClip(line, w))
 	}
 	parts = append(parts, divider)
-	for _, line := range logLines {
-		parts = append(parts, dashClip(line, w))
-	}
+	parts = append(parts, logRows...)
 	parts = append(parts, divider)
 	parts = append(parts, m.footerLine(w, m.detailKeys()))
 	return strings.Join(parts, "\n")

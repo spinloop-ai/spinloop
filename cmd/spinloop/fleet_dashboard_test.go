@@ -2667,7 +2667,7 @@ func TestDashFooterNamesOnlyTheKeysTheNodeTakes(t *testing.T) {
 				actions: make([]dashAction, 1),
 			},
 			"↑↓←→ move   x stop   g format   r refresh   q quit",
-			"esc back   x stop   f follow",
+			"esc back   x stop   f follow   w wrap",
 		},
 		{
 			"stopped local node",
@@ -2677,7 +2677,7 @@ func TestDashFooterNamesOnlyTheKeysTheNodeTakes(t *testing.T) {
 				actions: make([]dashAction, 1),
 			},
 			"↑↓←→ move   s start   g format   r refresh   q quit",
-			"esc back   s start   f follow",
+			"esc back   s start   f follow   w wrap",
 		},
 		{
 			"unknown state",
@@ -2687,7 +2687,7 @@ func TestDashFooterNamesOnlyTheKeysTheNodeTakes(t *testing.T) {
 				actions: make([]dashAction, 1),
 			},
 			"↑↓←→ move   s start   g format   r refresh   q quit",
-			"esc back   s start   f follow",
+			"esc back   s start   f follow   w wrap",
 		},
 		{
 			"a node that never became one",
@@ -2698,7 +2698,7 @@ func TestDashFooterNamesOnlyTheKeysTheNodeTakes(t *testing.T) {
 				actions: make([]dashAction, 1),
 			},
 			"↑↓←→ move   g format   r refresh   q quit",
-			"esc back   f follow",
+			"esc back   f follow   w wrap",
 		},
 		{
 			"a start in flight",
@@ -2708,7 +2708,7 @@ func TestDashFooterNamesOnlyTheKeysTheNodeTakes(t *testing.T) {
 				actions: []dashAction{{verb: "start"}},
 			},
 			"↑↓←→ move   a abort   g format   r refresh   q quit",
-			"esc back   a abort   f follow",
+			"esc back   a abort   f follow   w wrap",
 		},
 		{
 			"a stop in flight",
@@ -2718,7 +2718,7 @@ func TestDashFooterNamesOnlyTheKeysTheNodeTakes(t *testing.T) {
 				actions: []dashAction{{verb: "stop"}},
 			},
 			"↑↓←→ move   g format   r refresh   q quit",
-			"esc back   f follow",
+			"esc back   f follow   w wrap",
 		},
 		{
 			"a stopped cloud environment",
@@ -2728,7 +2728,7 @@ func TestDashFooterNamesOnlyTheKeysTheNodeTakes(t *testing.T) {
 				actions: make([]dashAction, 1),
 			},
 			"↑↓←→ move   s start   k keep   g format   r refresh   q quit",
-			"esc back   s start   k keep   f follow",
+			"esc back   s start   k keep   f follow   w wrap",
 		},
 		{
 			"a running cloud environment",
@@ -2738,7 +2738,7 @@ func TestDashFooterNamesOnlyTheKeysTheNodeTakes(t *testing.T) {
 				actions: make([]dashAction, 1),
 			},
 			"↑↓←→ move   k keep   x stop   g format   r refresh   q quit",
-			"esc back   k keep   x stop   f follow",
+			"esc back   k keep   x stop   f follow   w wrap",
 		},
 	}
 	for _, tc := range cases {
@@ -3253,6 +3253,88 @@ func TestDashDetailViewTruncatesOverflowingLogToAvailableRows(t *testing.T) {
 	}
 }
 
+// By default the detail view wraps a log line wider than the view rather
+// than cutting it: the rows reassemble the line whole, the header names the
+// wrapping, and the footer names its key.
+func TestDashDetailViewWrapsLongLogLineByDefault(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.Ascii)
+	m := dashModel{
+		entries:          []dashEntry{{name: "n", kind: fleet.KindDaemon, node: newFakeDashNode("running")}},
+		results:          []fleet.NodeResult{{Name: "n"}},
+		actions:          make([]dashAction, 1),
+		detail:           true,
+		detailLogContent: strings.Repeat("x", 200) + "\n",
+		width:            80, height: 24,
+	}
+	v := m.detailView()
+	if !strings.Contains(v, "wrap: on") {
+		t.Errorf("the view must open wrapped and say so:\n%s", v)
+	}
+	if !strings.Contains(v, "w wrap") {
+		t.Errorf("the footer does not name the wrap key:\n%s", v)
+	}
+	var drawn int
+	var wide int
+	for _, line := range strings.Split(v, "\n") {
+		if line != "" && strings.Trim(line, "x") == "" {
+			drawn += lipgloss.Width(line)
+			wide++
+		}
+	}
+	if drawn != 200 || wide < 3 {
+		t.Errorf("the long line drew %d columns across %d rows, want all 200 across at least 3", drawn, wide)
+	}
+}
+
+// w turns the detail view's wrapping off and back on, cutting the long line
+// at the view's width while off.
+func TestDashDetailViewWrapToggle(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.Ascii)
+	m := dashModel{
+		entries:          []dashEntry{{name: "n", kind: fleet.KindDaemon, node: newFakeDashNode("running")}},
+		results:          []fleet.NodeResult{{Name: "n"}},
+		actions:          make([]dashAction, 1),
+		detail:           true,
+		detailLogContent: strings.Repeat("x", 200) + "\n",
+		width:            80, height: 24,
+	}
+	m.updateDetailKey(dashKey("w"))
+	v := m.detailView()
+	if !strings.Contains(v, "wrap: off") {
+		t.Errorf("the header does not show wrapping off:\n%s", v)
+	}
+	var rows []string
+	for _, line := range strings.Split(v, "\n") {
+		if line != "" && strings.Trim(line, "x") == "" {
+			rows = append(rows, line)
+		}
+	}
+	if len(rows) != 1 || lipgloss.Width(rows[0]) != 80 {
+		t.Errorf("with wrapping off the long line must draw one cut row of the view's width, got %q", rows)
+	}
+
+	m.updateDetailKey(dashKey("w"))
+	if v := m.detailView(); !strings.Contains(v, "wrap: on") {
+		t.Errorf("the header does not show wrapping back on:\n%s", v)
+	}
+}
+
+// Wrapping is a rendering fact, not a polling one: a standing node that can
+// never poll its log still shows the wrap state in its header.
+func TestDashDetailViewStandingNodeShowsWrapState(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.Ascii)
+	m := dashModel{
+		entries: []dashEntry{{name: "broken", kind: fleet.KindDaemon}},
+		results: []fleet.NodeResult{{Name: "broken", Outcome: fleet.OutcomeConfigError}},
+		actions: make([]dashAction, 1),
+		detail:  true,
+		width:   80, height: 24,
+	}
+	if v := m.detailView(); !strings.Contains(v, "wrap: on") {
+		t.Errorf("a standing node's header must still name the wrapping:\n%s", v)
+	}
+}
+
 func TestDetailLogLinesPlaceholderAndNote(t *testing.T) {
 	if got := detailLogLines("", ""); len(got) != 1 || got[0] != "waiting for the log…" {
 		t.Errorf("placeholder: %v", got)
@@ -3293,7 +3375,7 @@ func TestDashDetailViewRendersMetricsLogAndFooter(t *testing.T) {
 	}
 	// The node is idle with nothing in flight, so the footer names back,
 	// start (the node is not running) and follow — not stop, not abort.
-	if !strings.Contains(view, "esc back   s start   f follow") {
+	if !strings.Contains(view, "esc back   s start   f follow   w wrap") {
 		t.Errorf("footer does not name the detail view's keys:\n%s", view)
 	}
 }

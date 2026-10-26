@@ -52,10 +52,10 @@ const serveViewLogTailBytes = 200 * bytesPerLineGuess
 const serveViewMetricsTimeout = 5 * time.Second
 
 // serveViewKeys is the view's footer key help: exactly the keys the view
-// answers to — the scroll, the follow, and the quit — and nothing the view
-// cannot do. Starting, stopping, keeping and aborting are not among them:
-// the engine is serve's own, and leaving is what stops it.
-const serveViewKeys = "↑↓ scroll   pgup/pgdown page   f follow   q quit"
+// answers to — the scroll, the follow, the wrap, and the quit — and nothing
+// the view cannot do. Starting, stopping, keeping and aborting are not among
+// them: the engine is serve's own, and leaving is what stops it.
+const serveViewKeys = "↑↓ scroll   pgup/pgdown page   f follow   w wrap   q quit"
 
 // serveView is the program's state: the metrics reading and when it was
 // taken, the tailed log and where its window sits in it, and the window size
@@ -71,6 +71,7 @@ type serveView struct {
 	logBudget  int    // how many lines the tail retains
 	logBehind  int    // how many lines the window's bottom sits behind the newest; 0 is on the newest line
 	logFollow  bool   // whether the poll picks up new output; f pauses and resumes it
+	logClip    bool   // whether long lines are cut rather than wrapped; w toggles it, and the view opens wrapped, so the zero value is the default
 	logBusy    bool   // a poll is in flight
 	logGen     int    // bumped to supersede a poll in flight
 	logNote    string // why the pane has no content — empty once it does, or once a read fails with content in place
@@ -194,14 +195,17 @@ func (m *serveView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // updateKey answers the keys the view reads: the scroll of the log pane, f
-// to pause and resume the follow, and q or Ctrl+C to leave — which stops the
-// engine. Nothing else drives anything in the view, so nothing else is read.
+// to pause and resume the follow, w to turn log wrapping on and off, and q
+// or Ctrl+C to leave — which stops the engine. Nothing else drives anything
+// in the view, so nothing else is read.
 func (m *serveView) updateKey(msg tea.KeyMsg) tea.Cmd {
 	switch msg.String() {
 	case "q", "ctrl+c":
 		return m.stopCmd()
 	case "f":
 		m.logFollow = !m.logFollow
+	case "w":
+		m.logClip = !m.logClip
 	case "up":
 		m.logBehind++
 		m.clampBehind()
@@ -412,9 +416,9 @@ func (m serveView) staleSuffix() string {
 }
 
 // View draws the frame: the title bar — the screen, the Spinloop's path, and
-// the log's following or paused state to the right — the metrics section, a
-// divider, the tailed log filling the remaining rows, a divider, and the
-// footer naming the view's keys.
+// the log's following-or-paused and wrapping states to the right — the
+// metrics section, a divider, the tailed log filling the remaining rows, a
+// divider, and the footer naming the view's keys.
 func (m serveView) View() string {
 	w := m.effWidth()
 	metricsH, avail := m.sectionHeights()
@@ -423,7 +427,11 @@ func (m serveView) View() string {
 	if !m.logFollow {
 		logState = "paused"
 	}
-	header := dashTitleBar("serve", m.spinloopPath+"   log: "+logState, w)
+	wrapState := "on"
+	if m.logClip {
+		wrapState = "off"
+	}
+	header := dashTitleBar("serve", m.spinloopPath+"   log: "+logState+"   wrap: "+wrapState, w)
 	divider := strings.Repeat("─", w)
 
 	metrics := m.metricsLines()
@@ -440,19 +448,20 @@ func (m serveView) View() string {
 		}
 		logLines = logLines[:end]
 	}
-	if len(logLines) > avail {
-		logLines = logLines[len(logLines)-avail:]
+	// The pane counts rows, not lines: a wrapped line contributes as many
+	// rows as it needs, and the window's newest rows sit at the bottom.
+	logRows := dashLogRows(logLines, w, !m.logClip)
+	if len(logRows) > avail {
+		logRows = logRows[len(logRows)-avail:]
 	}
 
-	parts := make([]string, 0, len(metrics)+len(logLines)+4)
+	parts := make([]string, 0, len(metrics)+len(logRows)+4)
 	parts = append(parts, header, divider)
 	for _, line := range metrics {
 		parts = append(parts, dashClip(line, w))
 	}
 	parts = append(parts, divider)
-	for _, line := range logLines {
-		parts = append(parts, dashClip(line, w))
-	}
+	parts = append(parts, logRows...)
 	parts = append(parts, divider)
 	parts = append(parts, dashClip(dashKeyHints(serveViewKeys), w))
 	return strings.Join(parts, "\n")

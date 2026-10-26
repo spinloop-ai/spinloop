@@ -83,12 +83,53 @@ func dashClampScroll(scrollRow, entries, w, h int) int {
 // dashClip hard-cuts a line at width display columns. It is a cut, not a wrap
 // — wrapping would push a bar line onto two rows and break the block's
 // alignment — and it is ANSI-aware (ansi.CutWc), so a colour code mid-line
-// survives and a wide character counts as two.
+// survives and a wide character counts as two. Log lines are the one pane
+// content that does wrap rather than cut; see dashWrapLines.
 func dashClip(line string, width int) string {
 	if lipgloss.Width(line) <= width {
 		return line
 	}
 	return ansi.CutWc(line, 0, width)
+}
+
+// dashWrapLines breaks a line into rows of at most width display columns the
+// way a terminal breaks its own output: hard at the column, not on words —
+// log lines are data, not prose, and a JSON blob or a prompt dump may carry
+// no space to break on at all. Wide characters count two columns, and a
+// cluster that would straddle the edge starts the next row whole rather than
+// being split. It sits beside dashClip because the two answer the pane's two
+// questions: a bar must be cut to keep its shape, a log line must be wrapped
+// to keep its text. A width that cannot hold a single wide glyph leaves the
+// rest of the line on one row — there is no column to break at.
+func dashWrapLines(line string, width int) []string {
+	if width < 1 || ansi.StringWidth(line) <= width {
+		return []string{line}
+	}
+	var rows []string
+	for ansi.StringWidth(line) > width {
+		head := ansi.TruncateWc(line, width, "")
+		if head == "" {
+			return append(rows, line)
+		}
+		rows = append(rows, head)
+		line = ansi.TruncateLeftWc(line, width, "")
+	}
+	return append(rows, line)
+}
+
+// dashLogRows expands a pane's log lines into the rows to draw at the pane's
+// width: wrapped rows where wrapping is on, single cut rows — the old
+// behaviour, one row per line — where it is off.
+func dashLogRows(lines []string, width int, wrap bool) []string {
+	rows := make([]string, 0, len(lines))
+	for _, line := range lines {
+		if wrap {
+			rows = append(rows, dashWrapLines(line, width)...)
+			continue
+		}
+		rows = append(rows, dashClip(line, width))
+	}
+	return rows
 }
 
 // dashHintGap separates one key-help entry from the next, and is what
