@@ -831,6 +831,22 @@ func modelPresetKey(runner string) string {
 	}
 }
 
+// modelSourceFlags names the canonical flag keys under which a PARAM (or a
+// preset, through the same keys) may name a runner's model — llamacpp's
+// hf-repo/model/hf-file, mtplx's model. A runner that takes its model
+// positionally has none, so a PARAM cannot stand in for a MODEL there and the
+// error that names the ways a model may be given does not name one either.
+func modelSourceFlags(runner string) []string {
+	switch runner {
+	case "llamacpp":
+		return []string{"hf-repo", "model", "hf-file"}
+	case "mtplx":
+		return []string{"model"}
+	default:
+		return nil
+	}
+}
+
 // contextPresetKey names the preset key holding the context window, in that
 // runner's own vocabulary.
 func contextPresetKey(runner string) string {
@@ -876,9 +892,10 @@ func dropOwned(owned func(string) bool, params []preset.Param) []preset.Param {
 
 // deployConfigFor turns a Spinloop (plus its preset, if any) into the config the
 // deploy Lambda accepts. The Spinloop is the single source of truth: PROVIDER
-// picks the runner, MODEL or the preset's hf names the weights, CONTEXT the
-// window, ALIAS the served name, and whatever else the preset sets becomes the
-// runner's own flags.
+// picks the runner, MODEL, the preset's model reference, or a PARAM naming the
+// model names the weights, CONTEXT the window, ALIAS the served name, and
+// whatever the preset and the PARAMs set becomes the runner's own flags, a
+// PARAM standing over the preset where both set a flag.
 //
 // A context size is required, because a cloud instance has to be sized before
 // it is provisioned. deployConfigWithoutContext is the same derivation for a
@@ -932,12 +949,13 @@ func deployConfig(sel spinloop.Selection, spinloopPath string, target deployTarg
 	}
 	dc.Runner = runner
 
-	// The preset supplies the model and the runner flags when the Spinloop does
-	// not state them, so a single preset can drive both serve and deploy. The
-	// [*] globals are a separate layer that the chosen section overrides —
-	// exactly as preset.Args does for a local serve — so settings written there
-	// (commonly ngl and jinja) are not lost.
-	var global, params []preset.Param
+	// The preset and the PARAMs supply the model and the runner flags when the
+	// Spinloop does not state them, so a single Spinloop can drive both serve
+	// and deploy. The [*] globals are a separate layer that the chosen section
+	// overrides, and the PARAMs stand over the preset — the same layering a
+	// local serve gives them — so settings written there (commonly ngl and
+	// jinja) are not lost.
+	var global, params, paramLayer []preset.Param
 	if sel.Preset != "" {
 		presetPath, err := resolvePresetPath(sel.Preset, spinloopPath)
 		if err != nil {
@@ -958,14 +976,35 @@ func deployConfig(sel spinloop.Selection, spinloopPath string, target deployTarg
 		global, params = pre.Global, sec.Params
 	}
 
+	// The Spinloop's own PARAMs are the layer between the preset and its typed
+	// instructions: they supply the model, the context window, and the slot
+	// count the preset's keys do, and ride into ServeArgs with the preset's
+	// own layers, with the same owned-flag dropping.
+	paramLayer = selectionParams(sel)
+
+	// The model falls back in the Spinloop's own order: MODEL, then a PARAM
+	// naming the model for a runner that takes it as a flag, then the preset's
+	// model key — a PARAM standing over the preset, exactly as one does for a
+	// local serve. The PARAM is read in the runner's own dialect, through the
+	// engine: its spelling of the model key is not the preset's (an MTPLX
+	// preset's `m` is not a model key, for instance).
 	model := sel.Model
+	if model == "" {
+		engine, err := engineFor(dc.Runner)
+		if err != nil {
+			return dc, err
+		}
+		model, _ = paramModel(engine, paramLayer)
+	}
 	if model == "" {
 		model = presetValue(modelPresetKey(dc.Runner), global, params)
 	}
 	if model == "" {
-		return dc, fmt.Errorf(
-			"nothing to deploy: set MODEL in %s, or %s in its preset",
-			spinloopPath, modelPresetKey(dc.Runner))
+		fix := fmt.Sprintf("set MODEL in %s, or %s in its preset", spinloopPath, modelPresetKey(dc.Runner))
+		if len(modelSourceFlags(dc.Runner)) > 0 {
+			fix += ", or a PARAM naming the model"
+		}
+		return dc, fmt.Errorf("nothing to deploy: %s", fix)
 	}
 	// A local model path is refused only where the destination fetches the
 	// weights itself — the cloud, which cannot ship a file. A node has the file
@@ -981,10 +1020,10 @@ func deployConfig(sel spinloop.Selection, spinloopPath string, target deployTarg
 
 	context := sel.Context
 	if context == "" {
-		context = presetValue(contextPresetKey(dc.Runner), global, params)
+		context = presetValue(contextPresetKey(dc.Runner), global, params, paramLayer)
 	}
 	if context == "" && target.requireContext {
-		return dc, fmt.Errorf("no context size: set CONTEXT in %s, or %s in its preset", spinloopPath, contextPresetKey(dc.Runner))
+		return dc, fmt.Errorf("no context size: set CONTEXT in %s, or %s in its preset, or a PARAM naming it", spinloopPath, contextPresetKey(dc.Runner))
 	}
 	if context != "" {
 		n, err := contextsize.Parse(context)
@@ -994,16 +1033,16 @@ func deployConfig(sel spinloop.Selection, spinloopPath string, target deployTarg
 		dc.ContextSize = n
 	}
 
-	// Parallel falls back to the preset's own parallelism key the same way
-	// context falls back to ctx-size, since that value is about to be dropped
-	// from serveArgs below (it is cloud-owned) — capturing it here is what
-	// keeps it from being silently lost rather than re-emitted as the
+	// Parallel falls back to the preset's and PARAMs' own parallelism key the
+	// same way context falls back to ctx-size, since that value is about to be
+	// dropped from serveArgs below (it is cloud-owned) — capturing it here is
+	// what keeps it from being silently lost rather than re-emitted as the
 	// deployment's own computed flag. The key is the runner's own spelling:
 	// reading only llama.cpp's would drop a vLLM preset's max-num-seqs on the
 	// floor, since dropOwned removes it either way.
 	parallel := sel.Parallel
 	if key := parallelPresetKey(dc.Runner); parallel == "" && key != "" {
-		parallel = presetValue(key, global, params)
+		parallel = presetValue(key, global, params, paramLayer)
 	}
 	if parallel != "" {
 		n, err := parseParallel(parallel)
@@ -1020,20 +1059,25 @@ func deployConfig(sel spinloop.Selection, spinloopPath string, target deployTarg
 		dc.ServedModelName = dc.ModelID
 	}
 
-	// Companion weights are read from the same preset keys that drive a local
-	// serve, so one preset still works both ways. Only where the destination
-	// fetches the weights itself: it pulls them from the model's own repo, so
-	// only the filename travels and the local path the user downloaded to is
-	// meaningless there. A node already has its files, and keeps its own path.
+	// Companion weights are read from the same preset and PARAM keys that
+	// drive a local serve, so one Spinloop still works both ways. Only where
+	// the destination fetches the weights itself: it pulls them from the
+	// model's own repo, so only the filename travels and the local path the
+	// user downloaded to is meaningless there. A node already has its files,
+	// and keeps its own path.
 	if target.seedsWeights {
-		dc.Companions = companionsFrom(global, params)
+		dc.Companions = companionsFrom(global, params, paramLayer)
 	}
 
 	// The Spinloop's own bind is the final layer, where it travels at all: it
-	// wins over the preset's host and port exactly as it does for a local
-	// serve, so a woken engine listens wherever the Spinloop says rather than
-	// on the engine's default.
-	layers := [][]preset.Param{dropOwned(target.owns, global), dropOwned(target.owns, params)}
+	// wins over the preset's and PARAMs' host and port exactly as it does for
+	// a local serve, so a woken engine listens wherever the Spinloop says
+	// rather than on the engine's default.
+	layers := [][]preset.Param{
+		dropOwned(target.owns, global),
+		dropOwned(target.owns, params),
+		dropOwned(target.owns, paramLayer),
+	}
 	if target.carriesBaseURL {
 		bind, err := bindAddressParams(sel)
 		if err != nil {

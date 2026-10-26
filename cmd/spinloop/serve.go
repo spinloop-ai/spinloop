@@ -82,6 +82,12 @@ type serveEngine struct {
 	// load. oMLX serves a whole model directory and picks per request, so it
 	// starts happily with neither a PRESET nor a MODEL.
 	needsModel bool
+	// modelFlags are the canonical flag names that name the engine's model,
+	// from modelSourceFlags. A PARAM set to one of them names the model in
+	// place of a MODEL, the way a preset's model reference does. An engine
+	// that takes its model positionally (vllm) has none: a PARAM cannot stand
+	// in for a MODEL there.
+	modelFlags []string
 	// installHint completes "<binary> not found — ...".
 	installHint string
 	// metricsArgs switches the engine's own /metrics endpoint on. Appended
@@ -119,6 +125,7 @@ var engines = map[string]serveEngine{
 		dialect:             preset.LlamaCpp,
 		params:              llamacppServeParams,
 		needsModel:          true,
+		modelFlags:          modelSourceFlags("llamacpp"),
 		installHint:         "install llama.cpp (e.g. brew install llama.cpp) or check the path",
 		metricsArgs:         []string{"--metrics"},
 		metricsEngine:       "llamacpp",
@@ -139,6 +146,7 @@ var engines = map[string]serveEngine{
 		dialect:     preset.MTPLX,
 		params:      mtplxServeParams,
 		needsModel:  true,
+		modelFlags:  modelSourceFlags("mtplx"),
 		installHint: "install MTPLX (https://mtplx.com) or check the path",
 		// MTPLX has no Prometheus endpoint to scrape, so there is no
 		// metrics switch to append and no dialect for the scraper.
@@ -215,9 +223,10 @@ func serveCmd() *cobra.Command {
 		Short: "run the Spinloop's inference server",
 		Long: fmt.Sprintf(`runs the inference server the Spinloop's PROVIDER names — %s.
 With a PRESET it turns the matching section into the command, reading it in
-that engine's flag vocabulary; otherwise it derives one from the Spinloop's
-own instructions. Prints the command before running it; --dry-run/-n prints
-without launching the server.
+that engine's flag vocabulary; PARAM lines pass the same options inline,
+standing over the preset where both set a flag. Otherwise it derives the
+command from the Spinloop's own instructions. Prints the command before
+running it; --dry-run/-n prints without launching the server.
 
 On a terminal the server runs under a full-screen view: its metrics — each
 resource series as a gauge of the current reading with its retained history
@@ -316,14 +325,18 @@ func runServe(args []string, dryRun, apiOn bool, apiAddr, logLevel string) error
 
 // buildServeArgv turns a Spinloop into the engine command, from its PRESET
 // section when it names one and from the Spinloop's own instructions otherwise,
-// narrating which source it used to w. It is `spinloop serve`'s alone: the
-// daemon reads no Spinloop, so nothing else builds a command this way.
+// narrating which source it used to w. The Spinloop's PARAMs ride along either
+// way, standing over the preset and under its typed instructions. It is
+// `spinloop serve`'s alone: the daemon reads no Spinloop, so nothing else
+// builds a command this way.
 func buildServeArgv(w io.Writer, engine serveEngine, sel spinloop.Selection, spinloopPath string) ([]string, error) {
-	// Anything the Spinloop states overrides the preset's own values.
+	// Anything the Spinloop states overrides its PARAMs, which override the
+	// preset's own values.
 	params, err := engine.params(sel)
 	if err != nil {
 		return nil, err
 	}
+	selParams := selectionParams(sel)
 
 	if sel.Preset != "" {
 		presetPath, err := resolvePresetPath(sel.Preset, spinloopPath)
@@ -344,23 +357,61 @@ func buildServeArgv(w io.Writer, engine serveEngine, sel spinloop.Selection, spi
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", presetPath, err)
 		}
-		argv := pre.CommandIn(engine.dialect, engine.binary(), subcommandFor(engine, sel), sec, params)
+		argv := pre.CommandIn(engine.dialect, engine.binary(), subcommandFor(engine, sel), sec, selParams, params)
 		fmt.Fprintf(w, "Using preset %s (model %s)\n\n", presetPath, sec.Name)
 		return argv, nil
 	}
 
-	if engine.needsModel && sel.Model == "" {
-		return nil, fmt.Errorf("serve needs a PRESET or a MODEL (an HF repo like org/model:quant, or a path to a .gguf)")
+	model := sel.Model
+	if model == "" {
+		// For an engine that takes its model as a flag, a PARAM naming the
+		// model serves in place of a MODEL.
+		model, _ = paramModel(engine, selParams)
 	}
-	argv := assembleEngineArgv(engine, subcommandFor(engine, sel), params, nil)
-	if sel.Model != "" {
-		fmt.Fprintf(w, "Serving %s from %s\n\n", sel.Model, spinloopPath)
+	if engine.needsModel && model == "" {
+		if len(engine.modelFlags) == 0 {
+			return nil, fmt.Errorf("serve needs a PRESET or a MODEL: %s takes its model positionally, where a PARAM cannot stand in", sel.Provider)
+		}
+		return nil, fmt.Errorf("serve needs a PRESET, a MODEL (an HF repo like org/model:quant, or a path to a .gguf), or a PARAM naming the model")
+	}
+	argv := assembleEngineArgv(engine, subcommandFor(engine, sel), engine.dialect.Merge(selParams, params), nil)
+	if model != "" {
+		fmt.Fprintf(w, "Serving %s from %s\n\n", model, spinloopPath)
 	} else {
 		// An engine that needs no model to start (oMLX serves a whole
 		// directory) has nothing to name but itself.
 		fmt.Fprintf(w, "Starting %s from %s\n\n", sel.Provider, spinloopPath)
 	}
 	return argv, nil
+}
+
+// selectionParams converts the Spinloop's PARAM instructions into the preset
+// layer they render as, in file order.
+func selectionParams(sel spinloop.Selection) []preset.Param {
+	var params []preset.Param
+	for _, p := range sel.Params {
+		params = append(params, preset.Param{Key: p.Key, Value: p.Value})
+	}
+	return params
+}
+
+// paramModel returns the model a PARAM layer names for this engine, if any:
+// the value of the last PARAM whose key is one of the engine's model flags,
+// which is how the dialect merge would resolve repeated keys. Engines whose
+// model is positional have no model flags and so never find one. The deploy
+// path shares it, reading the same PARAMs in the same runner's dialect.
+func paramModel(engine serveEngine, params []preset.Param) (string, bool) {
+	var model string
+	found := false
+	for _, p := range params {
+		key := engine.dialect.CanonicalKey(p.Key)
+		for _, flag := range engine.modelFlags {
+			if key == flag && p.Value != "" {
+				model, found = p.Value, true
+			}
+		}
+	}
+	return model, found
 }
 
 // subcommandFor returns the engine's subcommand with the positional model riding

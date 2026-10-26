@@ -423,8 +423,9 @@ recovered — only what's shipped from then on.
 ## Creating an endpoint: `deploy`
 
 `spinloop cloud deploy` creates an **environment** on the bootstrapped control
-plane and tells it what to serve. It reads the Spinloop and its preset —
-`PROVIDER` picks the engine, so the file that runs a model locally under
+plane and tells it what to serve. It reads the Spinloop, its preset and its
+PARAM lines — `PROVIDER` picks the engine, so the file that runs a model
+locally under
 [`spinloop serve`](serve.md) deploys the same model remotely — and `--env <name>`
 names the environment it creates and registers. The flag is required: a deploy
 without it fails, naming the flag and a name to use. The Spinloop says what the
@@ -435,7 +436,7 @@ file:
 PROVIDER llamacpp        # the engine to run: llamacpp or vllm
 ALIAS    qwen3.6-27b     # the name your agent asks for — and the name served
 CONTEXT  131072
-PRESET   ./preset.ini    # the model and its flags
+PRESET   ./preset.ini    # the model and its flags — or PARAM lines instead
 ```
 
 ```sh
@@ -446,8 +447,8 @@ Deploy discovers the control plane from the bootstrap stack's outputs, then
 provisions the environment's own Elastic IP, API key, ingress rule and state,
 registers it under `~/.config/spinloop/clouds/<env>/`, and stores what to serve.
 Everything the endpoint sets itself — host, port, where the weights live, the
-API key, the context size, the alias — is dropped from the preset, so one
-preset works both locally and remotely without edits.
+API key, the context size, the alias — is dropped from the preset and the
+PARAMs alike, so one file works both locally and remotely without edits.
 
 Who may reach the instance is **per environment**: `--allowed-cidr` sets it,
 defaulting to your public IP as a `/32` on first deploy; later deploys leave
