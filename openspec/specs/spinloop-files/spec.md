@@ -13,17 +13,24 @@ provider selection — and the commands that consume and produce it:
 A Spinloop SHALL be a flat, line-oriented text file of `KEYWORD value`
 instructions. The keywords are `PROVIDER`, `MODEL`, `ALIAS`, `CONTEXT`,
 `OUTPUT`, `PARALLEL`, `BASEURL` (also accepted as `BASE-URL`, `BASE_URL`, or
-`URL`), `PRESET`, and `ENV`. Keywords SHALL match
+`URL`), `PRESET`, `PARAM`, and `ENV`. Keywords SHALL match
 case-insensitively, with UPPERCASE as the canonical form. Blank lines, full-line
 `#` comments, and trailing comments introduced by whitespace-then-`#` SHALL be
 ignored. Each instruction SHALL take exactly one value; every instruction SHALL
-appear at most once, except `ENV`, which MAY be repeated. An `ENV` instruction's
-value SHALL be a single `KEY=VALUE` token with a non-empty key and no
-whitespace. `PARALLEL`'s value SHALL name a count of concurrent request slots;
-like `CONTEXT`, its numeric validity (a positive integer) is enforced by the
-commands that consume it rather than by parsing itself, and what it does to
-the served engine's command is defined by the `local-serving` capability.
-`PROVIDER` is required. Parse errors SHALL name the offending line.
+appear at most once, except `ENV` and `PARAM`, which MAY be repeated. An `ENV`
+instruction's value SHALL be a single `KEY=VALUE` token with a non-empty key and
+no whitespace. A `PARAM` instruction SHALL be a key — a single token with no
+whitespace — optionally followed by ` = value`, split at the first `=`: the
+value MAY be empty or contain whitespace, and a key with no value names a bare
+flag. A PARAM names one engine flag in the
+engine's own vocabulary — what it does to the served engine's command is
+defined by the `local-serving` capability — and where the same key is set by
+several PARAM lines the later line's value SHALL stand. `PARALLEL`'s value SHALL
+name a count of concurrent request slots; like `CONTEXT`, its numeric validity
+(a positive integer) is enforced by the commands that consume it rather than by
+parsing itself, and what it does to the served engine's command is defined by
+the `local-serving` capability. `PROVIDER` is required. Parse errors SHALL name
+the offending line.
 
 #### Scenario: A minimal Spinloop
 
@@ -83,6 +90,32 @@ the served engine's command is defined by the `local-serving` capability.
 - **THEN** parsing accepts the raw value, exactly as it does for `CONTEXT`, and
   the command that goes on to use it (`serve`, `cloud deploy`, a fleet wake)
   fails naming the value, rather than silently treating it as a slot count
+
+#### Scenario: Declaring engine parameters
+
+- **WHEN** a Spinloop contains `PARAM jinja = 1` and
+  `PARAM hf = unsloth/Qwen3.8-27B-GGUF:UD-Q5_K_XL # the weights` on separate
+  lines
+- **THEN** it parses, yielding both entries in the selection, and the repetition
+  is not treated as a duplicate-instruction error
+
+#### Scenario: A PARAM may repeat a key
+
+- **WHEN** a Spinloop sets `PARAM ngl = 99` on one line and `PARAM ngl = 97` on
+  a later line
+- **THEN** it parses, and the later line's value is the one that stands
+
+#### Scenario: A bare PARAM names a flag without a value
+
+- **WHEN** a Spinloop contains `PARAM jinja` on a line by itself
+- **THEN** it parses as the bare form of `PARAM jinja =`, yielding an entry
+  whose empty value names a bare flag
+
+#### Scenario: Malformed PARAM value
+
+- **WHEN** a Spinloop contains a `PARAM` instruction with an empty key, or a
+  key containing whitespace, with or without a value
+- **THEN** parsing fails, naming the offending line
 
 ### Requirement: REMOTE is a removed keyword
 
@@ -194,7 +227,8 @@ exactly as the equivalent `spinloop harness remove` would. A command-line `--out
 on `apply` SHALL override the Spinloop's `OUTPUT` instruction, and `--providers`
 SHALL override the catalogue it resolves against (a Spinloop never names a
 catalogue). `apply` SHALL ignore a `PRESET` instruction — it is consumed only
-by `spinloop serve`.
+by `spinloop serve` — and SHALL ignore `PARAM` instructions the same way: they
+name engine flags that only a serve or a deploy consumes.
 
 #### Scenario: Apply equals add
 
@@ -212,6 +246,11 @@ by `spinloop serve`.
 
 - **WHEN** a Spinloop with a `PRESET` instruction is applied
 - **THEN** the harness config is written as if the instruction were absent
+
+#### Scenario: Params are not apply's business
+
+- **WHEN** a Spinloop with `PARAM` instructions is applied
+- **THEN** the harness config is written as if the instructions were absent
 
 ### Requirement: Exporting the current config
 

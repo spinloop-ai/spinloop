@@ -352,17 +352,19 @@ permission to invoke the endpoint.
 
 ### Requirement: Deploying what the endpoint serves
 
-`spinloop cloud deploy` SHALL derive the deployment from the Spinloop and its
-preset: `PROVIDER` SHALL select the inference engine, `MODEL` or the preset's
-Hugging Face reference SHALL name the weights as a repository and optional
-quantisation, `CONTEXT` or the preset's context size SHALL set the window,
-`ALIAS` SHALL set the name the endpoint serves under (defaulting to the
-repository), and the preset's remaining settings SHALL become the engine's
-arguments. Settings the endpoint owns — host, port, model location, API key,
-context size, alias, and metrics — SHALL be dropped, so one preset can both
-serve locally and deploy unchanged. The request SHALL describe only what to
-serve, never where the weights are stored. A `--dry-run` SHALL print the
-derived deployment without sending it.
+`spinloop cloud deploy` SHALL derive the deployment from the Spinloop, its
+preset, and its PARAMs: `PROVIDER` SHALL select the inference engine, `MODEL` or
+the preset's or a PARAM's Hugging Face reference SHALL name the weights as a
+repository and optional quantisation, `CONTEXT` or the preset's or a PARAM's
+context size SHALL set the window, `ALIAS` SHALL set the name the endpoint
+serves under (defaulting to the repository), and the preset's and the PARAMs'
+remaining settings SHALL become the engine's arguments, a PARAM standing over
+the preset's values where both set the same flag. Settings the endpoint owns —
+host, port, model location, API key, context size, alias, and metrics — SHALL be
+dropped from the preset and the PARAMs alike, so one preset can both serve
+locally and deploy unchanged. The request SHALL describe only what to serve,
+never where the weights are stored. A `--dry-run` SHALL print the derived
+deployment without sending it.
 
 `deploy` SHALL additionally accept a `--api-key-env <VAR>` flag naming the
 environment variable that holds the API key to store for the environment. The
@@ -383,6 +385,20 @@ the instance.
 - **WHEN** a Spinloop with a preset is deployed
 - **THEN** the engine's arguments are the preset's, minus the settings the
   endpoint sets itself
+
+#### Scenario: PARAMs deploy the way a preset does
+
+- **WHEN** a Spinloop with no preset states `PARAM hf = org/model:quant`,
+  `PARAM ctx-size = 32768`, and other PARAMs, and is deployed
+- **THEN** the deployment names the repository and quantisation from the PARAM,
+  sets the window from the PARAM's context size, and carries the remaining
+  PARAMs as the engine's arguments minus the settings the endpoint sets itself
+
+#### Scenario: A PARAM overrides the preset in a deployment
+
+- **WHEN** a Spinloop's preset section sets `temp = 0.7` and the Spinloop says
+  `PARAM temp = 1.0`
+- **THEN** the deployed engine's arguments carry the PARAM's value
 
 #### Scenario: The Spinloop overrides its preset
 
