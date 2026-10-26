@@ -162,8 +162,8 @@ func TestRenderStatBarsFallsBackToGaugeWithoutHistory(t *testing.T) {
 	gpus := []metrics.GpuStat{{Index: 0, Name: "H100", Utilization: 61, MemoryUsed: 80, MemoryTotal: 160}}
 
 	var got, want bytes.Buffer
-	renderStatBars(&got, cpu, mem, gpus, nil, barLineW)
-	renderStatGauges(&want, cpu, mem, gpus)
+	renderStatBars(&got, cpu, mem, gpus, nil, nil, barLineW)
+	renderStatGauges(&want, cpu, mem, gpus, nil)
 	if got.String() != want.String() {
 		t.Errorf("no-history bar differs from the old drawing:\ngot:\n%q\nwant:\n%q", got.String(), want.String())
 	}
@@ -179,7 +179,7 @@ func TestRenderStatBarsDrawsHistory(t *testing.T) {
 		{Time: 3, CPU: ptrPct(95), Mem: ptrPct(40)},
 	}
 	var b bytes.Buffer
-	renderStatBars(&b, nil, nil, nil, history, barLineW)
+	renderStatBars(&b, nil, nil, nil, nil, history, barLineW)
 	lines := strings.Split(strings.TrimSuffix(b.String(), "\n"), "\n")
 	if len(lines) != 2 {
 		t.Fatalf("drew %d lines, want CPU and RAM: %q", len(lines), b.String())
@@ -210,7 +210,7 @@ func TestRenderStatBarsMaxedRowsStopShortOfFull(t *testing.T) {
 		{Time: 2, CPU: ptrPct(100), Mem: ptrPct(100)},
 	}
 	var b bytes.Buffer
-	renderStatBars(&b, nil, nil, nil, history, barLineW)
+	renderStatBars(&b, nil, nil, nil, nil, history, barLineW)
 	out := b.String()
 	if strings.Contains(out, "█") {
 		t.Errorf("a maxed series drew a full block:\n%s", out)
@@ -231,7 +231,7 @@ func TestRenderStatBarsFallsBackPerSeries(t *testing.T) {
 		{Time: 2, CPU: ptrPct(20)},
 	}
 	var b bytes.Buffer
-	renderStatBars(&b, nil, &metrics.MemoryStat{Total: 1000, Used: 300}, nil, history, barLineW)
+	renderStatBars(&b, nil, &metrics.MemoryStat{Total: 1000, Used: 300}, nil, nil, history, barLineW)
 	lines := strings.Split(strings.TrimSuffix(b.String(), "\n"), "\n")
 	if len(lines) != 2 {
 		t.Fatalf("drew %d lines, want 2: %q", len(lines), b.String())
@@ -253,17 +253,17 @@ func TestRenderStatBarsStoppedEngineDrawsHistoryAlone(t *testing.T) {
 		{Time: 2, CPU: ptrPct(20), GPUs: []metrics.HistoryGPU{{Index: 0, Util: 60, Mem: ptrPct(60)}}},
 	}
 	var b bytes.Buffer
-	renderStatBars(&b, nil, nil, nil, history, barLineW)
+	renderStatBars(&b, nil, nil, nil, nil, history, barLineW)
 	lines := strings.Split(strings.TrimSuffix(b.String(), "\n"), "\n")
 	if len(lines) != 3 {
-		t.Fatalf("drew %d lines, want CPU, GPU util and GPU mem: %q", len(lines), b.String())
+		t.Fatalf("drew %d lines, want CPU, GPU and GPU mem: %q", len(lines), b.String())
 	}
 	if !strings.HasPrefix(lines[0], "  CPU       ") {
 		t.Errorf("first line: %q", lines[0])
 	}
 	// One GPU: the plain "GPU" prefix, as the gauge used it.
-	if !strings.Contains(lines[1], "GPU util") || !strings.Contains(lines[1], " 60%") {
-		t.Errorf("GPU util line: %q", lines[1])
+	if !strings.Contains(lines[1], "GPU") || !strings.Contains(lines[1], " 60%") {
+		t.Errorf("GPU line: %q", lines[1])
 	}
 	if !strings.Contains(lines[2], "GPU mem") || !strings.Contains(lines[2], " 60%") {
 		t.Errorf("GPU mem line: %q", lines[2])
@@ -277,9 +277,9 @@ func TestRenderStatBarsStoppedEngineDrawsHistoryAlone(t *testing.T) {
 		}},
 	}
 	b.Reset()
-	renderStatBars(&b, nil, nil, nil, history, barLineW)
+	renderStatBars(&b, nil, nil, nil, nil, history, barLineW)
 	out := b.String()
-	if !strings.Contains(out, "GPU 0 util") || !strings.Contains(out, "GPU 1 util") ||
+	if !strings.Contains(out, "GPU 0") || !strings.Contains(out, "GPU 1") ||
 		!strings.Contains(out, "GPU 0 mem") || !strings.Contains(out, "GPU 1 mem") {
 		t.Errorf("two GPUs: %q", out)
 	}
@@ -288,7 +288,7 @@ func TestRenderStatBarsStoppedEngineDrawsHistoryAlone(t *testing.T) {
 // A memory reading with no total reports 0, not a division by it.
 func TestBarSeriesListMemoryWithoutTotal(t *testing.T) {
 	var b bytes.Buffer
-	renderStatBars(&b, nil, &metrics.MemoryStat{Total: 0, Used: 100}, nil, nil, barLineW)
+	renderStatBars(&b, nil, &metrics.MemoryStat{Total: 0, Used: 100}, nil, nil, nil, barLineW)
 	if !strings.Contains(b.String(), " 0%") || strings.Contains(b.String(), "NaN") {
 		t.Errorf("a memory reading with no total: %q", b.String())
 	}
@@ -302,10 +302,10 @@ func TestRenderStatBarsGPUInOnlySomeSamples(t *testing.T) {
 		{Time: 2, GPUs: []metrics.HistoryGPU{{Index: 1, Util: 90, Mem: ptrPct(80)}}},
 	}
 	var b bytes.Buffer
-	renderStatBars(&b, nil, nil, nil, history, barLineW)
+	renderStatBars(&b, nil, nil, nil, nil, history, barLineW)
 	out := b.String()
 	// Both GPUs are named in the union, so all four series draw.
-	for _, want := range []string{"GPU 0 util", "GPU 1 util", "GPU 0 mem", "GPU 1 mem"} {
+	for _, want := range []string{"GPU 0", "GPU 1", "GPU 0 mem", "GPU 1 mem"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("series %q not drawn: %q", want, out)
 		}
@@ -323,12 +323,12 @@ func TestRenderStatBarsGPUInOnlySomeSamples(t *testing.T) {
 func TestRenderStatGaugesIgnoresHistory(t *testing.T) {
 	cpu := &metrics.CpuStat{Utilization: 50}
 	var b bytes.Buffer
-	renderStatGauges(&b, cpu, nil, nil)
+	renderStatGauges(&b, cpu, nil, nil, nil)
 	if !strings.Contains(b.String(), " 50%") || strings.Contains(b.String(), "▁") {
 		t.Errorf("gauge drew history or the wrong value: %q", b.String())
 	}
 	b.Reset()
-	renderStatGauges(&b, nil, nil, nil)
+	renderStatGauges(&b, nil, nil, nil, nil)
 	if b.String() != "" {
 		t.Errorf("a stopped engine drew gauges: %q", b.String())
 	}
@@ -347,13 +347,13 @@ func TestRenderStatCombined(t *testing.T) {
 		{Time: 2, CPU: ptrPct(95), Mem: ptrPct(30), GPUs: []metrics.HistoryGPU{{Index: 0, Util: 91, Mem: ptrPct(20)}}},
 	}
 	var b bytes.Buffer
-	renderStatCombined(&b, cpu, mem, gpus, history)
+	renderStatCombined(&b, cpu, mem, gpus, nil, history)
 	lines := strings.Split(strings.TrimSuffix(b.String(), "\n"), "\n")
 	// One line per series, in the bar series' order.
 	if len(lines) != 4 {
 		t.Fatalf("drew %d lines, want 4: %q", len(lines), b.String())
 	}
-	for i, label := range []string{"  CPU       ", "  RAM       ", "  GPU util  ", "  GPU mem   "} {
+	for i, label := range []string{"  CPU       ", "  RAM       ", "  GPU       ", "  GPU mem   "} {
 		if !strings.HasPrefix(lines[i], label) {
 			t.Errorf("line for %s: %q", label, lines[i])
 		}
@@ -409,7 +409,7 @@ func TestRenderStatCombinedFigureDoesNotShiftTheBar(t *testing.T) {
 	}
 	for _, c := range cases {
 		var b bytes.Buffer
-		renderStatCombined(&b, &metrics.CpuStat{Utilization: c.value}, nil, nil, history)
+		renderStatCombined(&b, &metrics.CpuStat{Utilization: c.value}, nil, nil, nil, history)
 		lines := strings.Split(strings.TrimSuffix(b.String(), "\n"), "\n")
 		if len(lines) != 1 {
 			t.Fatalf("figure %s drew %d lines, want 1: %q", c.figure, len(lines), b.String())
@@ -428,7 +428,7 @@ func TestRenderStatCombinedFigureDoesNotShiftTheBar(t *testing.T) {
 // half of the combined format.
 func TestRenderStatCombinedMemoryWithoutTotal(t *testing.T) {
 	var b bytes.Buffer
-	renderStatCombined(&b, nil, &metrics.MemoryStat{Total: 0, Used: 100}, nil, nil)
+	renderStatCombined(&b, nil, &metrics.MemoryStat{Total: 0, Used: 100}, nil, nil, nil)
 	if !strings.Contains(b.String(), "  0%") || strings.Contains(b.String(), "NaN") {
 		t.Errorf("a memory reading with no total: %q", b.String())
 	}
@@ -441,13 +441,13 @@ func TestRenderStatCombinedWithoutHistory(t *testing.T) {
 	mem := &metrics.MemoryStat{Total: 1000, Used: 300}
 	gpus := []metrics.GpuStat{{Index: 0, Name: "H100", Utilization: 61, MemoryUsed: 80, MemoryTotal: 160}}
 	var b bytes.Buffer
-	renderStatCombined(&b, cpu, mem, gpus, nil)
+	renderStatCombined(&b, cpu, mem, gpus, nil, nil)
 	lines := strings.Split(strings.TrimSuffix(b.String(), "\n"), "\n")
 	blankBar := strings.Repeat(" ", serveBarW)
 	want := []string{
 		"  CPU       " + gaugeBlock(42, serveGaugeW) + "  42% " + blankBar,
 		"  RAM       " + gaugeBlock(30, serveGaugeW) + "  30% " + blankBar,
-		"  GPU util  " + gaugeBlock(61, serveGaugeW) + "  61% " + blankBar,
+		"  GPU       " + gaugeBlock(61, serveGaugeW) + "  61% " + blankBar,
 		"  GPU mem   " + gaugeBlock(50, serveGaugeW) + "  50% " + blankBar,
 	}
 	if len(lines) != len(want) {
@@ -472,16 +472,16 @@ func TestRenderStatCombinedStoppedEngineDrawsHistoryAlone(t *testing.T) {
 		{Time: 2, CPU: ptrPct(20), Mem: ptrPct(30), GPUs: []metrics.HistoryGPU{{Index: 0, Util: 60, Mem: ptrPct(60)}}},
 	}
 	var b bytes.Buffer
-	renderStatCombined(&b, nil, nil, nil, history)
+	renderStatCombined(&b, nil, nil, nil, nil, history)
 	lines := strings.Split(strings.TrimSuffix(b.String(), "\n"), "\n")
 	if len(lines) != 4 {
-		t.Fatalf("drew %d lines, want CPU, RAM, GPU util and GPU mem: %q", len(lines), b.String())
+		t.Fatalf("drew %d lines, want CPU, RAM, GPU and GPU mem: %q", len(lines), b.String())
 	}
 	blankGauge := strings.Repeat(" ", serveGaugeW)
 	wantPrefix := []string{
 		"  CPU       " + blankGauge + "  20% ",
 		"  RAM       " + blankGauge + "  30% ",
-		"  GPU util  " + blankGauge + "  60% ",
+		"  GPU       " + blankGauge + "  60% ",
 		"  GPU mem   " + blankGauge + "  60% ",
 	}
 	for i, want := range wantPrefix {
@@ -567,7 +567,7 @@ func TestFormatMetricsBarRunning(t *testing.T) {
 	if strings.Contains(got, "░") {
 		t.Errorf("a series fell back to the gauge although history holds it: %q", got)
 	}
-	for _, label := range []string{"CPU", "RAM", "GPU util", "GPU mem"} {
+	for _, label := range []string{"CPU", "RAM", "GPU", "GPU mem"} {
 		if !strings.Contains(got, label) {
 			t.Errorf("series %q missing: %q", label, got)
 		}
@@ -646,4 +646,91 @@ func nodeResultsFor(resp *cloud.StatsResponse) []fleet.NodeResult {
 			RetainUntil: resp.RetainUntil,
 		},
 	}}
+}
+
+// The Speed row: the window's high watermark sets the glyph heights, every
+// point draws in the default colour, and no speed in the reading draws no
+// row at all.
+func TestRenderSpeedRow(t *testing.T) {
+	speed := 8.5
+	history := []metrics.HistorySample{
+		{Time: 1, Speed: ptrPct(2.0)},
+		{Time: 2, Speed: ptrPct(5.0)},
+		{Time: 3, Speed: ptrPct(10.0)},
+	}
+	var b bytes.Buffer
+	renderStatBars(&b, &metrics.CpuStat{Utilization: 95}, nil, nil, &speed, history, barLineW)
+	lines := strings.Split(strings.TrimSuffix(b.String(), "\n"), "\n")
+	line := lines[len(lines)-1]
+	if !strings.HasPrefix(line, "  Speed       8.50 t/s ") {
+		t.Fatalf("speed row: %q", line)
+	}
+	// The window's fastest point takes the heaviest grade the sparkline
+	// draws, its slowest one far lighter — and neither the full block.
+	tail := strings.TrimLeft(line[strings.Index(line, "t/s ")+4:], " ")
+	if !strings.HasSuffix(tail, "▇") {
+		t.Errorf("the window maximum did not draw the heaviest grade: %q", tail)
+	}
+	if !strings.Contains(tail, "▂") {
+		t.Errorf("the window minimum did not draw a far lighter grade: %q", tail)
+	}
+	// The speed row draws no full block of its own, and no threshold colour
+	// at its window maximum — while the 95% CPU row on the same screen is
+	// free to be coloured.
+	if strings.Contains(line, "█") {
+		t.Errorf("the speed row drew the full block: %q", line)
+	}
+	if strings.Contains(line, "\x1b[") {
+		t.Errorf("the speed row drew colour: %q", line)
+	}
+
+	// No current figure but a retained history: the row falls back to the
+	// window's last point — the last rate a stopped engine had.
+	b.Reset()
+	renderStatBars(&b, nil, nil, nil, nil, history, barLineW)
+	line = strings.Split(strings.TrimSuffix(b.String(), "\n"), "\n")[0]
+	if !strings.HasPrefix(line, "  Speed      10.00 t/s ") {
+		t.Errorf("a stopped engine's speed row: %q", line)
+	}
+
+	// Neither reading nor history: no row.
+	b.Reset()
+	renderStatBars(&b, &metrics.CpuStat{Utilization: 10}, nil, nil, nil, nil, barLineW)
+	if strings.Contains(b.String(), "Speed") {
+		t.Errorf("an engine without speed drew a row: %q", b.String())
+	}
+}
+
+// The gauge format and the serve view carry the figure without a bar the
+// rate has no ceiling to fill against.
+func TestRenderSpeedFigureOnly(t *testing.T) {
+	speed := 12.34
+	var b bytes.Buffer
+	renderStatGauges(&b, nil, nil, nil, &speed)
+	line := strings.TrimSpace(b.String())
+	if line != "Speed      12.34 t/s" {
+		t.Errorf("gauge speed row: %q", line)
+	}
+	if strings.Contains(line, "░") {
+		t.Errorf("the speed gauge half drew a bar: %q", line)
+	}
+
+	b.Reset()
+	renderStatCombined(&b, nil, nil, nil, &speed, nil)
+	line = strings.TrimSpace(b.String())
+	if !strings.Contains(line, "Speed") || !strings.Contains(line, "12.34 t/s") {
+		t.Errorf("combined speed row: %q", line)
+	}
+
+	// No figure: neither surface mentions speed.
+	b.Reset()
+	renderStatGauges(&b, nil, nil, nil, nil)
+	if strings.Contains(b.String(), "Speed") {
+		t.Errorf("no figure still drew a gauge row: %q", b.String())
+	}
+	b.Reset()
+	renderStatCombined(&b, nil, nil, nil, nil, nil)
+	if strings.Contains(b.String(), "Speed") {
+		t.Errorf("no figure still drew a combined row: %q", b.String())
+	}
 }

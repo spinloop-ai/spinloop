@@ -468,9 +468,9 @@ func dashTileReportBody(w io.Writer, m metrics.Stats, resources bool, gauge bool
 	renderActiveIndented(w, m.LastActiveAt, m.IdleSeconds, m.RetainUntil, now)
 	if resources {
 		if gauge {
-			renderStatGauges(w, m.CPU, m.Memory, m.GPUs)
+			renderStatGauges(w, m.CPU, m.Memory, m.GPUs, m.Speed)
 		} else {
-			renderStatBars(w, m.CPU, m.Memory, m.GPUs, m.History, lineW)
+			renderStatBars(w, m.CPU, m.Memory, m.GPUs, m.Speed, m.History, lineW)
 		}
 		renderTokenLines(w, m.Tokens)
 	}

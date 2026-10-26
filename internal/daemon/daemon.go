@@ -68,6 +68,7 @@ type Daemon struct {
 	ready  readiness
 	hist   systemHistory
 	system systemSample
+	speed  engineSpeed
 
 	mu         sync.Mutex
 	runner     string
@@ -260,6 +261,19 @@ func (d *Daemon) StartEngine() error {
 		slog.String("source", source),
 		slog.String("runner", runner),
 		slog.String("model", model))
+	// The previous engine's counters and system readings must not be reported
+	// against this one, for the same reason its counter baseline is dropped.
+	d.sample.forget()
+	d.ready.forget()
+	d.system.forget()
+	d.hist.clear()
+	d.speed.forget()
+	// The engine's account of itself — its generation rate — is read from
+	// the output the supervisor is about to capture. Wired before the start:
+	// the supervisor builds its capture sink as it launches, and a hook set
+	// afterwards would describe an engine whose first lines are already lost.
+	// The no-capture path (LogPath empty) never calls it.
+	d.Sup.OnOutput = d.ObserveEngineLine
 	if err := d.Sup.Start(argv); err != nil {
 		d.log().Error("engine start failed",
 			slog.String("source", source), slog.String("error", err.Error()))
@@ -270,12 +284,6 @@ func (d *Daemon) StartEngine() error {
 	// existed — the race the control plane used to close with a last-wake
 	// timestamp of its own.
 	d.act.markActive(d.now())
-	// The previous engine's counters and system readings must not be reported
-	// against this one, for the same reason its counter baseline is dropped.
-	d.sample.forget()
-	d.ready.forget()
-	d.system.forget()
-	d.hist.clear()
 	return nil
 }
 
@@ -460,6 +468,11 @@ func (d *Daemon) Metrics(ctx context.Context) metrics.Stats {
 				fmt.Sprintf("engine metrics scrape (%s): %v", baseURL, err))
 		}
 		stats.Tokens = tokens
+		// The engine's self-reported rate, if it has printed one this close
+		// to now. An engine that has gone quiet lapses the figure — the
+		// counter block says how much it has generated; this line answers
+		// how fast, and a quiet engine has no answer.
+		stats.Speed = d.speed.current(d.now(), d.speedStaleAfter())
 		stats.Ready = d.readinessField()
 	}
 	// Outside the running branch, so a stopped or crashed engine still reports

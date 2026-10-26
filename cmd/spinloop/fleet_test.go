@@ -272,7 +272,7 @@ func TestCmdFleetMetricsDrawsHistory(t *testing.T) {
 		t.Errorf("up's CPU gauge drew history or missed the current reading:\n%s", out)
 	}
 	halted := out[strings.Index(out, "halted"):]
-	if strings.Contains(halted, "GPU util") || strings.Contains(halted, " 60%") {
+	if strings.Contains(halted, "GPU") || strings.Contains(halted, " 60%") {
 		t.Errorf("a stopped node drew series in the gauge format:\n%s", halted)
 	}
 
@@ -291,7 +291,7 @@ func TestCmdFleetMetricsDrawsHistory(t *testing.T) {
 	if !strings.Contains(out, "░") {
 		t.Errorf("up's RAM did not fall back to the gauge:\n%s", out)
 	}
-	if !strings.Contains(out, "halted  stopped  org/qwen") || !strings.Contains(out, "GPU util") {
+	if !strings.Contains(out, "halted  stopped  org/qwen") || !strings.Contains(out, "  GPU  ") {
 		t.Errorf("halted's history not drawn:\n%s", out)
 	}
 }

@@ -897,14 +897,14 @@ func TestCloudMetrics_BarFormat(t *testing.T) {
 	if !strings.Contains(out, "RAM") {
 		t.Errorf("bar output missing RAM bar:\n%s", out)
 	}
-	if !strings.Contains(out, "GPU util") {
-		t.Errorf("bar output missing GPU util bar:\n%s", out)
+	if !strings.Contains(out, "  GPU  ") {
+		t.Errorf("bar output missing GPU bar:\n%s", out)
 	}
 	if !strings.Contains(out, "GPU mem") {
 		t.Errorf("bar output missing GPU mem bar:\n%s", out)
 	}
 	if !strings.Contains(out, "85%") {
-		t.Errorf("bar output missing GPU utilization percentage:\n%s", out)
+		t.Errorf("bar output missing GPU utilisation percentage:\n%s", out)
 	}
 	if !strings.Contains(out, "running:") {
 		t.Errorf("bar output missing token stats:\n%s", out)
