@@ -3335,6 +3335,39 @@ func TestDashDetailViewStandingNodeShowsWrapState(t *testing.T) {
 	}
 }
 
+// When the wrapped rows overflow a short pane the tail slices by rows, not
+// lines: the pane shows the newest rows, bottom-anchored, and keeps the very
+// end of the newest line.
+func TestDashDetailViewSlicesWrappedRowsToThePane(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.Ascii)
+	m := dashModel{
+		entries:          []dashEntry{{name: "n", kind: fleet.KindDaemon, node: newFakeDashNode("running")}},
+		results:          []fleet.NodeResult{{Name: "n"}}, // a 2-line metrics section
+		actions:          make([]dashAction, 1),
+		detail:           true,
+		detailLogContent: "older\n" + strings.Repeat("x", 200) + "\n",
+		width:            80, height: 9, // avail = 9 - 5 - 2 = 2
+	}
+	v := m.detailView()
+	var rows []string
+	for _, line := range strings.Split(v, "\n") {
+		if line != "" && strings.Trim(line, "x") == "" {
+			rows = append(rows, line)
+		}
+	}
+	// Two rows fit: 80 of the line, then its last 40 — the pane's bottom
+	// row is the line's tail, and the row older than the pane is gone.
+	if len(rows) != 2 {
+		t.Fatalf("the pane drew %d x-rows, want 2:\n%s", len(rows), v)
+	}
+	if w0, w1 := lipgloss.Width(rows[0]), lipgloss.Width(rows[1]); w0 != 80 || w1 != 40 {
+		t.Errorf("the pane's rows are %d and %d wide, want 80 then 40:\n%s", w0, w1, v)
+	}
+	if strings.Contains(v, "older") {
+		t.Errorf("a line pushed above the pane must not be drawn:\n%s", v)
+	}
+}
+
 func TestDetailLogLinesPlaceholderAndNote(t *testing.T) {
 	if got := detailLogLines("", ""); len(got) != 1 || got[0] != "waiting for the log…" {
 		t.Errorf("placeholder: %v", got)
