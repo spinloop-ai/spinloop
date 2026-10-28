@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [1.44.0] - 2026-10-28
+### Added
+- feat(metrics): colour every sparkline point and fix the serve view's shifting bar
+- feat: add a repeatable PARAM keyword for engine flags (#269)
+
 ## [1.43.0] - 2026-10-07
 ### Added
 - feat(metrics): report GPU utilisation on macOS
