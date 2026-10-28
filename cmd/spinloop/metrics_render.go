@@ -414,15 +414,18 @@ func renderStatBars(w io.Writer, cpu *metrics.CpuStat, mem *metrics.MemoryStat, 
 	renderSpeedBar(w, speed, history, lineW, labelW)
 }
 
-// speedSamples gathers the retained generation-rate points, oldest first.
-// A series like any other: samples where the window has them, gaps where the
-// engine was quiet, since a point is an observation and never a continuation.
-func speedSamples(history []metrics.HistorySample) []float64 {
-	var out []float64
-	for _, s := range history {
-		if s.Speed != nil {
-			out = append(out, *s.Speed)
-		}
+// speedSeries gathers the retained generation-rate points, oldest first, one
+// slot per history sample: the rate where the sample has one, a nil gap
+// where the engine was quiet. Unlike a packed series, a slot sits at its own
+// sample's place on the window's time axis — so when the engine stops
+// generating, the burst slides left as the quiet ticks pile up behind it and
+// the row's right edge goes blank. A packed series would keep the last burst
+// flush against the edge as the current figure falls to zero, drawing the
+// question's last answer as if it were still being given.
+func speedSeries(history []metrics.HistorySample) []*float64 {
+	out := make([]*float64, len(history))
+	for i, s := range history {
+		out[i] = s.Speed
 	}
 	return out
 }
@@ -433,7 +436,43 @@ func speedSamples(history []metrics.HistorySample) []float64 {
 // no row — the engine that reports no speed is not an engine generating at
 // zero, but an engine whose row would be a question it cannot answer.
 func speedShown(speed *float64, history []metrics.HistorySample) bool {
-	return speed != nil || len(speedSamples(history)) > 0
+	if speed != nil {
+		return true
+	}
+	for _, s := range history {
+		if s.Speed != nil {
+			return true
+		}
+	}
+	return false
+}
+
+// poolMaxGaps reduces a gap-carrying series to at most width columns, one
+// per column, each the maximum of the non-nil samples pooled into it — and
+// nil where every pooled sample was a gap. Pooling keeps the newest sample
+// in the final column the way poolMax does; a quiet column stays quiet and
+// draws blank rather than borrowing its neighbour's rate.
+func poolMaxGaps(values []*float64, width int) []*float64 {
+	if len(values) <= width {
+		return values
+	}
+	out := make([]*float64, width)
+	per := float64(len(values)) / float64(width)
+	for c := range out {
+		lo := int(float64(c) * per)
+		hi := int(float64(c+1) * per)
+		if c == width-1 {
+			hi = len(values)
+		}
+		var m *float64
+		for i := lo; i < hi; i++ {
+			if values[i] != nil && (m == nil || *values[i] > *m) {
+				m = values[i]
+			}
+		}
+		out[c] = m
+	}
+	return out
 }
 
 // speedBlock draws the speed sparkline. Its glyph heights are relative to
@@ -443,20 +482,26 @@ func speedShown(speed *float64, history []metrics.HistorySample) bool {
 // doubles the row's height beside its own baseline. Every point draws in the
 // terminal's default colour whatever its height: the 80/90 thresholds belong
 // to utilisation percentages, and a generation rate has no ceiling to cross.
-func speedBlock(samples []float64, width int) string {
-	pooled := poolMax(samples, width)
+// A nil sample — a quiet tick — draws blank, so a lapse shows as the row's
+// right edge emptying beside its 0.00 figure.
+func speedBlock(samples []*float64, width int) string {
+	pooled := poolMaxGaps(samples, width)
 	peak := 0.0
 	for _, v := range pooled {
-		if v > peak {
-			peak = v
+		if v != nil && *v > peak {
+			peak = *v
 		}
 	}
 	var b strings.Builder
 	b.WriteString(strings.Repeat(" ", width-len(pooled)))
 	for _, v := range pooled {
+		if v == nil {
+			b.WriteRune(' ')
+			continue
+		}
 		pct := 0.0
 		if peak > 0 {
-			pct = v / peak * 100
+			pct = *v / peak * 100
 		}
 		b.WriteRune(barGlyph(pct))
 	}
@@ -484,19 +529,15 @@ func speedText(v float64) string {
 
 // renderSpeedBar draws the Speed row of the bar-format surfaces: the label,
 // the rate's sparkline in the bars' own column, and the t/s figure trailing
-// where the other rows carry their percentages — or a blank sparkline where
-// the window holds no point, since a gauge would imply a ceiling the rate
-// does not have. The row is absent when the engine reports no speed at all.
+// where the other rows carry their percentages, since a gauge would imply a
+// ceiling the rate does not have. Quiet samples leave the sparkline blank at
+// their own columns, so a lapse empties the row's right edge. The row is
+// absent when the engine reports no speed at all.
 func renderSpeedBar(w io.Writer, speed *float64, history []metrics.HistorySample, lineW, labelW int) {
 	if !speedShown(speed, history) {
 		return
 	}
-	samples := speedSamples(history)
-	bar := strings.Repeat(" ", lineW)
-	if len(samples) > 0 {
-		bar = speedBlock(samples, lineW)
-	}
-	fmt.Fprintf(w, "  %-*s %s %s\n", labelW, "Speed", bar, speedText(speedFigure(speed)))
+	fmt.Fprintf(w, "  %-*s %s %s\n", labelW, "Speed", speedBlock(speedSeries(history), lineW), speedText(speedFigure(speed)))
 }
 
 // renderSpeedGauge draws the Speed row where no history is drawn — the gauge
@@ -551,17 +592,13 @@ func renderStatCombined(w io.Writer, cpu *metrics.CpuStat, mem *metrics.MemorySt
 		fmt.Fprintf(w, "  %-*s %s %3.0f%% %s\n", labelW, s.label, gaugeHalf, figure, barHalf)
 	}
 	if speedShown(speed, history) {
-		samples := speedSamples(history)
-		barHalf := strings.Repeat(" ", serveBarW)
-		if len(samples) > 0 {
-			barHalf = speedBlock(samples, serveBarW)
-		}
 		// The figure stands at the column the gauges start — the rate has no
 		// ceiling to fill a gauge against — inside a field spanning the other
 		// rows' gauge and percentage halves. The field is what keeps the
 		// sparkline starting where every other sparkline does as the figure
-		// grows digits, and a lapsed reading draws its 0.00 there.
-		fmt.Fprintf(w, "  %-*s %-*s%s\n", labelW, "Speed", serveGaugeW+6, speedText(speedFigure(speed)), barHalf)
+		// grows digits, and a lapsed reading draws its 0.00 there while the
+		// sparkline's own right edge empties tick by tick beside it.
+		fmt.Fprintf(w, "  %-*s %-*s%s\n", labelW, "Speed", serveGaugeW+6, speedText(speedFigure(speed)), speedBlock(speedSeries(history), serveBarW))
 	}
 }
 

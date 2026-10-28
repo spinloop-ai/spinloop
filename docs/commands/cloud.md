@@ -263,8 +263,9 @@ second, and in bar format a sparkline of the rate across the window drawn
 in the bars' own column, scaled to the window's own high watermark and in
 the default colour throughout — a rate has no ceiling for the utilisation
 thresholds to cross. Once the engine stops generating the row stays and the
-figure reads `0.00 t/s`; only an engine that never reports a rate draws no
-row.
+figure reads `0.00 t/s`, and the sparkline's right edge empties tick by
+tick as the last burst slides back into the window's past; only an engine
+that never reports a rate draws no row.
 
 While a start is under way, `status` shows **`starting`** for the endpoint,
 whichever machine began the start, until the instance is running. Once it is

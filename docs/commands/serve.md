@@ -33,7 +33,8 @@ and a footer naming the keys the view answers to.
   the current reading beside the bar of its retained history. The speed row
   has no gauge — a rate has no ceiling to fill against — so its t/s figure
   stands where the gauges start and its sparkline joins the other bars in
-  their column; between refreshes a lapsed figure reads 0.00 t/s rather than
+  their column; between refreshes a lapsed figure reads 0.00 t/s and its
+  sparkline empties from the right as the engine falls quiet, rather than
   vanishing. Below them, the
   token and request counters. The reading comes from the daemon the serve
   process runs in-process and refreshes on the dashboard's own local cadence;

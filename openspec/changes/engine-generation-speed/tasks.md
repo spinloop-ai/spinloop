@@ -35,3 +35,7 @@
 - [x] Bar format: sparkline in the bars' column, t/s figure trailing with the other rows' percentages; gauge/tile rows carry the figure at the graph column
 - [x] A lapsed figure on an engine that reports one draws `0.00 t/s` wherever the row shows (`speedShown`/`speedFigure`); only a never-reporting engine has no row
 - [x] `dashBarLineW` 25→23 so the trailing t/s figure fits the 42-column tile; goldens and spec/design/docs updated
+
+## Sparkline lapse follow-up (from review)
+
+- [x] Place speed points on the window's time axis (`speedSeries` one slot per sample, `poolMaxGaps` pooling without closing gaps) so a lapse empties the sparkline's right edge beside its `0.00 t/s` figure instead of pinning the last burst to it

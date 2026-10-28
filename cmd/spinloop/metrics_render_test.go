@@ -688,13 +688,27 @@ func TestRenderSpeedRow(t *testing.T) {
 		t.Errorf("the CPU row should still colour: %q", lines[0])
 	}
 
-	// A lapsed figure on an engine that reports speed: the row stays, the
-	// figure reads zero, and the trend remembers the rates it saw.
+	// A stopped engine: its history froze at the stop, so the retained
+	// burst still sits at the right edge and the figure reads zero — the
+	// row tells what the engine was doing until it stopped.
 	b.Reset()
 	renderStatBars(&b, nil, nil, nil, nil, history, barLineW)
 	line = strings.Split(strings.TrimSuffix(b.String(), "\n"), "\n")[0]
 	if want := "  Speed   " + bar + " 0.00 t/s"; line != want {
-		t.Errorf("a quiet engine's speed row:\ngot  %q\nwant %q", line, want)
+		t.Errorf("a stopped engine's speed row:\ngot  %q\nwant %q", line, want)
+	}
+
+	// The lapse in the making: the engine still runs, so quiet ticks keep
+	// landing in the window as speedless samples. Each one slides the
+	// burst a column left and leaves its own blank at the right edge, so
+	// the sparkline's now says the same thing as the figure's zero.
+	b.Reset()
+	quiet := append(append([]metrics.HistorySample{}, history...),
+		metrics.HistorySample{Time: 4}, metrics.HistorySample{Time: 5})
+	renderStatBars(&b, nil, nil, nil, nil, quiet, barLineW)
+	line = strings.Split(strings.TrimSuffix(b.String(), "\n"), "\n")[0]
+	if want := "  Speed   " + strings.Repeat(" ", barLineW-5) + "▂▄▇  " + " 0.00 t/s"; line != want {
+		t.Errorf("an engine gone quiet's speed row:\ngot  %q\nwant %q", line, want)
 	}
 
 	// Neither reading nor history: no row.

@@ -6,6 +6,8 @@
 
 Where a reading carries a current generation speed or its retained history carries speed points — an engine that reports the figure, whatever it is doing this second — every surface that draws the resource series SHALL additionally draw a `Speed` row beneath them. The figure is the current reading to two decimal places with a `t/s` suffix; where it has lapsed between refreshes, the row SHALL read `0.00 t/s` — a stopped or quiet engine is generating at zero, and a row that kept showing the last burst's rate would be answering a question the engine is no longer asking. The row is omitted entirely only for an engine that reports no speed at all.
 
+The speed sparkline SHALL place each point at its own sample's place on the window's time axis, and a sample without a rate SHALL draw blank: as an engine falls quiet, its sampling continues, and each quiet tick slides the last burst one column toward the past and leaves its own blank at the row's right edge — so the trend's now agrees with the figure's zero instead of holding the last burst against the edge as if it were still being generated. (A stopped engine's history froze at the stop, so its burst legitimately rests at the edge of a row whose figure reads zero: the row tells what the engine was doing until it stopped.)
+
 The row shall share its columns with the rows above it, not cut its own: the figure starts where the other rows' graphs start — in the gauge formats in place of the gauge the rate has no ceiling to fill, in the combined view inside a fixed field spanning the gauge and percentage halves so the digits' first character holds the graph column whatever their count — and where history is drawn the sparkline SHALL start in the same column as every other sparkline and draw at the same width.
 
 The speed sparkline SHALL scale its glyph heights against the highest value drawn in the window — the window's high watermark maps to the sparkline's heaviest drawn grade, and no value draws the full block — so the row reads relative to itself, a steady engine filling its row and a doubled burst standing out against it. Every point SHALL appear in the terminal's default colour whatever its height: the 80/90% thresholds belong to utilisation percentages, and a generation rate has no ceiling to cross.
@@ -32,7 +34,8 @@ Where speed exists but the surface draws no history — the gauge format, the ta
 - **WHEN** a watched engine has printed no timing figure for the last
   sampling interval while its window still holds speed points
 - **THEN** the `Speed` row remains drawn, its figure reads 0.00 t/s, and
-  its sparkline still shows the rates the window holds
+  the sparkline draws the quiet interval blank at its right edge, the
+  retained burst slid that far toward the past
 
 #### Scenario: The window's fastest point draws the heaviest glyph
 
