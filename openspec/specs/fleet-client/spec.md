@@ -1059,6 +1059,14 @@ node whose engine has not run yet, or that cannot supply its log, SHALL show
 the same explanation the `fleet logs` command gives for it, rather than an
 empty pane.
 
+A log line longer than the view's width SHALL wrap onto continuation rows at
+the left margin, so the whole line is readable within the view; wrapping
+SHALL be on by default. The operator SHALL be able to turn wrapping off and
+back on from the keyboard with the same key the serve view answers to; while
+wrapping is off a longer line SHALL be cut at the view's width as before. The
+view SHALL show whether wrapping is on or off. The pane's rows are then its
+lines expanded to their wrapped rows, the newest rows at the pane's bottom.
+
 The operator SHALL be able to pause and resume the log's follow from the
 keyboard, independently of the rest of the view: while paused, the log
 section SHALL stop picking up new output, and the view SHALL show whether the
@@ -1078,6 +1086,19 @@ affect the metrics section's own refresh, or any node's start, stop or abort.
 - **WHEN** the node's engine writes to its log while the detail view is open
 - **THEN** the new lines appear in the log section without the operator
   pressing any key
+
+#### Scenario: A line longer than the view wraps
+
+- **WHEN** the log shows a line wider than the view's width
+- **THEN** the line is drawn across as many rows as it needs, every row
+  starting at the left margin, with no part of the line lost
+
+#### Scenario: Turning wrapping off and on
+
+- **WHEN** the operator turns wrapping off
+- **THEN** lines longer than the view are cut at its width again, and the
+  view shows that wrapping is off
+- **AND** turning it back on wraps those lines again
 
 #### Scenario: A node with no log yet
 
