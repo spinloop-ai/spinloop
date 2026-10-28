@@ -417,6 +417,16 @@ components:
           $ref: "#/components/schemas/CpuStat"
         memory:
           $ref: "#/components/schemas/MemoryStat"
+        speed:
+          type: number
+          description: |
+            The engine's own generation rate in tokens per second, parsed
+            from the timing lines it prints into its captured output
+            (llama.cpp's print_timing `tg` figure today). Present only while
+            the engine runs and has printed a figure within the last sampler
+            interval; absent — never zero — for a stopped or quiet engine, an
+            engine that prints no rate, and a daemon that predates the
+            figure.
         history:
           type: array
           description: |
@@ -546,6 +556,13 @@ components:
         m:
           type: number
           description: System memory used over total, percent.
+        s:
+          type: number
+          description: |
+            The engine's generation rate in tokens per second, from the
+            timing lines its output carried during this tick's interval.
+            Absent where the engine printed no figure since the previous
+            tick — silence means nothing was generated, not a rate of zero.
         g:
           type: array
           items:

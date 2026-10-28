@@ -160,7 +160,7 @@ func renderFleetMetrics(w io.Writer, results []fleet.NodeResult, format string) 
 		if format == "table" {
 			renderActiveKeyValue(w, stats.LastActiveAt, stats.IdleSeconds, retainUntilOf(r), now)
 		} else {
-			renderActiveIndented(w, stats.LastActiveAt, stats.IdleSeconds, retainUntilOf(r), now)
+			renderActiveIndented(w, stats.LastActiveAt, stats.IdleSeconds, retainUntilOf(r), now, statLabelWidth(stats.GPUs, stats.History))
 		}
 		switch format {
 		case "bar":
@@ -168,19 +168,20 @@ func renderFleetMetrics(w io.Writer, results []fleet.NodeResult, format string) 
 			// none: a stopped node's retained history says what its engine
 			// was doing until it stopped, and a stopped node's current
 			// reading carries no figures for it to fall back on.
-			renderStatBars(w, stats.CPU, stats.Memory, stats.GPUs, stats.History, barLineW)
+			renderStatBars(w, stats.CPU, stats.Memory, stats.GPUs, stats.Speed, stats.History, barLineW)
 			renderTokenLines(w, stats.Tokens)
 		case "gauge":
 			if stats.State != "running" {
 				continue
 			}
-			renderStatGauges(w, stats.CPU, stats.Memory, stats.GPUs)
+			renderStatGauges(w, stats.CPU, stats.Memory, stats.GPUs, stats.Speed, stats.History)
 			renderTokenLines(w, stats.Tokens)
 		default:
 			if stats.State != "running" {
 				continue
 			}
 			renderTokenLines(w, stats.Tokens)
+			renderSpeedTable(w, stats.Speed, stats.History)
 			renderGPUTable(w, stats.GPUs)
 			renderCPUMemTable(w, stats.CPU, stats.Memory)
 		}

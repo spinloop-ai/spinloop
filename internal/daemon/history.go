@@ -89,13 +89,17 @@ func (d *Daemon) systemSampleOnce(ctx context.Context) {
 	if state, _, _ := d.Sup.Status(); state != StateRunning {
 		return
 	}
-	if d.Collector == nil {
-		return
-	}
+	// The tick asks the engine's own account of this interval first: a
+	// generation-rate point comes from the captured output, not from the
+	// host, so a daemon with no collector still folds it and still has a
+	// sample to retain for it.
+	speed := d.speed.sampleTick(d.now())
 	var stats metrics.Stats
-	d.Collector.System(ctx, &stats)
-	d.system.record(stats)
-	sample := metrics.HistorySample{Time: d.now().Unix()}
+	if d.Collector != nil {
+		d.Collector.System(ctx, &stats)
+		d.system.record(stats)
+	}
+	sample := metrics.HistorySample{Time: d.now().Unix(), Speed: speed}
 	if stats.CPU != nil {
 		v := stats.CPU.Utilization
 		sample.CPU = &v
@@ -112,7 +116,7 @@ func (d *Daemon) systemSampleOnce(ctx context.Context) {
 		}
 		sample.GPUs = append(sample.GPUs, hg)
 	}
-	if sample.CPU == nil && sample.Mem == nil && len(sample.GPUs) == 0 {
+	if sample.CPU == nil && sample.Mem == nil && len(sample.GPUs) == 0 && sample.Speed == nil {
 		return
 	}
 	d.hist.add(sample)

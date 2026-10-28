@@ -268,6 +268,11 @@ func startSupervisedForeground(sel spinloop.Selection, spinloopPath string, engi
 		model = sel.Alias
 	}
 	d.SetServed(sel.Provider, model, sel.Alias)
+	// The engine starts through the supervisor directly, so the output hook
+	// that reads its self-reported generation rate is wired here rather than
+	// in StartEngine. A forward-stdio run (empty LogPath) never captures a
+	// line, so the hook simply never fires.
+	sup.OnOutput = d.ObserveEngineLine
 	// A supervised engine gets its metrics endpoint switched on, exactly as
 	// the cloud path does for a deployed one; an engine with no metrics
 	// dialect gets no added switch and the host's series.

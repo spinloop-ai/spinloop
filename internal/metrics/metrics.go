@@ -28,6 +28,15 @@ type Stats struct {
 	CPU           *CpuStat    `json:"cpu,omitempty"`
 	Memory        *MemoryStat `json:"memory,omitempty"`
 	Errors        []string    `json:"errors,omitempty"`
+	// Speed is the engine's own generation rate in tokens per second, parsed
+	// from the timing lines it prints into its captured output (llama.cpp's
+	// print_timing `tg` figure today). Present only while the engine runs and
+	// has printed a figure since the last sampler tick: a stopped or quiet
+	// engine has no rate to report, and the old figure of a rate that has
+	// stopped is not an answer to "how fast is it generating?". Absent, not
+	// zero, for an engine that prints none and a daemon that predates the
+	// figure.
+	Speed *float64 `json:"speed,omitempty"`
 	// LastActiveAt is when the engine last did any work, RFC 3339, and
 	// IdleSeconds how long it has been since. They mirror the same two fields
 	// on the daemon's status reply and are filled from the same record, so a
@@ -123,6 +132,11 @@ type HistorySample struct {
 	CPU *float64 `json:"c,omitempty"`
 	// Mem is system memory used over total, percent.
 	Mem *float64 `json:"m,omitempty"`
+	// Speed is the engine's generation rate in tokens per second, from the
+	// timing lines its output carried during this tick's interval. Absent
+	// where the engine printed no figure since the previous tick — silence
+	// means nothing was generated, not a rate of zero.
+	Speed *float64 `json:"s,omitempty"`
 	// GPUs is each GPU's figures, percent.
 	GPUs []HistoryGPU `json:"g,omitempty"`
 }

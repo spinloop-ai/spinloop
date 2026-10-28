@@ -7,6 +7,7 @@ package daemon
 
 import (
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -50,6 +51,15 @@ type Supervisor struct {
 	// discards. Note what this is not: the engine's own output, which goes to
 	// LogPath and is served over /v1/logs.
 	Logger *slog.Logger
+	// OnOutput, when set, receives every complete line of the captured
+	// engine output — normalised stdout and stderr alike — alongside the log
+	// file that already gets it. The daemon wires it so the engine's account
+	// of itself (its generation rate) is read where the lines are already
+	// assembled, instead of re-reading the log. Only the captured path feeds
+	// it: a run forwarding stdio to the terminal has no lines that are not
+	// already on screen, and a line still unterminated when the engine exits
+	// is never handed over.
+	OnOutput func(line string)
 
 	mu       sync.Mutex
 	state    State
@@ -102,7 +112,14 @@ func (s *Supervisor) Start(argv []string) error {
 			return err
 		}
 		logFile = f
-		cmd.Stderr = f
+		// The capture sink is the log file, or the file behind the line tee
+		// when a hook is listening: the file gets every byte exactly as it
+		// always did, and the hook gets the same bytes as whole lines.
+		var sink io.Writer = f
+		if s.OnOutput != nil {
+			sink = &lineTee{w: f, onLine: s.OnOutput}
+		}
+		cmd.Stderr = sink
 		// The output is being written to a file, so the engine is told not
 		// to colour it: an engine that colours by whether it sees a
 		// terminal — and colours stderr by whether *stdout* is one, among
@@ -118,9 +135,9 @@ func (s *Supervisor) Start(argv []string) error {
 			cmd.Stdout = slave
 			ptyMaster, ptySlave = master, slave
 			ptyDone = make(chan struct{})
-			go pumpPTYLog(master, f, ptyDone)
+			go pumpPTYLog(master, sink, ptyDone)
 		} else {
-			cmd.Stdout = f
+			cmd.Stdout = sink
 			s.log().Debug("no pseudo-terminal for the engine's stdout; it goes to the log file directly",
 				slog.String("error", perr.Error()))
 		}

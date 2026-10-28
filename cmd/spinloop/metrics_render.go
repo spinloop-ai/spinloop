@@ -83,20 +83,40 @@ func formatKeepDuration(d time.Duration) string {
 	}
 }
 
+// statLabelWidth is the shared label column a block of stat rows draws: wide
+// enough for the longest label the block can carry, and no wider. The column
+// was sized for "GPU util"; with that series renamed to "GPU", the longest
+// single-GPU label is "GPU mem" — seven columns — and multi-GPU hosts widen
+// by the index they carry. It floors at seven even for a host with no GPU
+// series at all: one column width per fleet keeps blocks of different hosts
+// reading as the same table.
+func statLabelWidth(gpus []metrics.GpuStat, history []metrics.HistorySample) int {
+	w := len("GPU mem")
+	if idxs := gpuIndexes(gpus, history); len(idxs) > 1 {
+		for _, idx := range idxs {
+			if n := len(fmt.Sprintf("GPU %d mem", idx)); n > w {
+				w = n
+			}
+		}
+	}
+	return w
+}
+
 // renderActiveIndented draws the combined active-and-keep line in the indented
 // block the bar format and the tile use: the "ago" figure, and, when the read
 // carries a retention deadline, the relative keep after it — "active  2m 5s
 // ago  keep for 2h". The line is present whenever either fact is, and absent
 // when neither is. It is not a bar: an elapsed time has no ceiling to fill
-// against, and a bar would imply one.
-func renderActiveIndented(w io.Writer, lastActiveAt string, idleSeconds int, retainUntil string, now time.Time) {
+// against, and a bar would imply one. labelW is the block's shared label
+// column, so the active line starts its figure where the bars start theirs.
+func renderActiveIndented(w io.Writer, lastActiveAt string, idleSeconds int, retainUntil string, now time.Time, labelW int) {
 	active := lastActiveText(lastActiveAt, idleSeconds)
 	keep := keepText(retainUntil, now)
 	switch {
 	case active != "" && keep != "":
-		fmt.Fprintf(w, "  %-9s %s  %s\n", "active", active, keep)
+		fmt.Fprintf(w, "  %-*s %s  %s\n", labelW, "active", active, keep)
 	case active != "":
-		fmt.Fprintf(w, "  %-9s %s\n", "active", active)
+		fmt.Fprintf(w, "  %-*s %s\n", labelW, "active", active)
 	case keep != "":
 		fmt.Fprintf(w, "  %s\n", keep)
 	}
@@ -135,8 +155,10 @@ const barLineW = 40
 
 // dashBarLineW is the sparkline's draw width inside a dashboard tile: the
 // tile's width minus the label column and the widest trailing figure, so a
-// full row fits the tile exactly and the clip never takes the percentage.
-const dashBarLineW = 25
+// full row fits the tile exactly and the clip never takes the figure. The
+// figure column sizes for a speed row's "1234.56 t/s"; utilisation's "100%"
+// is narrower and leaves the row's last columns blank.
+const dashBarLineW = 23
 
 // gaugeW is the gauge's draw width in the one-shot formats — the width
 // renderGauge has always drawn at. The serve view draws its gauge half at
@@ -196,9 +218,10 @@ func poolMax(values []float64, width int) []float64 {
 // while it still fills, each glyph takes the state colour of its own value
 // on the gauge's 80/90 thresholds, and the trailing figure is the latest
 // sample's percentage — the exact value the last glyph approximates.
-func renderSparkline(w io.Writer, label string, samples []float64, width int) {
+// labelW is the block's shared label column width (see statLabelW).
+func renderSparkline(w io.Writer, label string, samples []float64, width, labelW int) {
 	block, last := sparklineBlock(samples, width)
-	fmt.Fprintf(w, "  %-9s %s %.0f%%\n", label, block, last)
+	fmt.Fprintf(w, "  %-*s %s %.0f%%\n", labelW, label, block, last)
 }
 
 // sparklineBlock returns the sparkline's drawing across width, one glyph per
@@ -232,8 +255,8 @@ func sparklineBlock(samples []float64, width int) (string, float64) {
 // filled portion in the state colour, the unfilled portion in light shade,
 // the percentage in the terminal's default colour. It draws the current
 // reading only — it carries no history.
-func renderGauge(w io.Writer, label string, pct float64, width int) {
-	fmt.Fprintf(w, "  %-9s %s %.0f%%\n", label, gaugeBlock(pct, width), pct)
+func renderGauge(w io.Writer, label string, pct float64, width, labelW int) {
+	fmt.Fprintf(w, "  %-*s %s %.0f%%\n", labelW, label, gaugeBlock(pct, width), pct)
 }
 
 // gaugeBlock returns the gauge's drawing at width — the filled portion in
@@ -262,12 +285,34 @@ type barSeries struct {
 	current *float64
 }
 
+// gpuIndexes is the set of GPU indices the reading names, the current
+// reading's order first and the history's after: a stopped engine's current
+// reading names no GPU, but its retained readings still name the ones it ran
+// on, and the series those readings carry are the point of keeping them.
+func gpuIndexes(gpus []metrics.GpuStat, history []metrics.HistorySample) []int {
+	seen := map[int]bool{}
+	var idxs []int
+	for _, g := range gpus {
+		if !seen[g.Index] {
+			seen[g.Index] = true
+			idxs = append(idxs, g.Index)
+		}
+	}
+	for _, s := range history {
+		for _, g := range s.GPUs {
+			if !seen[g.Index] {
+				seen[g.Index] = true
+				idxs = append(idxs, g.Index)
+			}
+		}
+	}
+	return idxs
+}
+
 // barSeriesList works out which series the reading and the history carry, in
 // the order the gauge draws them: CPU, RAM, then each GPU's utilisation and
-// memory. The GPU set is the union of the two sources in the current
-// reading's order first — a stopped engine's current reading names no GPU,
-// but its retained readings still name the ones it ran on, and the series
-// those readings carry are the point of keeping them.
+// memory. The GPU set is gpuIndexes: the current reading first, the retained
+// history's after.
 func barSeriesList(cpu *metrics.CpuStat, mem *metrics.MemoryStat, gpus []metrics.GpuStat, history []metrics.HistorySample) []barSeries {
 	var out []barSeries
 	add := func(label string, current *float64, pick func(s metrics.HistorySample) *float64) {
@@ -297,28 +342,13 @@ func barSeriesList(cpu *metrics.CpuStat, mem *metrics.MemoryStat, gpus []metrics
 	} else {
 		add("RAM", nil, func(s metrics.HistorySample) *float64 { return s.Mem })
 	}
-	seen := map[int]bool{}
-	var idxs []int
-	for _, g := range gpus {
-		if !seen[g.Index] {
-			seen[g.Index] = true
-			idxs = append(idxs, g.Index)
-		}
-	}
-	for _, s := range history {
-		for _, g := range s.GPUs {
-			if !seen[g.Index] {
-				seen[g.Index] = true
-				idxs = append(idxs, g.Index)
-			}
-		}
-	}
+	idxs := gpuIndexes(gpus, history)
 	for _, idx := range idxs {
 		prefix := "GPU"
 		if len(idxs) > 1 {
 			prefix = fmt.Sprintf("GPU %d", idx)
 		}
-		add(prefix+" util", currentGPUUtil(gpus, idx), func(s metrics.HistorySample) *float64 {
+		add(prefix, currentGPUUtil(gpus, idx), func(s metrics.HistorySample) *float64 {
 			for _, g := range s.GPUs {
 				if g.Index == idx {
 					v := float64(g.Util)
@@ -369,15 +399,156 @@ func currentGPUMem(gpus []metrics.GpuStat, idx int) *float64 {
 // the series — as the gauge drawing of the current reading, so a daemon that
 // predates the history renders exactly as it did before it. Used by the bar
 // format on every surface; lineW is the draw width, barLineW for the full
-// view and dashBarLineW for a dashboard tile.
-func renderStatBars(w io.Writer, cpu *metrics.CpuStat, mem *metrics.MemoryStat, gpus []metrics.GpuStat, history []metrics.HistorySample, lineW int) {
+// view and dashBarLineW for a dashboard tile. The generation speed closes
+// the block when the engine reports one, its sparkline drawing in the same
+// columns as the bars above it.
+func renderStatBars(w io.Writer, cpu *metrics.CpuStat, mem *metrics.MemoryStat, gpus []metrics.GpuStat, speed *float64, history []metrics.HistorySample, lineW int) {
+	labelW := statLabelWidth(gpus, history)
 	for _, s := range barSeriesList(cpu, mem, gpus, history) {
 		if len(s.history) > 0 {
-			renderSparkline(w, s.label, s.history, lineW)
+			renderSparkline(w, s.label, s.history, lineW, labelW)
 		} else {
-			renderGauge(w, s.label, *s.current, gaugeW)
+			renderGauge(w, s.label, *s.current, gaugeW, labelW)
 		}
 	}
+	renderSpeedBar(w, speed, history, lineW, labelW)
+}
+
+// speedSeries gathers the retained generation-rate points, oldest first, one
+// slot per history sample: the rate where the sample has one, a nil gap
+// where the engine was quiet. Unlike a packed series, a slot sits at its own
+// sample's place on the window's time axis — so when the engine stops
+// generating, the burst slides left as the quiet ticks pile up behind it and
+// the row's right edge goes blank. A packed series would keep the last burst
+// flush against the edge as the current figure falls to zero, drawing the
+// question's last answer as if it were still being given.
+func speedSeries(history []metrics.HistorySample) []*float64 {
+	out := make([]*float64, len(history))
+	for i, s := range history {
+		out[i] = s.Speed
+	}
+	return out
+}
+
+// speedShown is whether the engine reports generation speed at all: a fresh
+// current figure, or the window still holding points from when it last
+// generated. A daemon that never carries the figure answers neither, and gets
+// no row — the engine that reports no speed is not an engine generating at
+// zero, but an engine whose row would be a question it cannot answer.
+func speedShown(speed *float64, history []metrics.HistorySample) bool {
+	if speed != nil {
+		return true
+	}
+	for _, s := range history {
+		if s.Speed != nil {
+			return true
+		}
+	}
+	return false
+}
+
+// poolMaxGaps reduces a gap-carrying series to at most width columns, one
+// per column, each the maximum of the non-nil samples pooled into it — and
+// nil where every pooled sample was a gap. Pooling keeps the newest sample
+// in the final column the way poolMax does; a quiet column stays quiet and
+// draws blank rather than borrowing its neighbour's rate.
+func poolMaxGaps(values []*float64, width int) []*float64 {
+	if len(values) <= width {
+		return values
+	}
+	out := make([]*float64, width)
+	per := float64(len(values)) / float64(width)
+	for c := range out {
+		lo := int(float64(c) * per)
+		hi := int(float64(c+1) * per)
+		if c == width-1 {
+			hi = len(values)
+		}
+		var m *float64
+		for i := lo; i < hi; i++ {
+			if values[i] != nil && (m == nil || *values[i] > *m) {
+				m = values[i]
+			}
+		}
+		out[c] = m
+	}
+	return out
+}
+
+// speedBlock draws the speed sparkline. Its glyph heights are relative to
+// the highest value the window holds — the window's own maximum maps to the
+// heaviest grade the sparkline draws and nothing maps to the full block —
+// so the row reads against itself: a steady engine fills it evenly, a burst
+// doubles the row's height beside its own baseline. Every point draws in the
+// terminal's default colour whatever its height: the 80/90 thresholds belong
+// to utilisation percentages, and a generation rate has no ceiling to cross.
+// A nil sample — a quiet tick — draws blank, so a lapse shows as the row's
+// right edge emptying beside its 0.00 figure.
+func speedBlock(samples []*float64, width int) string {
+	pooled := poolMaxGaps(samples, width)
+	peak := 0.0
+	for _, v := range pooled {
+		if v != nil && *v > peak {
+			peak = *v
+		}
+	}
+	var b strings.Builder
+	b.WriteString(strings.Repeat(" ", width-len(pooled)))
+	for _, v := range pooled {
+		if v == nil {
+			b.WriteRune(' ')
+			continue
+		}
+		pct := 0.0
+		if peak > 0 {
+			pct = *v / peak * 100
+		}
+		b.WriteRune(barGlyph(pct))
+	}
+	return b.String()
+}
+
+// speedFigure is the Speed row's figure: the current reading, and zero where
+// it has lapsed — an engine that has stopped generating is generating at
+// zero, and a watched row that kept showing the last burst's rate would be
+// answering a question the engine is no longer asking. Only ever called for
+// a row speedShown has drawn.
+func speedFigure(speed *float64) float64 {
+	if speed != nil {
+		return *speed
+	}
+	return 0
+}
+
+// speedText is the figure with its unit, unpadded so a row drawing the
+// figure at a fixed starting column keeps the number's first digit there
+// however many digits the rate has grown.
+func speedText(v float64) string {
+	return fmt.Sprintf("%.2f t/s", v)
+}
+
+// renderSpeedBar draws the Speed row of the bar-format surfaces: the label,
+// the rate's sparkline in the bars' own column, and the t/s figure trailing
+// where the other rows carry their percentages, since a gauge would imply a
+// ceiling the rate does not have. Quiet samples leave the sparkline blank at
+// their own columns, so a lapse empties the row's right edge. The row is
+// absent when the engine reports no speed at all.
+func renderSpeedBar(w io.Writer, speed *float64, history []metrics.HistorySample, lineW, labelW int) {
+	if !speedShown(speed, history) {
+		return
+	}
+	fmt.Fprintf(w, "  %-*s %s %s\n", labelW, "Speed", speedBlock(speedSeries(history), lineW), speedText(speedFigure(speed)))
+}
+
+// renderSpeedGauge draws the Speed row where no history is drawn — the gauge
+// format and the gauge-mode tile: the figure at the column the gauges start,
+// and no bar the rate has no ceiling to fill against. The row joins whenever
+// the engine reports speed at all, and a lapsed figure reads 0.00.
+func renderSpeedGauge(w io.Writer, speed *float64, history []metrics.HistorySample, labelW int) {
+	if !speedShown(speed, history) {
+		return
+	}
+	fmt.Fprintf(w, "  %-*s %s\n", labelW, "Speed", speedText(speedFigure(speed)))
 }
 
 // serveGaugeW and serveBarW are the two halves of the serve view's combined
@@ -401,7 +572,8 @@ const (
 // history leaves its bar half blank and a series with no current reading its
 // gauge half blank, so the lines align and the figure never draws a half's
 // own number twice.
-func renderStatCombined(w io.Writer, cpu *metrics.CpuStat, mem *metrics.MemoryStat, gpus []metrics.GpuStat, history []metrics.HistorySample) {
+func renderStatCombined(w io.Writer, cpu *metrics.CpuStat, mem *metrics.MemoryStat, gpus []metrics.GpuStat, speed *float64, history []metrics.HistorySample) {
+	labelW := statLabelWidth(gpus, history)
 	for _, s := range barSeriesList(cpu, mem, gpus, history) {
 		gaugeHalf := strings.Repeat(" ", serveGaugeW)
 		barHalf := strings.Repeat(" ", serveBarW)
@@ -417,18 +589,31 @@ func renderStatCombined(w io.Writer, cpu *metrics.CpuStat, mem *metrics.MemorySt
 				figure = last
 			}
 		}
-		fmt.Fprintf(w, "  %-9s %s %3.0f%% %s\n", s.label, gaugeHalf, figure, barHalf)
+		fmt.Fprintf(w, "  %-*s %s %3.0f%% %s\n", labelW, s.label, gaugeHalf, figure, barHalf)
+	}
+	if speedShown(speed, history) {
+		// The figure stands at the column the gauges start — the rate has no
+		// ceiling to fill a gauge against — inside a field spanning the other
+		// rows' gauge and percentage halves. The field is what keeps the
+		// sparkline starting where every other sparkline does as the figure
+		// grows digits, and a lapsed reading draws its 0.00 there while the
+		// sparkline's own right edge empties tick by tick beside it.
+		fmt.Fprintf(w, "  %-*s %-*s%s\n", labelW, "Speed", serveGaugeW+6, speedText(speedFigure(speed)), speedBlock(speedSeries(history), serveBarW))
 	}
 }
 
 // renderStatGauges draws the resource series in the gauge format: the current
-// reading only, whatever the history holds.
-func renderStatGauges(w io.Writer, cpu *metrics.CpuStat, mem *metrics.MemoryStat, gpus []metrics.GpuStat) {
+// reading only, whatever the history holds. The generation speed joins as a
+// figure-only row wherever the engine reports one — the history decides that
+// even though the format draws none — and a lapsed reading draws 0.00.
+func renderStatGauges(w io.Writer, cpu *metrics.CpuStat, mem *metrics.MemoryStat, gpus []metrics.GpuStat, speed *float64, history []metrics.HistorySample) {
+	labelW := statLabelWidth(gpus, history)
 	for _, s := range barSeriesList(cpu, mem, gpus, nil) {
 		if s.current != nil {
-			renderGauge(w, s.label, *s.current, gaugeW)
+			renderGauge(w, s.label, *s.current, gaugeW, labelW)
 		}
 	}
+	renderSpeedGauge(w, speed, history, labelW)
 }
 
 // renderTokenLines draws the engine's token and request counters, the block
@@ -447,6 +632,16 @@ func renderTokenLines(w io.Writer, tokens *metrics.TokenStats) {
 	if tokens.Requests != nil {
 		fmt.Fprintf(w, "  requests:         %d\n", *tokens.Requests)
 	}
+}
+
+// renderSpeedTable draws the table format's speed line, beside the token
+// counters it shares the engine-block with. A lapsed reading reads 0.00; the
+// line is absent only for an engine that reports no rate at all.
+func renderSpeedTable(w io.Writer, speed *float64, history []metrics.HistorySample) {
+	if !speedShown(speed, history) {
+		return
+	}
+	fmt.Fprintf(w, "  speed:          %s\n", speedText(speedFigure(speed)))
 }
 
 // renderGPUTable draws the per-GPU lines of the table format, plus the

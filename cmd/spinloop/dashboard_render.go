@@ -465,12 +465,12 @@ func dashTileReportBody(w io.Writer, m metrics.Stats, resources bool, gauge bool
 	// after it — one line, from the same read, whatever the engine's state. A
 	// read without either — a local node, an unkept or lapsed environment —
 	// draws nothing.
-	renderActiveIndented(w, m.LastActiveAt, m.IdleSeconds, m.RetainUntil, now)
+	renderActiveIndented(w, m.LastActiveAt, m.IdleSeconds, m.RetainUntil, now, statLabelWidth(m.GPUs, m.History))
 	if resources {
 		if gauge {
-			renderStatGauges(w, m.CPU, m.Memory, m.GPUs)
+			renderStatGauges(w, m.CPU, m.Memory, m.GPUs, m.Speed, m.History)
 		} else {
-			renderStatBars(w, m.CPU, m.Memory, m.GPUs, m.History, lineW)
+			renderStatBars(w, m.CPU, m.Memory, m.GPUs, m.Speed, m.History, lineW)
 		}
 		renderTokenLines(w, m.Tokens)
 	}

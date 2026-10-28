@@ -52,7 +52,7 @@ func TestCloudMetricsBarShowsLastActive(t *testing.T) {
 			t.Fatalf("cmdMetrics: %v", err)
 		}
 	})
-	if !strings.Contains(out, "active    2m 5s ago") {
+	if !strings.Contains(out, "active  2m 5s ago") {
 		t.Errorf("bar format missing the active line:\n%s", out)
 	}
 	// It belongs between the header and the bars: a fact about the endpoint,
@@ -127,7 +127,7 @@ func TestCloudMetricsStoppedStillShowsLastActive(t *testing.T) {
 	// The bar format indents the line to the bar-label column; the table
 	// format makes it a key-value row. Same fact, each format's own idiom.
 	for format, want := range map[string]string{
-		"bar":   "active    1h 0m 0s ago",
+		"bar":   "active  1h 0m 0s ago",
 		"table": "active:       1h 0m 0s ago",
 	} {
 		t.Run(format, func(t *testing.T) {
@@ -157,7 +157,7 @@ func TestLastActiveZeroIdleStillRenders(t *testing.T) {
 	}`)
 
 	for format, want := range map[string]string{
-		"bar":   "active    0s ago",
+		"bar":   "active  0s ago",
 		"table": "active:       0s ago",
 	} {
 		t.Run(format, func(t *testing.T) {
@@ -305,7 +305,7 @@ func TestFleetMetricsShowsLastActive(t *testing.T) {
 			})
 			// bar indents its active line under the header; table spells it
 			// as a key-value, like the facts around it.
-			want := "active    2m 5s ago"
+			want := "active  2m 5s ago"
 			if format == "table" {
 				want = "active:       2m 5s ago"
 			}
@@ -379,7 +379,7 @@ func TestFleetMetricsStoppedNodeStillShowsLastActive(t *testing.T) {
 			t.Fatalf("cmdFleet metrics: %v", err)
 		}
 	})
-	if !strings.Contains(out, "active    10m 0s ago") {
+	if !strings.Contains(out, "active  10m 0s ago") {
 		t.Errorf("a stopped node dropped its active figure:\n%s", out)
 	}
 }

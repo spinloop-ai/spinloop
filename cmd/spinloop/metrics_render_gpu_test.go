@@ -17,10 +17,10 @@ func TestUtilisationOnlyGPUDrawsNoMemorySeries(t *testing.T) {
 		{GPUs: []metrics.HistoryGPU{{Index: 0, Util: 56}}},
 	}
 	var bar, gauge bytes.Buffer
-	renderStatBars(&bar, nil, nil, macGPU, history, barLineW)
-	renderStatGauges(&gauge, nil, nil, macGPU)
+	renderStatBars(&bar, nil, nil, macGPU, nil, history, barLineW)
+	renderStatGauges(&gauge, nil, nil, macGPU, nil, nil)
 	for name, out := range map[string]string{"bar": bar.String(), "gauge": gauge.String()} {
-		if !strings.Contains(out, "GPU util") || !strings.Contains(out, " 56%") {
+		if !strings.Contains(out, "GPU") || !strings.Contains(out, " 56%") {
 			t.Errorf("%s: missing GPU util: %q", name, out)
 		}
 		if strings.Contains(out, "GPU mem") {
@@ -34,10 +34,10 @@ func TestGPUWithMemoryTotalDrawsBothSeries(t *testing.T) {
 	gpus := []metrics.GpuStat{{Index: 0, Name: "NVIDIA L40S", Utilization: 12,
 		MemoryUsed: 8 << 30, MemoryTotal: 16 << 30, Temperature: 42}}
 	var bar, gauge bytes.Buffer
-	renderStatBars(&bar, nil, nil, gpus, nil, barLineW)
-	renderStatGauges(&gauge, nil, nil, gpus)
+	renderStatBars(&bar, nil, nil, gpus, nil, nil, barLineW)
+	renderStatGauges(&gauge, nil, nil, gpus, nil, nil)
 	for name, out := range map[string]string{"bar": bar.String(), "gauge": gauge.String()} {
-		if !strings.Contains(out, "GPU util") || !strings.Contains(out, "GPU mem") || !strings.Contains(out, " 50%") {
+		if !strings.Contains(out, "GPU") || !strings.Contains(out, "GPU mem") || !strings.Contains(out, " 50%") {
 			t.Errorf("%s: %q", name, out)
 		}
 	}
