@@ -27,3 +27,11 @@
 ## Verify
 
 - [x] `gofmt -w`, `go vet ./...`, `go test ./... -cover` green, coverage ≥ 80%
+
+## Layout follow-up (from review of the rendered view)
+
+- [x] Tighten the block's shared label column to its longest label (`statLabelWidth`: "GPU mem" = 7, widening by the GPU index); thread the width through `renderSparkline`/`renderGauge`/`renderActiveIndented` and the Speed rows
+- [x] Serve view: the speed figure stands at the graph column inside a fixed field spanning the gauge and percentage halves, pinning the sparkline to the sparklines' column across digit counts
+- [x] Bar format: sparkline in the bars' column, t/s figure trailing with the other rows' percentages; gauge/tile rows carry the figure at the graph column
+- [x] A lapsed figure on an engine that reports one draws `0.00 t/s` wherever the row shows (`speedShown`/`speedFigure`); only a never-reporting engine has no row
+- [x] `dashBarLineW` 25→23 so the trailing t/s figure fits the 42-column tile; goldens and spec/design/docs updated

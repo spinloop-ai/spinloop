@@ -18,7 +18,7 @@ func TestUtilisationOnlyGPUDrawsNoMemorySeries(t *testing.T) {
 	}
 	var bar, gauge bytes.Buffer
 	renderStatBars(&bar, nil, nil, macGPU, nil, history, barLineW)
-	renderStatGauges(&gauge, nil, nil, macGPU, nil)
+	renderStatGauges(&gauge, nil, nil, macGPU, nil, nil)
 	for name, out := range map[string]string{"bar": bar.String(), "gauge": gauge.String()} {
 		if !strings.Contains(out, "GPU") || !strings.Contains(out, " 56%") {
 			t.Errorf("%s: missing GPU util: %q", name, out)
@@ -35,7 +35,7 @@ func TestGPUWithMemoryTotalDrawsBothSeries(t *testing.T) {
 		MemoryUsed: 8 << 30, MemoryTotal: 16 << 30, Temperature: 42}}
 	var bar, gauge bytes.Buffer
 	renderStatBars(&bar, nil, nil, gpus, nil, nil, barLineW)
-	renderStatGauges(&gauge, nil, nil, gpus, nil)
+	renderStatGauges(&gauge, nil, nil, gpus, nil, nil)
 	for name, out := range map[string]string{"bar": bar.String(), "gauge": gauge.String()} {
 		if !strings.Contains(out, "GPU") || !strings.Contains(out, "GPU mem") || !strings.Contains(out, " 50%") {
 			t.Errorf("%s: %q", name, out)

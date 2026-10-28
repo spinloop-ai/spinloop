@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -77,11 +78,11 @@ func TestPoolMaxKeepsPeaks(t *testing.T) {
 
 func TestRenderSparkline(t *testing.T) {
 	var b bytes.Buffer
-	renderSparkline(&b, "CPU", []float64{20, 30}, 40)
+	renderSparkline(&b, "CPU", []float64{20, 30}, 40, 7)
 	// The trailing figure is the latest sample's percentage — the exact value
 	// the last glyph approximates — not the series' first. Both points sit
 	// below the 80% threshold, so neither takes a colour.
-	want := "  CPU       " + strings.Repeat(" ", 38) + "▂▃" + " 30%\n"
+	want := "  CPU     " + strings.Repeat(" ", 38) + "▂▃" + " 30%\n"
 	if got := b.String(); got != want {
 		t.Errorf("sparkline = %q, want %q", got, want)
 	}
@@ -93,8 +94,8 @@ func TestRenderSparkline(t *testing.T) {
 // they sit while the calm points around them do not.
 func TestRenderSparklineColoursEveryPoint(t *testing.T) {
 	var b bytes.Buffer
-	renderSparkline(&b, "CPU", []float64{5, 95, 85, 30}, 40)
-	want := "  CPU       " + strings.Repeat(" ", 36) +
+	renderSparkline(&b, "CPU", []float64{5, 95, 85, 30}, 40, 7)
+	want := "  CPU     " + strings.Repeat(" ", 36) +
 		"▁" + ansiRed + "▇" + ansiReset +
 		ansiYellow + "▆" + ansiReset +
 		"▃" + " 30%\n"
@@ -119,7 +120,7 @@ func TestRenderSparklineColoursTheLastPointByItsValue(t *testing.T) {
 	}
 	for _, c := range cases {
 		var b bytes.Buffer
-		renderSparkline(&b, "CPU", []float64{5, 95, c.last}, 40)
+		renderSparkline(&b, "CPU", []float64{5, 95, c.last}, 40, 7)
 		if !strings.HasSuffix(b.String(), c.want) {
 			t.Errorf("last point %v: %q, want suffix %q", c.last, b.String(), c.want)
 		}
@@ -128,15 +129,15 @@ func TestRenderSparklineColoursTheLastPointByItsValue(t *testing.T) {
 
 func TestRenderGauge(t *testing.T) {
 	var b bytes.Buffer
-	renderGauge(&b, "CPU", 42, gaugeW)
-	want := "  CPU       " + ansiGreen + strings.Repeat("█", 10) + ansiReset + strings.Repeat("░", 15) + " 42%\n"
+	renderGauge(&b, "CPU", 42, gaugeW, 7)
+	want := "  CPU     " + ansiGreen + strings.Repeat("█", 10) + ansiReset + strings.Repeat("░", 15) + " 42%\n"
 	if got := b.String(); got != want {
 		t.Errorf("gauge = %q, want %q", got, want)
 	}
 	// A value beyond 100 fills the gauge rather than spilling past it.
 	b.Reset()
-	renderGauge(&b, "CPU", 150, gaugeW)
-	want = "  CPU       " + ansiRed + strings.Repeat("█", 25) + ansiReset + " 150%\n"
+	renderGauge(&b, "CPU", 150, gaugeW, 7)
+	want = "  CPU     " + ansiRed + strings.Repeat("█", 25) + ansiReset + " 150%\n"
 	if got := b.String(); got != want {
 		t.Errorf("out-of-range gauge = %q, want %q", got, want)
 	}
@@ -163,7 +164,7 @@ func TestRenderStatBarsFallsBackToGaugeWithoutHistory(t *testing.T) {
 
 	var got, want bytes.Buffer
 	renderStatBars(&got, cpu, mem, gpus, nil, nil, barLineW)
-	renderStatGauges(&want, cpu, mem, gpus, nil)
+	renderStatGauges(&want, cpu, mem, gpus, nil, nil)
 	if got.String() != want.String() {
 		t.Errorf("no-history bar differs from the old drawing:\ngot:\n%q\nwant:\n%q", got.String(), want.String())
 	}
@@ -258,7 +259,7 @@ func TestRenderStatBarsStoppedEngineDrawsHistoryAlone(t *testing.T) {
 	if len(lines) != 3 {
 		t.Fatalf("drew %d lines, want CPU, GPU and GPU mem: %q", len(lines), b.String())
 	}
-	if !strings.HasPrefix(lines[0], "  CPU       ") {
+	if !strings.HasPrefix(lines[0], "  CPU     ") {
 		t.Errorf("first line: %q", lines[0])
 	}
 	// One GPU: the plain "GPU" prefix, as the gauge used it.
@@ -323,12 +324,12 @@ func TestRenderStatBarsGPUInOnlySomeSamples(t *testing.T) {
 func TestRenderStatGaugesIgnoresHistory(t *testing.T) {
 	cpu := &metrics.CpuStat{Utilization: 50}
 	var b bytes.Buffer
-	renderStatGauges(&b, cpu, nil, nil, nil)
+	renderStatGauges(&b, cpu, nil, nil, nil, nil)
 	if !strings.Contains(b.String(), " 50%") || strings.Contains(b.String(), "▁") {
 		t.Errorf("gauge drew history or the wrong value: %q", b.String())
 	}
 	b.Reset()
-	renderStatGauges(&b, nil, nil, nil, nil)
+	renderStatGauges(&b, nil, nil, nil, nil, nil)
 	if b.String() != "" {
 		t.Errorf("a stopped engine drew gauges: %q", b.String())
 	}
@@ -353,7 +354,7 @@ func TestRenderStatCombined(t *testing.T) {
 	if len(lines) != 4 {
 		t.Fatalf("drew %d lines, want 4: %q", len(lines), b.String())
 	}
-	for i, label := range []string{"  CPU       ", "  RAM       ", "  GPU       ", "  GPU mem   "} {
+	for i, label := range []string{"  CPU     ", "  RAM     ", "  GPU     ", "  GPU mem "} {
 		if !strings.HasPrefix(lines[i], label) {
 			t.Errorf("line for %s: %q", label, lines[i])
 		}
@@ -362,7 +363,7 @@ func TestRenderStatCombined(t *testing.T) {
 	// the two halves, and it is the current reading, not the bar's last
 	// sample.
 	cpuBar, _ := sparklineBlock([]float64{10, 95}, serveBarW)
-	wantCPU := "  CPU       " + gaugeBlock(42, serveGaugeW) + "  42% " + cpuBar
+	wantCPU := "  CPU     " + gaugeBlock(42, serveGaugeW) + "  42% " + cpuBar
 	if lines[0] != wantCPU {
 		t.Errorf("CPU line:\ngot  %q\nwant %q", lines[0], wantCPU)
 	}
@@ -385,8 +386,8 @@ func TestRenderStatCombined(t *testing.T) {
 	// gauge half, a space, the figure's fixed-width field (4: three digits
 	// right-aligned plus the percent sign), a space, bar half.
 	for i, line := range lines {
-		if w := lipgloss.Width(line); w != 12+serveGaugeW+1+4+1+serveBarW {
-			t.Errorf("line %d is %d columns wide, want %d: %q", i, w, 12+serveGaugeW+1+4+1+serveBarW, line)
+		if w := lipgloss.Width(line); w != 10+serveGaugeW+1+4+1+serveBarW {
+			t.Errorf("line %d is %d columns wide, want %d: %q", i, w, 10+serveGaugeW+1+4+1+serveBarW, line)
 		}
 	}
 }
@@ -414,12 +415,12 @@ func TestRenderStatCombinedFigureDoesNotShiftTheBar(t *testing.T) {
 		if len(lines) != 1 {
 			t.Fatalf("figure %s drew %d lines, want 1: %q", c.figure, len(lines), b.String())
 		}
-		want := "  CPU       " + gaugeBlock(c.value, serveGaugeW) + " " + c.figure + " " + cpuBar
+		want := "  CPU     " + gaugeBlock(c.value, serveGaugeW) + " " + c.figure + " " + cpuBar
 		if lines[0] != want {
 			t.Errorf("figure %s:\ngot  %q\nwant %q", c.figure, lines[0], want)
 		}
-		if w := lipgloss.Width(lines[0]); w != 12+serveGaugeW+1+4+1+serveBarW {
-			t.Errorf("figure %s drew a %d-column line, want %d: %q", c.figure, w, 12+serveGaugeW+1+4+1+serveBarW, lines[0])
+		if w := lipgloss.Width(lines[0]); w != 10+serveGaugeW+1+4+1+serveBarW {
+			t.Errorf("figure %s drew a %d-column line, want %d: %q", c.figure, w, 10+serveGaugeW+1+4+1+serveBarW, lines[0])
 		}
 	}
 }
@@ -445,10 +446,10 @@ func TestRenderStatCombinedWithoutHistory(t *testing.T) {
 	lines := strings.Split(strings.TrimSuffix(b.String(), "\n"), "\n")
 	blankBar := strings.Repeat(" ", serveBarW)
 	want := []string{
-		"  CPU       " + gaugeBlock(42, serveGaugeW) + "  42% " + blankBar,
-		"  RAM       " + gaugeBlock(30, serveGaugeW) + "  30% " + blankBar,
-		"  GPU       " + gaugeBlock(61, serveGaugeW) + "  61% " + blankBar,
-		"  GPU mem   " + gaugeBlock(50, serveGaugeW) + "  50% " + blankBar,
+		"  CPU     " + gaugeBlock(42, serveGaugeW) + "  42% " + blankBar,
+		"  RAM     " + gaugeBlock(30, serveGaugeW) + "  30% " + blankBar,
+		"  GPU     " + gaugeBlock(61, serveGaugeW) + "  61% " + blankBar,
+		"  GPU mem " + gaugeBlock(50, serveGaugeW) + "  50% " + blankBar,
 	}
 	if len(lines) != len(want) {
 		t.Fatalf("drew %d lines, want %d: %q", len(lines), len(want), b.String())
@@ -479,10 +480,10 @@ func TestRenderStatCombinedStoppedEngineDrawsHistoryAlone(t *testing.T) {
 	}
 	blankGauge := strings.Repeat(" ", serveGaugeW)
 	wantPrefix := []string{
-		"  CPU       " + blankGauge + "  20% ",
-		"  RAM       " + blankGauge + "  30% ",
-		"  GPU       " + blankGauge + "  60% ",
-		"  GPU mem   " + blankGauge + "  60% ",
+		"  CPU     " + blankGauge + "  20% ",
+		"  RAM     " + blankGauge + "  30% ",
+		"  GPU     " + blankGauge + "  60% ",
+		"  GPU mem " + blankGauge + "  60% ",
 	}
 	for i, want := range wantPrefix {
 		if !strings.HasPrefix(lines[i], want) {
@@ -519,8 +520,8 @@ func TestFormatMetricsBarStoppedWithHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := "prod  stopped  org/qwen:q4\n" +
-		"  active    12s ago\n" +
-		"  CPU       " + strings.Repeat(" ", 38) + "▁▂" + " 20%\n"
+		"  active  12s ago\n" +
+		"  CPU     " + strings.Repeat(" ", 38) + "▁▂" + " 20%\n"
 	if got := b.String(); got != want {
 		t.Errorf("stopped bar = %q, want %q", got, want)
 	}
@@ -532,7 +533,7 @@ func TestFormatMetricsBarStoppedWithHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	want = "prod  stopped  org/qwen:q4\n" +
-		"  active    12s ago\n"
+		"  active  12s ago\n"
 	if got := b.String(); got != want {
 		t.Errorf("stopped gauge = %q, want %q", got, want)
 	}
@@ -560,7 +561,7 @@ func TestFormatMetricsBarRunning(t *testing.T) {
 	if !strings.HasPrefix(got, "prod  running  g5.xlarge  org/qwen:q4  0.4.3\n") {
 		t.Errorf("header: %q", got)
 	}
-	if !strings.Contains(got, "  active    3s ago\n") {
+	if !strings.Contains(got, "  active  3s ago\n") {
 		t.Errorf("active line missing: %q", got)
 	}
 	// Every series drew a sparkline from the history: no gauge in the output.
@@ -648,9 +649,10 @@ func nodeResultsFor(resp *cloud.StatsResponse) []fleet.NodeResult {
 	}}
 }
 
-// The Speed row: the window's high watermark sets the glyph heights, every
-// point draws in the default colour, and no speed in the reading draws no
-// row at all.
+// The Speed row: the sparkline starts in the bars' column and the t/s
+// figure trails where the percentages sit, the window's high watermark sets
+// the glyph heights, every point draws in the default colour, and a figure
+// that has lapsed reads zero while the window still remembers the rate.
 func TestRenderSpeedRow(t *testing.T) {
 	speed := 8.5
 	history := []metrics.HistorySample{
@@ -658,39 +660,41 @@ func TestRenderSpeedRow(t *testing.T) {
 		{Time: 2, Speed: ptrPct(5.0)},
 		{Time: 3, Speed: ptrPct(10.0)},
 	}
+	bar := strings.Repeat(" ", barLineW-3) + "▂▄▇"
 	var b bytes.Buffer
 	renderStatBars(&b, &metrics.CpuStat{Utilization: 95}, nil, nil, &speed, history, barLineW)
 	lines := strings.Split(strings.TrimSuffix(b.String(), "\n"), "\n")
 	line := lines[len(lines)-1]
-	if !strings.HasPrefix(line, "  Speed       8.50 t/s ") {
-		t.Fatalf("speed row: %q", line)
+	want := "  Speed   " + bar + " 8.50 t/s"
+	if line != want {
+		t.Fatalf("speed row:\ngot  %q\nwant %q", line, want)
+	}
+	// The sparkline shares the CPU row's graph column: same label column,
+	// same draw width, so the glyphs start at the same character.
+	if got, cpu := line[10:20], lines[0][10:20]; len(got) != len(cpu) {
+		t.Errorf("graph columns differ: %q / %q", got, cpu)
 	}
 	// The window's fastest point takes the heaviest grade the sparkline
 	// draws, its slowest one far lighter — and neither the full block.
-	tail := strings.TrimLeft(line[strings.Index(line, "t/s ")+4:], " ")
-	if !strings.HasSuffix(tail, "▇") {
-		t.Errorf("the window maximum did not draw the heaviest grade: %q", tail)
+	if !strings.HasSuffix(bar, "▇") || !strings.Contains(bar, "▂") {
+		t.Errorf("watermark mapping: %q", bar)
 	}
-	if !strings.Contains(tail, "▂") {
-		t.Errorf("the window minimum did not draw a far lighter grade: %q", tail)
-	}
-	// The speed row draws no full block of its own, and no threshold colour
-	// at its window maximum — while the 95% CPU row on the same screen is
-	// free to be coloured.
-	if strings.Contains(line, "█") {
-		t.Errorf("the speed row drew the full block: %q", line)
-	}
+	// The speed row draws no threshold colour at its window maximum — while
+	// the 95% CPU row on the same screen is free to be coloured.
 	if strings.Contains(line, "\x1b[") {
 		t.Errorf("the speed row drew colour: %q", line)
 	}
+	if !strings.Contains(lines[0], "\x1b[") {
+		t.Errorf("the CPU row should still colour: %q", lines[0])
+	}
 
-	// No current figure but a retained history: the row falls back to the
-	// window's last point — the last rate a stopped engine had.
+	// A lapsed figure on an engine that reports speed: the row stays, the
+	// figure reads zero, and the trend remembers the rates it saw.
 	b.Reset()
 	renderStatBars(&b, nil, nil, nil, nil, history, barLineW)
 	line = strings.Split(strings.TrimSuffix(b.String(), "\n"), "\n")[0]
-	if !strings.HasPrefix(line, "  Speed      10.00 t/s ") {
-		t.Errorf("a stopped engine's speed row: %q", line)
+	if want := "  Speed   " + bar + " 0.00 t/s"; line != want {
+		t.Errorf("a quiet engine's speed row:\ngot  %q\nwant %q", line, want)
 	}
 
 	// Neither reading nor history: no row.
@@ -701,30 +705,49 @@ func TestRenderSpeedRow(t *testing.T) {
 	}
 }
 
-// The gauge format and the serve view carry the figure without a bar the
-// rate has no ceiling to fill against.
+// The gauge format and the serve view carry the figure where the graphs
+// start — the rate has no ceiling to fill a gauge against — and the serve
+// view keeps its sparkline in the sparklines' column however many digits the
+// figure grows.
 func TestRenderSpeedFigureOnly(t *testing.T) {
 	speed := 12.34
 	var b bytes.Buffer
-	renderStatGauges(&b, nil, nil, nil, &speed)
-	line := strings.TrimSpace(b.String())
-	if line != "Speed      12.34 t/s" {
-		t.Errorf("gauge speed row: %q", line)
-	}
-	if strings.Contains(line, "░") {
-		t.Errorf("the speed gauge half drew a bar: %q", line)
+	renderStatGauges(&b, nil, nil, nil, &speed, nil)
+	if got := b.String(); got != "  Speed   12.34 t/s\n" {
+		t.Errorf("gauge speed row: %q", got)
 	}
 
+	// Lapsed but reporting, the gauge-format row says 0.00 rather than
+	// vanishing under a watching eye.
 	b.Reset()
-	renderStatCombined(&b, nil, nil, nil, &speed, nil)
-	line = strings.TrimSpace(b.String())
-	if !strings.Contains(line, "Speed") || !strings.Contains(line, "12.34 t/s") {
-		t.Errorf("combined speed row: %q", line)
+	renderStatGauges(&b, nil, nil, nil, nil, []metrics.HistorySample{{Time: 1, Speed: ptrPct(4.0)}})
+	if got := b.String(); got != "  Speed   0.00 t/s\n" {
+		t.Errorf("lapsed gauge speed row: %q", got)
 	}
 
-	// No figure: neither surface mentions speed.
+	// The combined row: figure at the graph column, sparkline at the
+	// sparkline column, pinned there across digit counts.
+	for _, c := range []struct {
+		value float64
+		want  string
+	}{
+		{12.34, "12.34 t/s"},
+		{5.00, "5.00 t/s"},
+		{1234.56, "1234.56 t/s"},
+	} {
+		v := c.value
+		b.Reset()
+		renderStatCombined(&b, nil, nil, nil, &v, nil)
+		line := strings.TrimSuffix(b.String(), "\n")
+		want := "  Speed   " + fmt.Sprintf("%-26s", c.want) + strings.Repeat(" ", serveBarW)
+		if line != want {
+			t.Errorf("combined speed row %v:\ngot  %q\nwant %q", c.value, line, want)
+		}
+	}
+
+	// No speed anywhere: neither surface mentions it.
 	b.Reset()
-	renderStatGauges(&b, nil, nil, nil, nil)
+	renderStatGauges(&b, nil, nil, nil, nil, nil)
 	if strings.Contains(b.String(), "Speed") {
 		t.Errorf("no figure still drew a gauge row: %q", b.String())
 	}

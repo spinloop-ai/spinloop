@@ -30,9 +30,11 @@ and a footer naming the keys the view answers to.
   resource series — CPU, RAM, each GPU's utilisation and memory, and the
   engine's generation speed where it reports one — with
   every series drawn in both formats at once, each on one line: a gauge of
-  the current reading beside the bar of its retained history. The speed row's
-  bar half stays blank — a rate has no ceiling to fill against — leaving its
-  t/s figure and its history sparkline. Below them, the
+  the current reading beside the bar of its retained history. The speed row
+  has no gauge — a rate has no ceiling to fill against — so its t/s figure
+  stands where the gauges start and its sparkline joins the other bars in
+  their column; between refreshes a lapsed figure reads 0.00 t/s rather than
+  vanishing. Below them, the
   token and request counters. The reading comes from the daemon the serve
   process runs in-process and refreshes on the dashboard's own local cadence;
   a reading the view could not renew is shown with its age.

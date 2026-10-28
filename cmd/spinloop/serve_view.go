@@ -386,7 +386,7 @@ func (m serveView) metricsLines() []string {
 	if line := dashTileServingLine(m.stats); line != "" {
 		fmt.Fprintln(&b, line)
 	}
-	renderActiveIndented(&b, m.stats.LastActiveAt, m.stats.IdleSeconds, m.stats.RetainUntil, dashNow())
+	renderActiveIndented(&b, m.stats.LastActiveAt, m.stats.IdleSeconds, m.stats.RetainUntil, dashNow(), statLabelWidth(m.stats.GPUs, m.stats.History))
 	// A running reading carries its current figures; a settled one carries
 	// its retained history, which survives a stop — the detail view's own
 	// rule for when the series exist at all.

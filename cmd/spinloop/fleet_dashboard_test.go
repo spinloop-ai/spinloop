@@ -271,7 +271,7 @@ func dashBar(label string, pct float64) string {
 		colour = "\033[33m"
 	}
 	filled := int(pct / 100 * width)
-	return fmt.Sprintf("  %-9s ", label) + colour +
+	return fmt.Sprintf("  %-7s ", label) + colour +
 		strings.Repeat("█", filled) + "\033[0m" +
 		strings.Repeat("░", width-filled) + fmt.Sprintf(" %.0f%%", pct)
 }
@@ -355,7 +355,7 @@ func TestDashTileRunningByteStable(t *testing.T) {
 	want := dashTileExpected([]string{
 		dashExpectedHeader("up  running  (up 2h 0m 0s)", dashHealthy),
 		"llamacpp  org/qwen:q4",
-		"  active    12s ago",
+		"  active  12s ago",
 		dashBar("CPU", 42),
 		dashBar("RAM", 30),
 		dashBar("GPU", 61),
@@ -390,7 +390,7 @@ func TestDashTileRunningNoRequestCount(t *testing.T) {
 	want := dashTileExpected([]string{
 		dashExpectedHeader("up  running  (up 2h 0m 0s)", dashHealthy),
 		"llamacpp  org/qwen:q4",
-		"  active    12s ago",
+		"  active  12s ago",
 		dashBar("CPU", 42),
 		dashBar("RAM", 30),
 		dashBar("GPU", 61),
@@ -3558,7 +3558,7 @@ func TestDashModelFormatToggle(t *testing.T) {
 	// blank columns, ending on the last retained sample — the current reading
 	// is the next point, not in the history yet. Both samples sit below the
 	// thresholds, so neither takes a colour.
-	cpuLine := "  CPU       " + strings.Repeat(" ", 23) + "▁▂" + " 20%"
+	cpuLine := "  CPU     " + strings.Repeat(" ", dashBarLineW-2) + "▁▂" + " 20%"
 	if !strings.Contains(bar, cpuLine) {
 		t.Errorf("bar tile did not draw the history, want %q in:\n%s", cpuLine, bar)
 	}
