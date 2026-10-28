@@ -34,8 +34,9 @@ and a footer naming the keys the view answers to.
   process runs in-process and refreshes on the dashboard's own local cadence;
   a reading the view could not renew is shown with its age.
 - **Log** — the engine's own output, tailed and followed, so new lines appear
-  as they are written. An engine that has written nothing yet shows a waiting
-  note, not an empty pane.
+  as they are written. A line wider than the pane wraps onto continuation
+  rows rather than being cut, so none of it is lost. An engine that has
+  written nothing yet shows a waiting note, not an empty pane.
 - **Footer** — the view's keys, and nothing the view cannot do. Starting,
   stopping, keeping and aborting are not among them: the engine is serve's
   own, and leaving is what stops it.
@@ -45,12 +46,15 @@ and a footer naming the keys the view answers to.
 | `↑` / `↓` | Scroll the log one line; a press at either end leaves the window where it is |
 | `pgup` / `pgdown` | Scroll the log by a page |
 | `f` | Pause and resume the log's follow — the metrics section keeps refreshing either way |
+| `w` | Turn log wrapping on and off — off cuts a long line at the pane's width |
 | `q` or `Ctrl+C` | Leave — stops the engine and exits serve |
 
 While the log's window is on the newest line it sticks to the tail: new
 output appears as it is written. Scrolled away from it, the window stays put
-and the new lines accrue behind it. Pausing the follow holds the window, and
-resuming fetches whatever the engine wrote in the meantime — nothing is lost.
+and the new lines accrue behind it. Scrolling moves by lines, so a wrapped
+line leaves and returns to the pane whole, its rows together. Pausing the
+follow holds the window, and resuming fetches whatever the engine wrote in
+the meantime — nothing is lost.
 
 The engine's own exit closes the view and serve exits with the engine's exit
 status, exactly as a foreground serve does.

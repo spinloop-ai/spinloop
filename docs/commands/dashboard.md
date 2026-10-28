@@ -31,6 +31,10 @@ metrics view cannot word the same reading differently.
 environment carries its deadline beside the last-active line on both the tile
 and the detail view, whatever the engine's state.
 
+In the detail view the engine's log wraps long lines to the pane's width by
+default, so none of a line is cut; `w` turns that off and back on, and the
+title bar names the state beside the log's follow state.
+
 ## Which target
 
 The three ways every command that acts on a fleet takes one — `--env <name>`,

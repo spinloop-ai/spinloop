@@ -536,3 +536,116 @@ func TestServeViewTinyWindowFloorsTheLogPane(t *testing.T) {
 }
 
 func f64ptr(v float64) *float64 { return &v }
+
+// xRows is the view's rows made entirely of x's, the padded frame's chrome
+// none of them: their widths say how a long line of x's was drawn.
+func xRows(view string) []string {
+	var rows []string
+	for _, line := range strings.Split(view, "\n") {
+		if line != "" && strings.Trim(line, "x") == "" {
+			rows = append(rows, line)
+		}
+	}
+	return rows
+}
+
+func serveViewLogReader(content string) func(int64, int) (daemon.LogsResponse, error) {
+	return func(offset int64, limit int) (daemon.LogsResponse, error) {
+		return daemon.LogsResponse{Content: content, NextOffset: int64(len(content))}, nil
+	}
+}
+
+// A line wider than the pane wraps rather than being cut — by default, and
+// the header and footer both say so: every column of the long line is drawn,
+// split across rows of the pane's width.
+func TestServeViewLongLineWraps(t *testing.T) {
+	m := newTestServeView(nil, serveViewLogReader("alpha\n"+strings.Repeat("x", 140)+"\n"))
+	m.Update(m.startLogPoll()())
+
+	v := m.View()
+	if !strings.Contains(v, "wrap: on") {
+		t.Errorf("the view must open wrapped and say so:\n%s", v)
+	}
+	if !strings.Contains(v, "w wrap") {
+		t.Errorf("the footer does not name the wrap key:\n%s", v)
+	}
+	rows := xRows(v)
+	if len(rows) != 2 {
+		t.Fatalf("the long line drew %d rows, want 2:\n%s", len(rows), v)
+	}
+	if w0, w1 := lipgloss.Width(rows[0]), lipgloss.Width(rows[1]); w0 != 100 || w1 != 40 {
+		t.Errorf("rows are %d and %d wide, want 100 and 40:\n%q", w0, w1, rows)
+	}
+	if !strings.Contains(v, "alpha") {
+		t.Errorf("the lines around it went missing:\n%s", v)
+	}
+}
+
+// w turns wrapping off and back on: off, the long line is cut at the pane's
+// width again and the header names the state; on, the wrapped rows return.
+func TestServeViewWrapToggle(t *testing.T) {
+	m := newTestServeView(nil, serveViewLogReader(strings.Repeat("x", 140)+"\n"))
+	m.Update(m.startLogPoll()())
+
+	if rows := xRows(m.View()); len(rows) != 2 {
+		t.Fatalf("the view does not wrap by default: %q", rows)
+	}
+
+	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("w")})
+	v := m.View()
+	if !strings.Contains(v, "wrap: off") {
+		t.Errorf("the header does not show wrapping off:\n%s", v)
+	}
+	rows := xRows(v)
+	if len(rows) != 1 || lipgloss.Width(rows[0]) != 100 {
+		t.Errorf("with wrapping off the long line must draw one 100-column cut row, got %q", rows)
+	}
+
+	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("w")})
+	v = m.View()
+	if !strings.Contains(v, "wrap: on") {
+		t.Errorf("the header does not show wrapping back on:\n%s", v)
+	}
+	if rows := xRows(v); len(rows) != 2 {
+		t.Errorf("the wrapped rows did not return: %q", rows)
+	}
+}
+
+// Scrolling moves whole lines: up takes the wrapped line's every row out of
+// the pane together, down brings all of them back.
+func TestServeViewScrollMovesWholeWrappedLine(t *testing.T) {
+	var b strings.Builder
+	for i := 0; i < 39; i++ {
+		fmt.Fprintf(&b, "n%d\n", i)
+	}
+	b.WriteString(strings.Repeat("a", 120) + "\n")
+	m := newTestServeView(nil, serveViewLogReader(b.String()))
+	m.Update(m.startLogPoll()())
+
+	countARows := func(view string) int {
+		n := 0
+		for _, line := range strings.Split(view, "\n") {
+			if line != "" && strings.Trim(line, "a") == "" {
+				n++
+			}
+		}
+		return n
+	}
+	if got := countARows(m.View()); got != 2 {
+		t.Fatalf("the wrapped line's two rows should be in the pane, got %d rows", got)
+	}
+
+	m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	v := m.View()
+	if got := countARows(v); got != 0 {
+		t.Errorf("up left %d rows of the wrapped line behind, want none", got)
+	}
+	if !strings.Contains(v, "n38") {
+		t.Errorf("the window did not end on the previous line:\n%s", v)
+	}
+
+	m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	if got := countARows(m.View()); got != 2 {
+		t.Errorf("down did not bring the wrapped line back whole, got %d rows", got)
+	}
+}

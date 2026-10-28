@@ -375,7 +375,7 @@ func TestDashKeepHintOnlyWhereItDrivesSomething(t *testing.T) {
 		if got, want := m.gridKeys(), "↑↓←→ move   s start   k keep   g format   r refresh   q quit"; got != want {
 			t.Errorf("grid hint:\ngot:  %q\nwant: %q", got, want)
 		}
-		if got, want := m.detailKeys(), "esc back   s start   k keep   f follow"; got != want {
+		if got, want := m.detailKeys(), "esc back   s start   k keep   f follow   w wrap"; got != want {
 			t.Errorf("detail hint:\ngot:  %q\nwant: %q", got, want)
 		}
 	})
@@ -386,7 +386,7 @@ func TestDashKeepHintOnlyWhereItDrivesSomething(t *testing.T) {
 		if got, want := m.gridKeys(), "↑↓←→ move   k keep   x stop   g format   r refresh   q quit"; got != want {
 			t.Errorf("grid hint:\ngot:  %q\nwant: %q", got, want)
 		}
-		if got, want := m.detailKeys(), "esc back   k keep   x stop   f follow"; got != want {
+		if got, want := m.detailKeys(), "esc back   k keep   x stop   f follow   w wrap"; got != want {
 			t.Errorf("detail hint:\ngot:  %q\nwant: %q", got, want)
 		}
 	})
