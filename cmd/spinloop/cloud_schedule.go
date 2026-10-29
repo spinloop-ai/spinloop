@@ -39,7 +39,7 @@ skipped while the instance is kept (spinloop cloud keep).`,
 
 func cloudScheduleSetCmd() *cobra.Command {
 	var (
-		envName  string
+		nodeName string
 		starts   []string
 		stops    []string
 		timezone string
@@ -58,21 +58,21 @@ Europe/London and applies to every schedule given; it defaults to UTC.
 		SilenceUsage:  true,
 		RunE: func(c *cobra.Command, _ []string) error {
 			resolve(c)
-			return runCloudScheduleSet(envName, starts, stops, timezone)
+			return runCloudScheduleSet(nodeName, starts, stops, timezone)
 		},
 	}
 	fs := c.Flags()
-	fs.StringVar(&envName, "env", "", envFlagUsage)
+	fs.StringVarP(&nodeName, "node", "n", "", nodeFlagUsage)
 	fs.StringArrayVar(&starts, "start", nil, "cron expression that starts the environment (repeatable)")
 	fs.StringArrayVar(&stops, "stop", nil, "cron expression that stops the environment (repeatable)")
 	fs.StringVar(&timezone, "timezone", "", "IANA time zone for the schedules (default UTC)")
-	compRegister(c, "env", compEnvs)
+	compRegister(c, "node", compEnvs)
 	c.ValidArgsFunction = noPositionals
 	return c
 }
 
 func cloudScheduleShowCmd() *cobra.Command {
-	var envName string
+	var nodeName string
 	c := &cobra.Command{
 		Use:           "show",
 		Short:         "list the environment's schedules and their next runs",
@@ -81,17 +81,17 @@ func cloudScheduleShowCmd() *cobra.Command {
 		SilenceUsage:  true,
 		RunE: func(c *cobra.Command, _ []string) error {
 			resolve(c)
-			return runCloudScheduleShow(envName)
+			return runCloudScheduleShow(nodeName)
 		},
 	}
-	c.Flags().StringVar(&envName, "env", "", envFlagUsage)
-	compRegister(c, "env", compEnvs)
+	c.Flags().StringVarP(&nodeName, "node", "n", "", nodeFlagUsage)
+	compRegister(c, "node", compEnvs)
 	c.ValidArgsFunction = noPositionals
 	return c
 }
 
 func cloudScheduleClearCmd() *cobra.Command {
-	var envName string
+	var nodeName string
 	c := &cobra.Command{
 		Use:           "clear",
 		Short:         "remove every schedule of the environment",
@@ -100,11 +100,11 @@ func cloudScheduleClearCmd() *cobra.Command {
 		SilenceUsage:  true,
 		RunE: func(c *cobra.Command, _ []string) error {
 			resolve(c)
-			return runCloudScheduleClear(envName)
+			return runCloudScheduleClear(nodeName)
 		},
 	}
-	c.Flags().StringVar(&envName, "env", "", envFlagUsage)
-	compRegister(c, "env", compEnvs)
+	c.Flags().StringVarP(&nodeName, "node", "n", "", nodeFlagUsage)
+	compRegister(c, "node", compEnvs)
 	c.ValidArgsFunction = noPositionals
 	return c
 }
@@ -123,11 +123,11 @@ func scheduleListFor(starts, stops []string, timezone string) []cloud.Schedule {
 }
 
 // runCloudScheduleSet is the body of `spinloop cloud schedule set`.
-func runCloudScheduleSet(envName string, starts, stops []string, timezone string) error {
+func runCloudScheduleSet(nodeName string, starts, stops []string, timezone string) error {
 	if len(starts) == 0 && len(stops) == 0 {
 		return fmt.Errorf("nothing to set: pass --start and/or --stop (use `spinloop cloud schedule clear` to remove schedules)")
 	}
-	cfg, err := resolveCloudConfig(envName, "")
+	cfg, err := resolveCloudConfig(nodeName, "")
 	if err != nil {
 		return err
 	}
@@ -140,8 +140,8 @@ func runCloudScheduleSet(envName string, starts, stops []string, timezone string
 }
 
 // runCloudScheduleShow is the body of `spinloop cloud schedule show`.
-func runCloudScheduleShow(envName string) error {
-	cfg, err := resolveCloudConfig(envName, "")
+func runCloudScheduleShow(nodeName string) error {
+	cfg, err := resolveCloudConfig(nodeName, "")
 	if err != nil {
 		return err
 	}
@@ -154,8 +154,8 @@ func runCloudScheduleShow(envName string) error {
 }
 
 // runCloudScheduleClear is the body of `spinloop cloud schedule clear`.
-func runCloudScheduleClear(envName string) error {
-	cfg, err := resolveCloudConfig(envName, "")
+func runCloudScheduleClear(nodeName string) error {
+	cfg, err := resolveCloudConfig(nodeName, "")
 	if err != nil {
 		return err
 	}

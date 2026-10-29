@@ -31,24 +31,26 @@ Every `spinloop fleet` command takes its target one of three ways:
 
 | | target |
 | --- | --- |
-| `--env <name>` | one registered environment, as a fleet of one |
+| `--node <name>` (`-n`, except on `deploy`) | a node of the fleet in force, narrowing the command to it — or, with no fleet holding that name, one registered environment as a fleet of one |
 | `--fleet <path>` (`-f`, except on `logs`) | that fleet file |
 | neither | the `fleet.yaml` in the working directory |
 
-`--env` and `--fleet` name two different things, so passing both fails saying
-so rather than picking one. A `fleet.yaml` merely sitting in the working
-directory is not a conflict: only a flag states a target, so `--env` simply
-wins and the file is not read.
+`--node` beside a `--fleet` *flag* states two answers to one target, so the
+command fails saying so rather than picking one. A `fleet.yaml` merely sitting
+in the working directory is not a conflict: only a flag states a target, so
+beside a discovered `fleet.yaml` `--node` narrows that file to the node it
+names — and falls back to a registered environment of that name only when no
+node in the fleet answers it.
 
 ### One environment, no fleet file
 
 A registered environment and a one-node fleet file naming it describe the same
-thing, so `--env` lets you skip writing the file:
+thing, so `--node` lets you skip writing the file:
 
 ```sh
-spinloop status --env qwen      # the same row a one-node fleet file gives
-spinloop dashboard --env qwen   # the tiled view, on one environment
-spinloop logs --env qwen        # its engine's log
+spinloop status --node qwen      # the same row a one-node fleet file gives
+spinloop dashboard --node qwen   # the tiled view, on one environment
+spinloop logs --node qwen        # its engine's log
 ```
 
 Because such a fleet has no file, it carries none of the settings a fleet file
@@ -58,7 +60,7 @@ used, which a fleet of one has no occasion for; put the environment in a
 `fleet.yaml` when you want any of them.
 
 To launch an agent against a single environment, use
-[`spinloop code --env <name>`](code.md), which configures the harness from what
+[`spinloop code --node <name>`](code.md), which configures the harness from what
 that environment reports is deployed.
 
 ## Try it without any hardware
@@ -130,7 +132,7 @@ has been started at all.
 
 `spinloop metrics` renders each node's engine and system metrics in the
 same `gauge` (default), `bar`, `table`, and `json` formats as
-[`spinloop metrics --env <name>`](cloud.md) — they share the renderers, so a node in
+[`spinloop metrics --node <name>`](cloud.md) — they share the renderers, so a node in
 your fleet and a cloud endpoint look the same. `gauge` draws the current
 reading per series as a filled progress gauge; `--format=bar` draws each
 series as a sparkline of the node's daemon's retained history instead, and a
@@ -442,7 +444,7 @@ or a matching subdirectory added, or `fleet start` fails for that node. A
 
 `fleet deploy` creates the AWS environment for one or more `kind: cloud`
 nodes — the step that otherwise has to happen outside the fleet file
-entirely, one `spinloop cloud deploy --env <name>` at a time, run from the
+entirely, one `spinloop cloud deploy --node <name>` at a time, run from the
 directory holding each node's Spinloop:
 
 ```sh
@@ -479,7 +481,7 @@ deploy`](cloud.md), applied per node.
 | ---- | ------- |
 | `-f`, `--fleet <path>` | The fleet file (default `./fleet.yaml`) — `logs` takes it long-form only, since `-f` is its follow flag |
 | `--all` | `start`/`stop`/`deploy`: act on every node (or every `kind: cloud` node, for `deploy`) instead of named ones |
-| `--node <name>` | `route` only: report this node rather than choosing one |
+| `-n`, `--node <name>` | narrow the command to one node of the fleet — on `start`/`stop` it stands in for the node name, on `route` it reports that node rather than choosing one; `deploy` names it with `--node` only, since `-n` is `--dry-run` there |
 | `--prefer` | `route` only: rank by `idle` or `active`, overriding the file |
 | `--format` | `metrics`: `gauge` (default), `bar`, `table`, or `json`; `logs`: `text` (default) or `json` |
 | `-w`, `--watch` | `metrics` only: redraw on an interval until interrupted |

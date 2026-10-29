@@ -6,7 +6,7 @@ request counters, and what the node it runs on is.
 ```sh
 spinloop metrics                      # the fleet.yaml in this directory
 spinloop metrics --fleet ./cluster.yaml
-spinloop metrics --env prod           # one registered environment, no file needed
+spinloop metrics --node prod           # one registered environment, no file needed
 spinloop metrics -w                   # redraw in place every 60 seconds
 spinloop metrics --cost               # add what each priceable node has spent
 ```
@@ -17,12 +17,14 @@ The three ways every command that reads engines takes one:
 
 | | target |
 | --- | --- |
-| `--env <name>` | one registered environment |
+| `--node <name>` (`-n`) | that node of the fleet in force, or one registered environment when no fleet holds the name |
 | `--fleet <path>` (`-f`) | that fleet file |
 | neither | the `fleet.yaml` in the working directory |
 
-`--env` and `--fleet` name two different things, so passing both fails saying
-so. With none of the three resolvable the command fails naming all of them.
+`--node` beside a `--fleet` *flag* is two answers to one target, so passing
+both fails saying so; beside a discovered `fleet.yaml` it narrows the read to
+that node alone. With none of the three resolvable the command fails naming
+all of them.
 
 ## Formats
 

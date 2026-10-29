@@ -626,6 +626,24 @@ func TestCmdFleetUnknownNodeNamesTheKnownOnes(t *testing.T) {
 	}
 }
 
+// `-n <node>` alone drives that node: the flag that narrowed the fleet
+// stands in for the positional name rather than leaving the command to
+// demand one.
+func TestCmdFleetNodeFlagStandsInForTheName(t *testing.T) {
+	twoNodeFleet(t, "idle")
+	out := captureStdout(t, func() {
+		if err := cmdFleet([]string{"stop", "-n", "up"}); err != nil {
+			t.Fatalf("fleet stop -n up = %v, want the named node driven", err)
+		}
+	})
+	if !strings.Contains(out, "up") {
+		t.Errorf("no row for the driven node:\n%s", out)
+	}
+	if strings.Contains(out, "down") {
+		t.Errorf("the flag let the other node be touched:\n%s", out)
+	}
+}
+
 func TestCmdFleetMissingFileNamesThePath(t *testing.T) {
 	t.Chdir(t.TempDir())
 	err := cmdStatus(nil)

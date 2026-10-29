@@ -18,7 +18,7 @@ import (
 func metricsCmd() *cobra.Command {
 	var (
 		path         string
-		envName      string
+		nodeName     string
 		format       string
 		spinloopPath string
 		watch        bool
@@ -31,7 +31,7 @@ func metricsCmd() *cobra.Command {
 resource use, its token and request counters, and the release the node is
 running. One block per node, queried concurrently.
 
-The target is a registered environment (--env), a fleet file (--fleet), or
+The target is a registered environment (--node), a fleet file (--fleet), or
 the fleet.yaml in the working directory. A node that cannot be reached is
 reported rather than omitted, and never fails the command.
 
@@ -51,7 +51,7 @@ cost at all.`,
 			if err := validateMetricsFormat(format); err != nil {
 				return err
 			}
-			cfg, err := resolveFleetTarget(fleetTarget{envName: envName, fleetPath: path})
+			cfg, err := resolveFleetTarget(fleetTarget{nodeName: nodeName, fleetPath: path})
 			if err != nil {
 				return err
 			}
@@ -59,6 +59,7 @@ cost at all.`,
 			if withCost {
 				call = fleet.PricedMetricsCall
 			}
+			cfg = narrowedTarget(cfg, nodeName)
 			if watch {
 				return runFleetMetricsWatch(cfg, format, call)
 			}
@@ -68,14 +69,14 @@ cost at all.`,
 	}
 	fs := c.Flags()
 	fs.StringVarP(&path, "fleet", "f", "", fleetFileUsage)
-	fs.StringVar(&envName, "env", "", envFlagTargetUsage)
+	fs.StringVarP(&nodeName, "node", "n", "", nodeFlagTargetUsage)
 	registerSpinloopEnvFlag(fs, &spinloopPath)
 	fs.StringVar(&format, "format", "gauge", "output format: gauge (default), bar, table or json")
 	fs.BoolVarP(&watch, "watch", "w", false, "redraw every 60 seconds")
 	fs.BoolVar(&withCost, "cost", false, "include what each priceable node has cost so far")
 	c.ValidArgsFunction = noPositionals
 	compRegister(c, "fleet", compFiles)
-	compRegister(c, "env", compEnvs)
+	compRegister(c, "node", compEnvs)
 	return c
 }
 

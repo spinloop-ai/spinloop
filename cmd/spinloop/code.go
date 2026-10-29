@@ -80,21 +80,22 @@ func openLaunchCmd(use, short, long string) *cobra.Command {
 				if err != nil {
 					return err
 				}
-			} else if route.envName != "" {
-				// No Spinloop was applied, but --env still names where the
-				// model is served from: configure the harness from what is
-				// actually deployed there instead of doing nothing with the
-				// flag.
+			} else if route.node != "" && route.fleetFile() == "" {
+				// No Spinloop was applied, and no fleet is in force, so
+				// --node names where the model is served from: configure the
+				// harness from what is actually deployed to that registered
+				// environment instead of doing nothing with the flag.
 				var err error
 				sel, envDir, cloudResp, choice, err = applyFromEnvironment(providers, h, route)
 				if err != nil {
 					return err
 				}
-			} else if route.fleetPath != "" {
-				// No Spinloop, but a fleet was named. A gateway resolves the
-				// model per request, so a fleet that names one needs no
-				// Spinloop; a fleet that does not still does, and this says
-				// so.
+			} else if route.fleetPath != "" || route.node != "" {
+				// No Spinloop, but a fleet was named — by flag, or by --node
+				// landing on the working directory's fleet.yaml. A gateway
+				// resolves the model per request, so a fleet that names one
+				// needs no Spinloop; a fleet that does not still does, and
+				// this says so.
 				var err error
 				sel, envDir, cloudResp, choice, err = applyFromGateway(providers, h, route)
 				if err != nil {
@@ -112,10 +113,9 @@ func openLaunchCmd(use, short, long string) *cobra.Command {
 	// path readSpinloop resolves as SPINLOOP_ALIAS > ./Spinloop.
 	fs.Lookup("spinloop").NoOptDefVal = "true"
 	fs.StringVar(&providers, "providers", "", "path to a providers.yaml override")
-	fs.StringVarP(&route.envName, "env", "e", "", "launch against this registered environment (its name keys the provider, its API key is fetched and injected)")
-	compRegister(c, "env", compEnvs)
+	fs.StringVarP(&route.node, "node", "n", "", "route to this node: with a fleet in force, pin the launch to that fleet node; otherwise, launch against this registered environment (its name keys the provider, its API key is fetched and injected)")
+	compRegister(c, "node", compEnvs)
 	fs.StringVarP(&route.fleetPath, "fleet", "f", "", "route through this fleet file (default: ./fleet.yaml, when the Spinloop is not named)")
-	fs.StringVar(&route.node, "node", "", "pin the launch to this fleet node")
 	fs.StringVar(&route.prefer, "prefer", "", "rank fleet nodes by `idle` or `active` (overrides the fleet file)")
 	fs.BoolVar(&route.noWake, "no-wake", false, "fail rather than starting an engine on an idle fleet node")
 	fs.DurationVar(&route.wakeTimeout, "wake-timeout", 0, "how long to wait for a woken node's engine")

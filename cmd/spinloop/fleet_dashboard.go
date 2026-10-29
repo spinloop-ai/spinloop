@@ -39,6 +39,13 @@ func dashModelFor(target fleetTarget) (dashModel, error) {
 	if err != nil {
 		return dashModel{}, err
 	}
+	// The flag's node is the whole board: one tile, as the one-row status
+	// table is its one-row mirror.
+	if target.nodeName != "" {
+		if cfg, err = cfg.Only(target.nodeName); err != nil {
+			return dashModel{}, err
+		}
+	}
 	entries := make([]dashEntry, 0, len(cfg.Nodes))
 	results := make([]fleet.NodeResult, 0, len(cfg.Nodes))
 	actions := make([]dashAction, 0, len(cfg.Nodes))

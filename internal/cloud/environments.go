@@ -50,7 +50,7 @@ func EnvConfigPath(name string) (string, error) {
 
 // IsEnvName reports whether a value is a plain environment name: non-empty,
 // with no path separator and no .json suffix. Environments are selected by
-// name from the registry, never by path, so a --env value (or a fleet node
+// name from the registry, never by path, so a --node value (or a fleet node
 // name) that is not a plain identifier is rejected.
 func IsEnvName(value string) bool {
 	if value == "" {

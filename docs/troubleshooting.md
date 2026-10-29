@@ -98,7 +98,7 @@ scaled; see [`spinloop serve`](commands/serve.md#parallelism).
 ## A fleet row is wrong, or a node won't answer
 
 - **`config-error` on a `kind: cloud` row** means the environment is not
-  registered on this machine — `spinloop cloud deploy --env <name>` (or
+  registered on this machine — `spinloop cloud deploy --node <name>` (or
   `spinloop fleet deploy`) writes its `cloud.json`.
 - **A node's token is not in *your* shell.** The fleet file names the
   *variable* (`tokenEnv`), never the value. Set the variable the row names,

@@ -211,11 +211,11 @@ vCPU quota in the target region. It creates no instance and no Elastic IP.
 ### Deploy this Spinloop as an environment
 
 ```sh
-spinloop cloud deploy --env qwen3.8-27b    # from this directory
-spinloop cloud deploy --env qwen3.8-27b --dry-run   # see what would be sent first
+spinloop cloud deploy --node qwen3.8-27b    # from this directory
+spinloop cloud deploy --node qwen3.8-27b --dry-run   # see what would be sent first
 ```
 
-The `--env` name is the environment `spinloop cloud` creates and registers.
+The `--node` name is the environment `spinloop cloud` creates and registers.
 
 `deploy` reads `PROVIDER`, `ALIAS`, `CONTEXT` and `PRESET` from the Spinloop — the
 same values [`spinloop serve`](../../../docs/commands/serve.md) uses locally —
@@ -228,13 +228,13 @@ doesn't have these weights cached yet, deploy fetches them in the background
 ### Start it, use it, stop it
 
 ```sh
-eval "$(spinloop cloud start --env qwen3.8-27b)"   # boots the instance
+eval "$(spinloop cloud start --node qwen3.8-27b)"   # boots the instance
                                                     # (~10 min cold), exports
                                                     # OPENAI_BASE_URL / OPENAI_API_KEY
-spinloop status --env <name> --env qwen3.8-27b            # is it up, is it healthy
-spinloop harness apply --env qwen3.8-27b                    # point opencode at the running endpoint
-spinloop harness open --env qwen3.8-27b             # work
-spinloop cloud stop --env qwen3.8-27b              # done — shut it down now rather
+spinloop status --node <name> --node qwen3.8-27b            # is it up, is it healthy
+spinloop harness apply --node qwen3.8-27b                    # point opencode at the running endpoint
+spinloop harness open --node qwen3.8-27b             # work
+spinloop cloud stop --node qwen3.8-27b              # done — shut it down now rather
                                                     # than waiting for the idle timer
 ```
 
