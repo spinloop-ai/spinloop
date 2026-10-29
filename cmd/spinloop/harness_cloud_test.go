@@ -44,7 +44,7 @@ func envServer(t *testing.T) *httptest.Server {
 
 // deployedEnvServer answers the env Lambda call the way an upgraded control
 // plane does for an environment with a model deployed to it: base_url/api_key
-// alongside the deploy-config facts a bare `spinloop harness --env` needs to
+// alongside the deploy-config facts a bare `spinloop harness --node` needs to
 // configure the harness with no Spinloop at all.
 func deployedEnvServer(t *testing.T) *httptest.Server {
 	t.Helper()
@@ -79,7 +79,7 @@ func TestApplyBeforeLaunch_RemoteKeySilencesTheMissingKeyWarning(t *testing.T) {
 	var sel spinloopSelectionResult
 	out := captureStdout(t, func() {
 		sel.selection, sel.envDir, sel.resp, _, sel.err = applyBeforeLaunch(
-			spinloopPathFlag{set: true, path: dir}, "", h, nil, routeOptions{envName: "dev-1"})
+			spinloopPathFlag{set: true, path: dir}, "", h, nil, routeOptions{node: "dev-1"})
 	})
 	if sel.err != nil {
 		t.Fatalf("applyBeforeLaunch: %v", sel.err)
@@ -102,10 +102,10 @@ func TestApplyBeforeLaunch_RemoteKeySilencesTheMissingKeyWarning(t *testing.T) {
 }
 
 // TestHarness_EnvFlagAfterTheAlias is the regression guard for the ordering
-// bug where --env was silently forwarded to the harness, instead of being
+// bug where --node was silently forwarded to the harness, instead of being
 // consumed by spinloop, whenever it followed the Spinloop-naming alias
-// (`spinloop harness dev-3 --env dev-1 ...`, the order the flag's own name
-// suggests). --env must be honoured, and dropped from what is forwarded, no
+// (`spinloop harness dev-3 --node dev-1 ...`, the order the flag's own name
+// suggests). --node must be honoured, and dropped from what is forwarded, no
 // matter which side of the alias it is on.
 func TestHarness_EnvFlagAfterTheAlias(t *testing.T) {
 	isolateConfig(t)
@@ -135,7 +135,7 @@ func TestHarness_EnvFlagAfterTheAlias(t *testing.T) {
 
 	captureStderr(t, func() {
 		captureStdout(t, func() {
-			if err := cmdOpen([]string{"dev-3", "--env", "dev-1", "--prompt", "hello"}); err != nil {
+			if err := cmdOpen([]string{"dev-3", "--node", "dev-1", "--prompt", "hello"}); err != nil {
 				t.Fatalf("cmdOpen: %v", err)
 			}
 		})
@@ -146,7 +146,7 @@ func TestHarness_EnvFlagAfterTheAlias(t *testing.T) {
 		t.Fatalf("harness was not launched: %v", err)
 	}
 	if strings.TrimSpace(string(got)) != "--prompt\nhello" {
-		t.Errorf("forwarded args = %q, want \"--prompt\\nhello\" (--env consumed, not forwarded)", got)
+		t.Errorf("forwarded args = %q, want \"--prompt\\nhello\" (--node consumed, not forwarded)", got)
 	}
 
 	env, err := os.ReadFile(envFile)
@@ -162,7 +162,7 @@ func TestHarness_EnvFlagAfterTheAlias(t *testing.T) {
 }
 
 // TestHarness_BareEnvAutoConfiguresAndLaunches is the end-to-end check for the
-// UX this change adds: `spinloop harness --env <name>` with no Spinloop at
+// UX this change adds: `spinloop harness --node <name>` with no Spinloop at
 // all configures the harness from what is deployed and launches it, trailing
 // args forwarded exactly as they are for a Spinloop-driven launch.
 func TestHarness_BareEnvAutoConfiguresAndLaunches(t *testing.T) {
@@ -177,7 +177,7 @@ func TestHarness_BareEnvAutoConfiguresAndLaunches(t *testing.T) {
 		BaseURL: "http://198.51.100.1:8000/v1", Region: "eu-west-1", Environment: "dev-3",
 	})
 
-	forwarded, out := launchedArgs(t, []string{"--env", "dev-3", "--prompt", "hello"})
+	forwarded, out := launchedArgs(t, []string{"--node", "dev-3", "--prompt", "hello"})
 	if forwarded != "--prompt\nhello" {
 		t.Errorf("forwarded args = %q, want \"--prompt\\nhello\"", forwarded)
 	}
@@ -192,7 +192,7 @@ func TestHarness_BareEnvAutoConfiguresAndLaunches(t *testing.T) {
 }
 
 // TestHarness_AppliedSpinloopStillWinsOverDeployConfig guards the precedence
-// rule: applying a Spinloop alongside --env uses the Spinloop's own values,
+// rule: applying a Spinloop alongside --node uses the Spinloop's own values,
 // never the environment's deploy-config, exactly as a hand-written BASEURL
 // already wins over the environment's registered address.
 func TestHarness_AppliedSpinloopStillWinsOverDeployConfig(t *testing.T) {
@@ -205,7 +205,7 @@ func TestHarness_AppliedSpinloopStillWinsOverDeployConfig(t *testing.T) {
 	dir := cloudSpinloopDir(t, "dev-3", server.URL, "http://198.51.100.1:8000/v1")
 	mustWrite(t, filepath.Join(dir, "Spinloop"), "PROVIDER llamacpp\nALIAS from-spinloop\n")
 
-	forwarded, _ := launchedArgs(t, []string{dir, "--env", "dev-3", "--", "run"})
+	forwarded, _ := launchedArgs(t, []string{dir, "--node", "dev-3", "--", "run"})
 	if forwarded != "run" {
 		t.Errorf("forwarded args = %q, want \"run\"", forwarded)
 	}
@@ -253,13 +253,13 @@ func TestApplyBeforeLaunch_FailsWhenNoKeyCanBeHad(t *testing.T) {
 	captureStderr(t, func() {
 		captureStdout(t, func() {
 			res.selection, res.envDir, res.resp, _, res.err = applyBeforeLaunch(
-				spinloopPathFlag{set: true, path: dir}, "", h, nil, routeOptions{envName: "dev-1"})
+				spinloopPathFlag{set: true, path: dir}, "", h, nil, routeOptions{node: "dev-1"})
 		})
 	})
 	if res.err == nil {
 		t.Fatal("a launch that cannot authenticate should fail")
 	}
-	for _, want := range []string{"could not fetch the API key for dev-1", "spinloop cloud start --env dev-1", "OPENAI_API_KEY"} {
+	for _, want := range []string{"could not fetch the API key for dev-1", "spinloop cloud start --node dev-1", "OPENAI_API_KEY"} {
 		if !strings.Contains(res.err.Error(), want) {
 			t.Errorf("error should mention %q, got: %v", want, res.err)
 		}
@@ -287,7 +287,7 @@ func TestApplyBeforeLaunch_CarriesOnWhenTheKeyIsAlreadySet(t *testing.T) {
 	stderr := captureStderr(t, func() {
 		stdout = captureStdout(t, func() {
 			res.selection, res.envDir, res.resp, _, res.err = applyBeforeLaunch(
-				spinloopPathFlag{set: true, path: dir}, "", h, nil, routeOptions{envName: "dev-1"})
+				spinloopPathFlag{set: true, path: dir}, "", h, nil, routeOptions{node: "dev-1"})
 		})
 	})
 	if res.err != nil {
@@ -322,7 +322,7 @@ func TestApplyBeforeLaunch_CountsAnEnvInstructionAsTheKey(t *testing.T) {
 	captureStderr(t, func() {
 		captureStdout(t, func() {
 			res.selection, res.envDir, res.resp, _, res.err = applyBeforeLaunch(
-				spinloopPathFlag{set: true, path: dir}, "", h, nil, routeOptions{envName: "dev-1"})
+				spinloopPathFlag{set: true, path: dir}, "", h, nil, routeOptions{node: "dev-1"})
 		})
 	})
 	if res.err != nil {
@@ -344,7 +344,7 @@ func TestApplyBeforeLaunch_AnnouncesTheFetch(t *testing.T) {
 	var stdout string
 	stderr := captureStderr(t, func() {
 		stdout = captureStdout(t, func() {
-			if _, _, _, _, err := applyBeforeLaunch(spinloopPathFlag{set: true, path: dir}, "", h, nil, routeOptions{envName: "dev-1"}); err != nil {
+			if _, _, _, _, err := applyBeforeLaunch(spinloopPathFlag{set: true, path: dir}, "", h, nil, routeOptions{node: "dev-1"}); err != nil {
 				t.Fatalf("applyBeforeLaunch: %v", err)
 			}
 		})
@@ -383,9 +383,10 @@ func TestApplyBeforeLaunch_LocalSpinloopFetchesNothing(t *testing.T) {
 	}
 }
 
-// --env and a fleet are two answers to one question — where the model is
-// served from — so a launch that states both fails, naming both.
-func TestApplyBeforeLaunch_EnvAndFleetConflict(t *testing.T) {
+// With a fleet in force, --node is the fleet's: a name that is not one of its
+// nodes fails naming the known nodes, and specifically does NOT fall back to a
+// registered environment of the same name — the cloud endpoint stays unfetched.
+func TestApplyBeforeLaunch_NodeNamesFleetNode(t *testing.T) {
 	isolateConfig(t)
 	stubAWSEnv(t)
 
@@ -396,18 +397,20 @@ func TestApplyBeforeLaunch_EnvAndFleetConflict(t *testing.T) {
 
 	h, _ := harness.Lookup("opencode")
 	_, _, _, _, err := applyBeforeLaunch(spinloopPathFlag{set: true, path: dir}, "", h, nil,
-		routeOptions{envName: "dev-1", fleetPath: filepath.Join(fleetDir, "fleet.yaml")})
+		routeOptions{node: "dev-1", fleetPath: filepath.Join(fleetDir, "fleet.yaml")})
 	if err == nil {
-		t.Fatal("a launch stating both --env and a fleet should fail")
+		t.Fatal("a pin to a name the fleet has no node for should fail")
 	}
-	for _, want := range []string{"--env dev-1", "fleet.yaml", "so state one"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("error should mention %q, got %v", want, err)
-		}
+	msg := err.Error()
+	if !strings.Contains(msg, "dev-1") || !strings.Contains(msg, "gpu-a") {
+		t.Errorf("the failure should name the pin and the fleet's known nodes, got %v", err)
+	}
+	if strings.Contains(msg, "not registered") {
+		t.Errorf("the name must not be sought in the environment registry, got %v", err)
 	}
 }
 
-// A bare `spinloop harness --env <name>` — no Spinloop at all — configures
+// A bare `spinloop harness --node <name>` — no Spinloop at all — configures
 // the harness from what the environment reports is deployed to it.
 func TestApplyFromEnvironment_ConfiguresFromDeployConfig(t *testing.T) {
 	home := isolateConfig(t)
@@ -428,7 +431,7 @@ func TestApplyFromEnvironment_ConfiguresFromDeployConfig(t *testing.T) {
 	var err error
 	captureStderr(t, func() {
 		captureStdout(t, func() {
-			sel, _, resp, choice, err = applyFromEnvironment("", h, routeOptions{envName: "dev-3"})
+			sel, _, resp, choice, err = applyFromEnvironment("", h, routeOptions{node: "dev-3"})
 		})
 	})
 	if err != nil {
@@ -445,7 +448,7 @@ func TestApplyFromEnvironment_ConfiguresFromDeployConfig(t *testing.T) {
 	}
 
 	// The written config is exactly what an equivalent Spinloop
-	// (`PROVIDER llamacpp\nALIAS q3\nCONTEXT 32768`) applied with --env dev-3
+	// (`PROVIDER llamacpp\nALIAS q3\nCONTEXT 32768`) applied with --node dev-3
 	// would have produced.
 	m := readConfigMap(t, filepath.Join(home, ".config", "opencode", "opencode.json"))
 	if m["model"] != "dev-3/q3" {
@@ -472,14 +475,14 @@ func TestApplyFromEnvironment_UnrecognisedRunnerFails(t *testing.T) {
 	h, _ := harness.Lookup("opencode")
 	captureStderr(t, func() {
 		captureStdout(t, func() {
-			if _, _, _, _, err := applyFromEnvironment("", h, routeOptions{envName: "dev-3"}); err == nil {
+			if _, _, _, _, err := applyFromEnvironment("", h, routeOptions{node: "dev-3"}); err == nil {
 				t.Fatal("an unrecognised runner should fail the launch")
 			}
 		})
 	})
 }
 
-// With nothing deployed to the environment, a bare `--env` launch fails
+// With nothing deployed to the environment, a bare `--node` launch fails
 // naming the environment and how to fix it, rather than launching an
 // unconfigured harness or falling through to applySelection's generic error.
 func TestApplyFromEnvironment_FailsWithNothingDeployed(t *testing.T) {
@@ -496,7 +499,7 @@ func TestApplyFromEnvironment_FailsWithNothingDeployed(t *testing.T) {
 	var err error
 	captureStderr(t, func() {
 		captureStdout(t, func() {
-			_, _, _, _, err = applyFromEnvironment("", h, routeOptions{envName: "dev-3"})
+			_, _, _, _, err = applyFromEnvironment("", h, routeOptions{node: "dev-3"})
 		})
 	})
 	if err == nil {
@@ -553,7 +556,7 @@ func TestCloudEnv_StdoutIsEvalSafe(t *testing.T) {
 	var stdout string
 	captureStderr(t, func() {
 		stdout = captureStdout(t, func() {
-			if err := cmdCloudEnv([]string{"q3", "--env", "dev-1"}); err != nil {
+			if err := cmdCloudEnv([]string{"q3", "--node", "dev-1"}); err != nil {
 				t.Fatalf("cmdCloudEnv: %v", err)
 			}
 		})

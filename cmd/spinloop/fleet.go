@@ -106,7 +106,7 @@ func runFleetMetricsWatch(cfg *fleet.Config, format string, call fleet.Call) err
 		if ctx.Err() != nil {
 			return nil
 		}
-		// A single-node target (an --env watch, or a fleet of one) with
+		// A single-node target (an --node watch, or a fleet of one) with
 		// nothing else to show for the poll ends the watch rather than
 		// redrawing the same failure forever: this is the one node the
 		// caller asked about, and it could not be read. A multi-node fleet
@@ -307,9 +307,9 @@ func renderFleetMetricsJSON(w io.Writer, results []fleet.NodeResult) error {
 // deploy time.
 func fleetStartCmd() *cobra.Command {
 	var (
-		path    string
-		envName string
-		all     bool
+		path     string
+		nodeName string
+		all      bool
 	)
 	c := &cobra.Command{
 		Use:           "start",
@@ -319,20 +319,20 @@ func fleetStartCmd() *cobra.Command {
 		SilenceUsage:  true,
 		RunE: func(c *cobra.Command, args []string) error {
 			resolve(c)
-			cfg, err := resolveFleetTarget(fleetTarget{envName: envName, fleetPath: path})
+			cfg, err := resolveFleetTarget(fleetTarget{nodeName: nodeName, fleetPath: path})
 			if err != nil {
 				return err
 			}
-			return runFleetDrive("start", cfg, all, args, fleetStartCall(cfg))
+			return runFleetDrive("start", cfg, all, args, nodeName, fleetStartCall(cfg))
 		},
 	}
 	fs := c.Flags()
 	fs.StringVarP(&path, "fleet", "f", "", fleetFileUsage)
-	fs.StringVar(&envName, "env", "", envFlagTargetUsage)
+	fs.StringVarP(&nodeName, "node", "n", "", nodeFlagTargetUsage)
 	fs.BoolVar(&all, "all", false, "start every node in the fleet")
 	c.ValidArgsFunction = noPositionals
 	compRegister(c, "fleet", compFiles)
-	compRegister(c, "env", compEnvs)
+	compRegister(c, "node", compEnvs)
 	return c
 }
 
@@ -341,9 +341,9 @@ func fleetStartCmd() *cobra.Command {
 // its target selection is shared with start.
 func fleetStopCmd() *cobra.Command {
 	var (
-		path    string
-		envName string
-		all     bool
+		path     string
+		nodeName string
+		all      bool
 	)
 	c := &cobra.Command{
 		Use:           "stop",
@@ -353,7 +353,7 @@ func fleetStopCmd() *cobra.Command {
 		SilenceUsage:  true,
 		RunE: func(c *cobra.Command, args []string) error {
 			resolve(c)
-			cfg, err := resolveFleetTarget(fleetTarget{envName: envName, fleetPath: path})
+			cfg, err := resolveFleetTarget(fleetTarget{nodeName: nodeName, fleetPath: path})
 			if err != nil {
 				return err
 			}
@@ -361,16 +361,16 @@ func fleetStopCmd() *cobra.Command {
 				status, err := n.Stop(ctx)
 				return fleet.Result(n.Name(), err, status)
 			}
-			return runFleetDrive("stop", cfg, all, args, call)
+			return runFleetDrive("stop", cfg, all, args, nodeName, call)
 		},
 	}
 	fs := c.Flags()
 	fs.StringVarP(&path, "fleet", "f", "", fleetFileUsage)
-	fs.StringVar(&envName, "env", "", envFlagTargetUsage)
+	fs.StringVarP(&nodeName, "node", "n", "", nodeFlagTargetUsage)
 	fs.BoolVar(&all, "all", false, "stop every node in the fleet")
 	c.ValidArgsFunction = noPositionals
 	compRegister(c, "fleet", compFiles)
-	compRegister(c, "env", compEnvs)
+	compRegister(c, "node", compEnvs)
 	return c
 }
 
@@ -414,10 +414,21 @@ func fleetStartCall(cfg *fleet.Config) fleet.Call {
 // runFleetDrive selects the nodes a mutating fleet command targets and fans
 // call out over them: no names and no --all fails, listing the fleet's
 // nodes; --all and names together fails as ambiguous; named nodes fail
-// before anything is touched if any name is unknown. Replaces the old
-// driveOneNode now that start and stop both take several nodes or --all,
-// not just one.
-func runFleetDrive(verb string, cfg *fleet.Config, all bool, names []string, call fleet.Call) error {
+// before anything is touched if any name is unknown. The --node flag is one
+// more way to name the node — it narrows the whole fleet before the names
+// are weighed, so `-n gpu-box` stands in for the argument it would select.
+func runFleetDrive(verb string, cfg *fleet.Config, all bool, names []string, nodeName string, call fleet.Call) error {
+	if nodeName != "" {
+		var err error
+		if cfg, err = cfg.Only(nodeName); err != nil {
+			return err
+		}
+		// The flag has just narrowed the fleet to this one node; it stands
+		// in for the name the command would otherwise demand.
+		if len(names) == 0 && !all {
+			names = []string{nodeName}
+		}
+	}
 	if all && len(names) > 0 {
 		return fmt.Errorf("spinloop fleet %s: --all is ambiguous with node names", verb)
 	}
@@ -460,7 +471,7 @@ func runFleetDrive(verb string, cfg *fleet.Config, all bool, names []string, cal
 func fleetDeployCmd() *cobra.Command {
 	var (
 		path            string
-		envName         string
+		nodeName        string
 		all             bool
 		dryRun          bool
 		overwrite       bool
@@ -483,7 +494,7 @@ derivation, consent, and registration behaviour as "spinloop cloud deploy".`,
 		SilenceUsage:  true,
 		RunE: func(c *cobra.Command, args []string) error {
 			resolve(c)
-			return runFleetDeploy(fleetTarget{envName: envName, fleetPath: path}, all, args, deployOpts{
+			return runFleetDeploy(fleetTarget{nodeName: nodeName, fleetPath: path}, all, args, deployOpts{
 				dryRun:          dryRun,
 				overwrite:       overwrite,
 				reseed:          reseed,
@@ -496,7 +507,7 @@ derivation, consent, and registration behaviour as "spinloop cloud deploy".`,
 	}
 	fs := c.Flags()
 	fs.StringVarP(&path, "fleet", "f", "", fleetFileUsage)
-	fs.StringVar(&envName, "env", "", envFlagTargetUsage)
+	fs.StringVar(&nodeName, "node", "", nodeFlagTargetUsage)
 	fs.BoolVar(&all, "all", false, "deploy every kind: cloud node in the fleet")
 	fs.BoolVarP(&dryRun, "dry-run", "n", false, "print the config that would be deployed, without sending it")
 	fs.BoolVar(&overwrite, "overwrite", false, "proceed against an already-registered or live environment")
@@ -507,7 +518,7 @@ derivation, consent, and registration behaviour as "spinloop cloud deploy".`,
 	fs.StringVar(&apiKeyEnv, "api-key-env", "", "name the environment variable holding the engine key to create or rotate, applied to every targeted node; with no flag each environment keeps its stored key")
 	c.ValidArgsFunction = noPositionals
 	compRegister(c, "fleet", compFiles)
-	compRegister(c, "env", compEnvs)
+	compRegister(c, "node", compEnvs)
 	return c
 }
 
@@ -517,8 +528,15 @@ func runFleetDeploy(target fleetTarget, all bool, names []string, opts deployOpt
 	if err != nil {
 		return err
 	}
-	if all && len(names) > 0 {
+	if all && (len(names) > 0 || target.nodeName != "") {
 		return fmt.Errorf("spinloop fleet deploy: --all is ambiguous with node names")
+	}
+	// The flag's node and the argument list are the two ways to name nodes;
+	// the flag's is just one more name, verified against the fleet the same
+	// way. Two spellings of one node collapse; the check below proves it is
+	// a cloud node of this fleet once.
+	if target.nodeName != "" {
+		names = append([]string{target.nodeName}, names...)
 	}
 
 	cloudNames := make([]string, 0, len(cfg.Nodes))
@@ -782,7 +800,7 @@ func resolveNodeSpinloop(node fleet.NodeConfig, fleetDir string) (arg, source st
 // config written. It is how a routing decision is checked before an agent
 // depends on it, and how an unexpected choice is diagnosed after one.
 func fleetRouteCmd() *cobra.Command {
-	var path, envName, node, prefer string
+	var path, node, prefer string
 	c := &cobra.Command{
 		Use:           "route",
 		Short:         "report which node a launch would take",
@@ -791,22 +809,21 @@ func fleetRouteCmd() *cobra.Command {
 		SilenceUsage:  true,
 		RunE: func(c *cobra.Command, args []string) error {
 			resolve(c)
-			return runFleetRoute(path, envName, node, prefer, args)
+			return runFleetRoute(path, node, prefer, args)
 		},
 	}
 	fs := c.Flags()
 	fs.StringVarP(&path, "fleet", "f", "", fleetFileUsage)
-	fs.StringVar(&envName, "env", "", envFlagTargetUsage)
-	fs.StringVar(&node, "node", "", "report this node rather than choosing one")
+	fs.StringVarP(&node, "node", "n", "", "report this node rather than choosing one; names a registered environment to route through when no fleet is in force")
 	fs.StringVar(&prefer, "prefer", "", "rank nodes by `idle` or `active` (overrides the fleet file)")
 	c.ValidArgsFunction = aliasSlot
 	compRegister(c, "fleet", compFiles)
-	compRegister(c, "env", compEnvs)
+	compRegister(c, "node", compEnvs)
 	return c
 }
 
 // runFleetRoute is the body of `spinloop fleet route`.
-func runFleetRoute(path, envName, node, prefer string, args []string) error {
+func runFleetRoute(path, node, prefer string, args []string) error {
 	var spinloopPath string
 	if len(args) > 0 {
 		spinloopPath = args[0]
@@ -820,18 +837,26 @@ func runFleetRoute(path, envName, node, prefer string, args []string) error {
 	// working directory when the Spinloop was not named explicitly — no
 	// positional and no SPINLOOP_ALIAS, the default Spinloop standing in for
 	// the user. A named Spinloop routes only by flag, as a launch does.
+	// A --node does not suppress discovery, as it does not for a launch:
+	// where a fleet is in force the flag is a pin into it, and it names a
+	// registered environment only where none is.
 	target := path
-	if envName == "" && target == "" && spinloopPath == "" && !spinloopAliasInForce() {
+	if target == "" && spinloopPath == "" && !spinloopAliasInForce() {
 		if _, err := os.Stat(fleet.DefaultFile); err == nil {
 			target = fleet.DefaultFile
 		}
 	}
-	if envName == "" && target == "" {
+	if node == "" && target == "" {
 		return fmt.Errorf(
-			"no fleet to route %s through: pass --fleet <path> or --env <name> to say which fleet to route through",
+			"no fleet to route %s through: pass --fleet <path> or --node <name> to say which fleet to route through",
 			resolvedPath)
 	}
-	cfg, err := resolveFleetTarget(fleetTarget{envName: envName, fleetPath: target})
+	var cfg *fleet.Config
+	if target != "" {
+		cfg, err = fleet.Resolve(target)
+	} else {
+		cfg, err = fleet.ForEnvironment(node)
+	}
 	if err != nil {
 		return err
 	}

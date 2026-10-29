@@ -6,7 +6,7 @@ machines, a single cloud environment, or both.
 ```sh
 spinloop status                       # the fleet.yaml in this directory
 spinloop status --fleet ./cluster.yaml
-spinloop status --env prod            # one registered environment, no file needed
+spinloop status --node prod            # one registered environment, no file needed
 ```
 
 ```
@@ -28,16 +28,18 @@ The same three ways every command that acts on a fleet takes one:
 
 | | target |
 | --- | --- |
-| `--env <name>` | one registered environment |
+| `--node <name>` (`-n`) | that node of the fleet in force, or one registered environment when no fleet holds the name |
 | `--fleet <path>` (`-f`) | that fleet file |
 | neither | the `fleet.yaml` in the working directory |
 
-`--env` and `--fleet` name two different things, so passing both fails saying
-so. With none of the three resolvable the command fails naming all of them —
-it does not go looking for an engine on the machine you are sitting at. To
-watch a local engine, [`spinloop serve`](serve.md) shows the one it runs; to
-read it from elsewhere, run [`spinloop daemon`](serve.md#the-control-api-api-and-spinloop-daemon)
-and name that machine in a `fleet.yaml`.
+`--node` beside a `--fleet` *flag* is two answers to one target, so passing
+both fails saying so; beside a discovered `fleet.yaml` it narrows the table to
+that node's row alone. With none of the three resolvable the command fails
+naming all of them — it does not go looking for an engine on the machine you
+are sitting at. To watch a local engine, [`spinloop serve`](serve.md) shows the
+one it runs; to read it from elsewhere, run
+[`spinloop daemon`](serve.md#the-control-api-api-and-spinloop-daemon) and name
+that machine in a `fleet.yaml`.
 
 ## What a row says
 
@@ -59,7 +61,7 @@ for it.
 
 | flag | applies to |
 | --- | --- |
-| `--env`, `--fleet`, `-O`/`--spinloop` | every target |
+| `--node`, `--fleet`, `-O`/`--spinloop` | every target |
 
 `status` takes no flag that only some node kinds can answer. `metrics` and
 `logs` do — see their pages.

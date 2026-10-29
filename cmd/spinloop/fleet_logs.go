@@ -34,10 +34,19 @@ func runLogs(target fleetTarget, q fleet.LogQuery, follow bool, limit int, forma
 	if err != nil {
 		return err
 	}
-	// A named node restricts the read; the target still supplies its details,
-	// so an unknown name is caught here rather than at the socket.
-	if len(args) > 0 {
-		if cfg, err = cfg.Only(args[0]); err != nil {
+	// The flag's node and a positional argument are the two ways to say
+	// which node; when both say, they must say the same one. The target
+	// still supplies its details, so an unknown name is caught here rather
+	// than at the socket.
+	only := args0(args)
+	if only == "" {
+		only = target.nodeName
+	} else if target.nodeName != "" && target.nodeName != only {
+		return fmt.Errorf("--node %s and the argument %s name different nodes: name the one to read",
+			target.nodeName, only)
+	}
+	if only != "" {
+		if cfg, err = cfg.Only(only); err != nil {
 			return err
 		}
 	}
@@ -237,4 +246,14 @@ func quietened(results []fleet.NodeResult, first bool) []fleet.NodeResult {
 		}
 	}
 	return kept
+}
+
+// args0 is the first positional argument, or "" when there is none — the way
+// a command reads "the node, if the line named one" without an len-check at
+// every use.
+func args0(args []string) string {
+	if len(args) == 0 {
+		return ""
+	}
+	return args[0]
 }

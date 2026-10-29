@@ -36,7 +36,7 @@ import (
 // idle), status reports instance state and endpoint health, keep sets the
 // retention deadline to prevent the sweep from terminating the instance
 // early, and deploy sets what the instance will serve from the Spinloop itself.
-// Each subcommand acts on one registered environment — the --env flag names
+// Each subcommand acts on one registered environment — the --node flag names
 // it, and without the flag the `default` environment is used; see
 // resolveCloudConfig. Each also takes an optional Spinloop path, read for
 // its ENV instructions and adjacent .env only. The group itself does nothing
@@ -89,11 +89,11 @@ func applySpinloopEnv(sel spinloop.Selection, spinloopPath string) error {
 	return nil
 }
 
-// envFlagUsage is the --env flag's help text on every cloud subcommand that
+// nodeFlagUsage is the --node flag's help text on every cloud subcommand that
 // acts on one environment.
-const envFlagUsage = "the registered environment to act on (required)"
+const nodeFlagUsage = "the registered environment to act on (required)"
 
-// resolveCloudConfig loads the cloud config a subcommand acts on. The --env
+// resolveCloudConfig loads the cloud config a subcommand acts on. The --node
 // flag names an environment in the per-user registry, read from
 // clouds/<name>/cloud.json; a name with no registered configuration fails
 // saying the environment is not registered and how to create it. Without the
@@ -105,7 +105,7 @@ const envFlagUsage = "the registered environment to act on (required)"
 // when no argument was given) is read for its ENV instructions and adjacent
 // .env only, applied before any control-plane work: it never selects an
 // environment.
-func resolveCloudConfig(envName, spinloopArg string) (cloud.Config, error) {
+func resolveCloudConfig(nodeName, spinloopArg string) (cloud.Config, error) {
 	if spinloopArg != "" {
 		sel, spinloopPath, err := readSpinloop("cloud", spinloopArg)
 		if err != nil {
@@ -123,13 +123,13 @@ func resolveCloudConfig(envName, spinloopArg string) (cloud.Config, error) {
 			return cloud.Config{}, err
 		}
 	}
-	if envName == "" {
+	if nodeName == "" {
 		return cloud.Config{}, errNoEnvironment()
 	}
-	if !cloud.IsEnvName(envName) {
-		return cloud.Config{}, fmt.Errorf("%q is not an environment name: an environment name is a plain identifier, with no path", envName)
+	if !cloud.IsEnvName(nodeName) {
+		return cloud.Config{}, fmt.Errorf("%q is not an environment name: an environment name is a plain identifier, with no path", nodeName)
 	}
-	return cloud.LoadEnvironment(envName, viperGetenv())
+	return cloud.LoadEnvironment(nodeName, viperGetenv())
 }
 
 // errNoEnvironment is what a cloud subcommand fails with when it names no
@@ -139,10 +139,10 @@ func resolveCloudConfig(envName, spinloopArg string) (cloud.Config, error) {
 // next thing to type is in the error rather than a directory listing away.
 func errNoEnvironment() error {
 	var b strings.Builder
-	b.WriteString("no environment named: pass --env <name>")
+	b.WriteString("no environment named: pass --node <name>")
 	envs, err := cloud.ListEnvironments()
 	if err != nil || len(envs) == 0 {
-		b.WriteString(" (none registered yet — `spinloop cloud deploy --env <name>` creates one)")
+		b.WriteString(" (none registered yet — `spinloop cloud deploy --node <name>` creates one)")
 		return errors.New(b.String())
 	}
 	names := make([]string, len(envs))
@@ -290,7 +290,7 @@ func printCloudEnv(resp *cloud.Response) {
 }
 
 func cloudEnvCmd() *cobra.Command {
-	var envName string
+	var nodeName string
 	c := &cobra.Command{
 		Use:   "env",
 		Short: "print the running endpoint's env vars",
@@ -302,17 +302,17 @@ starting it.`,
 		ValidArgsFunction: aliasSlot,
 		RunE: func(c *cobra.Command, args []string) error {
 			resolve(c)
-			return runCloudEnv(envName, args)
+			return runCloudEnv(nodeName, args)
 		},
 	}
-	c.Flags().StringVar(&envName, "env", "", envFlagUsage)
-	compRegister(c, "env", compEnvs)
+	c.Flags().StringVarP(&nodeName, "node", "n", "", nodeFlagUsage)
+	compRegister(c, "node", compEnvs)
 	return c
 }
 
 // runCloudEnv is the body of `spinloop cloud env`.
-func runCloudEnv(envName string, args []string) error {
-	cfg, err := resolveCloudConfig(envName, spinloopArg(args))
+func runCloudEnv(nodeName string, args []string) error {
+	cfg, err := resolveCloudConfig(nodeName, spinloopArg(args))
 	if err != nil {
 		return err
 	}
@@ -327,7 +327,7 @@ func runCloudEnv(envName string, args []string) error {
 func cloudStartCmd() *cobra.Command {
 	var timeout time.Duration
 	const timeoutUsage = "overall time to wait for the endpoint"
-	var envName string
+	var nodeName string
 	var printEnv bool
 	var keepD string
 	c := &cobra.Command{
@@ -341,21 +341,21 @@ agent needs.`,
 		ValidArgsFunction: aliasSlot,
 		RunE: func(c *cobra.Command, args []string) error {
 			resolve(c)
-			return runCloudStart(envName, args, timeout, printEnv, keepD)
+			return runCloudStart(nodeName, args, timeout, printEnv, keepD)
 		},
 	}
 	fs := c.Flags()
 	fs.DurationVarP(&timeout, "timeout", "t", 15*time.Minute, timeoutUsage)
-	fs.StringVar(&envName, "env", "", envFlagUsage)
-	compRegister(c, "env", compEnvs)
+	fs.StringVarP(&nodeName, "node", "n", "", nodeFlagUsage)
+	compRegister(c, "node", compEnvs)
 	fs.BoolVar(&printEnv, "print-env", false, "print export lines to stdout for eval")
 	fs.StringVar(&keepD, "keep", "", "retain instance until now + DURATION (e.g. 4h, 60m), preventing the idle sweep from stopping it")
 	return c
 }
 
 // runCloudStart is the body of `spinloop cloud start`.
-func runCloudStart(envName string, args []string, timeout time.Duration, printEnv bool, keepD string) error {
-	cfg, err := resolveCloudConfig(envName, spinloopArg(args))
+func runCloudStart(nodeName string, args []string, timeout time.Duration, printEnv bool, keepD string) error {
+	cfg, err := resolveCloudConfig(nodeName, spinloopArg(args))
 	if err != nil {
 		return err
 	}
@@ -465,7 +465,7 @@ func runCloudList() error {
 }
 
 func cloudKeepCmd() *cobra.Command {
-	var envName string
+	var nodeName string
 	c := &cobra.Command{
 		Use:               "keep",
 		Short:             "defer the instance's idle termination",
@@ -475,16 +475,16 @@ func cloudKeepCmd() *cobra.Command {
 		ValidArgsFunction: keepSlot,
 		RunE: func(c *cobra.Command, rest []string) error {
 			resolve(c)
-			return runCloudKeep(envName, rest)
+			return runCloudKeep(nodeName, rest)
 		},
 	}
-	c.Flags().StringVar(&envName, "env", "", envFlagUsage)
-	compRegister(c, "env", compEnvs)
+	c.Flags().StringVarP(&nodeName, "node", "n", "", nodeFlagUsage)
+	compRegister(c, "node", compEnvs)
 	return c
 }
 
 // runCloudKeep is the body of `spinloop cloud keep`.
-func runCloudKeep(envName string, rest []string) error {
+func runCloudKeep(nodeName string, rest []string) error {
 	if len(rest) == 0 {
 		return fmt.Errorf("usage: spinloop cloud keep <duration> [path]")
 	}
@@ -501,7 +501,7 @@ func runCloudKeep(envName string, rest []string) error {
 	if len(rest) > 1 {
 		spinloopPath = rest[1]
 	}
-	cfg, err := resolveCloudConfig(envName, spinloopPath)
+	cfg, err := resolveCloudConfig(nodeName, spinloopPath)
 	if err != nil {
 		return err
 	}
@@ -515,7 +515,7 @@ func runCloudKeep(envName string, rest []string) error {
 }
 
 func cloudPauseCmd() *cobra.Command {
-	var envName string
+	var nodeName string
 	c := &cobra.Command{
 		Use:               "pause",
 		Short:             "stop the instance without terminating it",
@@ -525,17 +525,17 @@ func cloudPauseCmd() *cobra.Command {
 		ValidArgsFunction: aliasSlot,
 		RunE: func(c *cobra.Command, args []string) error {
 			resolve(c)
-			return runCloudPause(envName, args)
+			return runCloudPause(nodeName, args)
 		},
 	}
-	c.Flags().StringVar(&envName, "env", "", envFlagUsage)
-	compRegister(c, "env", compEnvs)
+	c.Flags().StringVarP(&nodeName, "node", "n", "", nodeFlagUsage)
+	compRegister(c, "node", compEnvs)
 	return c
 }
 
 // runCloudPause is the body of `spinloop cloud pause`.
-func runCloudPause(envName string, args []string) error {
-	cfg, err := resolveCloudConfig(envName, spinloopArg(args))
+func runCloudPause(nodeName string, args []string) error {
+	cfg, err := resolveCloudConfig(nodeName, spinloopArg(args))
 	if err != nil {
 		return err
 	}
@@ -555,7 +555,7 @@ func cloudRestartCmd() *cobra.Command {
 	var force bool
 	var timeout time.Duration
 	const timeoutUsage = "overall time to wait for the endpoint"
-	var envName string
+	var nodeName string
 	c := &cobra.Command{
 		Use:   "restart",
 		Short: "stop the instance and bring it back",
@@ -569,14 +569,14 @@ skipped: for when the engine or its daemon will not answer it.`,
 		ValidArgsFunction: aliasSlot,
 		RunE: func(c *cobra.Command, args []string) error {
 			resolve(c)
-			return runCloudRestart(envName, args, force, timeout)
+			return runCloudRestart(nodeName, args, force, timeout)
 		},
 	}
 	fs := c.Flags()
 	fs.BoolVarP(&force, "force", "F", false, "skip the graceful engine stop")
 	fs.DurationVarP(&timeout, "timeout", "t", 15*time.Minute, timeoutUsage)
-	fs.StringVar(&envName, "env", "", envFlagUsage)
-	compRegister(c, "env", compEnvs)
+	fs.StringVarP(&nodeName, "node", "n", "", nodeFlagUsage)
+	compRegister(c, "node", compEnvs)
 	return c
 }
 
@@ -584,8 +584,8 @@ skipped: for when the engine or its daemon will not answer it.`,
 // instance in the pause manner — without terminating it, so the boot disk and
 // weights survive and the address does not change — and reuses the wake's own
 // deadline and retry handling to block until the model serves again.
-func runCloudRestart(envName string, args []string, force bool, timeout time.Duration) error {
-	cfg, err := resolveCloudConfig(envName, spinloopArg(args))
+func runCloudRestart(nodeName string, args []string, force bool, timeout time.Duration) error {
+	cfg, err := resolveCloudConfig(nodeName, spinloopArg(args))
 	if err != nil {
 		return err
 	}
@@ -626,7 +626,7 @@ func runCloudRestart(envName string, args []string, force bool, timeout time.Dur
 }
 
 func cloudStopCmd() *cobra.Command {
-	var envName string
+	var nodeName string
 	c := &cobra.Command{
 		Use:               "stop",
 		Short:             "shut the instance down",
@@ -637,17 +637,17 @@ func cloudStopCmd() *cobra.Command {
 		ValidArgsFunction: aliasSlot,
 		RunE: func(c *cobra.Command, args []string) error {
 			resolve(c)
-			return runCloudStop(envName, args)
+			return runCloudStop(nodeName, args)
 		},
 	}
-	c.Flags().StringVar(&envName, "env", "", envFlagUsage)
-	compRegister(c, "env", compEnvs)
+	c.Flags().StringVarP(&nodeName, "node", "n", "", nodeFlagUsage)
+	compRegister(c, "node", compEnvs)
 	return c
 }
 
 // runCloudStop is the body of `spinloop cloud stop`.
-func runCloudStop(envName string, args []string) error {
-	cfg, err := resolveCloudConfig(envName, spinloopArg(args))
+func runCloudStop(nodeName string, args []string) error {
+	cfg, err := resolveCloudConfig(nodeName, spinloopArg(args))
 	if err != nil {
 		return err
 	}
@@ -1150,12 +1150,12 @@ func cloudDeployCmd() *cobra.Command {
 		spinloopVersion string
 		instanceType    string
 		apiKeyEnv       string
-		envName         string
+		nodeName        string
 	)
 	c := &cobra.Command{
 		Use:   "deploy",
 		Short: "set what the instance serves, from the Spinloop",
-		Long: `creates the environment named by --env — its own
+		Long: `creates the environment named by --node — its own
 address, API key and allowed CIDR — and says what it serves (PROVIDER picks
 the engine, just as it does for serve). --spinloop-version pins the spinloop
 release a fresh boot of the environment installs; without it, a boot
@@ -1169,7 +1169,7 @@ from its next fresh launch.`,
 		ValidArgsFunction: aliasSlot,
 		RunE: func(c *cobra.Command, args []string) error {
 			resolve(c)
-			return runCloudDeploy(args, envName, dryRun, overwrite, reseed, allowedCidr, region, spinloopVersion, instanceType, apiKeyEnv)
+			return runCloudDeploy(args, nodeName, dryRun, overwrite, reseed, allowedCidr, region, spinloopVersion, instanceType, apiKeyEnv)
 		},
 	}
 	fs := c.Flags()
@@ -1181,18 +1181,18 @@ from its next fresh launch.`,
 	fs.StringVar(&spinloopVersion, "spinloop-version", "", "spinloop release the environment's instances install at boot (default: latest)")
 	fs.StringVar(&instanceType, "instance-type", "", "EC2 instance type the environment's instances launch as (e.g. g6e.xlarge; default: the control plane's default type)")
 	fs.StringVar(&apiKeyEnv, "api-key-env", "", "the environment variable holding the API key to store for this environment (a variable name, never the key itself)")
-	fs.StringVar(&envName, "env", "", "the environment deploy creates and registers (required)")
-	compRegister(c, "env", compEnvs)
+	fs.StringVar(&nodeName, "node", "", "the environment deploy creates and registers (required)")
+	compRegister(c, "node", compEnvs)
 	return c
 }
 
 // runCloudDeploy is the body of `spinloop cloud deploy`.
-func runCloudDeploy(args []string, envName string, dryRun, overwrite, reseed bool, allowedCidr, region, spinloopVersion, instanceType, apiKeyEnv string) error {
-	_, spinloopPath, dc, err := deriveDeployTarget("spinloop cloud deploy <file>", spinloopArg(args), envName)
+func runCloudDeploy(args []string, nodeName string, dryRun, overwrite, reseed bool, allowedCidr, region, spinloopVersion, instanceType, apiKeyEnv string) error {
+	_, spinloopPath, dc, err := deriveDeployTarget("spinloop cloud deploy <file>", spinloopArg(args), nodeName)
 	if err != nil {
 		return err
 	}
-	outcome, err := runDeploy(spinloopPath, envName, dc, deployOpts{
+	outcome, err := runDeploy(spinloopPath, nodeName, dc, deployOpts{
 		dryRun:          dryRun,
 		overwrite:       overwrite,
 		reseed:          reseed,
@@ -1218,7 +1218,7 @@ func runCloudDeploy(args []string, envName string, dryRun, overwrite, reseed boo
 // name) gets a message naming itself rather than a hard-coded command line.
 //
 // The Spinloop says what the environment serves; the name arrives from
-// outside it — the --env flag for `cloud deploy`, the node name for `fleet
+// outside it — the --node flag for `cloud deploy`, the node name for `fleet
 // deploy` — so a node's resolved Spinloop source and a standalone `cloud
 // deploy` of the same file agree about what they deploy and each names its
 // own environment.
@@ -1239,7 +1239,7 @@ func deriveDeployTarget(usage, spinloopArg, env string) (sel spinloop.Selection,
 		return
 	}
 	if env == "" {
-		err = fmt.Errorf("deploy must name the environment it creates: pass --env <name> (e.g. --env %s)", dc.ServedModelName)
+		err = fmt.Errorf("deploy must name the environment it creates: pass --node <name> (e.g. --node %s)", dc.ServedModelName)
 		return
 	}
 	if !cloud.IsEnvName(env) {

@@ -380,7 +380,7 @@ func Load(path string) (*Config, error) {
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, fmt.Errorf(
-				"no fleet at %s: create one listing your nodes, or name a target — --fleet <path> for a file, --env <name> for a registered environment", path)
+				"no fleet at %s: create one listing your nodes, or name a target — --fleet <path> for a file, --node <name> for a registered environment", path)
 		}
 		return nil, err
 	}
@@ -410,7 +410,7 @@ func Resolve(flagPath string) (*Config, error) {
 	return Load(path)
 }
 
-// ForEnvironment builds the fleet a `--env <name>` target names: one cloud
+// ForEnvironment builds the fleet a `--node <name>` target names: one cloud
 // node, named by the registered environment whose cloud.json holds its
 // control config. A registered environment and a one-node fleet file naming it
 // describe the same thing — `fleet deploy` registers an environment under its

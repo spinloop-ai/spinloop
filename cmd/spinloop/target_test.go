@@ -11,7 +11,7 @@ import (
 )
 
 // registerTargetEnv points the registry at a temp config directory and
-// registers one environment there, so a --env target has something to
+// registers one environment there, so a --node target has something to
 // resolve.
 func registerTargetEnv(t *testing.T, name string) {
 	t.Helper()
@@ -32,7 +32,7 @@ func TestResolveFleetTarget(t *testing.T) {
 	t.Run("a named environment", func(t *testing.T) {
 		registerTargetEnv(t, "prod")
 		t.Chdir(t.TempDir())
-		cfg, err := resolveFleetTarget(fleetTarget{envName: "prod"})
+		cfg, err := resolveFleetTarget(fleetTarget{nodeName: "prod"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -91,11 +91,11 @@ func TestResolveFleetTargetRefusesBoth(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err := resolveFleetTarget(fleetTarget{envName: "prod", fleetPath: path})
+	_, err := resolveFleetTarget(fleetTarget{nodeName: "prod", fleetPath: path})
 	if err == nil {
 		t.Fatal("want an error")
 	}
-	for _, want := range []string{"--env prod", path, "so state one"} {
+	for _, want := range []string{"--node prod", path, "two answers to one target"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q does not mention %q", err, want)
 		}
@@ -103,13 +103,13 @@ func TestResolveFleetTargetRefusesBoth(t *testing.T) {
 }
 
 // A fleet.yaml merely sitting in the working directory is not a conflict with
-// --env: only a flag states a target, so the environment wins and the file is
+// --node: only a flag states a target, so the environment wins and the file is
 // not read (design D4).
 func TestResolveFleetTargetIgnoresTheDirectoryFileWithEnv(t *testing.T) {
 	registerTargetEnv(t, "prod")
 	writeFleetFile(t, oneNodeFleetBody)
 
-	cfg, err := resolveFleetTarget(fleetTarget{envName: "prod"})
+	cfg, err := resolveFleetTarget(fleetTarget{nodeName: "prod"})
 	if err != nil {
 		t.Fatalf("a directory fleet file was treated as a conflict: %v", err)
 	}
@@ -123,7 +123,7 @@ func TestResolveFleetTargetIgnoresTheDirectoryFileWithEnv(t *testing.T) {
 func TestResolveFleetTargetUnregisteredEnv(t *testing.T) {
 	t.Setenv("SPINLOOP_CONFIG_DIR", t.TempDir())
 	t.Chdir(t.TempDir())
-	_, err := resolveFleetTarget(fleetTarget{envName: "nope"})
+	_, err := resolveFleetTarget(fleetTarget{nodeName: "nope"})
 	if err == nil {
 		t.Fatal("want an error")
 	}
@@ -185,8 +185,8 @@ func TestDescribeTarget(t *testing.T) {
 	}
 }
 
-// Every fleet command that takes a target completes --env from the registered
-// environments, the same source `cloud --env` completes from.
+// Every fleet command that takes a target completes --node from the registered
+// environments, the same source `cloud --node` completes from.
 func TestFleetCommandsCompleteEnv(t *testing.T) {
 	registerTargetEnv(t, "prod")
 	registerEnv(t, "staging", cloud.Config{
@@ -199,7 +199,7 @@ func TestFleetCommandsCompleteEnv(t *testing.T) {
 
 	for _, sub := range []string{"start", "stop", "deploy", "route"} {
 		t.Run(sub, func(t *testing.T) {
-			got, _ := complete(t, "fleet", sub, "--env", "")
+			got, _ := complete(t, "fleet", sub, "--node", "")
 			want := map[string]bool{"prod": false, "staging": false}
 			for _, c := range got {
 				if _, ok := want[c]; ok {
@@ -208,14 +208,14 @@ func TestFleetCommandsCompleteEnv(t *testing.T) {
 			}
 			for name, seen := range want {
 				if !seen {
-					t.Errorf("fleet %s --env did not offer %q (got %v)", sub, name, got)
+					t.Errorf("fleet %s --node did not offer %q (got %v)", sub, name, got)
 				}
 			}
 		})
 	}
 }
 
-// The whole claim of a fleet of one: the same environment named by --env and
+// The whole claim of a fleet of one: the same environment named by --node and
 // named by a one-node fleet file produces the same output, so what a command
 // prints does not depend on how its target was named.
 func TestFleetStatusEnvMatchesAOneNodeFile(t *testing.T) {
@@ -241,8 +241,8 @@ func TestFleetStatusEnvMatchesAOneNodeFile(t *testing.T) {
 	// Named by the flag, from a directory holding no fleet file at all.
 	t.Chdir(t.TempDir())
 	fromEnv := captureStdout(t, func() {
-		if err := cmdStatus([]string{"--env", "prod"}); err != nil {
-			t.Errorf("fleet status --env returned %v", err)
+		if err := cmdStatus([]string{"--node", "prod"}); err != nil {
+			t.Errorf("fleet status --node returned %v", err)
 		}
 	})
 
@@ -254,7 +254,7 @@ func TestFleetStatusEnvMatchesAOneNodeFile(t *testing.T) {
 	}
 }
 
-// A --env target needs no fleet file: the command works in a directory that
+// A --node target needs no fleet file: the command works in a directory that
 // holds none, which is the point of the flag.
 func TestFleetStatusEnvNeedsNoFleetFile(t *testing.T) {
 	stubAWSEnv(t)
@@ -270,8 +270,8 @@ func TestFleetStatusEnvNeedsNoFleetFile(t *testing.T) {
 	t.Chdir(t.TempDir())
 
 	out := captureStdout(t, func() {
-		if err := cmdStatus([]string{"--env", "prod"}); err != nil {
-			t.Errorf("fleet status --env returned %v", err)
+		if err := cmdStatus([]string{"--node", "prod"}); err != nil {
+			t.Errorf("fleet status --node returned %v", err)
 		}
 	})
 	if !strings.Contains(out, "prod") {
@@ -291,13 +291,69 @@ func TestFleetStatusRefusesEnvAndFleet(t *testing.T) {
 	})
 	writeFleetFile(t, oneNodeFleetBody)
 
-	err := cmdStatus([]string{"--env", "prod", "--fleet", "fleet.yaml"})
+	err := cmdStatus([]string{"--node", "prod", "--fleet", "fleet.yaml"})
 	if err == nil {
 		t.Fatal("want an error")
 	}
-	for _, want := range []string{"--env prod", "fleet.yaml", "so state one"} {
+	for _, want := range []string{"--node prod", "fleet.yaml", "two answers to one target"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q does not mention %q", err, want)
+		}
+	}
+}
+
+// With no fleet in force and no file to check, --node resolves as the
+// environment; an unregistered name is refused. (Both branches of the
+// discovery check, minus the file.)
+func TestResolveTargetNoFileResolvesRegistry(t *testing.T) {
+	registerTargetEnv(t, "prod")
+	t.Chdir(t.TempDir())
+	cfg, err := resolveFleetTarget(fleetTarget{nodeName: "prod"})
+	if err != nil {
+		t.Fatalf("a registered environment with no fleet in force: %v", err)
+	}
+	if len(cfg.Nodes) != 1 || cfg.Nodes[0].Name != "prod" {
+		t.Errorf("want the one prod node, got %+v", cfg.Nodes)
+	}
+	if _, err := resolveFleetTarget(fleetTarget{nodeName: "nope"}); err == nil {
+		t.Error("an unregistered name with no fleet should fail")
+	}
+}
+
+// Beside a discovered fleet the flag's node narrows the fan-out to it alone;
+// a name the fleet holds resolves as the environment; a name nothing answers
+// fails naming both places it looked.
+func TestResolveTargetNarrowsDiscoveredFleet(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	mustWrite(t, filepath.Join(dir, fleet.DefaultFile),
+		"nodes:\n  - name: gpu-a\n    host: a.local\n  - name: gpu-b\n    host: b.local\n")
+
+	cfg, err := resolveFleetTarget(fleetTarget{nodeName: "gpu-a"})
+	if err != nil {
+		t.Fatalf("--node gpu-a beside a fleet holding it: %v", err)
+	}
+	narrowed := narrowedTarget(cfg, "gpu-a")
+	if len(narrowed.Nodes) != 1 || narrowed.Nodes[0].Name != "gpu-a" {
+		t.Errorf("want only gpu-a, got %+v", narrowed.Nodes)
+	}
+
+	registerTargetEnv(t, "prod")
+	cfg, err = resolveFleetTarget(fleetTarget{nodeName: "prod"})
+	if err != nil {
+		t.Fatalf("a registry name beside a fleet without it: %v", err)
+	}
+	if len(cfg.Nodes) != 1 || cfg.Nodes[0].Name != "prod" {
+		t.Errorf("want the prod environment's node, got %+v", cfg.Nodes)
+	}
+
+	_, err = resolveFleetTarget(fleetTarget{nodeName: "ghost"})
+	if err == nil {
+		t.Fatal("a name the fleet and the registry both refuse should fail")
+	}
+	for _, want := range []string{"ghost", fleet.DefaultFile, "gpu-a", "gpu-b"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not name %q", err, want)
 		}
 	}
 }

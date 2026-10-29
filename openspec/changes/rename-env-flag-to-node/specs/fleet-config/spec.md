@@ -17,11 +17,21 @@ engine on the machine it is running on. A local engine is already shown by the
 command that runs it, and a machine whose engines are to be read this way names
 them in a fleet file like any other.
 
-`--node` and `--fleet` SHALL NOT both be given: each names where the model is
-served from, so a command stating both SHALL fail naming both rather than
-resolving one by precedence. On the launch path the two are not alternatives:
-there `--node` alongside a fleet pins the selection to that fleet's node of
-that name (see the `fleet-routing` specification).
+`--node` and `--fleet` SHALL NOT both be given: `--fleet` names the file
+whose nodes the command acts on, while `--node` names a registered environment
+or the one node of the fleet the working directory holds, so a command stating
+both SHALL fail naming both rather than resolving one by precedence. On the
+launch path the two are not alternatives: there `--node` alongside a fleet
+pins the selection to that fleet's node of that name (see the `fleet-routing`
+specification).
+
+Beside a `fleet.yaml` discovered in the working directory — not named by a
+flag — a `--node` that is a node of that fleet SHALL narrow the command to
+that node alone; a name the fleet does not hold SHALL resolve as a registered
+environment when one answers it, and fail naming the fleet and its known nodes
+when nothing does. On the drive commands (`fleet start`, `fleet stop`) that
+narrowing alone SHALL select the node: `-n <name>` stands in for the positional
+node name rather than the command demanding it again.
 
 `--node` SHALL name a registered environment, which is a plain identifier and
 never a path. A value that is not a plain identifier, and a name with no
@@ -31,13 +41,44 @@ environment, before any node is contacted.
 `--fleet` SHALL carry a `-f` short form on every `spinloop fleet` subcommand
 except `fleet logs`, where `-f` is the short form of `--follow`; on `fleet
 logs` the fleet file SHALL be named by the long form `--fleet` only. `--node`
-SHALL carry the `-n` short form wherever it appears.
+SHALL carry the `-n` short form everywhere it appears except `fleet deploy`
+and `cloud deploy`, where `-n` is the short form of `--dry-run`; on those two
+the node SHALL be named by the long form `--node` only.
 
 #### Scenario: Default resolution
 
 - **WHEN** a `spinloop fleet` command runs in a directory containing
   `fleet.yaml` with no `--fleet` or `--node` flag
 - **THEN** that file is used
+
+#### Scenario: --node narrows the discovered fleet
+
+- **WHEN** `spinloop status -n gpu-box` runs in a directory whose
+  `fleet.yaml` holds a node named `gpu-box`, passing no `--fleet`
+- **THEN** the command reads only that node: its row alone, its log alone,
+  its engine alone
+
+#### Scenario: A discovered fleet without the node falls back to the registry
+
+- **WHEN** `spinloop status --node prod` runs in a directory whose
+  `fleet.yaml` holds no node named `prod` and a registered environment named
+  `prod` exists
+- **THEN** the command acts on that environment's fleet of one
+
+#### Scenario: A name nothing answers names the fleet it was checked against
+
+- **WHEN** `spinloop status --node ghost` runs in a directory whose
+  `fleet.yaml` holds no node named `ghost` and no environment named `ghost`
+  is registered
+- **THEN** the failure names `ghost`, the `fleet.yaml` it was not found in,
+  and the fleet's known node names
+
+#### Scenario: A drive command takes -n as the node name
+
+- **WHEN** `spinloop fleet start -n gpu-box` runs in a directory whose
+  `fleet.yaml` holds a node named `gpu-box`, naming no node positionally
+- **THEN** that node alone is started, and the command does not ask for the
+  name to be repeated
 
 #### Scenario: Explicit path
 
@@ -80,12 +121,13 @@ SHALL carry the `-n` short form wherever it appears.
 - **THEN** it fails naming both the environment and the fleet file, and
   contacts nothing
 
-#### Scenario: The directory's fleet file does not conflict with --node
+#### Scenario: The directory's fleet file is read for a node, not ignored
 
 - **WHEN** `spinloop fleet status --node prod` runs in a directory containing
-  `fleet.yaml`
-- **THEN** the environment is the target and the directory's file is ignored,
-  because only a flag states a conflict
+  a `fleet.yaml` that holds a node named `prod`
+- **THEN** the fleet is that file and the command narrows to the node
+  `prod` alone, because beside a discovered fleet the one name answers one
+  node of it, and only a flag states a conflict
 
 #### Scenario: An unregistered environment is reported
 

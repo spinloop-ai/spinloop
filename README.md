@@ -623,23 +623,23 @@ Running a model on your own cloud GPU box? [`remote/`](remote/) deploys one.
 while you are using it, and stops itself after a period of idleness.
 
 ```sh
-spinloop cloud start --env dev-2 --print-env   # boot the instance, wait for the
+spinloop cloud start --node dev-2 --print-env   # boot the instance, wait for the
                           # model to load, then print OPENAI_BASE_URL /
                           # OPENAI_API_KEY exports for eval
-spinloop status --env <name> --env dev-2              # instance state, endpoint health,
+spinloop status --node <name> --node dev-2              # instance state, endpoint health,
                           # and when it last did any work
-spinloop metrics --env <name> --env dev-2             # tokens, GPU, CPU and RAM — plus
+spinloop metrics --node <name> --node dev-2             # tokens, GPU, CPU and RAM — plus
                           # the same last-active
-spinloop logs --env <name> --env dev-2                # what the engine (or the boot)
+spinloop logs --node <name> --node dev-2                # what the engine (or the boot)
                           # said, even after it's gone
-spinloop cloud pause --env dev-2               # stop now, but keep it re-wakeable
-spinloop cloud restart --env dev-2             # fresh engine, same address: stop
+spinloop cloud pause --node dev-2               # stop now, but keep it re-wakeable
+spinloop cloud restart --node dev-2             # fresh engine, same address: stop
                           # it, then wake it
-spinloop cloud keep 4h --env dev-2             # hold it against the idle sweep
+spinloop cloud keep 4h --node dev-2             # hold it against the idle sweep
                           # for 4 hours (start --keep does the same at wake time)
-spinloop cloud schedule set --env dev-2 --start "0 8 * * 1-5" --stop "0 18 * * 1-5"
+spinloop cloud schedule set --node dev-2 --start "0 8 * * 1-5" --stop "0 18 * * 1-5"
                           # start it at 08:00 and pause it at 18:00, Monday to Friday
-spinloop cloud stop --env dev-2                # terminate now instead of waiting
+spinloop cloud stop --node dev-2                # terminate now instead of waiting
                           # for the idle timer
 ```
 
@@ -649,12 +649,12 @@ failed before the engine came up (`--source boot`). See
 [docs/commands/cloud.md](docs/commands/cloud.md#reading-the-logs).
 
 Configuration lives in a `cloud.json` per **environment**, named with the
-`--env` flag on every command above (`--env dev-2` selects the file at
+`--node` flag on every command above (`--node dev-2` selects the file at
 `clouds/dev-2/cloud.json` under spinloop's config directory,
 `${SPINLOOP_CONFIG_DIR:-${XDG_CONFIG_HOME:-~/.config}/spinloop}`); with no
-`--env`, the `default` environment is used. The Spinloop itself says only what
+`--node`, the `default` environment is used. The Spinloop itself says only what
 the environment serves — the name is a machine-local choice, so it stays out of
-the file. `spinloop cloud deploy --env dev-2` writes the file for you when it
+the file. `spinloop cloud deploy --node dev-2` writes the file for you when it
 registers the environment; deploying [`remote/`](remote/) yourself prints the
 same values:
 
@@ -663,17 +663,17 @@ same values:
 ```
 
 `base_url` is the endpoint's own address. You never have to quote it back —
-`start` and `status` print it, and `spinloop harness apply --env dev-2` can leave
+`start` and `status` print it, and `spinloop harness apply --node dev-2` can leave
 `BASEURL` out of the Spinloop and still point your agent at the endpoint. A
 `BASEURL` in the Spinloop wins if you do set one.
 
 Deployed something and just want to point an agent at it from another
-machine? `spinloop harness open --env dev-2` on its own — no Spinloop at all —
+machine? `spinloop harness open --node dev-2` on its own — no Spinloop at all —
 configures the harness straight from what is deployed there:
 
 ```sh
-spinloop cloud deploy path/to/Spinloop --env dev-2   # from wherever you deployed it
-spinloop harness open --env dev-2 --prompt "..."     # from anywhere with dev-2 registered
+spinloop cloud deploy path/to/Spinloop --node dev-2   # from wherever you deployed it
+spinloop harness open --node dev-2 --prompt "..."     # from anywhere with dev-2 registered
 ```
 
 Every URL and the region can be overridden with the matching

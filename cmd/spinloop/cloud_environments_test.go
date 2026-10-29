@@ -36,7 +36,7 @@ func stateServer(t *testing.T) *httptest.Server {
 	}))
 }
 
-// A bare environment name on --env resolves through the registry.
+// A bare environment name on --node resolves through the registry.
 func TestCloud_EnvNameResolves(t *testing.T) {
 	isolateConfig(t)
 	stubAWSEnv(t)
@@ -49,12 +49,12 @@ func TestCloud_EnvNameResolves(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := captureStdout(t, func() {
-		if err := cmdStatus([]string{"--env", "prodenv"}); err != nil {
-			t.Errorf("status via --env name: %v", err)
+		if err := cmdStatus([]string{"--node", "prodenv"}); err != nil {
+			t.Errorf("status via --node name: %v", err)
 		}
 	})
 	if !strings.Contains(out, "running") {
-		t.Errorf("--env name should resolve via the registry, got:\n%s", out)
+		t.Errorf("--node name should resolve via the registry, got:\n%s", out)
 	}
 }
 
@@ -68,7 +68,7 @@ func TestCloud_DefaultEnvironment(t *testing.T) {
 
 	t.Chdir(t.TempDir()) // no ./Spinloop here
 	out := captureStdout(t, func() {
-		if err := cmdStatus([]string{"--env", "default"}); err != nil {
+		if err := cmdStatus([]string{"--node", "default"}); err != nil {
 			t.Errorf("status via default env: %v", err)
 		}
 	})
@@ -94,7 +94,7 @@ func TestCloud_SupersededFileIsNotRead(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Chdir(t.TempDir())
-	err := cmdMetrics([]string{"--env", "default"})
+	err := cmdMetrics([]string{"--node", "default"})
 	if err == nil {
 		t.Fatal("the superseded file must not configure an environment")
 	}

@@ -22,6 +22,7 @@ import (
 	"github.com/spinloop-ai/spinloop/internal/config"
 	"github.com/spinloop-ai/spinloop/internal/daemon"
 	"github.com/spinloop-ai/spinloop/internal/discovery"
+	"github.com/spinloop-ai/spinloop/internal/fleet"
 	"github.com/spinloop-ai/spinloop/internal/harness"
 	"github.com/spinloop-ai/spinloop/internal/opencode"
 )
@@ -208,6 +209,47 @@ func compEnvs(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellComp
 	return names, cobra.ShellCompDirectiveNoFileComp
 }
 
+// compNodeNames completes a --node value: the registered environment names,
+// plus the node names of the fleet in force on the command line — the --fleet
+// value where given, else ./fleet.yaml when one sits in the working directory.
+// An unreadable fleet yields just the environments rather than an error:
+// completion must never fail, and the fleet may simply not exist yet.
+func compNodeNames(args []string) ([]string, cobra.ShellCompDirective) {
+	names, _ := compEnvs(nil, nil, "")
+	seen := make(map[string]bool, len(names))
+	for _, n := range names {
+		seen[n] = true
+	}
+	target := ""
+	for i, w := range args {
+		switch {
+		case w == "--fleet" || w == "-f":
+			if i+1 < len(args) {
+				target = args[i+1]
+			}
+		case strings.HasPrefix(w, "--fleet="):
+			target = strings.TrimPrefix(w, "--fleet=")
+		}
+	}
+	if target == "" {
+		if _, err := os.Stat(fleet.DefaultFile); err != nil {
+			return names, cobra.ShellCompDirectiveNoFileComp
+		}
+		target = fleet.DefaultFile
+	}
+	cfg, err := fleet.Load(target)
+	if err != nil {
+		return names, cobra.ShellCompDirectiveNoFileComp
+	}
+	for _, n := range cfg.Nodes {
+		if !seen[n.Name] {
+			seen[n.Name] = true
+			names = append(names, n.Name)
+		}
+	}
+	return names, cobra.ShellCompDirectiveNoFileComp
+}
+
 // Positional slots. The engine hands a command's ValidArgsFunction the
 // positional arguments already on the line, which is how a fixed-arity slot
 // knows it has been filled.
@@ -275,6 +317,7 @@ var launchValueFlags = map[string]bool{
 	"--fleet":        true,
 	"-f":             true,
 	"--node":         true,
+	"-n":             true,
 	"--prefer":       true,
 	"--wake-timeout": true,
 }
@@ -291,6 +334,8 @@ func launchSlot(_ *cobra.Command, args []string, toComplete string) ([]string, c
 		switch toComplete[:eq] {
 		case "--spinloop", "-O":
 			return aliasNames(), cobra.ShellCompDirectiveDefault
+		case "--node", "-n":
+			return compNodeNames(args)
 		}
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
@@ -308,7 +353,9 @@ func launchSlot(_ *cobra.Command, args []string, toComplete string) ([]string, c
 				return harness.Names(), cobra.ShellCompDirectiveNoFileComp
 			case "--providers", "--fleet", "-f":
 				return nil, cobra.ShellCompDirectiveDefault
-			case "--node", "--prefer", "--wake-timeout":
+			case "--node", "-n":
+				return compNodeNames(args)
+			case "--prefer", "--wake-timeout":
 				return nil, cobra.ShellCompDirectiveNoFileComp
 			}
 		}

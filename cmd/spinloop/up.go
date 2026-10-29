@@ -50,7 +50,7 @@ func runUp(args []string) error {
 		}
 		// A bare up starts the whole fleet: fleet start refuses to run bare,
 		// and picking one node out of several would be a guess.
-		return runFleetDrive("start", cfg, len(args) == 0, args, fleetStartCall(cfg))
+		return runFleetDrive("start", cfg, len(args) == 0, args, "", fleetStartCall(cfg))
 	}
 	return runServe(args, false, false, "", "")
 }

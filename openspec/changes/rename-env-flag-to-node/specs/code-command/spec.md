@@ -13,7 +13,17 @@ naming a registered alias or a path, the `-O`/`--spinloop` flag, and the
 `spinloop code <args>` SHALL therefore produce the same harness config, launch
 the same process, and print the same output and errors as
 `spinloop harness open <args>`. `code` SHALL NOT change what `harness open`
-does; it is a new spelling of it, not a replacement.
+does; it is a new spelling of it, not a replacement. A word on the command
+line that is neither a consumed Spinloop name nor a known flag forwards to the
+harness as ever — except the removed `--env`/`-e`, which the command SHALL
+reject naming `--node` as its replacement, since forwarding the launch's own
+former flag would hand the harness a word it never owned.
+
+#### Scenario: the removed --env spelling names its replacement
+
+- **WHEN** the user runs `spinloop code --env dev-2`
+- **THEN** the command fails naming `--env` and `--node` as its replacement,
+  and the harness is not launched with `--env` among its arguments
 
 #### Scenario: A bare code launches unconfigured
 

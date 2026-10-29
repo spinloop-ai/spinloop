@@ -353,9 +353,9 @@ var movedSubcommands = map[string]string{
 	"fleet dashboard": "dashboard",
 	"fleet metrics":   "metrics",
 	"fleet logs":      "logs",
-	"cloud status":    "status --env <name>",
-	"cloud metrics":   "metrics --env <name>",
-	"cloud logs":      "logs --env <name>",
+	"cloud status":    "status --node <name>",
+	"cloud metrics":   "metrics --node <name>",
+	"cloud logs":      "logs --node <name>",
 }
 
 // fleetCmd builds the fleet parent and its subcommands. The parent does
@@ -393,7 +393,7 @@ func cloudCmd() *cobra.Command {
 		Short: "control the cloud GPU inference instance",
 		Long: `runs the model on a cloud GPU that exists only while you use it, from
 the same Spinloop. Each environment is registered under
-~/.config/spinloop/clouds/<name>/ and selected with --env <name>. Each
+~/.config/spinloop/clouds/<name>/ and selected with --node <name>. Each
 subcommand's --help says what that step does.`,
 		Args:          groupArgs,
 		SilenceErrors: true,

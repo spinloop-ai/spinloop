@@ -11,14 +11,14 @@ import (
 )
 
 func dashboardCmd() *cobra.Command {
-	var path, envName, spinloopPath string
+	var path, nodeName, spinloopPath string
 	c := &cobra.Command{
 		Use:   "dashboard",
 		Short: "watch the engines in an interactive tiled view",
 		Long: `An interactive live view of the target: a tile per node, each drawing
 what the gauge format of fleet metrics prints — state, what it serves, the
 resource gauges, the token counters — repainted on an interval. A single
-registered environment (--env) opens as a board of one.
+registered environment (--node) opens as a board of one.
 
 The view is read-only apart from four keys: s starts the selected node, k
 keeps a cloud environment for a duration you type — it asks how long,
@@ -42,16 +42,16 @@ metrics --watch instead.`,
 			if err := applyReadSpinloopEnv(spinloopPath); err != nil {
 				return err
 			}
-			return runFleetDashboard(fleetTarget{envName: envName, fleetPath: path})
+			return runFleetDashboard(fleetTarget{nodeName: nodeName, fleetPath: path})
 		},
 	}
 	fs := c.Flags()
 	fs.StringVarP(&path, "fleet", "f", "", fleetFileUsage)
-	fs.StringVar(&envName, "env", "", envFlagTargetUsage)
+	fs.StringVarP(&nodeName, "node", "n", "", nodeFlagTargetUsage)
 	registerSpinloopEnvFlag(fs, &spinloopPath)
 	c.ValidArgsFunction = noPositionals
 	compRegister(c, "fleet", compFiles)
-	compRegister(c, "env", compEnvs)
+	compRegister(c, "node", compEnvs)
 	return c
 }
 

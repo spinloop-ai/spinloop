@@ -1,5 +1,5 @@
 // The Spinloop a read verb may be given. It selects nothing — the target comes
-// from --env or --fleet — and is read only for the environment it carries: its
+// from --node or --fleet — and is read only for the environment it carries: its
 // ENV instructions and the .env beside it, applied before any control-plane or
 // daemon work. That is what lets AWS credentials, a profile, or the
 // SPINLOOP_CLOUD_* overrides live in a project's Spinloop rather than in the
