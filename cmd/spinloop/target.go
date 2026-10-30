@@ -1,7 +1,7 @@
 // Which fleet a command acts on. Every fleet command and the launch path ask
-// the same question — a named environment, a named file, or the working
-// directory's fleet.yaml — so they ask it here, and a command line that names
-// two targets is refused in one place with one sentence.
+// the same question — a fleet file and optionally one node within it, else the
+// working directory's fleet.yaml, else a named environment — so they ask it
+// here, and one message words the failure where nothing answers.
 
 package main
 
@@ -14,36 +14,34 @@ import (
 )
 
 // nodeFlagTargetUsage is the --node flag's help on every fleet subcommand.
-// With no fleet in force the name is the whole target: a registered
-// environment's node. Beside a discovered fleet.yaml it names the one node
-// of that fleet the command acts on. Beside an explicit --fleet it adds
-// nothing the file does not already say, and is refused there.
-const nodeFlagTargetUsage = "act on this node alone: a registered environment when no fleet is in force, else one node of the working directory's fleet"
+// Beside a fleet — named by --fleet or discovered in the working directory —
+// the name picks the one node of it the command acts on. With no fleet in
+// force the name is the whole target: a registered environment's node.
+const nodeFlagTargetUsage = "act on this node alone: one node of the fleet in force, or a registered environment when no fleet holds the name"
 
 // fleetTarget is what a command's flags say about which fleet to act on.
 // Both fields empty means the working directory's fleet.yaml.
 type fleetTarget struct {
-	// nodeName names the one node to act on: a registered environment to
-	// act on as a fleet of one when no fleet is in force, or a node of
-	// the working directory's discovered fleet.
+	// nodeName names the one node to act on: a node of the fleet the
+	// command resolves — the named file, the working directory's
+	// fleet.yaml — or, with no fleet holding it, a registered environment
+	// to act on as a fleet of one.
 	nodeName string
 	// fleetPath names a fleet file to act on.
 	fleetPath string
 }
 
 // resolveFleetTarget turns what the flags say into the fleet to act on: the
-// environment's fleet of one, the named file, or the working directory's
-// fleet.yaml. A --node beside a discovered fleet.yaml resolves that fleet;
-// commands then act on only that node, via narrowedTarget.
+// named file, or the working directory's fleet.yaml beside which a
+// discovered fleet beats the registry, or, with neither, the environment's
+// fleet of one. Commands then act on only the --node's node, via
+// narrowedTarget.
 //
-// A directory's fleet.yaml is not consulted when an environment is named, and
-// is not a conflict with one: a file that happens to be in the working
-// directory is not a statement of intent, and a flag is. Only two flags
-// conflict.
+// A --fleet file answers for the node named beside it: a name the file does
+// not hold fails naming the file and its nodes. Only a fleet *discovered*
+// in the working directory falls through to the registry — a file that
+// happens to be there is not a statement of intent, and a flag is.
 func resolveFleetTarget(t fleetTarget) (*fleet.Config, error) {
-	if err := checkOneTarget(t.nodeName, t.fleetPath); err != nil {
-		return nil, err
-	}
 	if t.nodeName != "" && t.fleetPath == "" {
 		// A discovered fleet beats the registry — that is what a name
 		// beside fleet.yaml answers — but only if it holds the node. A
@@ -69,33 +67,31 @@ func resolveFleetTarget(t fleetTarget) (*fleet.Config, error) {
 		}
 		return fleet.ForEnvironment(t.nodeName)
 	}
-	return fleet.Resolve(t.fleetPath)
-}
-
-// checkOneTarget refuses --node beside an explicit --fleet. --fleet names
-// the file whose nodes the command acts on; --node is the same flag's other
-// answer — a registered environment, or the one node of the fleet the
-// working directory happens to hold. Beside --fleet both answers can be
-// meant, and one flag cannot carry a may-be, so the line is refused. The
-// narrowing --fleet wants is already expressible: start, stop and deploy
-// take node names as arguments, and `--node` beside a discovered fleet is
-// the narrowing for the commands that fan a whole fleet.
-//
-// It is enforced from one place and worded once; an operator meets it once.
-func checkOneTarget(nodeName, fleetTarget string) error {
-	if nodeName == "" || fleetTarget == "" {
-		return nil
+	cfg, err := fleet.Resolve(t.fleetPath)
+	if err != nil {
+		return nil, err
 	}
-	return fmt.Errorf(
-		"--node %s beside --fleet %s is two answers to one target: --fleet already names the nodes to act on — name the node as an argument to narrow it, or drop --fleet and let --node work the fleet of the working directory",
-		nodeName, fleetTarget)
+	if t.nodeName != "" {
+		// --fleet names the fleet and --node the node within it. The
+		// named file is the stated fleet, so nothing else answers for
+		// it: no registry fallback, only its own nodes.
+		for _, n := range cfg.Nodes {
+			if n.Name == t.nodeName {
+				return cfg, nil
+			}
+		}
+		return nil, fmt.Errorf(
+			"node %q is no node of %s (its nodes: %s): name one of them, or drop --fleet and name a registered environment",
+			t.nodeName, t.fleetPath, strings.Join(cfg.Names(), ", "))
+	}
+	return cfg, nil
 }
 
 // narrowedTarget returns the fleet a command with a fleetTarget fans out
 // over: the whole config when --node names nothing, or a narrowed copy of it
 // holding only that node. A name no node of the resolved fleet answers was
-// refused before this ran — checkOneTarget and resolveFleetTarget for a
-// discovered file, ForEnvironment for a registry name — so OnlyNames here
+// refused before this ran — resolveFleetTarget for both the named file and a
+// discovered one, ForEnvironment for a registry name — so OnlyNames here
 // cannot fail; the fall back to the whole config keeps a fan-out honest
 // rather than empty should it ever change.
 func narrowedTarget(cfg *fleet.Config, nodeName string) *fleet.Config {

@@ -76,7 +76,7 @@ cost at all.`,
 	fs.BoolVar(&withCost, "cost", false, "include what each priceable node has cost so far")
 	c.ValidArgsFunction = noPositionals
 	compRegister(c, "fleet", compFiles)
-	compRegister(c, "node", compEnvs)
+	compRegister(c, "node", compNodes)
 	return c
 }
 

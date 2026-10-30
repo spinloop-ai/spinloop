@@ -250,6 +250,21 @@ func compNodeNames(args []string) ([]string, cobra.ShellCompDirective) {
 	return names, cobra.ShellCompDirectiveNoFileComp
 }
 
+// compNodes is compNodeNames under Cobra's flag-completion signature, for a
+// fleet command's --node: the fleet in force feeds the names. Parsing eats
+// --fleet out of the positional args before this runs, so the flag's own
+// value is appended for compNodeNames to find; on a launch, where parsing is
+// off, the raw words are already there.
+func compNodes(c *cobra.Command, args []string, _ string) ([]string, cobra.ShellCompDirective) {
+	words := args
+	if c != nil {
+		if f := c.Flags().Lookup("fleet"); f != nil && f.Value.String() != "" {
+			words = append(append([]string{}, args...), "--fleet", f.Value.String())
+		}
+	}
+	return compNodeNames(words)
+}
+
 // Positional slots. The engine hands a command's ValidArgsFunction the
 // positional arguments already on the line, which is how a fixed-arity slot
 // knows it has been filled.

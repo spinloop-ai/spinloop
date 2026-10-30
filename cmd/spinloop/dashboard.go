@@ -51,7 +51,7 @@ metrics --watch instead.`,
 	registerSpinloopEnvFlag(fs, &spinloopPath)
 	c.ValidArgsFunction = noPositionals
 	compRegister(c, "fleet", compFiles)
-	compRegister(c, "node", compEnvs)
+	compRegister(c, "node", compNodes)
 	return c
 }
 

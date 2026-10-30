@@ -21,7 +21,7 @@ that node's own log.
 
 | | target |
 | --- | --- |
-| `--node <name>` (`-n`) | that node of the fleet in force, or one registered environment when no fleet holds the name |
+| `--node <name>` (`-n`) | that node of the fleet in force; with no fleet named, a registered environment when none holds the name |
 | `--fleet <path>` | that fleet file |
 | neither | the `fleet.yaml` in the working directory |
 

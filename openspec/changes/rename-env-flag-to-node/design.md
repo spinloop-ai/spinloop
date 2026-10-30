@@ -53,10 +53,14 @@ currently fetches the endpoint env whenever `route.envName != ""` and enforces
 one-target with `checkOneTarget`. After the merge the flag can name a fleet
 node, so the fetch and the provider-keying in `applySelection` run only when
 `--node` is set and routing produced no `*fleet.Choice` — i.e. the name
-resolved as environment. `checkOneTarget` remains for the fleet commands
-(`--node` + `--fleet` still conflict there) and keeps its one sentence,
-re-worded for `--node`; it disappears from the launch path because pinning a
-node to its fleet is one statement, not two.
+resolved as environment. `checkOneTarget` is removed entirely rather than
+re-worded: `--fleet` names a fleet and `--node` names the node within it,
+whether the fleet was flagged or discovered, so the pair is one answer, not
+two (the first draft refused the pair on the fleet commands and shipped; review
+caught that the launch path already accepted it, making the refusal the odd
+half). A name a *named* file lacks fails naming the file and its nodes — the
+registry answers only beside a discovered `fleet.yaml`, a file that states no
+intent.
 
 **`-n` everywhere.** All renamed flags take `-n`. Verified free: only `alias`
 takes `-n` (for `--name`), on a command that never took `--env`. fleet-config's
@@ -68,7 +72,9 @@ with nothing. With the merge it offers registered environment names
 (`compEnvs`) — the no-fleet meaning — and the fleet file's node names where
 `fleet.yaml`/`--fleet` is on the line and parses; a failure to read the fleet
 degrades to environments only, honouring completion's never-error rule.
-`launchValueFlags` gains `-n`.
+`launchValueFlags` gains `-n`. The fleet commands' `--node` gains the same
+feeding (`compNodes`): environments plus the fleet in force, an explicit
+`--fleet` value beating the directory's file.
 
 **Rename mechanics.** Pure-string renames in specs use MODIFIED; five
 requirements whose *scenario titles* carried `--env` (and one whose scenario

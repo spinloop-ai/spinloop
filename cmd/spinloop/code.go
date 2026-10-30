@@ -114,7 +114,7 @@ func openLaunchCmd(use, short, long string) *cobra.Command {
 	fs.Lookup("spinloop").NoOptDefVal = "true"
 	fs.StringVar(&providers, "providers", "", "path to a providers.yaml override")
 	fs.StringVarP(&route.node, "node", "n", "", "route to this node: with a fleet in force, pin the launch to that fleet node; otherwise, launch against this registered environment (its name keys the provider, its API key is fetched and injected)")
-	compRegister(c, "node", compEnvs)
+	compRegister(c, "node", compNodes)
 	fs.StringVarP(&route.fleetPath, "fleet", "f", "", "route through this fleet file (default: ./fleet.yaml, when the Spinloop is not named)")
 	fs.StringVar(&route.prefer, "prefer", "", "rank fleet nodes by `idle` or `active` (overrides the fleet file)")
 	fs.BoolVar(&route.noWake, "no-wake", false, "fail rather than starting an engine on an idle fleet node")

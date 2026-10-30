@@ -53,8 +53,20 @@
 
 ## 5. Integration
 
-- [ ] 5.1 Exercise the renamed surface end-to-end: build the binary, run a
+- [x] 5.1 Exercise the renamed surface end-to-end: build the binary, run a
   fleet-docker-example-style flow by hand or via the example's script
   (`examples/fleet-docker/`), confirming launch, status and pin all work with
   `--node`/`-n` and that `--env` errors everywhere. Verify: the flow
-  completes and prints the announced node.
+  completes and prints the announced node. (Done against stub daemons —
+  Docker unavailable locally; CI's fleet-integration job covers the Docker
+  flow.)
+
+## 6. Review revision (draft PR)
+
+- [x] 6.1 Let `--fleet` and `--node` pair instead of conflict: `--fleet`
+  names the fleet, `--node` narrows to the node within it, named or
+  discovered. A name a *named* file lacks fails naming the file and its
+  nodes — registry fallback stays only beside a discovered `fleet.yaml`.
+  Delete `checkOneTarget`; feed `--node` completion from the fleet in force
+  (`compNodes`). Verify: `go test ./cmd/spinloop`, spec strict-valid, and
+  the stub-daemon driver's `--fleet … -n …` pair and ghost-name checks.

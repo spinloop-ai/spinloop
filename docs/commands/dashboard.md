@@ -38,9 +38,9 @@ title bar names the state beside the log's follow state.
 ## Which target
 
 The three ways every command that acts on a fleet takes one — `--node <name>`,
-`--fleet <path>`, or the working directory's `fleet.yaml`. Beside a discovered
-`fleet.yaml`, `--node` narrows the board to that node alone; a name no fleet
-holds opens a registered environment as a board of one panel, which needs no
+`--fleet <path>`, or the working directory's `fleet.yaml`. Beside a fleet,
+`--node` narrows the board to that node alone; a name a *discovered* fleet
+lacks opens a registered environment as a board of one panel, which needs no
 fleet file at all.
 
 A problem with the target itself — a missing or unparseable fleet file, an

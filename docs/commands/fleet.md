@@ -31,16 +31,22 @@ Every `spinloop fleet` command takes its target one of three ways:
 
 | | target |
 | --- | --- |
-| `--node <name>` (`-n`, except on `deploy`) | a node of the fleet in force, narrowing the command to it — or, with no fleet holding that name, one registered environment as a fleet of one |
+| `--node <name>` (`-n`, except on `deploy`) | a node of the fleet in force, narrowing the command to it — or, with no fleet named, one registered environment as a fleet of one |
 | `--fleet <path>` (`-f`, except on `logs`) | that fleet file |
 | neither | the `fleet.yaml` in the working directory |
 
-`--node` beside a `--fleet` *flag* states two answers to one target, so the
-command fails saying so rather than picking one. A `fleet.yaml` merely sitting
-in the working directory is not a conflict: only a flag states a target, so
-beside a discovered `fleet.yaml` `--node` narrows that file to the node it
-names — and falls back to a registered environment of that name only when no
-node in the fleet answers it.
+`--fleet` names the fleet and `--node` names the node within it: beside a
+fleet — the file you name, or the working directory's — `--node` narrows the
+command to that node alone. A name the *named* file lacks fails naming the
+file and its nodes; only beside a *discovered* `fleet.yaml` does a name the
+file lacks fall back to a registered environment of that name, because a file
+that merely sits in the working directory states no intent.
+
+```sh
+spinloop fleet start -f cluster.yaml -n gpu-box   # that file's gpu-box alone
+spinloop status -n gpu-box                        # the same, in the directory holding cluster.yaml…
+spinloop status -n qwen                           # …or the registered environment, if no local fleet holds the name
+```
 
 ### One environment, no fleet file
 
