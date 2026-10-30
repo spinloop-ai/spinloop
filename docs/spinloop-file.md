@@ -86,22 +86,22 @@ PRESET   ./preset.ini    # or PARAM lines in this file instead
 
 The Spinloop says *what*; it no longer says *where*. Where is an
 **environment** — a deployed, registered endpoint — and the environment is named
-with a `--env <name>` flag on the commands that act on it:
+with a `--node <name>` flag on the commands that act on it:
 
 ```sh
-spinloop cloud deploy --env qwen3.6-27b-prod   # from the directory holding the Spinloop
-spinloop harness apply --env qwen3.6-27b-prod           # point opencode at it
-spinloop harness open --env qwen3.6-27b-prod    # work
-spinloop cloud stop --env qwen3.6-27b-prod     # done
+spinloop cloud deploy --node qwen3.6-27b-prod   # from the directory holding the Spinloop
+spinloop harness apply --node qwen3.6-27b-prod           # point opencode at it
+spinloop harness open --node qwen3.6-27b-prod    # work
+spinloop cloud stop --node qwen3.6-27b-prod     # done
 ```
 
-Each `--env <name>` reads the environment's registered config at
+Each `--node <name>` reads the environment's registered config at
 `${XDG_CONFIG_HOME:-~/.config}/spinloop/clouds/<name>/cloud.json` — the file
 [`spinloop cloud deploy`](commands/cloud.md) writes when it creates the
 environment — so deployment state stays per-user and per-machine while the
-Spinloop itself stays clean enough to commit. A command given no `--env` uses
+Spinloop itself stays clean enough to commit. A command given no `--node` uses
 the `default` environment, and an unregistered name fails, naming the `deploy
---env` that would create it. A name is a plain identifier: `--env ./x.json`
+--node` that would create it. A name is a plain identifier: `--node ./x.json`
 fails, saying so. See [`spinloop cloud`](commands/cloud.md) for the full
 lifecycle.
 
@@ -110,7 +110,7 @@ which records it in the environment's `cloud.json` as `base_url`, and
 [`spinloop harness apply`](commands/harness.md#spinloop-harness-apply) reads it from there. Write a `BASEURL` only
 to override that.
 
-Applying with `--env` also names the harness provider after the environment
+Applying with `--node` also names the harness provider after the environment
 rather than the engine: the example above is configured under `qwen3.6-27b-prod`,
 with the model reading as `qwen3.6-27b-prod/qwen3.6-27b`. `PROVIDER` still
 supplies the engine's settings; only the name changes, so several environments
@@ -119,11 +119,12 @@ The provider's display name is qualified by the environment too — `llama.cpp
 (qwen3.6-27b-prod)` rather than a bare `llama.cpp` — so a cloud environment reads
 distinctly from a local engine of the same kind in a harness model picker.
 
-A launch may not state both `--env` and a fleet (the `--fleet` flag, or the
-`./fleet.yaml` in force when the Spinloop is not named): each names where the
-model is served from, so spinloop fails naming both.
+A launch's `--node` means whichever target is in force: beside a fleet (the
+`--fleet` flag, or the `./fleet.yaml` in force when the Spinloop is not named)
+it pins the selection to that fleet's node of the name; with no fleet, it is a
+registered environment.
 
-`spinloop harness open --env qwen3.6-27b-prod` also works with **no Spinloop at
+`spinloop harness open --node qwen3.6-27b-prod` also works with **no Spinloop at
 all**: the environment already knows what it is serving, so the harness
 configures itself from that — the same result as the Spinloop above, without
 needing a copy of it on the machine doing the launching. See
@@ -276,10 +277,10 @@ Rules:
   to a deployed instance, and on the harness path it shapes only the launched
   agent, never spinloop's own environment.
 - The `REMOTE` keyword was removed: a `REMOTE` line fails, naming the line and
-  the replacement — `spinloop cloud deploy --env <name>` at deploy time and
-  `--env <name>` on `apply`, `unapply`, `harness`, and the `cloud`
+  the replacement — `spinloop cloud deploy --node <name>` at deploy time and
+  `--node <name>` on `apply`, `unapply`, `harness`, and the `cloud`
   subcommands. Where a `REMOTE` line pointed at a path or a URL, register the
-  environment's config with `spinloop cloud deploy --env <name>` instead, and
+  environment's config with `spinloop cloud deploy --node <name>` instead, and
   name it from the flags.
 - Keywords are **case-insensitive** — `provider`, `Provider`, and `PROVIDER` are
   all accepted — but **UPPERCASE is canonical** and is what `spinloop harness export`

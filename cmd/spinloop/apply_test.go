@@ -481,7 +481,7 @@ func TestCmdApply_BaseURLFromCloudConfig(t *testing.T) {
 	mustWrite(t, spinloopFile, "PROVIDER llamacpp\nALIAS qwen\n")
 
 	out := captureStdout(t, func() {
-		if err := cmdApply([]string{"--env", "dev-1", spinloopFile}); err != nil {
+		if err := cmdApply([]string{"--node", "dev-1", spinloopFile}); err != nil {
 			t.Fatalf("cmdApply: %v", err)
 		}
 	})
@@ -513,7 +513,7 @@ func TestCmdApply_SpinloopBaseURLBeatsCloudConfig(t *testing.T) {
 	mustWrite(t, spinloopFile, "PROVIDER llamacpp\nALIAS qwen\nBASEURL http://127.0.0.1:9090/v1\n")
 
 	captureStdout(t, func() {
-		if err := cmdApply([]string{"--env", "dev-1", spinloopFile}); err != nil {
+		if err := cmdApply([]string{"--node", "dev-1", spinloopFile}); err != nil {
 			t.Fatalf("cmdApply: %v", err)
 		}
 	})
@@ -525,7 +525,7 @@ func TestCmdApply_SpinloopBaseURLBeatsCloudConfig(t *testing.T) {
 	}
 }
 
-// TestCmdApply_UnregisteredEnvironmentFails checks that --env naming an
+// TestCmdApply_UnregisteredEnvironmentFails checks that --node naming an
 // environment that has never been deployed fails, naming the deploy command that
 // creates it.
 func TestCmdApply_UnregisteredEnvironmentFails(t *testing.T) {
@@ -536,12 +536,12 @@ func TestCmdApply_UnregisteredEnvironmentFails(t *testing.T) {
 	spinloopFile := filepath.Join(spinloopDir, "Spinloop")
 	mustWrite(t, spinloopFile, "PROVIDER llamacpp\nALIAS qwen\n")
 
-	err := cmdApply([]string{"--env", "dev-1", spinloopFile})
+	err := cmdApply([]string{"--node", "dev-1", spinloopFile})
 	if err == nil {
 		t.Fatal("expected an error for an unregistered environment")
 	}
 	if !strings.Contains(err.Error(), "not registered") ||
-		!strings.Contains(err.Error(), "`spinloop cloud deploy --env \"dev-1\"`") {
+		!strings.Contains(err.Error(), "`spinloop cloud deploy --node \"dev-1\"`") {
 		t.Errorf("error = %v, want the not-registered error naming the deploy command", err)
 	}
 }
@@ -562,7 +562,7 @@ func TestCmdApply_RemoteConfigMalformed(t *testing.T) {
 	spinloopFile := filepath.Join(spinloopDir, "Spinloop")
 	mustWrite(t, spinloopFile, "PROVIDER llamacpp\nALIAS qwen\n")
 
-	err := cmdApply([]string{"--env", "dev-1", spinloopFile})
+	err := cmdApply([]string{"--node", "dev-1", spinloopFile})
 	if err == nil {
 		t.Fatal("expected an error for a malformed cloud config")
 	}
@@ -571,7 +571,7 @@ func TestCmdApply_RemoteConfigMalformed(t *testing.T) {
 	}
 }
 
-// TestCmdApply_RemoteNameIsProviderName checks that --env keys the harness
+// TestCmdApply_RemoteNameIsProviderName checks that --node keys the harness
 // provider on the environment name — configured from the PROVIDER's catalogue
 // entry — with the default model reading as <env>/<model> and the base URL taken
 // from that environment's cloud.json.
@@ -591,7 +591,7 @@ func TestCmdApply_RemoteNameIsProviderName(t *testing.T) {
 	mustWrite(t, spinloopFile, "PROVIDER llamacpp\nALIAS qwen\n")
 
 	captureStdout(t, func() {
-		if err := cmdApply([]string{"--env", "dev-1", spinloopFile}); err != nil {
+		if err := cmdApply([]string{"--node", "dev-1", spinloopFile}); err != nil {
 			t.Fatalf("cmdApply: %v", err)
 		}
 	})
@@ -637,7 +637,7 @@ func TestCmdApply_RemoteProviderLabelledPerEnvironment(t *testing.T) {
 	mustWrite(t, localSpinloop, "PROVIDER llamacpp\nALIAS qwen\nBASEURL http://127.0.0.1:8080/v1\n")
 
 	captureStdout(t, func() {
-		if err := cmdApply([]string{"--env", "dev-2", cloudSpinloop}); err != nil {
+		if err := cmdApply([]string{"--node", "dev-2", cloudSpinloop}); err != nil {
 			t.Fatalf("cmdApply cloud: %v", err)
 		}
 		if err := cmdApply([]string{localSpinloop}); err != nil {
@@ -696,7 +696,7 @@ func TestCmdApply_RemoteReapplyRefreshesLabel(t *testing.T) {
 	mustWrite(t, spinloopFile, "PROVIDER llamacpp\nALIAS qwen\n")
 
 	captureStdout(t, func() {
-		if err := cmdApply([]string{"--env", "dev-2", spinloopFile}); err != nil {
+		if err := cmdApply([]string{"--node", "dev-2", spinloopFile}); err != nil {
 			t.Fatalf("cmdApply: %v", err)
 		}
 	})
@@ -727,12 +727,12 @@ func TestCmdUnapply_RemoveEnvironmentNamedProvider(t *testing.T) {
 	mustWrite(t, spinloopFile, "PROVIDER llamacpp\nALIAS qwen\n")
 
 	captureStdout(t, func() {
-		if err := cmdApply([]string{"--env", "dev-1", spinloopFile}); err != nil {
+		if err := cmdApply([]string{"--node", "dev-1", spinloopFile}); err != nil {
 			t.Fatalf("cmdApply: %v", err)
 		}
 	})
 	captureStdout(t, func() {
-		if err := cmdUnapply([]string{"--env", "dev-1", spinloopFile}); err != nil {
+		if err := cmdUnapply([]string{"--node", "dev-1", spinloopFile}); err != nil {
 			t.Fatalf("cmdUnapply: %v", err)
 		}
 	})

@@ -832,7 +832,7 @@ func TestEnvAlias_ReachesCloud(t *testing.T) {
 	t.Chdir(t.TempDir()) // no ./Spinloop, so only the variable can find it
 	t.Setenv("SPINLOOP_ALIAS", "q3")
 
-	if err := cmdCloudStop([]string{"--env", "default"}); err != nil {
+	if err := cmdCloudStop([]string{"--node", "default"}); err != nil {
 		t.Fatalf("cmdCloudStop with SPINLOOP_ALIAS: %v", err)
 	}
 	select {
@@ -879,7 +879,7 @@ func TestEnvAlias_RemoteFailsRatherThanFallingBack(t *testing.T) {
 	t.Chdir(t.TempDir())
 	t.Setenv("SPINLOOP_ALIAS", "nope")
 
-	err := cmdCloudStop([]string{"--env", "default"})
+	err := cmdCloudStop([]string{"--node", "default"})
 	if err == nil {
 		t.Fatal("expected an error for an unregistered SPINLOOP_ALIAS")
 	}
@@ -903,7 +903,7 @@ func TestEnvAlias_RemoteFallsBackWithoutREMOTE(t *testing.T) {
 	t.Chdir(t.TempDir())
 	t.Setenv("SPINLOOP_ALIAS", "q3")
 
-	err := cmdCloudStop([]string{"--env", "default"})
+	err := cmdCloudStop([]string{"--node", "default"})
 	if err == nil {
 		t.Fatal("expected an error: there is no default endpoint config either")
 	}

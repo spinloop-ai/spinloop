@@ -123,7 +123,7 @@ func TestCloudStop_RespectsDotEnv(t *testing.T) {
 	unsetEnvOnCleanup(t, "SPINLOOP_CLOUD_STOP_URL")
 
 	// An explicit Spinloop path, exercising resolveCloudConfig's explicit-arg branch.
-	if err := cmdCloudStop([]string{"Spinloop", "--env", "testenv"}); err != nil {
+	if err := cmdCloudStop([]string{"Spinloop", "--node", "testenv"}); err != nil {
 		t.Fatalf("cmdCloudStop: %v", err)
 	}
 	select {
@@ -163,7 +163,7 @@ func TestCloudStop_EnvKeywordOverridesDotEnv(t *testing.T) {
 	}
 	unsetEnvOnCleanup(t, "SPINLOOP_CLOUD_STOP_URL")
 
-	if err := cmdCloudStop([]string{"--env", "testenv"}); err != nil {
+	if err := cmdCloudStop([]string{"--node", "testenv"}); err != nil {
 		t.Fatalf("cmdCloudStop: %v", err)
 	}
 	select {
@@ -205,7 +205,7 @@ func TestCloudDeploy_DoesNotForwardEnvToInstance(t *testing.T) {
 	}
 	unsetEnvOnCleanup(t, "SPINLOOP_SECRET_TOKEN", "SPINLOOP_DOTENV_SECRET")
 
-	if err := cmdCloudDeploy([]string{"--env", "testenv"}); err != nil {
+	if err := cmdCloudDeploy([]string{"--node", "testenv"}); err != nil {
 		t.Fatalf("cmdCloudDeploy: %v", err)
 	}
 	for _, leak := range []string{"SPINLOOP_SECRET_TOKEN", "do-not-leak", "SPINLOOP_DOTENV_SECRET", "also-no"} {

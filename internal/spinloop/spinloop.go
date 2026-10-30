@@ -65,7 +65,7 @@ type Selection struct {
 	Parallel string
 	// DisplayName is the harness provider's display name, derived at apply time
 	// rather than parsed from a Spinloop — like BaseURL, it may be filled from the
-	// named environment. It is set only when an environment's --env flag renames
+	// named environment. It is set only when an environment's --node flag renames
 	// the provider, to label it distinctly from a local engine of the same kind;
 	// empty otherwise, leaving the catalogue engine name.
 	DisplayName string
@@ -149,7 +149,7 @@ func Parse(data []byte) (Selection, error) {
 		if canon == "" {
 			if kw == "remote" {
 				return Selection{}, fmt.Errorf(
-					"line %d: the REMOTE instruction was removed: name the environment with `spinloop cloud deploy --env <name>` at deploy time, and pass --env <name> to the commands that act on it (cloud subcommands, apply, unapply, harness)",
+					"line %d: the REMOTE instruction was removed: name the environment with `spinloop cloud deploy --node <name>` at deploy time, and pass --node <name> to the commands that act on it (cloud subcommands, apply, unapply, harness)",
 					line)
 			}
 			return Selection{}, fmt.Errorf("line %d: unknown keyword %q (expected PROVIDER, MODEL, ALIAS, CONTEXT, OUTPUT, PARALLEL, BASEURL, PRESET, PARAM, or ENV)", line, fields[0])

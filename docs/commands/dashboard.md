@@ -6,7 +6,7 @@ on an interval, with the keys to drive the one you have selected.
 ```sh
 spinloop dashboard                       # the fleet.yaml in this directory
 spinloop dashboard --fleet ./cluster.yaml
-spinloop dashboard --env prod            # one environment, as a board of one
+spinloop dashboard --node prod            # one environment, as a board of one
 ```
 
 Each tile draws what the gauge format of
@@ -37,9 +37,11 @@ title bar names the state beside the log's follow state.
 
 ## Which target
 
-The three ways every command that acts on a fleet takes one — `--env <name>`,
-`--fleet <path>`, or the working directory's `fleet.yaml`. A single
-environment opens as a board of one panel, which needs no fleet file at all.
+The three ways every command that acts on a fleet takes one — `--node <name>`,
+`--fleet <path>`, or the working directory's `fleet.yaml`. Beside a fleet,
+`--node` narrows the board to that node alone; a name a *discovered* fleet
+lacks opens a registered environment as a board of one panel, which needs no
+fleet file at all.
 
 A problem with the target itself — a missing or unparseable fleet file, an
 environment that is not registered — fails before the view opens. A problem

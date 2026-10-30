@@ -8,7 +8,7 @@ trailing arguments, so it is a shortcut for the launch, not a second command:
 spinloop code                            # launch the active harness
 spinloop code -O                         # apply ./Spinloop, then launch
 spinloop code qwen3.6-27b                # apply the aliased Spinloop, then launch
-spinloop code --env prod --prompt "hi"   # configure from prod's deployment, then launch
+spinloop code --node prod --prompt "hi"   # configure from prod's deployment, then launch
 spinloop code --fleet ./fleet.yaml       # route through a fleet, or its gateway
 ```
 
@@ -20,7 +20,7 @@ complete launch on a machine holding nothing but the fleet file.
 
 Every flag and argument `code` accepts is [`harness open`'s](harness.md#spinloop-harness-open),
 so run `spinloop harness open --help` for the full list, or read that page for
-the Spinloop, `--env`, and fleet behaviour in detail.
+the Spinloop, `--node`, and fleet behaviour in detail.
 
 ## See also
 

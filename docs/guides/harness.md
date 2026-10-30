@@ -83,12 +83,12 @@ spinloop code                 # the one-word form of the same launch
 the agent's exit code is yours:
 
 ```sh
-spinloop code --env prod      # spinloop's own flags, in any order
+spinloop code --node prod      # spinloop's own flags, in any order
 spinloop code -- agent-args   # -- stops the parsing: everything after is the agent's
 ```
 
 Where the model is served is a launch concern, learned one of three ways: a
-Spinloop you apply, `--env` for a [registered cloud environment](cloud.md),
+Spinloop you apply, `--node` for a [registered cloud environment](cloud.md),
 or a [fleet file](fleet.md) that routes the launch to a node that serves — or
 is woken to serve — the wanted model.
 

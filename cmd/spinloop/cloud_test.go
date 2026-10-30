@@ -77,13 +77,13 @@ func TestCloud_Unconfigured(t *testing.T) {
 	// instance, and an instance nobody named is not one to act on.
 	for _, sub := range subs {
 		err := run([]string{"cloud", sub})
-		if err == nil || !strings.Contains(err.Error(), "pass --env") {
+		if err == nil || !strings.Contains(err.Error(), "pass --node") {
 			t.Errorf("cloud %s with no environment should name the flag, got %v", sub, err)
 		}
 	}
 	// Naming one that has no configuration explains the setup.
 	for _, sub := range subs {
-		err := run([]string{"cloud", sub, "--env", "default"})
+		err := run([]string{"cloud", sub, "--node", "default"})
 		if err == nil || !strings.Contains(err.Error(), "not configured") {
 			t.Errorf("cloud %s without config should explain setup, got %v", sub, err)
 		}
@@ -101,7 +101,7 @@ func TestCloudStart_PrintsExports(t *testing.T) {
 	writeCloudConfig(t, server.URL)
 
 	out := captureStdout(t, func() {
-		if err := cmdCloudStart([]string{"--env", "default", "--print-env"}); err != nil {
+		if err := cmdCloudStart([]string{"--node", "default", "--print-env"}); err != nil {
 			t.Errorf("cmdCloudStart: %v", err)
 		}
 	})
@@ -123,7 +123,7 @@ func TestCloudStart_NoExportsWithoutFlag(t *testing.T) {
 	writeCloudConfig(t, server.URL)
 
 	out := captureStdout(t, func() {
-		if err := cmdCloudStart([]string{"--env", "default"}); err != nil {
+		if err := cmdCloudStart([]string{"--node", "default"}); err != nil {
 			t.Errorf("cmdCloudStart: %v", err)
 		}
 	})
@@ -153,7 +153,7 @@ func TestCloudStart_FlagAfterPositional(t *testing.T) {
 	}
 
 	out := captureStdout(t, func() {
-		if err := cmdCloudStart([]string{dir, "--env", "testenv", "--print-env"}); err != nil {
+		if err := cmdCloudStart([]string{dir, "--node", "testenv", "--print-env"}); err != nil {
 			t.Errorf("cmdCloudStart: %v", err)
 		}
 	})
@@ -178,7 +178,7 @@ func TestCloudEnv_PrintsExports(t *testing.T) {
 	writeCloudConfig(t, server.URL)
 
 	out := captureStdout(t, func() {
-		if err := cmdCloudEnv([]string{"--env", "default"}); err != nil {
+		if err := cmdCloudEnv([]string{"--node", "default"}); err != nil {
 			t.Errorf("cmdCloudEnv: %v", err)
 		}
 	})
@@ -199,7 +199,7 @@ func TestCloudStatus_PrintsState(t *testing.T) {
 	writeCloudConfig(t, server.URL)
 
 	out := captureStdout(t, func() {
-		if err := cmdStatus([]string{"--env", "default"}); err != nil {
+		if err := cmdStatus([]string{"--node", "default"}); err != nil {
 			t.Errorf("cmdStatus: %v", err)
 		}
 	})
@@ -248,7 +248,7 @@ func TestCloudStatus_PrintsVersion(t *testing.T) {
 	}
 
 	out := captureStdout(t, func() {
-		if err := cmdStatus([]string{"--env", "default"}); err != nil {
+		if err := cmdStatus([]string{"--node", "default"}); err != nil {
 			t.Errorf("cmdStatus: %v", err)
 		}
 	})
@@ -271,7 +271,7 @@ func TestCloudStop_PrintsState(t *testing.T) {
 	writeCloudConfig(t, server.URL)
 
 	out := captureStdout(t, func() {
-		if err := cmdCloudStop([]string{"--env", "default"}); err != nil {
+		if err := cmdCloudStop([]string{"--node", "default"}); err != nil {
 			t.Errorf("cmdCloudStop: %v", err)
 		}
 	})
@@ -296,7 +296,7 @@ func TestCloudPause_PrintsState(t *testing.T) {
 	writeCloudConfig(t, server.URL)
 
 	out := captureStdout(t, func() {
-		if err := cmdCloudPause([]string{"--env", "default"}); err != nil {
+		if err := cmdCloudPause([]string{"--node", "default"}); err != nil {
 			t.Errorf("cmdCloudPause: %v", err)
 		}
 	})
@@ -342,7 +342,7 @@ func TestCloudRestart_Flow(t *testing.T) {
 	writeCloudConfig(t, server.URL)
 
 	out := captureStdout(t, func() {
-		if err := run([]string{"cloud", "restart", "--env", "default"}); err != nil {
+		if err := run([]string{"cloud", "restart", "--node", "default"}); err != nil {
 			t.Errorf("cloud restart: %v", err)
 		}
 	})
@@ -370,7 +370,7 @@ func TestCloudRestart_ForceFlag(t *testing.T) {
 			writeCloudConfig(t, server.URL)
 
 			out := captureStdout(t, func() {
-				if err := cmdCloudRestart([]string{"--env", "default", flag}); err != nil {
+				if err := cmdCloudRestart([]string{"--node", "default", flag}); err != nil {
 					t.Errorf("cloud restart %s: %v", flag, err)
 				}
 			})
@@ -398,7 +398,7 @@ func TestCloudRestart_TimeoutFlag(t *testing.T) {
 	writeCloudConfig(t, server.URL)
 
 	out := captureStdout(t, func() {
-		if err := cmdCloudRestart([]string{"--env", "default", "--timeout", "5m"}); err != nil {
+		if err := cmdCloudRestart([]string{"--node", "default", "--timeout", "5m"}); err != nil {
 			t.Errorf("cloud restart --timeout: %v", err)
 		}
 	})
@@ -419,7 +419,7 @@ func TestCloudRestart_AlreadyStoppedBehavesAsStart(t *testing.T) {
 	writeCloudConfig(t, server.URL)
 
 	out := captureStdout(t, func() {
-		if err := cmdCloudRestart([]string{"--env", "default"}); err != nil {
+		if err := cmdCloudRestart([]string{"--node", "default"}); err != nil {
 			t.Errorf("cloud restart on a stopped environment: %v", err)
 		}
 	})
@@ -455,7 +455,7 @@ func TestCloudRestart_StatusFailureDoesNotGate(t *testing.T) {
 
 	out := captureStdout(t, func() {
 		errOut := captureStderr(t, func() {
-			if err := cmdCloudRestart([]string{"--env", "default"}); err != nil {
+			if err := cmdCloudRestart([]string{"--node", "default"}); err != nil {
 				t.Errorf("cloud restart after a failed status check: %v", err)
 			}
 		})
@@ -486,7 +486,7 @@ func TestCloudRestart_WakeFailureReportsRecovery(t *testing.T) {
 	defer server.Close()
 	writeCloudConfig(t, server.URL)
 
-	err := cmdCloudRestart([]string{"--env", "default"})
+	err := cmdCloudRestart([]string{"--node", "default"})
 	if err == nil {
 		t.Fatal("expected a wake failure error")
 	}
@@ -532,7 +532,7 @@ func TestCloud_SpinloopDiscovery(t *testing.T) {
 	}
 
 	out := captureStdout(t, func() {
-		if err := cmdStatus([]string{"--env", "default", "--spinloop", "Spinloop"}); err != nil {
+		if err := cmdStatus([]string{"--node", "default", "--spinloop", "Spinloop"}); err != nil {
 			t.Errorf("cmdStatus: %v", err)
 		}
 	})
@@ -543,7 +543,7 @@ func TestCloud_SpinloopDiscovery(t *testing.T) {
 
 // --spinloop reads a Spinloop for its ENV instructions and the adjacent
 // .env; it never selects an environment by itself. One with no ENV lines
-// supplies nothing, so with no --env or --fleet either the command fails on
+// supplies nothing, so with no --node or --fleet either the command fails on
 // the missing target, not on the Spinloop.
 func TestCloud_ExplicitSpinloopDoesNotNameAnEnvironment(t *testing.T) {
 	isolateConfig(t)
@@ -572,12 +572,12 @@ func TestCloud_SpinloopFallsBackToTheUserConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := captureStdout(t, func() {
-		if err := cmdStatus([]string{"--env", "default"}); err != nil {
+		if err := cmdStatus([]string{"--node", "default"}); err != nil {
 			t.Errorf("cmdStatus: %v", err)
 		}
 	})
 	if !strings.Contains(out, "stopped") {
-		t.Errorf("a Spinloop with no --env should fall back to the user config, got:\n%s", out)
+		t.Errorf("a Spinloop with no --node should fall back to the user config, got:\n%s", out)
 	}
 }
 
@@ -599,7 +599,7 @@ func TestCloud_IgnoresLowercaseSpinloopFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := captureStdout(t, func() {
-		if err := cmdStatus([]string{"--env", "default"}); err != nil {
+		if err := cmdStatus([]string{"--node", "default"}); err != nil {
 			t.Errorf("cmdStatus: %v", err)
 		}
 	})
@@ -644,7 +644,7 @@ func TestCloudMetrics_Running(t *testing.T) {
 	t.Setenv("SPINLOOP_CLOUD_STATS_URL", server.URL)
 
 	out := captureStdout(t, func() {
-		if err := cmdMetrics([]string{"--env", "default", "--format=table"}); err != nil {
+		if err := cmdMetrics([]string{"--node", "default", "--format=table"}); err != nil {
 			t.Errorf("cmdMetrics: %v", err)
 		}
 	})
@@ -688,7 +688,7 @@ func TestCloudMetrics_Stopped(t *testing.T) {
 	t.Setenv("SPINLOOP_CLOUD_STATS_URL", server.URL)
 
 	out := captureStdout(t, func() {
-		if err := cmdMetrics([]string{"--env", "default", "--format=table"}); err != nil {
+		if err := cmdMetrics([]string{"--node", "default", "--format=table"}); err != nil {
 			t.Errorf("cmdMetrics: %v", err)
 		}
 	})
@@ -717,7 +717,7 @@ func TestCloudMetrics_WithErrors(t *testing.T) {
 	t.Setenv("SPINLOOP_CLOUD_STATS_URL", server.URL)
 
 	errOut := captureStderr(t, func() {
-		if err := cmdMetrics([]string{"--env", "default"}); err != nil {
+		if err := cmdMetrics([]string{"--node", "default"}); err != nil {
 			t.Errorf("cmdMetrics: %v", err)
 		}
 	})
@@ -752,7 +752,7 @@ func TestCloudMetrics_DefaultFormat(t *testing.T) {
 	t.Setenv("SPINLOOP_CLOUD_STATS_URL", server.URL)
 
 	out := captureStdout(t, func() {
-		if err := cmdMetrics([]string{"--env", "default"}); err != nil {
+		if err := cmdMetrics([]string{"--node", "default"}); err != nil {
 			t.Errorf("cmdMetrics: %v", err)
 		}
 	})
@@ -789,7 +789,7 @@ func TestCloudMetrics_JsonFormat(t *testing.T) {
 	t.Setenv("SPINLOOP_CLOUD_STATS_URL", server.URL)
 
 	out := captureStdout(t, func() {
-		if err := cmdMetrics([]string{"--env", "default", "--format=json"}); err != nil {
+		if err := cmdMetrics([]string{"--node", "default", "--format=json"}); err != nil {
 			t.Errorf("cmdMetrics: %v", err)
 		}
 	})
@@ -831,7 +831,7 @@ func TestCloudMetrics_JsonFormatWithCost(t *testing.T) {
 	t.Setenv("SPINLOOP_CLOUD_STATS_URL", server.URL)
 
 	out := captureStdout(t, func() {
-		if err := cmdMetrics([]string{"--env", "default", "--format=json", "--cost"}); err != nil {
+		if err := cmdMetrics([]string{"--node", "default", "--format=json", "--cost"}); err != nil {
 			t.Errorf("cmdMetrics: %v", err)
 		}
 	})
@@ -852,7 +852,7 @@ func TestCloudMetrics_InvalidFormat(t *testing.T) {
 	stubAWSEnv(t)
 	writeCloudConfig(t, "http://localhost:0")
 
-	err := cmdMetrics([]string{"--env", "default", "--format=csv"})
+	err := cmdMetrics([]string{"--node", "default", "--format=csv"})
 	if err == nil || !strings.Contains(err.Error(), "format") {
 		t.Errorf("expected format error, got %v", err)
 	}
@@ -882,7 +882,7 @@ func TestCloudMetrics_BarFormat(t *testing.T) {
 	t.Setenv("SPINLOOP_CLOUD_STATS_URL", server.URL)
 
 	out := captureStdout(t, func() {
-		err := cmdMetrics([]string{"--env", "default", "--format=bar"})
+		err := cmdMetrics([]string{"--node", "default", "--format=bar"})
 		if err != nil {
 			t.Errorf("bar format failed: %v", err)
 		}
@@ -927,7 +927,7 @@ func TestCloudMetrics_BarFormatStopped(t *testing.T) {
 	t.Setenv("SPINLOOP_CLOUD_STATS_URL", server.URL)
 
 	out := captureStdout(t, func() {
-		err := cmdMetrics([]string{"--env", "default", "--format=bar"})
+		err := cmdMetrics([]string{"--node", "default", "--format=bar"})
 		if err != nil {
 			t.Errorf("bar format failed: %v", err)
 		}
@@ -1003,7 +1003,7 @@ func TestCloudMetrics_WatchMode(t *testing.T) {
 	defer func() { metricsWatchInterval = oldInterval }()
 
 	out := captureStdout(t, func() {
-		err := cmdMetrics([]string{"--env", "default", "--watch", "--format=table"})
+		err := cmdMetrics([]string{"--node", "default", "--watch", "--format=table"})
 		// Expects error from the 3rd call.
 		if err == nil {
 			t.Error("watch should exit with error when server fails")
@@ -1043,7 +1043,7 @@ func TestCloudMetrics_WatchShortFlag(t *testing.T) {
 	defer func() { metricsWatchInterval = oldInterval }()
 
 	out := captureStdout(t, func() {
-		err := cmdMetrics([]string{"--env", "default", "-w", "--format=table"})
+		err := cmdMetrics([]string{"--node", "default", "-w", "--format=table"})
 		if err == nil {
 			t.Error("-w should exit with error when server fails")
 		}
@@ -1075,7 +1075,7 @@ func TestCloudMetrics_MultiGPU(t *testing.T) {
 	t.Setenv("SPINLOOP_CLOUD_STATS_URL", server.URL)
 
 	out := captureStdout(t, func() {
-		if err := cmdMetrics([]string{"--env", "default", "--format=table"}); err != nil {
+		if err := cmdMetrics([]string{"--node", "default", "--format=table"}); err != nil {
 			t.Errorf("cmdMetrics: %v", err)
 		}
 	})
@@ -1098,7 +1098,7 @@ func TestCloudMetrics_JsonStopped(t *testing.T) {
 	t.Setenv("SPINLOOP_CLOUD_STATS_URL", server.URL)
 
 	out := captureStdout(t, func() {
-		if err := cmdMetrics([]string{"--env", "default", "--format=json"}); err != nil {
+		if err := cmdMetrics([]string{"--node", "default", "--format=json"}); err != nil {
 			t.Errorf("cmdMetrics: %v", err)
 		}
 	})
@@ -1132,7 +1132,7 @@ func TestCloudMetrics_JsonWithErrors(t *testing.T) {
 	t.Setenv("SPINLOOP_CLOUD_STATS_URL", server.URL)
 
 	out := captureStdout(t, func() {
-		if err := cmdMetrics([]string{"--env", "default", "--format=json"}); err != nil {
+		if err := cmdMetrics([]string{"--node", "default", "--format=json"}); err != nil {
 			t.Errorf("cmdMetrics: %v", err)
 		}
 	})
@@ -1182,7 +1182,7 @@ func TestCloudStart_ProbeSucceedsNoWarning(t *testing.T) {
 	writeCloudConfig(t, server.URL)
 
 	stderr := captureStderr(t, func() {
-		if err := cmdCloudStart([]string{"--env", "default"}); err != nil {
+		if err := cmdCloudStart([]string{"--node", "default"}); err != nil {
 			t.Errorf("cmdCloudStart: %v", err)
 		}
 	})
@@ -1213,7 +1213,7 @@ func TestCloudStart_ProbeFailsWarns(t *testing.T) {
 	writeCloudConfig(t, server.URL)
 
 	errOut := captureStderr(t, func() {
-		err := cmdCloudStart([]string{"--env", "default"})
+		err := cmdCloudStart([]string{"--node", "default"})
 		if err != nil {
 			t.Fatalf("start should exit 0 after a probe warning, got %v", err)
 		}
@@ -1249,7 +1249,7 @@ func TestCloudStart_ProbeFailsIPDetectFails(t *testing.T) {
 	writeCloudConfig(t, server.URL)
 
 	errOut := captureStderr(t, func() {
-		err := cmdCloudStart([]string{"--env", "default"})
+		err := cmdCloudStart([]string{"--node", "default"})
 		if err != nil {
 			t.Fatalf("start should exit 0 even when probe and IP detection both fail, got %v", err)
 		}
@@ -1291,7 +1291,7 @@ func TestCloudMetrics_WatchBuffersBeforeClear(t *testing.T) {
 	defer func() { metricsWatchInterval = oldInterval }()
 
 	out := captureStdout(t, func() {
-		cmdMetrics([]string{"--env", "default", "--watch", "--format=table"})
+		cmdMetrics([]string{"--node", "default", "--watch", "--format=table"})
 	})
 
 	// The clear-screen escape sequence.
@@ -1352,7 +1352,7 @@ func TestCloudKeep_PrintsDeadline(t *testing.T) {
 	os.WriteFile(path, must1(json.Marshal(cfg)), 0o600)
 
 	out := captureStdout(t, func() {
-		if err := cmdCloudKeep([]string{"--env", "default", "4h"}); err != nil {
+		if err := cmdCloudKeep([]string{"--node", "default", "4h"}); err != nil {
 			t.Errorf("cmdCloudKeep: %v", err)
 		}
 	})
@@ -1363,7 +1363,7 @@ func TestCloudKeep_PrintsDeadline(t *testing.T) {
 
 // TestCloudKeep_MissingDuration fails.
 func TestCloudKeep_MissingDuration(t *testing.T) {
-	err := cmdCloudKeep([]string{"--env", "default"})
+	err := cmdCloudKeep([]string{"--node", "default"})
 	if err == nil || !strings.Contains(err.Error(), "usage") {
 		t.Errorf("expected usage error, got %v", err)
 	}
@@ -1371,7 +1371,7 @@ func TestCloudKeep_MissingDuration(t *testing.T) {
 
 // TestCloudKeep_InvalidDuration fails.
 func TestCloudKeep_InvalidDuration(t *testing.T) {
-	err := cmdCloudKeep([]string{"--env", "default", "4hours"})
+	err := cmdCloudKeep([]string{"--node", "default", "4hours"})
 	if err == nil || !strings.Contains(err.Error(), "invalid duration") {
 		t.Errorf("expected duration parse error, got %v", err)
 	}
@@ -1392,7 +1392,7 @@ func TestCloudStart_KeepFlag(t *testing.T) {
 
 	// Probe reachability will fail, but that's stderr and doesn't affect the test.
 	out := captureStdout(t, func() {
-		cmdCloudStart([]string{"--env", "default", "--keep", "2h"})
+		cmdCloudStart([]string{"--node", "default", "--keep", "2h"})
 	})
 	// The keep deadline should be reported on stderr (via progress).
 	// We can check that the request included the retainUntil parameter.

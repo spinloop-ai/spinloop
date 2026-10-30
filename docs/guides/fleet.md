@@ -17,7 +17,7 @@ spinloop fleet stop gpu-box    # stop one or more nodes' engines
 ```
 
 `status` and `dashboard` are top-level verbs — they take the same target
-(`./fleet.yaml`, `--fleet <path>`, or `--env <name>` for one environment as a
+(`./fleet.yaml`, `--fleet <path>`, or `--node <name>` for one environment as a
 fleet of one), and the `fleet` subcommands drive the nodes: `start`, `stop`,
 `deploy`, `route`, `metrics`, and `logs`.
 
