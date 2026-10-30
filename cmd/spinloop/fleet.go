@@ -332,7 +332,7 @@ func fleetStartCmd() *cobra.Command {
 	fs.BoolVar(&all, "all", false, "start every node in the fleet")
 	c.ValidArgsFunction = noPositionals
 	compRegister(c, "fleet", compFiles)
-	compRegister(c, "node", compEnvs)
+	compRegister(c, "node", compNodes)
 	return c
 }
 
@@ -370,7 +370,7 @@ func fleetStopCmd() *cobra.Command {
 	fs.BoolVar(&all, "all", false, "stop every node in the fleet")
 	c.ValidArgsFunction = noPositionals
 	compRegister(c, "fleet", compFiles)
-	compRegister(c, "node", compEnvs)
+	compRegister(c, "node", compNodes)
 	return c
 }
 
@@ -518,7 +518,7 @@ derivation, consent, and registration behaviour as "spinloop cloud deploy".`,
 	fs.StringVar(&apiKeyEnv, "api-key-env", "", "name the environment variable holding the engine key to create or rotate, applied to every targeted node; with no flag each environment keeps its stored key")
 	c.ValidArgsFunction = noPositionals
 	compRegister(c, "fleet", compFiles)
-	compRegister(c, "node", compEnvs)
+	compRegister(c, "node", compNodes)
 	return c
 }
 
@@ -818,7 +818,7 @@ func fleetRouteCmd() *cobra.Command {
 	fs.StringVar(&prefer, "prefer", "", "rank nodes by `idle` or `active` (overrides the fleet file)")
 	c.ValidArgsFunction = aliasSlot
 	compRegister(c, "fleet", compFiles)
-	compRegister(c, "node", compEnvs)
+	compRegister(c, "node", compNodes)
 	return c
 }
 

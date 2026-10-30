@@ -28,16 +28,18 @@ The same three ways every command that acts on a fleet takes one:
 
 | | target |
 | --- | --- |
-| `--node <name>` (`-n`) | that node of the fleet in force, or one registered environment when no fleet holds the name |
+| `--node <name>` (`-n`) | that node of the fleet in force; with no fleet named, a registered environment when none holds the name |
 | `--fleet <path>` (`-f`) | that fleet file |
 | neither | the `fleet.yaml` in the working directory |
 
-`--node` beside a `--fleet` *flag* is two answers to one target, so passing
-both fails saying so; beside a discovered `fleet.yaml` it narrows the table to
-that node's row alone. With none of the three resolvable the command fails
-naming all of them — it does not go looking for an engine on the machine you
-are sitting at. To watch a local engine, [`spinloop serve`](serve.md) shows the
-one it runs; to read it from elsewhere, run
+`--fleet` names the fleet and `--node` the node within it, so the pair
+narrows the table to that node's row alone — and a name the named file lacks
+fails naming it and its nodes. Beside a *discovered* `fleet.yaml`, a name the
+file lacks falls back to a registered environment of that name. With none of
+the three resolvable the command fails naming all of them — it does not go
+looking for an engine on the machine you are sitting at. To watch a local
+engine, [`spinloop serve`](serve.md) shows the one it runs; to read it from
+elsewhere, run
 [`spinloop daemon`](serve.md#the-control-api-api-and-spinloop-daemon) and name
 that machine in a `fleet.yaml`.
 

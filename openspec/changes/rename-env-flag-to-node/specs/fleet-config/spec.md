@@ -17,13 +17,12 @@ engine on the machine it is running on. A local engine is already shown by the
 command that runs it, and a machine whose engines are to be read this way names
 them in a fleet file like any other.
 
-`--node` and `--fleet` SHALL NOT both be given: `--fleet` names the file
-whose nodes the command acts on, while `--node` names a registered environment
-or the one node of the fleet the working directory holds, so a command stating
-both SHALL fail naming both rather than resolving one by precedence. On the
-launch path the two are not alternatives: there `--node` alongside a fleet
-pins the selection to that fleet's node of that name (see the `fleet-routing`
-specification).
+`--fleet` names the fleet and `--node` names a node within it: paired, the
+command SHALL narrow the named fleet to that node. A name the *named* file
+does not hold SHALL fail naming the file and its known node names — the file
+is the fleet the command has stated it acts on, and no other fleet answers
+for it. On the launch path the pair means the same: `--node` there pins the
+selection to that fleet's node (see the `fleet-routing` specification).
 
 Beside a `fleet.yaml` discovered in the working directory — not named by a
 flag — a `--node` that is a node of that fleet SHALL narrow the command to
@@ -104,9 +103,10 @@ the node SHALL be named by the long form `--node` only.
 
 #### Scenario: A named environment is the target
 
-- **WHEN** `spinloop fleet status --node prod` runs
-- **THEN** the command acts on the registered environment `prod` alone,
-  whether or not a `fleet.yaml` is present
+- **WHEN** `spinloop fleet status --node prod` runs, passing no `--fleet`
+- **THEN** the command acts on the registered environment `prod` alone —
+  whether or not a `fleet.yaml` is present, so long as no discovered fleet
+  holds a node of that name, which would answer first
 
 #### Scenario: A named environment needs no fleet file
 
@@ -115,11 +115,21 @@ the node SHALL be named by the long form `--node` only.
 - **THEN** the view opens on that one environment, and the absent file is not
   an error
 
-#### Scenario: Naming both a fleet and an environment fails
+#### Scenario: A node of a named fleet narrows it
 
-- **WHEN** `spinloop fleet status --node prod --fleet ./cluster.yaml` runs
-- **THEN** it fails naming both the environment and the fleet file, and
-  contacts nothing
+- **WHEN** `spinloop fleet status --node gpu-box --fleet ./cluster.yaml`
+  runs and `cluster.yaml` holds a node named `gpu-box`
+- **THEN** the command reads only that node — the row `gpu-box` alone, the
+  file named by the flag supplying the fleet
+
+#### Scenario: A name a named fleet lacks is not resolved elsewhere
+
+- **WHEN** `spinloop fleet status --node prod --fleet ./cluster.yaml` runs,
+  `cluster.yaml` holds no node named `prod`, and a registered environment
+  named `prod` exists
+- **THEN** it fails naming `prod`, `cluster.yaml` and its known node names,
+  contacts nothing, and does not fall back to the registered environment —
+  only a discovered `fleet.yaml` answers to the registry
 
 #### Scenario: The directory's fleet file is read for a node, not ignored
 

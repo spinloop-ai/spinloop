@@ -69,7 +69,7 @@ read as it would be without them.`,
 	fs.StringVar(&instance, "instance", "", "restrict to one instance id, on a node whose log holds more than one")
 	c.ValidArgsFunction = noPositionals
 	compRegister(c, "fleet", compFiles)
-	compRegister(c, "node", compEnvs)
+	compRegister(c, "node", compNodes)
 	return c
 }
 
