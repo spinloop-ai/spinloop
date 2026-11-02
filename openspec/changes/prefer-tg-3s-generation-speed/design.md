@@ -31,8 +31,7 @@ for why the reading should move to `tg_3s`.
 
 **Second regex tried first, not one alternation.** Add
 `\btg_3s\s*=\s*([0-9]+(?:\.[0-9]+)?)\s*t/s` and try it before the existing
-`tg` pattern, sharing the existing validity filter via a small helper
-(`firstUsableRate(line, re)`). An alternation like `(?:tg_3s|tg)\s*=` would
+`tg` pattern, sharing the existing validity filter via a small helper (`firstRate(line, re)`). An alternation like `(?:tg_3s|tg)\s*=` would
 make the primary pattern's deliberate narrowness a correctness dependency of
 the fallback (`tg` inside `tg_3s` must never match, and the "identifier ending
 in tg" test exists precisely because that boundary is load-bearing); two

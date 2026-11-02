@@ -30,7 +30,9 @@ type Stats struct {
 	Errors        []string    `json:"errors,omitempty"`
 	// Speed is the engine's own generation rate in tokens per second, parsed
 	// from the timing lines it prints into its captured output (llama.cpp's
-	// print_timing `tg` figure today). Present only while the engine runs and
+	// print_timing figure today — its three-second `tg_3s` rate where the
+	// line carries a usable one, its whole-task `tg` average otherwise).
+	// Present only while the engine runs and
 	// has printed a figure since the last sampler tick: a stopped or quiet
 	// engine has no rate to report, and the old figure of a rate that has
 	// stopped is not an answer to "how fast is it generating?". Absent, not

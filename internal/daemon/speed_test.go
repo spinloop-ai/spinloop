@@ -60,7 +60,8 @@ func TestEngineSpeedFoldAndLapse(t *testing.T) {
 
 // TestSpeedEndToEnd runs a fake engine that prints llama.cpp's timing line,
 // and reads the figure back through the capture hook, the sampler fold and
-// the metrics reply — every seam in one wire.
+// the metrics reply — every seam in one wire. The line carries both rates, so
+// what comes back is the three-second figure, never the whole-task average.
 func TestSpeedEndToEnd(t *testing.T) {
 	d := testDaemon(t, `trap 'exit 0' TERM
 echo "slot print_timing: id  0 | task 326 | n_gen =   9438, tg =   3.87 t/s, tg_3s =   5.29 t/s" >&2
@@ -87,15 +88,15 @@ while true; do sleep 0.05; done`)
 	if len(hist) != 1 {
 		t.Fatalf("history = %d samples, want 1", len(hist))
 	}
-	if hist[0].Speed == nil || *hist[0].Speed != 3.87 {
-		t.Errorf("sample speed = %v, want 3.87", hist[0].Speed)
+	if hist[0].Speed == nil || *hist[0].Speed != 5.29 {
+		t.Errorf("sample speed = %v, want 5.29", hist[0].Speed)
 	}
 
 	// The running metrics reply carries the current figure while it is fresh
 	// (the clock is pinned at baseTime, and the figure is observed "now").
 	stats := d.Metrics(context.Background())
-	if stats.Speed == nil || *stats.Speed != 3.87 {
-		t.Fatalf("metrics speed = %v, want 3.87", stats.Speed)
+	if stats.Speed == nil || *stats.Speed != 5.29 {
+		t.Fatalf("metrics speed = %v, want 5.29", stats.Speed)
 	}
 
 	// A tick's worth of quiet later — same figure in hand, no new one — the
@@ -119,7 +120,7 @@ while true; do sleep 0.05; done`)
 		t.Errorf("a stopped engine still reports %v, want no current figure", stats.Speed)
 	}
 	hist = d.hist.snapshot()
-	if len(hist) != 2 || hist[0].Speed == nil || *hist[0].Speed != 3.87 {
+	if len(hist) != 2 || hist[0].Speed == nil || *hist[0].Speed != 5.29 {
 		t.Errorf("history after a stop = %+v, want the taken point retained", hist)
 	}
 }
