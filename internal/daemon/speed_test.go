@@ -165,6 +165,36 @@ while true; do sleep 0.05; done`)
 	}
 }
 
+// TestSpeedThreeSecondOnlyLineFolds pins the parser's precedence through the
+// daemon seam: a timing line carrying only the three-second rate reaches the
+// fold and the metrics reply as that figure, so an engine that prints no
+// instantaneous tg still answers "how fast is it generating?".
+func TestSpeedThreeSecondOnlyLineFolds(t *testing.T) {
+	d := testDaemon(t, `trap 'exit 0' TERM
+while true; do sleep 0.05; done`)
+	d.Now = func() time.Time { return baseTime }
+
+	if err := d.Push(inference.DeployConfig{Runner: "llamacpp", ModelID: "m"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.StartEngine(); err != nil {
+		t.Fatal(err)
+	}
+	defer d.Sup.Stop()
+	waitForState(t, d.Sup, StateRunning)
+
+	d.Now = func() time.Time { return baseTime.Add(time.Second) }
+	d.ObserveEngineLine("slot print_timing: id  0 | task 3 | tg_3s = 5.29 t/s")
+	d.systemSampleOnce(context.Background())
+	hist := d.hist.snapshot()
+	if len(hist) != 1 || hist[0].Speed == nil || *hist[0].Speed != 5.29 {
+		t.Fatalf("history = %+v, want one sample at the three-second rate", hist)
+	}
+	if got := d.Metrics(context.Background()).Speed; got == nil || *got != 5.29 {
+		t.Errorf("metrics speed = %v, want 5.29", got)
+	}
+}
+
 // TestSpeedForgetsOnStart pins the engine boundary: the second engine's
 // report answers with its own rates or none, never the first engine's.
 func TestSpeedForgetsOnStart(t *testing.T) {
