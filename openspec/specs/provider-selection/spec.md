@@ -7,7 +7,9 @@ context/output limits, and base URL — is validated and applied to (or removed
 from) the active harness's config. This is the shared core behind the `harness`
 config commands (`add`, `remove`) and the Spinloop-file commands (`apply`,
 `unapply`), which route through the same logic.
+
 ## Requirements
+
 ### Requirement: Context and output limits
 
 The system SHALL parse human-friendly token counts for the context window
@@ -107,7 +109,7 @@ environment variable, then the catalogue's per-provider values. The explicit
 override is the `--base-url`/`-u` flag, or the `BASEURL` of the Spinloop being
 applied.
 
-When `apply` is given an `--env <name>` flag and the Spinloop states no
+When `apply` is given an `--node <name>` flag and the Spinloop states no
 `BASEURL` of its own, applying it SHALL take the base URL from the named
 environment's registered configuration, so the endpoint's address stays with
 the deployment that owns it rather than in the hand-written Spinloop. The
@@ -124,14 +126,14 @@ for a launch, its key.
 
 #### Scenario: Base URL from the named environment
 
-- **WHEN** a Spinloop with no `BASEURL` is applied with `--env dev-1`, and that
+- **WHEN** a Spinloop with no `BASEURL` is applied with `--node dev-1`, and that
   environment's registered configuration names a base URL
 - **THEN** the provider is configured with the base URL from that
   configuration, and the output says where it came from
 
 #### Scenario: A Spinloop's own BASEURL wins
 
-- **WHEN** a Spinloop states a `BASEURL` and is applied with `--env dev-1`
+- **WHEN** a Spinloop states a `BASEURL` and is applied with `--node dev-1`
   whose configuration names a different base URL
 - **THEN** the provider is configured with the Spinloop's `BASEURL`, and the
   provider is still keyed on the environment `dev-1`
@@ -211,4 +213,3 @@ removed, and SHALL report "nothing to remove" (not an error) when none matched.
 - **WHEN** the removal matches nothing in the harness config
 - **THEN** the command reports there was nothing to remove and exits
   successfully
-

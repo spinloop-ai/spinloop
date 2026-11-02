@@ -17,7 +17,7 @@ import (
 func logsCmd() *cobra.Command {
 	var (
 		path         string
-		envName      string
+		nodeName     string
 		follow       bool
 		limit        int
 		format       string
@@ -34,7 +34,7 @@ func logsCmd() *cobra.Command {
 answers with — a daemon's log file, or a cloud environment's log store.
 Naming a node reads only that one. Nodes are read concurrently.
 
-The target is a registered environment (--env), a fleet file (--fleet), or
+The target is a registered environment (--node), a fleet file (--fleet), or
 the fleet.yaml in the working directory. --fleet has no -f here: that is
 --follow's short form, and a flag cannot carry two meanings on one command
 line.
@@ -52,14 +52,14 @@ read as it would be without them.`,
 				return err
 			}
 			q := fleet.LogQuery{Source: source, Since: since, Instance: instance}
-			return runLogs(fleetTarget{envName: envName, fleetPath: path}, q, follow, limit, format, args)
+			return runLogs(fleetTarget{nodeName: nodeName, fleetPath: path}, q, follow, limit, format, args)
 		},
 	}
 	fs := c.Flags()
 	// --fleet takes no short form here: -f is already --follow, as it is on
 	// every other surface that follows something.
 	fs.StringVar(&path, "fleet", "", fleetFileUsage)
-	fs.StringVar(&envName, "env", "", envFlagTargetUsage)
+	fs.StringVarP(&nodeName, "node", "n", "", nodeFlagTargetUsage)
 	registerSpinloopEnvFlag(fs, &spinloopPath)
 	fs.BoolVarP(&follow, "follow", "f", false, followUsage)
 	fs.IntVar(&limit, "limit", 200, "lines of backlog to print per node")
@@ -69,7 +69,7 @@ read as it would be without them.`,
 	fs.StringVar(&instance, "instance", "", "restrict to one instance id, on a node whose log holds more than one")
 	c.ValidArgsFunction = noPositionals
 	compRegister(c, "fleet", compFiles)
-	compRegister(c, "env", compEnvs)
+	compRegister(c, "node", compNodes)
 	return c
 }
 

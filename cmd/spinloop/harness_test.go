@@ -284,7 +284,7 @@ func TestCode_SameLaunchAsHarnessOpen(t *testing.T) {
 	mustWrite(t, spath, "PROVIDER llamacpp\nMODEL mixtral\n")
 	t.Setenv("SPINLOOP_ALIAS", "q3")
 
-	// A registered environment, for the --env case: a bare --env configures the
+	// A registered environment, for the --node case: a bare --node configures the
 	// harness from what the environment reports as deployed.
 	env := deployedEnvServer(t)
 	defer env.Close()
@@ -294,13 +294,13 @@ func TestCode_SameLaunchAsHarnessOpen(t *testing.T) {
 	})
 
 	cases := [][]string{
-		{},                        // bare: nothing applied
-		{"run", "hello"},          // trailing args forwarded
-		{"--", "--flag", "x"},     // a leading -- opts out and forwards verbatim
-		{"q3", "run"},             // a leading alias is applied, then the rest forwards
-		{"-O", "run"},             // a valueless -O applies the SPINLOOP_ALIAS Spinloop
-		{"-O=" + spath, "run"},    // -O applies the Spinloop at an explicit path
-		{"--env", "dev-1", "run"}, // --env configures from the environment
+		{},                         // bare: nothing applied
+		{"run", "hello"},           // trailing args forwarded
+		{"--", "--flag", "x"},      // a leading -- opts out and forwards verbatim
+		{"q3", "run"},              // a leading alias is applied, then the rest forwards
+		{"-O", "run"},              // a valueless -O applies the SPINLOOP_ALIAS Spinloop
+		{"-O=" + spath, "run"},     // -O applies the Spinloop at an explicit path
+		{"--node", "dev-1", "run"}, // --node configures from the environment
 	}
 	for _, args := range cases {
 		openForwarded, _ := launchedArgs(t, args)

@@ -10,19 +10,48 @@ dispatching to `harness open` rather than reimplementing it.
 
 ## Requirements
 
-### Requirement: A shortcut for harness open
+### Requirement: Completion offers the Spinloop slot
 
+`code`'s tab completion SHALL offer the Spinloop slot — registered alias names
+plus paths — exactly as `spinloop harness open`'s first positional slot does.
+An unreadable config, an unloadable catalogue, or nonsense input SHALL leave it
+silent: no candidates, no error, and nothing written to stderr.
+
+#### Scenario: The Spinloop slot completes
+
+- **WHEN** the user completes `spinloop code <TAB>`
+- **THEN** registered alias names and paths are offered, as on
+  `spinloop harness open <TAB>`
+
+#### Scenario: A broken config stays quiet
+
+- **WHEN** spinloop's config file is unreadable and completion is attempted on
+  `spinloop code`
+- **THEN** no candidates are offered, the command exits zero, and nothing is
+  written to stderr
+
+### Requirement: A shortcut for harness open with node targeting
 `spinloop code` SHALL launch the active harness exactly as
 `spinloop harness open` does: it SHALL accept the same flags — `-O`/`--spinloop`,
-`--env`, `--fleet`, `--node`, `--prefer`, `--no-wake`, `--wake-timeout`,
+`-n`/`--node`, `--fleet`, `--prefer`, `--no-wake`, `--wake-timeout`,
 `-H`/`--harness`, and `--providers` — apply a Spinloop the same way, and forward
 every argument it does not consume to the harness untouched. A leading argument
-naming a registered alias or a path, the `-O`/`--spinloop` flag, and the `--env`
-environment all drive the same Spinloop application as on `harness open`.
+naming a registered alias or a path, the `-O`/`--spinloop` flag, and the
+`--node` target all drive the same Spinloop application as on `harness open`.
 `spinloop code <args>` SHALL therefore produce the same harness config, launch
 the same process, and print the same output and errors as
 `spinloop harness open <args>`. `code` SHALL NOT change what `harness open`
-does; it is a new spelling of it, not a replacement.
+does; it is a new spelling of it, not a replacement. A word on the command
+line that is neither a consumed Spinloop name nor a known flag forwards to the
+harness as ever — except the removed `--env`/`-e`, which the command SHALL
+reject naming `--node` as its replacement, since forwarding the launch's own
+former flag would hand the harness a word it never owned.
+
+#### Scenario: the removed --env spelling names its replacement
+
+- **WHEN** the user runs `spinloop code --env dev-2`
+- **THEN** the command fails naming `--env` and `--node` as its replacement,
+  and the harness is not launched with `--env` among its arguments
 
 #### Scenario: A bare code launches unconfigured
 
@@ -44,34 +73,14 @@ does; it is a new spelling of it, not a replacement.
 - **THEN** `./Spinloop` is applied and the harness launches, as
   `spinloop harness open -O` would do
 
-#### Scenario: --env configures from a deployed environment
+#### Scenario: --node configures from a deployed environment
 
-- **WHEN** the user runs `spinloop code --env dev-2` with no Spinloop
+- **WHEN** the user runs `spinloop code --node dev-2` with no Spinloop
 - **THEN** the harness is configured from what is deployed to `dev-2` and
-  launched, as `spinloop harness open --env dev-2` would do
+  launched, as `spinloop harness open --node dev-2` would do
 
 #### Scenario: Trailing arguments are forwarded untouched
 
 - **WHEN** the user runs `spinloop code -- --agent-flag`
 - **THEN** the harness is launched and `--agent-flag` is forwarded to it, as
   `spinloop harness open -- --agent-flag` would do
-
-### Requirement: Completion offers the Spinloop slot
-
-`code`'s tab completion SHALL offer the Spinloop slot — registered alias names
-plus paths — exactly as `spinloop harness open`'s first positional slot does.
-An unreadable config, an unloadable catalogue, or nonsense input SHALL leave it
-silent: no candidates, no error, and nothing written to stderr.
-
-#### Scenario: The Spinloop slot completes
-
-- **WHEN** the user completes `spinloop code <TAB>`
-- **THEN** registered alias names and paths are offered, as on
-  `spinloop harness open <TAB>`
-
-#### Scenario: A broken config stays quiet
-
-- **WHEN** spinloop's config file is unreadable and completion is attempted on
-  `spinloop code`
-- **THEN** no candidates are offered, the command exits zero, and nothing is
-  written to stderr

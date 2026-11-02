@@ -58,7 +58,7 @@ func TestCloudMetricsBarKeepsOnTheActiveLine(t *testing.T) {
 	}`)
 
 	out := captureStdout(t, func() {
-		if err := cmdMetrics([]string{"--env", "default", "--format=bar"}); err != nil {
+		if err := cmdMetrics([]string{"--node", "default", "--format=bar"}); err != nil {
 			t.Fatalf("cmdMetrics: %v", err)
 		}
 	})
@@ -89,7 +89,7 @@ func TestCloudMetricsTableKeepsOnTheActiveRow(t *testing.T) {
 	}`)
 
 	out := captureStdout(t, func() {
-		if err := cmdMetrics([]string{"--env", "default", "--format=table"}); err != nil {
+		if err := cmdMetrics([]string{"--node", "default", "--format=table"}); err != nil {
 			t.Fatalf("cmdMetrics: %v", err)
 		}
 	})
@@ -123,7 +123,7 @@ func TestKeepDurationRendersRelatively(t *testing.T) {
 				"retainUntil": "`+deadline+`"
 			}`)
 			out := captureStdout(t, func() {
-				if err := cmdMetrics([]string{"--env", "default", "--format=bar"}); err != nil {
+				if err := cmdMetrics([]string{"--node", "default", "--format=bar"}); err != nil {
 					t.Fatalf("cmdMetrics: %v", err)
 				}
 			})
@@ -149,7 +149,7 @@ func TestCloudMetricsStoppedKeptStillShowsKeep(t *testing.T) {
 				"retainUntil": "`+deadline+`"
 			}`)
 			out := captureStdout(t, func() {
-				if err := cmdMetrics([]string{"--env", "default", "--format=" + format}); err != nil {
+				if err := cmdMetrics([]string{"--node", "default", "--format=" + format}); err != nil {
 					t.Fatalf("cmdMetrics: %v", err)
 				}
 			})
@@ -173,7 +173,7 @@ func TestCloudMetricsOmitsKeepWhenAbsent(t *testing.T) {
 				"idleSeconds": 125
 			}`)
 			out := captureStdout(t, func() {
-				if err := cmdMetrics([]string{"--env", "default", "--format=" + format}); err != nil {
+				if err := cmdMetrics([]string{"--node", "default", "--format=" + format}); err != nil {
 					t.Fatalf("cmdMetrics: %v", err)
 				}
 			})

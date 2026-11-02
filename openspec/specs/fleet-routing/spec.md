@@ -34,10 +34,14 @@ A node that does not answer — unreachable, unauthorized, or a configuration
 error — SHALL be skipped rather than aborting the selection, exactly as it is a
 row rather than a failure in `spinloop fleet status`.
 
-`--node <name>` SHALL pin the selection to one node, skipping the search. An
-unknown name SHALL fail naming the known nodes, and a pinned node that cannot be
-reached SHALL fail rather than falling back to another node — a pin is an
-instruction, not a preference. A pinned node that is running the wanted model
+`--node <name>` — or its `-n <name>` short form — SHALL pin the selection to
+one node, skipping the search. It is the one name a launch gives for the node
+its agent talks to: with a fleet in force the name is a node of that fleet;
+with no fleet in force the same flag instead names a registered environment,
+which is a fleet of one (see the cloud-environment capabilities), and this
+selection never runs for it. An unknown name SHALL fail naming the known nodes,
+and a pinned node that cannot be reached SHALL fail rather than falling back to
+another node — a pin is an instruction, not a preference. A pinned node that is running the wanted model
 but has not answered yet SHALL fail saying it is still starting it — it may be
 fetching or loading weights — and naming the command for the node's log, rather
 than saying that nothing serves the model or restarting the node: this node is
@@ -471,121 +475,6 @@ one.
 - **THEN** the output names the section's address as the one the launch will
   use, no node is queried, and nothing is started
 
-### Requirement: A launch routed through a fleet
-
-`spinloop harness` SHALL route a worn Spinloop through a fleet when
-`--fleet <path>` — or its `-f <path>` short form — is given, and, when the
-worn Spinloop was not named explicitly, through a `./fleet.yaml` in the
-working directory. A worn Spinloop is named explicitly when the user gives its
-path — a leading positional argument or a `--spinloop`/`-O` value — or when
-`SPINLOOP_ALIAS` is set; a valueless `--spinloop` wears the default Spinloop
-and is not named. An explicitly named Spinloop SHALL NOT pick up a fleet file
-from the working directory on its own: the user pointed at that file
-deliberately, and routing happens only when `--fleet` is also given. A launch
-that wears no Spinloop applies nothing and routes nothing, in a directory
-holding a `fleet.yaml` or not. Where a Spinloop is worn and neither a flag nor
-a directory `./fleet.yaml` is in force, the launch SHALL behave exactly as it
-does without routing.
-
-Routing SHALL choose one node and give the launched agent that
-node's engine as its OpenAI-compatible endpoint: the chosen base URL SHALL be
-written as the applied provider's base URL, in the same place an environment's
-address is written, and SHALL also be placed in the launched agent's
-environment as `OPENAI_BASE_URL`.
-
-A variable already set in spinloop's environment SHALL win, as it does on the
-cloud path — routing fills what is unset, it does not override an explicit
-choice.
-
-A Spinloop that pins a `BASEURL` SHALL NOT be routed: the pinned address wins
-and spinloop SHALL say it is not routing through the fleet, rather than
-silently selecting a node whose address it then discards.
-
-A launch given `--env <name>` — or its `-e <name>` short form — alongside a
-fleet, whether the directory's `fleet.yaml` or a `--fleet` flag, SHALL fail
-naming both: each is an answer to where the model is served from — one names a
-specific environment, the other a set of nodes to choose between — and a launch
-stating both is a mistake rather than a precedence to resolve.
-
-The chosen node and the reason it was chosen SHALL be reported on stderr before
-the agent launches, so a launch that lands somewhere unexpected says so at the
-time rather than at the first request.
-
-#### Scenario: A running node becomes the agent's endpoint
-
-- **WHEN** the user runs `spinloop harness -O` in a directory holding a
-  `Spinloop` and a `fleet.yaml`, and a node in that fleet is running the model
-  the Spinloop names
-- **THEN** the launched agent's environment carries `OPENAI_BASE_URL` pointing
-  at that node's engine, and the applied provider's base URL is the same
-  address
-
-#### Scenario: The flag overrides the directory's fleet file
-
-- **WHEN** the user runs `spinloop harness -O --fleet=./cluster.yaml` in a
-  directory holding a `Spinloop` and a `fleet.yaml`
-- **THEN** the nodes in `./cluster.yaml` are the candidates, not the ones in
-  the directory's `fleet.yaml`
-
-#### Scenario: The short form overrides the directory's fleet file
-
-- **WHEN** the user runs `spinloop harness -O -f ./cluster.yaml` in a directory
-  holding a `Spinloop` and a `fleet.yaml`
-- **THEN** the nodes in `./cluster.yaml` are the candidates, not the ones in
-  the directory's `fleet.yaml`
-
-#### Scenario: No fleet file in force leaves the launch local
-
-- **WHEN** the user runs `spinloop harness -O` in a directory holding a
-  `Spinloop` and no `fleet.yaml`, passing no `--fleet`
-- **THEN** no fleet file is read, no node is contacted, and the launch behaves
-  as it did before
-
-#### Scenario: An explicitly named Spinloop does not route
-
-- **WHEN** the user runs `spinloop harness ./elsewhere/Spinloop` in a directory
-  holding a `fleet.yaml`, and passes no `--fleet`
-- **THEN** no fleet file is read, no node is contacted, and the launch applies
-  the Spinloop locally
-
-#### Scenario: The flag routes an explicitly named Spinloop
-
-- **WHEN** the user runs `spinloop harness ./elsewhere/Spinloop --fleet
-  ./cluster.yaml`
-- **THEN** the nodes in `./cluster.yaml` are the candidates
-
-#### Scenario: An aliased Spinloop does not route
-
-- **WHEN** `SPINLOOP_ALIAS` is set and the user runs `spinloop harness -O` in
-  a directory holding a `fleet.yaml`, passing no `--fleet`
-- **THEN** no fleet file is read, and the launch applies the aliased Spinloop
-  locally
-
-#### Scenario: A pinned BASEURL is not routed
-
-- **WHEN** a `Spinloop` beside a `fleet.yaml` names a `BASEURL`, and the user
-  runs `spinloop harness -O`
-- **THEN** the `BASEURL` is used, no node is selected, and spinloop reports
-  that it is not routing through the fleet
-
-#### Scenario: An exported base URL wins
-
-- **WHEN** `OPENAI_BASE_URL` is already set in the user's environment and a
-  fleet-routed launch runs
-- **THEN** the existing value reaches the agent unchanged
-
-#### Scenario: --env and a fleet conflict
-
-- **WHEN** the user runs `spinloop harness --env dev-2` in a directory holding
-  a `fleet.yaml`, or with a `--fleet` flag
-- **THEN** the launch fails naming both the `--env` flag and the fleet
-
-#### Scenario: The choice is announced
-
-- **WHEN** a fleet-routed launch selects a node
-- **THEN** the node's name, the resolved endpoint, and why it was chosen are
-  written to stderr before the harness is launched
-
 ### Requirement: A launch through a fleet's gateway needs no Spinloop
 
 A launch routed through a fleet SHALL NOT require a Spinloop when the
@@ -670,3 +559,131 @@ for is "gateway" — lets them find it at all.
 - **THEN** the provider's display name leads with "Gateway" and is qualified by
   the section's `name` where it gives one, or by the gateway's address
   otherwise, so a second gateway does not overwrite the first's block
+
+### Requirement: A launch routed through a fleet or pinned to a node
+`spinloop harness` SHALL route a worn Spinloop through a fleet when
+`--fleet <path>` — or its `-f <path>` short form — is given, and, when the
+worn Spinloop was not named explicitly, through a `./fleet.yaml` in the
+working directory. A worn Spinloop is named explicitly when the user gives its
+path — a leading positional argument or a `--spinloop`/`-O` value — or when
+`SPINLOOP_ALIAS` is set; a valueless `--spinloop` wears the default Spinloop
+and is not named. An explicitly named Spinloop SHALL NOT pick up a fleet file
+from the working directory on its own: the user pointed at that file
+deliberately, and routing happens only when `--fleet` is also given. A launch
+that wears no Spinloop applies nothing and routes nothing, in a directory
+holding a `fleet.yaml` or not — unless `--node` names a target alongside a
+fleet in force, which routes: it is served by the fleet's gateway where one is
+declared, and otherwise fails saying the Spinloop is what decides which node
+can serve. Where a Spinloop is worn and neither a flag nor a directory
+`./fleet.yaml` is in force, the launch SHALL behave exactly as it does without
+routing.
+
+Routing SHALL choose one node and give the launched agent that
+node's engine as its OpenAI-compatible endpoint: the chosen base URL SHALL be
+written as the applied provider's base URL, in the same place an environment's
+address is written, and SHALL also be placed in the launched agent's
+environment as `OPENAI_BASE_URL`.
+
+A variable already set in spinloop's environment SHALL win, as it does on the
+cloud path — routing fills what is unset, it does not override an explicit
+choice.
+
+A Spinloop that pins a `BASEURL` SHALL NOT be routed: the pinned address wins
+and spinloop SHALL say it is not routing through the fleet, rather than
+silently selecting a node whose address it then discards.
+
+A launch given `--node <name>` — or its `-n <name>` short form — alongside a
+fleet, whether the directory's `fleet.yaml` or a `--fleet` flag, SHALL pin the
+selection to that fleet's node of that name, as above: naming a node and the
+fleet it belongs to is one answer, not a conflict. A `--node` whose name is not
+a node of the fleet in force SHALL fail naming that fleet's known nodes rather
+than resolving the name as a registered environment — with a fleet in force the
+name is a fleet node's, always. Where no fleet is in force the same flag names
+a registered environment instead.
+
+The chosen node and the reason it was chosen SHALL be reported on stderr before
+the agent launches, so a launch that lands somewhere unexpected says so at the
+time rather than at the first request.
+
+#### Scenario: A running node becomes the agent's endpoint
+
+- **WHEN** the user runs `spinloop harness -O` in a directory holding a
+  `Spinloop` and a `fleet.yaml`, and a node in that fleet is running the model
+  the Spinloop names
+- **THEN** the launched agent's environment carries `OPENAI_BASE_URL` pointing
+  at that node's engine, and the applied provider's base URL is the same
+  address
+
+#### Scenario: The flag overrides the directory's fleet file
+
+- **WHEN** the user runs `spinloop harness -O --fleet=./cluster.yaml` in a
+  directory holding a `Spinloop` and a `fleet.yaml`
+- **THEN** the nodes in `./cluster.yaml` are the candidates, not the ones in
+  the directory's `fleet.yaml`
+
+#### Scenario: The short form overrides the directory's fleet file
+
+- **WHEN** the user runs `spinloop harness -O -f ./cluster.yaml` in a directory
+  holding a `Spinloop` and a `fleet.yaml`
+- **THEN** the nodes in `./cluster.yaml` are the candidates, not the ones in
+  the directory's `fleet.yaml`
+
+#### Scenario: No fleet file in force leaves the launch local
+
+- **WHEN** the user runs `spinloop harness -O` in a directory holding a
+  `Spinloop` and no `fleet.yaml`, passing no `--fleet`
+- **THEN** no fleet file is read, no node is contacted, and the launch behaves
+  as it did before
+
+#### Scenario: An explicitly named Spinloop does not route
+
+- **WHEN** the user runs `spinloop harness ./elsewhere/Spinloop` in a directory
+  holding a `fleet.yaml`, and passes no `--fleet`
+- **THEN** no fleet file is read, no node is contacted, and the launch applies
+  the Spinloop locally
+
+#### Scenario: The flag routes an explicitly named Spinloop
+
+- **WHEN** the user runs `spinloop harness ./elsewhere/Spinloop --fleet
+  ./cluster.yaml`
+- **THEN** the nodes in `./cluster.yaml` are the candidates
+
+#### Scenario: An aliased Spinloop does not route
+
+- **WHEN** `SPINLOOP_ALIAS` is set and the user runs `spinloop harness -O` in
+  a directory holding a `fleet.yaml`, passing no `--fleet`
+- **THEN** no fleet file is read, and the launch applies the aliased Spinloop
+  locally
+
+#### Scenario: A pinned BASEURL is not routed
+
+- **WHEN** a `Spinloop` beside a `fleet.yaml` names a `BASEURL`, and the user
+  runs `spinloop harness -O`
+- **THEN** the `BASEURL` is used, no node is selected, and spinloop reports
+  that it is not routing through the fleet
+
+#### Scenario: An exported base URL wins
+
+- **WHEN** `OPENAI_BASE_URL` is already set in the user's environment and a
+  fleet-routed launch runs
+- **THEN** the existing value reaches the agent unchanged
+
+#### Scenario: --node with a fleet pins that fleet's node
+
+- **WHEN** the user runs `spinloop harness --node dev-2` in a directory holding
+  a `fleet.yaml` that has no node named `dev-2`
+- **THEN** the launch fails naming `dev-2` and the fleet's known nodes, and does
+  not fall back to a registered environment named `dev-2`
+
+#### Scenario: --node with no fleet names a registered environment
+
+- **WHEN** the user runs `spinloop harness -O --node dev-2` in a directory
+  holding a `Spinloop` and no `fleet.yaml`, passing no `--fleet`
+- **THEN** the launch is applied against the registered environment `dev-2`, as
+  the same launch formerly given `--env dev-2` was
+
+#### Scenario: The choice is announced
+
+- **WHEN** a fleet-routed launch selects a node
+- **THEN** the node's name, the resolved endpoint, and why it was chosen are
+  written to stderr before the harness is launched

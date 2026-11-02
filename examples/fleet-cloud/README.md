@@ -11,7 +11,7 @@ never an account, so it is safe to keep under version control.
 ### 1. Have some environments
 
 An environment is created and registered when you deploy into it: `spinloop
-cloud deploy --env <name>`, run in a directory whose `Spinloop` describes what
+cloud deploy --node <name>`, run in a directory whose `Spinloop` describes what
 the environment serves, writes that environment's control URLs to
 `~/.config/spinloop/clouds/<name>/cloud.json`.
 Deploying needs the shared control plane once before it — see [`spinloop

@@ -58,7 +58,7 @@ func TestCloudSchedule_SetSendsTheListAndPrintsIt(t *testing.T) {
 
 	out := captureStdout(t, func() {
 		err := cmdCloudSchedule([]string{
-			"set", "--env", "default",
+			"set", "--node", "default",
 			"--start", "0 8 * * 1-5", "--stop", "0 18 * * 1-5", "--timezone", "Europe/London",
 		})
 		if err != nil {
@@ -98,7 +98,7 @@ func TestCloudSchedule_SetAcceptsRepeatedFlags(t *testing.T) {
 	got := scheduleFixture(t, http.StatusOK, officeReply)
 	captureStdout(t, func() {
 		err := cmdCloudSchedule([]string{
-			"set", "--env", "default", "--start", "0 8 * * 1-5", "--start", "0 13 * * 6",
+			"set", "--node", "default", "--start", "0 8 * * 1-5", "--start", "0 13 * * 6",
 		})
 		if err != nil {
 			t.Errorf("set: %v", err)
@@ -111,7 +111,7 @@ func TestCloudSchedule_SetAcceptsRepeatedFlags(t *testing.T) {
 
 func TestCloudSchedule_SetWithNothingPointsAtClear(t *testing.T) {
 	got := scheduleFixture(t, http.StatusOK, officeReply)
-	err := cmdCloudSchedule([]string{"set", "--env", "default"})
+	err := cmdCloudSchedule([]string{"set", "--node", "default"})
 	if err == nil || !strings.Contains(err.Error(), "schedule clear") {
 		t.Errorf("expected an error naming clear, got %v", err)
 	}
@@ -123,7 +123,7 @@ func TestCloudSchedule_SetWithNothingPointsAtClear(t *testing.T) {
 func TestCloudSchedule_ShowListsSchedules(t *testing.T) {
 	got := scheduleFixture(t, http.StatusOK, officeReply)
 	out := captureStdout(t, func() {
-		if err := cmdCloudSchedule([]string{"show", "--env", "default"}); err != nil {
+		if err := cmdCloudSchedule([]string{"show", "--node", "default"}); err != nil {
 			t.Errorf("show: %v", err)
 		}
 	})
@@ -138,7 +138,7 @@ func TestCloudSchedule_ShowListsSchedules(t *testing.T) {
 func TestCloudSchedule_ShowSaysWhenThereAreNone(t *testing.T) {
 	scheduleFixture(t, http.StatusOK, `{"environment":"default","schedules":[],"next":{"start":"","stop":""}}`)
 	out := captureStdout(t, func() {
-		if err := cmdCloudSchedule([]string{"show", "--env", "default"}); err != nil {
+		if err := cmdCloudSchedule([]string{"show", "--node", "default"}); err != nil {
 			t.Errorf("show: %v", err)
 		}
 	})
@@ -153,7 +153,7 @@ func TestCloudSchedule_ShowSaysWhenThereAreNone(t *testing.T) {
 func TestCloudSchedule_OmitsANextRunThatDoesNotExist(t *testing.T) {
 	scheduleFixture(t, http.StatusOK, `{"environment":"default","schedules":[{"action":"start","cron":"0 8 * * *","timezone":"UTC"}],"next":{"start":"2026-10-06T08:00:00.000Z","stop":""}}`)
 	out := captureStdout(t, func() {
-		if err := cmdCloudSchedule([]string{"show", "--env", "default"}); err != nil {
+		if err := cmdCloudSchedule([]string{"show", "--node", "default"}); err != nil {
 			t.Errorf("show: %v", err)
 		}
 	})
@@ -165,7 +165,7 @@ func TestCloudSchedule_OmitsANextRunThatDoesNotExist(t *testing.T) {
 func TestCloudSchedule_ClearDeletes(t *testing.T) {
 	got := scheduleFixture(t, http.StatusOK, `{"environment":"default","schedules":[],"next":{}}`)
 	out := captureStdout(t, func() {
-		if err := cmdCloudSchedule([]string{"clear", "--env", "default"}); err != nil {
+		if err := cmdCloudSchedule([]string{"clear", "--node", "default"}); err != nil {
 			t.Errorf("clear: %v", err)
 		}
 	})
@@ -179,7 +179,7 @@ func TestCloudSchedule_ClearDeletes(t *testing.T) {
 
 func TestCloudSchedule_ControlPlaneRejectionIsTheError(t *testing.T) {
 	scheduleFixture(t, http.StatusBadRequest, `{"error":"invalid cron expression \"x\": expected five fields"}`)
-	err := cmdCloudSchedule([]string{"set", "--env", "default", "--start", "x"})
+	err := cmdCloudSchedule([]string{"set", "--node", "default", "--start", "x"})
 	if err == nil || !strings.Contains(err.Error(), "expected five fields") {
 		t.Errorf("expected the control plane's reason, got %v", err)
 	}
@@ -189,7 +189,7 @@ func TestCloudSchedule_OlderControlPlaneNamesTheFix(t *testing.T) {
 	isolateConfig(t)
 	stubAWSEnv(t)
 	writeCloudConfig(t, "https://start.example/")
-	err := cmdCloudSchedule([]string{"show", "--env", "default"})
+	err := cmdCloudSchedule([]string{"show", "--node", "default"})
 	if err == nil || !strings.Contains(err.Error(), "spinloop cloud bootstrap") {
 		t.Errorf("expected an error naming bootstrap, got %v", err)
 	}
@@ -198,7 +198,7 @@ func TestCloudSchedule_OlderControlPlaneNamesTheFix(t *testing.T) {
 func TestCloudSchedule_NeedsAnEnvironment(t *testing.T) {
 	isolateConfig(t)
 	err := cmdCloudSchedule([]string{"show"})
-	if err == nil || !strings.Contains(err.Error(), "--env") {
+	if err == nil || !strings.Contains(err.Error(), "--node") {
 		t.Errorf("expected the no-environment error, got %v", err)
 	}
 }
@@ -206,7 +206,7 @@ func TestCloudSchedule_NeedsAnEnvironment(t *testing.T) {
 func TestCloudSchedule_ClearAndShowReportControlPlaneFailures(t *testing.T) {
 	scheduleFixture(t, http.StatusInternalServerError, `{"error":"scheduler unavailable"}`)
 	for _, verb := range []string{"clear", "show"} {
-		err := cmdCloudSchedule([]string{verb, "--env", "default"})
+		err := cmdCloudSchedule([]string{verb, "--node", "default"})
 		if err == nil || !strings.Contains(err.Error(), "scheduler unavailable") {
 			t.Errorf("%s: expected the control plane's reason, got %v", verb, err)
 		}

@@ -15,7 +15,7 @@ import (
 )
 
 func statusCmd() *cobra.Command {
-	var path, envName, spinloopPath string
+	var path, nodeName, spinloopPath string
 	c := &cobra.Command{
 		Use:   "status",
 		Short: "report every engine's state",
@@ -24,7 +24,7 @@ serves, how long since it last did work, and the spinloop version of the
 daemon running it. One row per node, queried concurrently, so the command
 takes as long as the slowest node rather than all of them added up.
 
-The target is a registered environment (--env), a fleet file (--fleet), or
+The target is a registered environment (--node), a fleet file (--fleet), or
 the fleet.yaml in the working directory. A node that cannot be reached is a
 row saying so, not a failure: one unreachable machine never blanks the rest.
 
@@ -39,22 +39,22 @@ applies to every node.`,
 			if err := applyReadSpinloopEnv(spinloopPath); err != nil {
 				return err
 			}
-			cfg, err := resolveFleetTarget(fleetTarget{envName: envName, fleetPath: path})
+			cfg, err := resolveFleetTarget(fleetTarget{nodeName: nodeName, fleetPath: path})
 			if err != nil {
 				return err
 			}
-			results := cfg.FanOut(context.Background(), fleet.StatusCall)
+			results := narrowedTarget(cfg, nodeName).FanOut(context.Background(), fleet.StatusCall)
 			renderFleetStatus(os.Stdout, results)
 			return nil
 		},
 	}
 	fs := c.Flags()
 	fs.StringVarP(&path, "fleet", "f", "", fleetFileUsage)
-	fs.StringVar(&envName, "env", "", envFlagTargetUsage)
+	fs.StringVarP(&nodeName, "node", "n", "", nodeFlagTargetUsage)
 	registerSpinloopEnvFlag(fs, &spinloopPath)
 	c.ValidArgsFunction = noPositionals
 	compRegister(c, "fleet", compFiles)
-	compRegister(c, "env", compEnvs)
+	compRegister(c, "node", compNodes)
 	return c
 }
 

@@ -35,13 +35,13 @@ from the environment or a `.env` beside the Spinloop — never written into an
 | `SPINLOOP_CLOUD_PACKAGE_MANAGER` | Pin the package manager (`pnpm`/`npm`) `spinloop cloud bootstrap` and `bake` use. |
 
 These let the cloud commands run without a `cloud.json` on disk — the config
-can come entirely from the environment. `--env <name>` is still required, and
+can come entirely from the environment. `--node <name>` is still required, and
 on this path the name you give *is* the environment identifier the control
 plane acts on, since there is no file to take one from:
 
 ```sh
 SPINLOOP_CLOUD_START_URL=... SPINLOOP_CLOUD_STOP_URL=... SPINLOOP_CLOUD_REGION=... \
-  spinloop cloud start --env ci
+  spinloop cloud start --node ci
 ```
 
 ## Standard variables spinloop honours

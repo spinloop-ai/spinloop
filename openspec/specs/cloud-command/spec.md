@@ -80,7 +80,7 @@ or `remote-<region>.json`.
 
 #### Scenario: Old environment is not found
 - **WHEN** `remotes/staging/remote.json` exists and `clouds/staging/` does not
-- **THEN** `spinloop status --env staging` reports that environment `staging` is not registered
+- **THEN** `spinloop status --node staging` reports that environment `staging` is not registered
 
 ### Requirement: Unrelated uses of remote are unchanged
 

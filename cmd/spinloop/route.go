@@ -20,16 +20,16 @@ import (
 // routeOptions is what the launch flags say about routing. They are inert
 // unless something names a fleet.
 type routeOptions struct {
-	// envName names the registered environment a launch is applied against.
-	// It conflicts with a fleet — each names where the model is served from.
-	envName string
 	// fleetPath is the fleet file to route through when given.
 	fleetPath string
 	// spinloopNamed says the worn Spinloop was named by the user — a
 	// positional argument, a --spinloop value, or SPINLOOP_ALIAS — so a
 	// fleet.yaml in the working directory is not picked up for it.
 	spinloopNamed bool
-	// node pins the selection to one node.
+	// node is the one name the launch gives for the node its agent talks to,
+	// from --node/-n. With a fleet in force it pins the selection to that
+	// fleet's node of the name; with no fleet in force the same name is a
+	// registered environment — a fleet of one — to apply against.
 	node string
 	// prefer overrides the fleet file's activity preference.
 	prefer string

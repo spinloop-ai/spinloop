@@ -48,7 +48,7 @@ func TestCloudMetricsBarShowsLastActive(t *testing.T) {
 	statsServer(t, runningWithActivity)
 
 	out := captureStdout(t, func() {
-		if err := cmdMetrics([]string{"--env", "default", "--format=bar"}); err != nil {
+		if err := cmdMetrics([]string{"--node", "default", "--format=bar"}); err != nil {
 			t.Fatalf("cmdMetrics: %v", err)
 		}
 	})
@@ -69,7 +69,7 @@ func TestCloudMetricsTableShowsLastActive(t *testing.T) {
 	statsServer(t, runningWithActivity)
 
 	out := captureStdout(t, func() {
-		if err := cmdMetrics([]string{"--env", "default", "--format=table"}); err != nil {
+		if err := cmdMetrics([]string{"--node", "default", "--format=table"}); err != nil {
 			t.Fatalf("cmdMetrics: %v", err)
 		}
 	})
@@ -86,7 +86,7 @@ func TestCloudMetricsJSONCarriesLastActive(t *testing.T) {
 	statsServer(t, runningWithActivity)
 
 	out := captureStdout(t, func() {
-		if err := cmdMetrics([]string{"--env", "default", "--format=json"}); err != nil {
+		if err := cmdMetrics([]string{"--node", "default", "--format=json"}); err != nil {
 			t.Fatalf("cmdMetrics: %v", err)
 		}
 	})
@@ -132,7 +132,7 @@ func TestCloudMetricsStoppedStillShowsLastActive(t *testing.T) {
 	} {
 		t.Run(format, func(t *testing.T) {
 			out := captureStdout(t, func() {
-				if err := cmdMetrics([]string{"--env", "default", "--format=" + format}); err != nil {
+				if err := cmdMetrics([]string{"--node", "default", "--format=" + format}); err != nil {
 					t.Fatalf("cmdMetrics: %v", err)
 				}
 			})
@@ -162,7 +162,7 @@ func TestLastActiveZeroIdleStillRenders(t *testing.T) {
 	} {
 		t.Run(format, func(t *testing.T) {
 			out := captureStdout(t, func() {
-				if err := cmdMetrics([]string{"--env", "default", "--format=" + format}); err != nil {
+				if err := cmdMetrics([]string{"--node", "default", "--format=" + format}); err != nil {
 					t.Fatalf("cmdMetrics: %v", err)
 				}
 			})
@@ -184,7 +184,7 @@ func TestLastActiveOmittedWithoutATimestamp(t *testing.T) {
 	for _, format := range []string{"bar", "table"} {
 		t.Run(format, func(t *testing.T) {
 			out := captureStdout(t, func() {
-				if err := cmdMetrics([]string{"--env", "default", "--format=" + format}); err != nil {
+				if err := cmdMetrics([]string{"--node", "default", "--format=" + format}); err != nil {
 					t.Fatalf("cmdMetrics: %v", err)
 				}
 			})
@@ -223,7 +223,7 @@ func TestCloudStatusShowsLastActive(t *testing.T) {
 	}`)
 
 	out := captureStdout(t, func() {
-		if err := cmdStatus([]string{"--env", "default"}); err != nil {
+		if err := cmdStatus([]string{"--node", "default"}); err != nil {
 			t.Fatalf("cmdStatus: %v", err)
 		}
 	})
@@ -247,7 +247,7 @@ func TestCloudStatusZeroIdleStillRenders(t *testing.T) {
 	statusServer(t, `{"state": "running", "healthy": true, "lastActiveAt": "2026-08-10T10:00:00Z"}`)
 
 	out := captureStdout(t, func() {
-		if err := cmdStatus([]string{"--env", "default"}); err != nil {
+		if err := cmdStatus([]string{"--node", "default"}); err != nil {
 			t.Fatalf("cmdStatus: %v", err)
 		}
 	})
@@ -262,7 +262,7 @@ func TestCloudStatusOmitsLastActiveWhenAbsent(t *testing.T) {
 	statusServer(t, `{"state": "stopped", "healthy": false}`)
 
 	out := captureStdout(t, func() {
-		if err := cmdStatus([]string{"--env", "default"}); err != nil {
+		if err := cmdStatus([]string{"--node", "default"}); err != nil {
 			t.Fatalf("cmdStatus: %v", err)
 		}
 	})

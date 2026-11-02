@@ -10,8 +10,8 @@ spinloop cloud auth       # store or report the credential this machine signs wi
 spinloop cloud bake       # bake the runner AMI(s) an environment runs from
 spinloop cloud deploy     # create an endpoint (environment) and tell it what to serve
 spinloop cloud start      # boot it; with --print-env, prints the exports your agent needs
-spinloop status --env <name>     # is it up? is it healthy?
-spinloop logs --env <name>       # what did it say? (readable after it's gone)
+spinloop status --node <name>     # is it up? is it healthy?
+spinloop logs --node <name>       # what did it say? (readable after it's gone)
 spinloop cloud pause      # stop it now; a later start re-wakes it
 spinloop cloud restart    # fresh engine, same address: stop it and wake it again
 spinloop cloud keep 4h    # prevent the idle sweep from stopping it for 4 hours
@@ -86,17 +86,17 @@ picked up automatically once it is available.
 ## The usual flow
 
 ```sh
-eval "$(spinloop cloud start --env qwen3.6-27b --print-env)"   # boots it (~10 min
+eval "$(spinloop cloud start --node qwen3.6-27b --print-env)"   # boots it (~10 min
                                         # from cold) and sets OPENAI_BASE_URL and
                                         # OPENAI_API_KEY
-spinloop harness apply --env qwen3.6-27b         # point your agent at it
-spinloop harness open --env qwen3.6-27b  # work
-spinloop cloud pause --env qwen3.6-27b  # done for now: stopped, re-wakeable with start
-spinloop cloud stop --env qwen3.6-27b   # done for good: terminate it
+spinloop harness apply --node qwen3.6-27b         # point your agent at it
+spinloop harness open --node qwen3.6-27b  # work
+spinloop cloud pause --node qwen3.6-27b  # done for now: stopped, re-wakeable with start
+spinloop cloud stop --node qwen3.6-27b   # done for good: terminate it
 ```
 
 Every command that acts on an endpoint — `start`, `status`, `metrics`, `logs`,
-`pause`, `restart`, `keep`, `schedule`, `stop` — selects it with the same `--env <name>`
+`pause`, `restart`, `keep`, `schedule`, `stop` — selects it with the same `--node <name>`
 flag; with no flag they use the `default` environment. `start` prints its
 progress on stderr, and the export lines for `eval` only with `--print-env`, so
 a plain `start` leaves stdout empty for other uses.
@@ -127,10 +127,10 @@ for [`spinloop harness apply`](harness.md#spinloop-harness-apply): a Spinloop fo
 `BASEURL` and let apply take the address from here, so the address stays with
 the deployment that owns it. A `BASEURL` in the Spinloop wins if you set one.
 
-Name the environment with the `--env` flag:
+Name the environment with the `--node` flag:
 
 ```sh
-spinloop status --env <name> --env qwen3.6-27b-prod
+spinloop status --node qwen3.6-27b-prod
 ```
 
 The flag selects a **named environment** from the
@@ -138,15 +138,15 @@ per-user registry at `~/.config/spinloop/clouds/<name>/cloud.json`. This keeps
 deployment state per-user and per-machine: two projects name two environments
 without clobbering, and the Spinloop carries none of the URLs at all.
 `spinloop cloud deploy` registers an environment for you; you can also
-create one by hand. A name is a plain identifier — `--env ./cloud.json` fails,
+create one by hand. A name is a plain identifier — `--node ./cloud.json` fails,
 saying an environment name has no path.
 
-**`--env` is required.** There is no environment a command falls back to: half
+**`--node` is required.** There is no environment a command falls back to: half
 of these subcommands start, stop or terminate a cloud instance, and an instance
-nobody named is not one to act on. A command given no `--env` fails naming the
+nobody named is not one to act on. A command given no `--node` fails naming the
 flag and listing the environments you have registered, so the next thing to
 type is in the error. `default` is an ordinary name — call an environment that
-if you like, and pass `--env default` to use it.
+if you like, and pass `--node default` to use it.
 
 A command may also be given a Spinloop path (or a [registered
 alias](alias.md), or a URL): its `ENV` lines and the `.env` beside it are read
@@ -154,15 +154,15 @@ before the command signs its AWS calls, so credentials, region and
 `SPINLOOP_CLOUD_*` overrides can travel with the Spinloop. The Spinloop does
 not select the environment — that is the flag's job alone.
 
-`spinloop cloud env --env <name>` fetches a running endpoint's credentials
+`spinloop cloud env --node <name>` fetches a running endpoint's credentials
 (`export OPENAI_BASE_URL`/`export OPENAI_API_KEY`, safe to `eval`) without
 booting it. It also reports what is deployed to the environment — runner,
 served model, context size — whenever something is: this is what lets
-[`spinloop harness open --env <name>`](harness.md#launching-with-no-spinloop-at-all)
+[`spinloop harness open --node <name>`](harness.md#launching-with-no-spinloop-at-all)
 configure the harness from a deployed environment with no Spinloop at all. It
 appears once the control plane has been redeployed with `spinloop cloud
 bootstrap`; an older control plane simply omits it, and `spinloop harness open
---env` with no Spinloop fails naming that as the fix.
+--node` with no Spinloop fails naming that as the fix.
 
 ## Listing environments
 
@@ -239,9 +239,9 @@ a stored key covers them too.
 ## Checking on an endpoint
 
 ```sh
-spinloop status --env <name>                   # is it up, is it healthy, where is it
-spinloop metrics --env <name>                  # what is it doing — tokens, GPU, CPU, RAM
-spinloop metrics --env <name> -w               # the same, redrawn every 60 seconds
+spinloop status --node <name>                   # is it up, is it healthy, where is it
+spinloop metrics --node <name>                  # what is it doing — tokens, GPU, CPU, RAM
+spinloop metrics --node <name> -w               # the same, redrawn every 60 seconds
 ```
 
 `metrics` draws its resource series as **gauge** format by default: the
@@ -324,10 +324,10 @@ version, or re-bootstrap).
 ## Starting and stopping on a schedule
 
 ```sh
-spinloop cloud schedule set --env dev \
+spinloop cloud schedule set --node dev \
   --start "0 8 * * 1-5" --stop "0 18 * * 1-5" --timezone Europe/London
-spinloop cloud schedule show --env dev    # the schedules, and when each action next runs
-spinloop cloud schedule clear --env dev   # remove them all
+spinloop cloud schedule show --node dev    # the schedules, and when each action next runs
+spinloop cloud schedule clear --node dev   # remove them all
 ```
 
 A schedule is a five-field cron expression (minute, hour, day of month, month,
@@ -386,10 +386,10 @@ endpoint's base URL when it serves, so you can check the address is unchanged.
 ## Reading the logs
 
 ```sh
-spinloop logs --env <name>                      # the last hour of engine output
-spinloop logs --env <name> --source boot        # the start-up log, before the engine ran
-spinloop logs --env <name> --since 6h --limit 500
-spinloop logs --env <name> -f                   # follow, until you interrupt it
+spinloop logs --node <name>                      # the last hour of engine output
+spinloop logs --node <name> --source boot        # the start-up log, before the engine ran
+spinloop logs --node <name> --since 6h --limit 500
+spinloop logs --node <name> -f                   # follow, until you interrupt it
 ```
 
 Instances ship two logs to CloudWatch: the inference engine's own output, and
@@ -436,7 +436,7 @@ recovered — only what's shipped from then on.
 plane and tells it what to serve. It reads the Spinloop, its preset and its
 PARAM lines — `PROVIDER` picks the engine, so the file that runs a model
 locally under
-[`spinloop serve`](serve.md) deploys the same model remotely — and `--env <name>`
+[`spinloop serve`](serve.md) deploys the same model remotely — and `--node <name>`
 names the environment it creates and registers. The flag is required: a deploy
 without it fails, naming the flag and a name to use. The Spinloop says what the
 environment serves; the name is a machine-local choice, so it stays out of the
@@ -450,7 +450,7 @@ PRESET   ./preset.ini    # the model and its flags — or PARAM lines instead
 ```
 
 ```sh
-spinloop cloud deploy --env qwen3.6-27b
+spinloop cloud deploy --node qwen3.6-27b
 ```
 
 Deploy discovers the control plane from the bootstrap stack's outputs, then
@@ -487,13 +487,13 @@ says so; wait for that before your first `start`, or the model won't be there.
 
 Switching model, quantisation, or engine is an edit to those two files and one
 `deploy` — no redeployment of the infrastructure. A second Spinloop deployed
-under a different `--env` name gets its own environment, side by side.
+under a different `--node` name gets its own environment, side by side.
 
 ```sh
-spinloop cloud deploy --env qwen3.6-27b --dry-run        # see what would be sent
-spinloop cloud deploy --env other-env path/to/Spinloop   # deploy a different file
-spinloop cloud deploy --env qwen3.6-27b --overwrite      # redeploy over the existing environment
-spinloop cloud deploy --env qwen3.6-27b --reseed         # re-fetch weights already in S3
+spinloop cloud deploy --node qwen3.6-27b --dry-run        # see what would be sent
+spinloop cloud deploy --node other-env path/to/Spinloop   # deploy a different file
+spinloop cloud deploy --node qwen3.6-27b --overwrite      # redeploy over the existing environment
+spinloop cloud deploy --node qwen3.6-27b --reseed         # re-fetch weights already in S3
 ```
 
 Deploy fetches the weights only when they are not in S3 already. `--reseed`
@@ -519,7 +519,7 @@ included) for every `kind: cloud` node a fleet file names — or a chosen few
 
 | Flag | Meaning |
 | ---- | ------- |
-| `--env` | The environment the command acts on, by registered name (required by `deploy`; default `default`) |
+| `--node`, `-n` | The environment the command acts on, by registered name (required by `deploy`; default `default`; `deploy` names it with `--node` only — `-n` is `--dry-run` there) |
 | `--print-env` | `start` only: print the export lines (`OPENAI_BASE_URL`/`OPENAI_API_KEY`) to stdout for `eval` |
 | `--timeout` | How long `start` or `restart` waits for the endpoint (default 15m) |
 | `-F`, `--force` | `restart` only: skip the graceful engine stop and take the instance down directly |
@@ -540,10 +540,10 @@ included) for every `kind: cloud` node a fleet file names — or a chosen few
   AMIs are shared by every environment, and the stored credential belongs to
   the machine, not a project.
 - `deploy` always needs a Spinloop — it's the thing being deployed — and a
-  required `--env <name>` for the environment it creates. The others take an
+  required `--node <name>` for the environment it creates. The others take an
   optional Spinloop path, a [registered alias](alias.md), or a URL, read only
   for its `ENV` lines and `.env` — never to select the environment. Which
-  environment a command acts on is its `--env` flag, defaulting to the
+  environment a command acts on is its `--node` flag, defaulting to the
   `default` environment.
 - `deploy_url` is optional: a config written before `deploy` existed still
   works for `start`, `stop`, and `status`.

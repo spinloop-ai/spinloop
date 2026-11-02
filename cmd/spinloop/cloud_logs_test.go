@@ -48,7 +48,7 @@ func TestRunnerForAcceptsExactlyTheRunnersWithLogGroups(t *testing.T) {
 	}
 }
 
-// spinloop logs --env defaults to the engine source and an hour window, and
+// spinloop logs --node defaults to the engine source and an hour window, and
 // threads --source/--since/--limit/--instance through to the environment's
 // log store query.
 func TestTopLevelLogsDefaultsToTheEngineSourceAndAnHourWindow(t *testing.T) {
@@ -65,7 +65,7 @@ func TestTopLevelLogsDefaultsToTheEngineSourceAndAnHourWindow(t *testing.T) {
 		return cloud.LogResult{}, nil
 	})
 
-	if err := cmdLogs([]string{"--env", "prod"}); err != nil {
+	if err := cmdLogs([]string{"--node", "prod"}); err != nil {
 		t.Fatal(err)
 	}
 	if got.Source != cloud.LogSourceEngine {
@@ -93,7 +93,7 @@ func TestTopLevelLogsPassesTheFlagsThrough(t *testing.T) {
 		return cloud.LogResult{}, nil
 	})
 
-	if err := cmdLogs([]string{"--env", "prod", "--source", "boot", "--since", "15m",
+	if err := cmdLogs([]string{"--node", "prod", "--source", "boot", "--since", "15m",
 		"--limit", "5", "--instance", "i-42"}); err != nil {
 		t.Fatal(err)
 	}

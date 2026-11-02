@@ -29,11 +29,11 @@ log-ins.
 
 ## Deploy a model
 
-The Spinloop says what the environment serves; `--env` names the environment —
+The Spinloop says what the environment serves; `--node` names the environment —
 a machine-local choice that stays out of the file:
 
 ```sh
-spinloop cloud deploy --env qwen3.6-27b
+spinloop cloud deploy --node qwen3.6-27b
 ```
 
 Deploy reads the Spinloop and its preset — `PROVIDER` picks the engine, so the
@@ -47,35 +47,35 @@ your own IP may reach the instance (`--allowed-cidr` changes that).
 ## The usual flow
 
 ```sh
-spinloop cloud start --env qwen3.6-27b        # boots it (~10 min from cold)
-eval "$(spinloop cloud start --env qwen3.6-27b --print-env)"   # ...and exports
+spinloop cloud start --node qwen3.6-27b        # boots it (~10 min from cold)
+eval "$(spinloop cloud start --node qwen3.6-27b --print-env)"   # ...and exports
                                                # OPENAI_BASE_URL + OPENAI_API_KEY
-spinloop harness apply --env qwen3.6-27b       # point your agent at it
-spinloop harness open --env qwen3.6-27b        # work
-spinloop cloud pause --env qwen3.6-27b        # done for now: stopped, re-wakeable
-spinloop cloud stop --env qwen3.6-27b         # done for good: terminated
+spinloop harness apply --node qwen3.6-27b       # point your agent at it
+spinloop harness open --node qwen3.6-27b        # work
+spinloop cloud pause --node qwen3.6-27b        # done for now: stopped, re-wakeable
+spinloop cloud stop --node qwen3.6-27b         # done for good: terminated
 ```
 
-Every command that acts on an endpoint selects it with `--env <name>` — the
+Every command that acts on an endpoint selects it with `--node <name>` — the
 flag is **required**, because half of these subcommands start, stop, or
 terminate a cloud instance, and an instance nobody named is not one to act on.
-A command given no `--env` fails naming the flag and listing the environments
+A command given no `--node` fails naming the flag and listing the environments
 you have registered. `start` prints progress on stderr, and the export lines
 for `eval` only with `--print-env`, so a plain `start` leaves stdout empty.
 
 Useful along the way:
 
 ```sh
-spinloop cloud status --env qwen3.6-27b   # up? healthy? where? how long idle?
-spinloop cloud logs --env qwen3.6-27b     # readable even after it's gone
-spinloop cloud keep 4h --env qwen3.6-27b  # the idle sweep won't touch it for 4h
-spinloop cloud restart --env qwen3.6-27b  # fresh engine, same address
+spinloop cloud status --node qwen3.6-27b   # up? healthy? where? how long idle?
+spinloop cloud logs --node qwen3.6-27b     # readable even after it's gone
+spinloop cloud keep 4h --node qwen3.6-27b  # the idle sweep won't touch it for 4h
+spinloop cloud restart --node qwen3.6-27b  # fresh engine, same address
 ```
 
 Work office hours? Let the cloud start and stop it for you:
 
 ```sh
-spinloop cloud schedule set --env qwen3.6-27b \
+spinloop cloud schedule set --node qwen3.6-27b \
   --start "0 8 * * 1-5" --stop "0 18 * * 1-5" --timezone Europe/London
 ```
 
@@ -89,7 +89,7 @@ share one (each with its `cloud.json` in the registry) can work the same
 endpoint. Deploy from one, then on the other — with **no Spinloop at all**:
 
 ```sh
-spinloop harness open --env qwen3.6-27b
+spinloop harness open --node qwen3.6-27b
 ```
 
 The environment's runner becomes the provider, its served model the model, its

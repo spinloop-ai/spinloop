@@ -230,7 +230,7 @@ func TestFormat_NoParallelOmitsLine(t *testing.T) {
 }
 
 // REMOTE was removed from the grammar: the environment is named with
-// `remote deploy --env <name>` at deploy time and `--env <name>` at the
+// `remote deploy --node <name>` at deploy time and `--node <name>` at the
 // commands that act on it, so a REMOTE line is rejected with a message that
 // names the replacement.
 func TestParse_RemoteRejected(t *testing.T) {
@@ -238,7 +238,7 @@ func TestParse_RemoteRejected(t *testing.T) {
 	if err == nil {
 		t.Fatal("a REMOTE line should be rejected")
 	}
-	for _, want := range []string{"line 2", "REMOTE", "removed", "--env"} {
+	for _, want := range []string{"line 2", "REMOTE", "removed", "--node"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error should contain %q, got %q", want, err)
 		}

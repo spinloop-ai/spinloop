@@ -536,7 +536,7 @@ func stubDeploySeams(t *testing.T, serverURL, statusState string) {
 
 // writeDeploySpinloopCwd writes the Spinloop a deploy reads for the engine,
 // model and context + its preset, in a new working directory. The environment
-// name travels as --env, not in the file.
+// name travels as --node, not in the file.
 func writeDeploySpinloopCwd(t *testing.T) {
 	t.Helper()
 	t.Chdir(t.TempDir())
@@ -572,7 +572,7 @@ func TestCloudDeploy_PostsTheConfigAndRegisters(t *testing.T) {
 	writeDeploySpinloopCwd(t)
 
 	out := captureStdout(t, func() {
-		if err := cmdCloudDeploy([]string{"--env", "testenv"}); err != nil {
+		if err := cmdCloudDeploy([]string{"--node", "testenv"}); err != nil {
 			t.Errorf("cmdCloudDeploy: %v", err)
 		}
 	})
@@ -629,7 +629,7 @@ func TestCloudDeploy_NotBootstrapped(t *testing.T) {
 	}
 	writeDeploySpinloopCwd(t)
 
-	err := cmdCloudDeploy([]string{"--env", "testenv"})
+	err := cmdCloudDeploy([]string{"--node", "testenv"})
 	if err == nil || !strings.Contains(err.Error(), "spinloop cloud bootstrap") {
 		t.Errorf("want a bootstrap-first error, got %v", err)
 	}
@@ -646,13 +646,13 @@ func TestCloudDeploy_RequiresEnvName(t *testing.T) {
 	), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	// No --env: deploy cannot tell which environment to create.
+	// No --node: deploy cannot tell which environment to create.
 	err := cmdCloudDeploy(nil)
 	if err == nil || !strings.Contains(err.Error(), "deploy must name the environment it creates") {
-		t.Errorf("want an error asking for --env, got %v", err)
+		t.Errorf("want an error asking for --node, got %v", err)
 	}
 	// A path-shaped value is not an environment name.
-	err = cmdCloudDeploy([]string{"--env", "./cloud.json"})
+	err = cmdCloudDeploy([]string{"--node", "./cloud.json"})
 	if err == nil || !strings.Contains(err.Error(), "is not an environment name") {
 		t.Errorf("want an environment-name error, got %v", err)
 	}
@@ -669,7 +669,7 @@ func TestCloudDeploy_OverwriteGuard(t *testing.T) {
 			t.Fatal(err)
 		}
 		writeDeploySpinloopCwd(t)
-		err := cmdCloudDeploy([]string{"--env", "testenv"})
+		err := cmdCloudDeploy([]string{"--node", "testenv"})
 		if err == nil || !strings.Contains(err.Error(), "--overwrite") {
 			t.Errorf("want an overwrite refusal, got %v", err)
 		}
@@ -680,7 +680,7 @@ func TestCloudDeploy_OverwriteGuard(t *testing.T) {
 		stubAWSEnv(t)
 		stubDeploySeams(t, "https://unused", "running")
 		writeDeploySpinloopCwd(t)
-		err := cmdCloudDeploy([]string{"--env", "testenv"})
+		err := cmdCloudDeploy([]string{"--node", "testenv"})
 		if err == nil || !strings.Contains(err.Error(), "--overwrite") {
 			t.Errorf("want an overwrite refusal for a live instance, got %v", err)
 		}
@@ -697,7 +697,7 @@ func TestCloudDeploy_OverwriteGuard(t *testing.T) {
 		stubDeploySeams(t, server.URL, "running")
 		writeDeploySpinloopCwd(t)
 		out := captureStdout(t, func() {
-			if err := cmdCloudDeploy([]string{"--env", "testenv", "--overwrite"}); err != nil {
+			if err := cmdCloudDeploy([]string{"--node", "testenv", "--overwrite"}); err != nil {
 				t.Errorf("cmdCloudDeploy --overwrite: %v", err)
 			}
 		})
@@ -711,7 +711,7 @@ func TestCloudDeploy_RejectsBadCIDR(t *testing.T) {
 	isolateConfig(t)
 	stubDeploySeams(t, "https://unused", "undeployed")
 	writeDeploySpinloopCwd(t)
-	err := cmdCloudDeploy([]string{"--env", "testenv", "--allowed-cidr", "bogus"})
+	err := cmdCloudDeploy([]string{"--node", "testenv", "--allowed-cidr", "bogus"})
 	if err == nil || !strings.Contains(err.Error(), "IPv4 CIDR") {
 		t.Errorf("want a CIDR validation error, got %v", err)
 	}
@@ -729,7 +729,7 @@ func TestCloudDeploy_DryRunSendsNothing(t *testing.T) {
 	writeDeploySpinloopCwd(t)
 
 	out := captureStdout(t, func() {
-		if err := cmdCloudDeploy([]string{"--env", "testenv", "--dry-run"}); err != nil {
+		if err := cmdCloudDeploy([]string{"--node", "testenv", "--dry-run"}); err != nil {
 			t.Errorf("cmdCloudDeploy --dry-run: %v", err)
 		}
 	})
@@ -764,7 +764,7 @@ func TestCloudDeploy_SpinloopVersion(t *testing.T) {
 		writeDeploySpinloopCwd(t)
 
 		out := captureStdout(t, func() {
-			if err := cmdCloudDeploy([]string{"--env", "testenv", "--spinloop-version", "v1.26.1"}); err != nil {
+			if err := cmdCloudDeploy([]string{"--node", "testenv", "--spinloop-version", "v1.26.1"}); err != nil {
 				t.Errorf("cmdCloudDeploy: %v", err)
 			}
 		})
@@ -796,7 +796,7 @@ func TestCloudDeploy_SpinloopVersion(t *testing.T) {
 		stubDeploySeams(t, server.URL, "undeployed")
 		writeDeploySpinloopCwd(t)
 
-		if err := cmdCloudDeploy([]string{"--env", "testenv"}); err != nil {
+		if err := cmdCloudDeploy([]string{"--node", "testenv"}); err != nil {
 			t.Errorf("cmdCloudDeploy: %v", err)
 		}
 		// Absent, not null and not "latest": an unpinned deploy sends exactly
@@ -811,7 +811,7 @@ func TestCloudDeploy_SpinloopVersion(t *testing.T) {
 		for _, flag := range []string{"latest", "v"} {
 			writeDeploySpinloopCwd(t)
 			out := captureStdout(t, func() {
-				if err := cmdCloudDeploy([]string{"--env", "testenv", "--spinloop-version", flag, "--dry-run"}); err != nil {
+				if err := cmdCloudDeploy([]string{"--node", "testenv", "--spinloop-version", flag, "--dry-run"}); err != nil {
 					t.Errorf("cmdCloudDeploy --spinloop-version %s: %v", flag, err)
 				}
 			})
@@ -825,7 +825,7 @@ func TestCloudDeploy_SpinloopVersion(t *testing.T) {
 		isolateConfig(t)
 		stubDeploySeams(t, "https://unused", "undeployed")
 		writeDeploySpinloopCwd(t)
-		err := cmdCloudDeploy([]string{"--env", "testenv", "--spinloop-version", "1.2.6 beta"})
+		err := cmdCloudDeploy([]string{"--node", "testenv", "--spinloop-version", "1.2.6 beta"})
 		if err == nil || !strings.Contains(err.Error(), "--spinloop-version") {
 			t.Errorf("want a --spinloop-version validation error, got %v", err)
 		}
@@ -853,7 +853,7 @@ func TestCloudDeploy_InstanceType(t *testing.T) {
 		writeDeploySpinloopCwd(t)
 
 		out := captureStdout(t, func() {
-			if err := cmdCloudDeploy([]string{"--env", "testenv", "--instance-type", "g6e.2xlarge"}); err != nil {
+			if err := cmdCloudDeploy([]string{"--node", "testenv", "--instance-type", "g6e.2xlarge"}); err != nil {
 				t.Errorf("cmdCloudDeploy: %v", err)
 			}
 		})
@@ -883,7 +883,7 @@ func TestCloudDeploy_InstanceType(t *testing.T) {
 		stubDeploySeams(t, server.URL, "undeployed")
 		writeDeploySpinloopCwd(t)
 
-		if err := cmdCloudDeploy([]string{"--env", "testenv"}); err != nil {
+		if err := cmdCloudDeploy([]string{"--node", "testenv"}); err != nil {
 			t.Errorf("cmdCloudDeploy: %v", err)
 		}
 		// Absent, not null and not empty: an untyped deploy sends exactly what
@@ -897,7 +897,7 @@ func TestCloudDeploy_InstanceType(t *testing.T) {
 		isolateConfig(t)
 		writeDeploySpinloopCwd(t)
 		out := captureStdout(t, func() {
-			if err := cmdCloudDeploy([]string{"--env", "testenv", "--dry-run"}); err != nil {
+			if err := cmdCloudDeploy([]string{"--node", "testenv", "--dry-run"}); err != nil {
 				t.Errorf("cmdCloudDeploy --dry-run: %v", err)
 			}
 		})
@@ -910,7 +910,7 @@ func TestCloudDeploy_InstanceType(t *testing.T) {
 		isolateConfig(t)
 		stubDeploySeams(t, "https://unused", "undeployed")
 		writeDeploySpinloopCwd(t)
-		err := cmdCloudDeploy([]string{"--env", "testenv", "--instance-type", "g6exlarge"})
+		err := cmdCloudDeploy([]string{"--node", "testenv", "--instance-type", "g6exlarge"})
 		if err == nil || !strings.Contains(err.Error(), "--instance-type") {
 			t.Errorf("want a --instance-type validation error, got %v", err)
 		}
@@ -941,7 +941,7 @@ func TestCloudDeploy_APIKeyEnvReachesTheRequest(t *testing.T) {
 	t.Setenv("SHARED_KEY", "sk-supplied")
 
 	out := captureStdout(t, func() {
-		if err := cmdCloudDeploy([]string{"--env", "testenv", "--api-key-env", "SHARED_KEY"}); err != nil {
+		if err := cmdCloudDeploy([]string{"--node", "testenv", "--api-key-env", "SHARED_KEY"}); err != nil {
 			t.Fatalf("cmdCloudDeploy: %v", err)
 		}
 	})
@@ -973,7 +973,7 @@ func TestCloudDeploy_APIKeyEnvUnsetFailsBeforeSending(t *testing.T) {
 	writeDeploySpinloopCwd(t)
 	os.Unsetenv("NOWHERE_DEPLOY_KEY")
 
-	err := cmdCloudDeploy([]string{"--env", "testenv", "--api-key-env", "NOWHERE_DEPLOY_KEY"})
+	err := cmdCloudDeploy([]string{"--node", "testenv", "--api-key-env", "NOWHERE_DEPLOY_KEY"})
 	if err == nil || !strings.Contains(err.Error(), "NOWHERE_DEPLOY_KEY") {
 		t.Errorf("want an error naming the variable, got %v", err)
 	}
@@ -997,7 +997,7 @@ func TestCloudDeploy_APIKeyEnvDryRunNamesTheVariable(t *testing.T) {
 	t.Setenv("SHARED_KEY", "sk-supplied")
 
 	out := captureStdout(t, func() {
-		if err := cmdCloudDeploy([]string{"--env", "testenv", "--dry-run", "--api-key-env", "SHARED_KEY"}); err != nil {
+		if err := cmdCloudDeploy([]string{"--node", "testenv", "--dry-run", "--api-key-env", "SHARED_KEY"}); err != nil {
 			t.Fatalf("cmdCloudDeploy --dry-run: %v", err)
 		}
 	})
@@ -1060,7 +1060,7 @@ func TestCloudStart_ReportsProgressWhileWaiting(t *testing.T) {
 	writeCloudConfig(t, server.URL)
 
 	stderr := captureStderr(t, func() {
-		if err := cmdCloudStart([]string{"--env", "default"}); err != nil {
+		if err := cmdCloudStart([]string{"--node", "default"}); err != nil {
 			t.Errorf("cmdCloudStart: %v", err)
 		}
 	})
@@ -1229,7 +1229,7 @@ func TestCloudStart_HeartbeatTracksTheCapacityWaitEnding(t *testing.T) {
 	writeCloudConfig(t, server.URL)
 
 	stderr := captureStderr(t, func() {
-		if err := cmdCloudStart([]string{"--env", "default"}); err != nil {
+		if err := cmdCloudStart([]string{"--node", "default"}); err != nil {
 			t.Fatalf("cmdCloudStart: %v", err)
 		}
 	})
@@ -1276,7 +1276,7 @@ func TestCloudStart_TimeoutShorthand(t *testing.T) {
 	defer func() { os.Stderr = oldStderr; w.Close() }()
 
 	done := make(chan error, 1)
-	go func() { done <- cmdCloudStart([]string{"--env", "default", "-t", "80ms"}) }()
+	go func() { done <- cmdCloudStart([]string{"--node", "default", "-t", "80ms"}) }()
 	select {
 	case err := <-done:
 		if err == nil {
@@ -1300,7 +1300,7 @@ func TestCloudStart_StdoutCarriesOnlyTheResult(t *testing.T) {
 	writeCloudConfig(t, server.URL)
 
 	out := captureStdout(t, func() {
-		if err := cmdCloudStart([]string{"--env", "default", "--print-env"}); err != nil {
+		if err := cmdCloudStart([]string{"--node", "default", "--print-env"}); err != nil {
 			t.Errorf("cmdCloudStart: %v", err)
 		}
 	})
