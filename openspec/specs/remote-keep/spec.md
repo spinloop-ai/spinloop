@@ -3,7 +3,9 @@
 ## Purpose
 
 Lets the user set a retention deadline on a cloud inference instance so the idle sweep keeps it alive for a known period — useful for overnight debugging, long-running tasks, or any scenario where the user needs a guaranteed minimum runtime.
+
 ## Requirements
+
 ### Requirement: The keep subcommand sets the retention tag
 
 The system SHALL provide a `keep` subcommand under `spinloop cloud` that accepts a duration argument (e.g. `4h`, `60m`) and sets the `Retain-Until` EC2 tag on the environment's instance to the current time plus the duration. The duration SHALL be parsed using Go duration syntax (supporting `h`, `m`, `s` units). When successful, the command SHALL report the deadline it set.
@@ -53,14 +55,14 @@ When the instance's `Retain-Until` tag is set, `spinloop cloud status` SHALL rep
 
 ### Requirement: The keep command selects its environment
 
-The `keep` subcommand SHALL select which environment's instance to tag using the same rule as the other `cloud` subcommands: the `--env <name>` flag naming a registered environment, or the per-user default environment.
+The `keep` subcommand SHALL select which environment's instance to tag using the same rule as the other `cloud` subcommands: the `--node <name>` flag naming a registered environment, or the per-user default environment.
 
 #### Scenario: Keep names the environment with the flag
 
-- **WHEN** the user runs `spinloop cloud keep 2h --env dev-2`
+- **WHEN** the user runs `spinloop cloud keep 2h --node dev-2`
 - **THEN** the `dev-2` environment's instance has its tag set
 
 #### Scenario: Keep falls back to the default environment
 
-- **WHEN** the user runs `spinloop cloud keep 2h` with no `--env` flag
+- **WHEN** the user runs `spinloop cloud keep 2h` with no `--node` flag
 - **THEN** the `default` environment's instance is tagged

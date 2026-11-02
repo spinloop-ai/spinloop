@@ -19,7 +19,7 @@ the environment so the other `cloud` commands can drive it. Deploying SHALL NOT
 start the instance.
 
 The environment name SHALL come from the command, never from the Spinloop:
-`spinloop cloud deploy` SHALL take it from its required `--env <name>` flag,
+`spinloop cloud deploy` SHALL take it from its required `--node <name>` flag,
 and `spinloop fleet deploy` SHALL take it from the name of the node being
 deployed, which is the registered environment that node drives. A deploy given
 no name by either route SHALL fail saying the environment must be named. The
@@ -33,7 +33,7 @@ plane to seed, read or write.
 
 #### Scenario: Deploying stands up and registers an environment
 
-- **WHEN** `spinloop cloud deploy --env prod` runs against a bootstrapped
+- **WHEN** `spinloop cloud deploy --node prod` runs against a bootstrapped
   account
 - **THEN** the environment's Elastic IP, instance configuration, API key,
   ingress rule, and SSM state are provisioned, and the environment is
@@ -41,13 +41,13 @@ plane to seed, read or write.
 
 #### Scenario: A deploy without a name fails
 
-- **WHEN** `spinloop cloud deploy` runs with no `--env` flag
-- **THEN** it fails saying the environment must be named with `--env <name>`
+- **WHEN** `spinloop cloud deploy` runs with no `--node` flag
+- **THEN** it fails saying the environment must be named with `--node <name>`
 
 #### Scenario: One Spinloop deploys to two environments
 
-- **WHEN** the same Spinloop is deployed with `--env dev` and later with
-  `--env prod`
+- **WHEN** the same Spinloop is deployed with `--node dev` and later with
+  `--node prod`
 - **THEN** two distinct environments are created and registered, each serving
   what the Spinloop describes
 
@@ -69,6 +69,7 @@ plane to seed, read or write.
 - **WHEN** a deploy succeeds
 - **THEN** the environment is configured and registered but no instance is
   running until `spinloop cloud start`
+
 ### Requirement: Discovering the control plane
 
 Deploy SHALL discover the control plane from the bootstrap stack's
@@ -116,9 +117,9 @@ shared Lambdas use to select this environment's instance.
 
 #### Scenario: The environment is registered and resolvable
 
-- **WHEN** `spinloop cloud deploy --env prod` succeeds
+- **WHEN** `spinloop cloud deploy --node prod` succeeds
 - **THEN** `~/.config/spinloop/clouds/prod/cloud.json` exists (owner-only)
-  and `spinloop cloud status --env prod` resolves the environment from it
+  and `spinloop cloud status --node prod` resolves the environment from it
 
 ### Requirement: Refuse to overwrite a live environment
 

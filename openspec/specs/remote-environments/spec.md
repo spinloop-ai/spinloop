@@ -49,12 +49,12 @@ hold as many environments as the user has instances.
 ### Requirement: Environment name validity
 
 An environment name SHALL be a plain name, not a path: it SHALL NOT contain a
-path separator. A `--env` value that is not a plain identifier SHALL be
+path separator. A `--node` value that is not a plain identifier SHALL be
 rejected saying an environment name is a plain identifier.
 
 #### Scenario: A path-like value is not a name
 
-- **WHEN** a command is given `--env ./cloud.json` (or any value containing a
+- **WHEN** a command is given `--node ./cloud.json` (or any value containing a
   path separator)
 - **THEN** it fails saying an environment name is a plain identifier, rather
   than reading a file
@@ -107,48 +107,48 @@ without either seeing the other's URLs.
 
 ### Requirement: An environment names the harness provider
 
-When a Spinloop is applied with an `--env <name>` flag, the harness provider
+When a Spinloop is applied with an `--node <name>` flag, the harness provider
 SHALL be keyed on the environment name rather than the `PROVIDER` value, and
 the default model SHALL read as `<environment>/<model>`. The `PROVIDER` entry
 SHALL still supply the engine configuration (its options, API-key environment
 variable, and base URL). The flag SHALL name a registered environment: a value
 with no registered configuration SHALL fail saying the environment is not
-registered and that `spinloop cloud deploy --env <name>` creates it. A
+registered and that `spinloop cloud deploy --node <name>` creates it. A
 Spinloop's own `BASEURL` SHALL still supply the applied base URL, as it does
 when a fleet is named; the environment then provides the name and the key, not
-the address. Unapplying with the same `--env` flag SHALL remove the provider
+the address. Unapplying with the same `--node` flag SHALL remove the provider
 that apply wrote.
 
 #### Scenario: The flag becomes the provider name
 
 - **WHEN** a Spinloop stating `PROVIDER llamacpp` and `ALIAS qwen` is applied
-  with `--env dev-1`
+  with `--node dev-1`
 - **THEN** the harness config holds a provider keyed `dev-1` whose default
   model is `dev-1/qwen`, configured from the `llamacpp` catalogue entry
 
 #### Scenario: A pinned BASEURL supplies the address
 
-- **WHEN** a Spinloop stating a `BASEURL` is applied with `--env dev-1` whose
+- **WHEN** a Spinloop stating a `BASEURL` is applied with `--node dev-1` whose
   registered configuration names a different base URL
 - **THEN** the provider is keyed `dev-1` and configured with the Spinloop's
   `BASEURL`
 
 #### Scenario: An unregistered environment is reported
 
-- **WHEN** a Spinloop is applied with `--env missing` and no environment
+- **WHEN** a Spinloop is applied with `--node missing` and no environment
   `missing` is registered
 - **THEN** the command fails saying the environment is not registered and that
-  `spinloop cloud deploy --env missing` creates it
+  `spinloop cloud deploy --node missing` creates it
 
 #### Scenario: Unapply removes the environment-named provider
 
-- **WHEN** a Spinloop is applied with `--env dev-1` and then unapplied with
-  `--env dev-1`
+- **WHEN** a Spinloop is applied with `--node dev-1` and then unapplied with
+  `--node dev-1`
 - **THEN** the provider keyed `dev-1` is removed from the harness config
 
 ### Requirement: Cloud provider display name
 
-When a Spinloop is applied with an `--env` flag, the harness provider's display
+When a Spinloop is applied with an `--node` flag, the harness provider's display
 name SHALL be distinct from that of the local engine of the same kind, so the
 cloud environment and a local provider built from the same `PROVIDER` entry
 are told apart in a harness model picker. The display name SHALL combine the
@@ -162,7 +162,7 @@ base URL are unchanged from the existing cloud-naming behaviour.
 #### Scenario: A cloud provider is labelled with its environment
 
 - **WHEN** a Spinloop stating `PROVIDER llamacpp` (display name `llama.cpp`)
-  and `ALIAS qwen` is applied with `--env dev-2`
+  and `ALIAS qwen` is applied with `--node dev-2`
 - **THEN** the harness config holds a provider keyed `dev-2` whose display name
   is `llama.cpp (dev-2)`, distinct from a local `llamacpp` provider's
   `llama.cpp`
@@ -177,7 +177,7 @@ base URL are unchanged from the existing cloud-naming behaviour.
 #### Scenario: An engine with no display name falls back to the environment name
 
 - **WHEN** a Spinloop's `PROVIDER` catalogue entry has no display name and the
-  Spinloop is applied with `--env dev-2`
+  Spinloop is applied with `--node dev-2`
 - **THEN** the harness provider's display name is `dev-2`
 
 ### Requirement: Every environment resolves by name
@@ -197,13 +197,13 @@ assembled from variables alone has no other source for.
 
 #### Scenario: A named environment reads its own file
 
-- **WHEN** a command runs with `--env prod` and `clouds/prod/cloud.json`
+- **WHEN** a command runs with `--node prod` and `clouds/prod/cloud.json`
   exists
 - **THEN** its configuration is read from that file
 
 #### Scenario: A file at the superseded path is not read
 
-- **WHEN** a command runs with `--env default`, no
+- **WHEN** a command runs with `--node default`, no
   `clouds/default/cloud.json` exists, and a file exists at the path the
   registry superseded
 - **THEN** the command does not use that file's contents: no path outside the
@@ -211,7 +211,7 @@ assembled from variables alone has no other source for.
 
 #### Scenario: Overrides configure a named environment with no file
 
-- **WHEN** a command runs with `--env ci`, no `clouds/ci/cloud.json` exists,
+- **WHEN** a command runs with `--node ci`, no `clouds/ci/cloud.json` exists,
   and the `SPINLOOP_CLOUD_*` variables supply a complete configuration
 - **THEN** the command works, and the control calls carry `ci` as the
   environment identifier

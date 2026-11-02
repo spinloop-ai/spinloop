@@ -8,32 +8,34 @@ following output as it arrives, and the failures that are named so they can be
 fixed. Reading is deliberately independent of the instance and of the control
 plane, so the logs are still there once the instance that wrote them is gone —
 which is when they are wanted most.
+
 ## Requirements
+
 ### Requirement: An environment's shipped logs are readable from the CLI
 
-`spinloop logs --env <name>` SHALL print the logs an environment's instances have
+`spinloop logs --node <name>` SHALL print the logs an environment's instances have
 shipped, without the operator needing to know the log group or stream naming,
 open the AWS console, or connect to an instance. It SHALL select which
-environment to read using the same `--env <name>` flag every other read verb
-uses, so `spinloop logs --env <name>` and `spinloop status --env <name>` given
-the same `--env` always speak about the same environment.
+environment to read using the same `--node <name>` flag every other read verb
+uses, so `spinloop logs --node <name>` and `spinloop status --node <name>` given
+the same `--node` always speak about the same environment.
 
 #### Scenario: Reading an environment's logs
 
-- **WHEN** the operator runs `spinloop logs --env <name>` where `spinloop status --env <name>`
+- **WHEN** the operator runs `spinloop logs --node <name>` where `spinloop status --node <name>`
   would report on that environment
 - **THEN** the log events that environment's instances shipped are printed
 - **AND** the operator is not required to name a log group, stream, or instance
 
 #### Scenario: Reading a named environment's logs
 
-- **WHEN** the operator runs `spinloop logs --env dev-2`
+- **WHEN** the operator runs `spinloop logs --node dev-2`
 - **THEN** `dev-2`'s logs are printed rather than any other environment's
 
 #### Scenario: The cloud spelling names its replacement
 
 - **WHEN** the operator runs `spinloop cloud logs`
-- **THEN** it fails naming `spinloop logs --env <name>` as the command that
+- **THEN** it fails naming `spinloop logs --node <name>` as the command that
   replaced it
 
 ### Requirement: An environment's logs are readable after the instance is gone
@@ -46,12 +48,12 @@ instance that has since terminated, is still available.
 #### Scenario: A terminated instance's logs are still readable
 
 - **WHEN** an instance has produced logs and has since terminated
-- **THEN** `spinloop logs --env <name>` still prints that instance's shipped events
+- **THEN** `spinloop logs --node <name>` still prints that instance's shipped events
 
 #### Scenario: A stopped environment can be diagnosed
 
 - **WHEN** an environment is stopped, so its status reports no running instance
-- **THEN** `spinloop logs --env <name>` still prints the logs from its previous runs
+- **THEN** `spinloop logs --node <name>` still prints the logs from its previous runs
 
 ### Requirement: An environment's both engine and boot logs are reachable
 
@@ -64,7 +66,7 @@ the engine started is reachable even though the engine log is empty.
 
 #### Scenario: Engine output by default
 
-- **WHEN** the operator runs `spinloop logs --env <name>` with no source selected
+- **WHEN** the operator runs `spinloop logs --node <name>` with no source selected
 - **THEN** the environment's engine log events are printed
 
 #### Scenario: Boot output on request
@@ -98,7 +100,7 @@ truncated view as complete.
 
 #### Scenario: A default window applies
 
-- **WHEN** the operator runs `spinloop logs --env <name>` with no window stated
+- **WHEN** the operator runs `spinloop logs --node <name>` with no window stated
 - **THEN** only events from a bounded recent window are fetched
 
 #### Scenario: The window is widened

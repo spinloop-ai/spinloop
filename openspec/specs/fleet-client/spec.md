@@ -25,13 +25,13 @@ A node SHALL also report how long it has been since its engine last did work, ta
 
 #### Scenario: A named environment is read by the same command
 
-- **WHEN** `spinloop status --env prod` runs
+- **WHEN** `spinloop status --node prod` runs
 - **THEN** that environment's row is rendered with no fleet file required, and
   it reads the same as the row for the same environment named in a fleet file
 
 #### Scenario: An unhealthy endpoint reads as not ready
 
-- **WHEN** `spinloop status --env prod` runs and the control plane reports the
+- **WHEN** `spinloop status --node prod` runs and the control plane reports the
   endpoint unhealthy
 - **THEN** the row carries the same not-ready mark a daemon node carries when
   its engine has not answered its health check
@@ -135,7 +135,7 @@ command.
 
 #### Scenario: A named environment is read by the same command
 
-- **WHEN** `spinloop metrics --env prod` runs
+- **WHEN** `spinloop metrics --node prod` runs
 - **THEN** that environment's metrics are rendered with no fleet file
   required, in the same format a fleet file naming it would produce
 
@@ -502,7 +502,7 @@ meanings on one command line.
 
 #### Scenario: A named environment is read by the same command
 
-- **WHEN** `spinloop logs --env prod` runs
+- **WHEN** `spinloop logs --node prod` runs
 - **THEN** that environment's engine output is read with no fleet file
   required
 
@@ -667,7 +667,7 @@ with any node SHALL NOT.
 
 #### Scenario: A named environment opens as one panel
 
-- **WHEN** the operator runs `spinloop dashboard --env prod` in a directory
+- **WHEN** the operator runs `spinloop dashboard --node prod` in a directory
   holding no fleet file
 - **THEN** the view opens on that environment alone, and the absent file is not
   an error

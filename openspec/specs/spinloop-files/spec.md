@@ -63,8 +63,8 @@ the offending line.
 
 - **WHEN** a Spinloop contains `REMOTE ./remote.json` on any line
 - **THEN** parsing fails on that line, since the `REMOTE` instruction was
-  removed: the environment is now named with `cloud deploy --env <name>` at
-  deploy time and `--env <name>` at the commands that act on it
+  removed: the environment is now named with `cloud deploy --node <name>` at
+  deploy time and `--node <name>` at the commands that act on it
 
 #### Scenario: Declaring local environment variables
 
@@ -121,8 +121,8 @@ the offending line.
 
 A `REMOTE` instruction SHALL be rejected at parse time with an error that names
 the offending line, says the `REMOTE` instruction was removed, and states the
-replacement: name the environment with `cloud deploy --env <name>` at deploy
-time, and pass `--env <name>` to the commands that act on the environment
+replacement: name the environment with `cloud deploy --node <name>` at deploy
+time, and pass `--node <name>` to the commands that act on the environment
 (`cloud` subcommands, `apply`, `unapply`, `harness`). The error SHALL NOT be
 the generic unknown-keyword message.
 
@@ -130,7 +130,7 @@ the generic unknown-keyword message.
 
 - **WHEN** a Spinloop contains `REMOTE ./remote.json` on line 3
 - **THEN** parsing fails citing line 3, saying `REMOTE` was removed, and naming
-  `--env` as the way to name the environment
+  `--node` as the way to name the environment
 
 #### Scenario: The generic error is not used for REMOTE
 

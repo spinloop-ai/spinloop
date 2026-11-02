@@ -21,7 +21,7 @@ own `ENV` instructions. The loaded values SHALL be visible to everything the
 command does afterwards — the AWS credential chain, the region resolution, and
 the `SPINLOOP_CLOUD_*` overrides. The Spinloop is read for these local values
 only: which environment the command acts on is selected by the command's
-`--env` flag, with the `default` environment as the fallback, and the Spinloop
+`--node` flag, with the `default` environment as the fallback, and the Spinloop
 itself names no environment. When a command resolves no Spinloop (no path
 argument and no `./Spinloop`), there is nothing adjacent to load and the command
 SHALL proceed on the process environment alone. When the resolved Spinloop was
