@@ -422,7 +422,9 @@ components:
           description: |
             The engine's own generation rate in tokens per second, parsed
             from the timing lines it prints into its captured output
-            (llama.cpp's print_timing `tg` figure today). Present only while
+            (llama.cpp's print_timing figure today — its three-second
+            `tg_3s` rate where the line carries a usable one, its whole-task
+            `tg` average otherwise). Present only while
             the engine runs and has printed a figure within the last sampler
             interval; absent — never zero — for a stopped or quiet engine, an
             engine that prints no rate, and a daemon that predates the

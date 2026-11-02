@@ -10,13 +10,13 @@ func TestParseGenerationSpeed(t *testing.T) {
 		found bool
 	}{
 		{
-			name:  "llama.cpp print_timing line as the engine prints it",
+			name:  "llama.cpp print_timing line reads its three-second rate",
 			line:  "slot print_timing: id  0 | task 326 | n_gen =   9438, tg =   3.87 t/s, tg_3s =   5.29 t/s",
-			want:  3.87,
+			want:  5.29,
 			found: true,
 		},
 		{
-			name:  "a whole-number rate",
+			name:  "an older engine's tg line falls back and reads",
 			line:  "slot print_timing: id  0 | task 1 | tg = 42 t/s",
 			want:  42,
 			found: true,
@@ -28,8 +28,28 @@ func TestParseGenerationSpeed(t *testing.T) {
 			found: true,
 		},
 		{
-			name: "the average alone is not the current rate",
-			line: "slot print_timing: id  0 | task 326 | tg_3s =   5.29 t/s",
+			name:  "no spacing around the three-second figure",
+			line:  "tg_3s=12.5 t/s",
+			want:  12.5,
+			found: true,
+		},
+		{
+			name:  "the three-second rate alone yields the speed",
+			line:  "slot print_timing: id  0 | task 326 | tg_3s =   5.29 t/s",
+			want:  5.29,
+			found: true,
+		},
+		{
+			name:  "an unusable three-second figure falls back to tg",
+			line:  "slot print_timing: id  0 | tg_3s =   0.00 t/s, tg =   6.20 t/s",
+			want:  6.20,
+			found: true,
+		},
+		{
+			name:  "the nonsense before the first token falls back too",
+			line:  "slot print_timing: id  0 | tg_3s = -nan t/s, tg =   6.20 t/s",
+			want:  6.20,
+			found: true,
 		},
 		{
 			name: "a prompt-evaluation rate is not a generation rate",
@@ -44,8 +64,16 @@ func TestParseGenerationSpeed(t *testing.T) {
 			line: "slot print_timing: id  0 | tg = -nan t/s",
 		},
 		{
+			name: "a zero three-second rate is the absence too",
+			line: "slot print_timing: id  0 | tg_3s = 0.00 t/s",
+		},
+		{
 			name: "a rate label without the t/s unit is not the figure",
 			line: "some other log line mentioning tg = 100",
+		},
+		{
+			name: "a three-second label without the t/s unit is not the figure",
+			line: "some other log line mentioning tg_3s = 100",
 		},
 		{
 			name: "an unrelated line carries no speed",
@@ -54,6 +82,14 @@ func TestParseGenerationSpeed(t *testing.T) {
 		{
 			name: "an identifier ending in tg does not match",
 			line: "slot print_tg = 5 t/s",
+		},
+		{
+			name: "an identifier ending in tg_3s does not match",
+			line: "slot print_tg_3s = 5 t/s",
+		},
+		{
+			name: "a longer average label does not masquerade as tg_3s",
+			line: "slot print_timing: id  0 | tg_30s = 5.00 t/s",
 		},
 	}
 	for _, c := range cases {
@@ -69,11 +105,11 @@ func TestParseGenerationSpeed(t *testing.T) {
 	}
 }
 
-func TestParseGenerationSpeedPrefersInstantaneous(t *testing.T) {
-	// Both figures on one line: the instantaneous tg, never the tg_3s average.
-	line := "99.999 I slot print_timing: id  0 | task 9 | n_gen = 10, tg = 7.15 t/s, tg_3s = 99.99 t/s"
+func TestParseGenerationSpeedPrefersThreeSecondRate(t *testing.T) {
+	// Both figures on one line: the three-second tg_3s, never the whole-task tg average.
+	line := "99.999 I slot print_timing: id  0 | task 9 | n_gen = 10, tg = 7.15 t/s, tg_3s = 4.02 t/s"
 	got, ok := ParseGenerationSpeed(line)
-	if !ok || got != 7.15 {
-		t.Errorf("ParseGenerationSpeed = %v/%v, want 7.15/true", got, ok)
+	if !ok || got != 4.02 {
+		t.Errorf("ParseGenerationSpeed = %v/%v, want 4.02/true", got, ok)
 	}
 }
