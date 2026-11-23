@@ -10,6 +10,7 @@ import { DAEMON_STATUS_CMD, DAEMON_UNREACHABLE } from '../lambda/shared/daemon';
 const LAMBDA_ENV = {
   TAG_KEY: 'cloud-vm-llm:managed',
   TAG_VALUE: 'true',
+  ENGINE_PORT: '8000',
   AWS_REGION: 'us-east-1',
 };
 

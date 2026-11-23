@@ -15,20 +15,24 @@ import {
   AllocateAddressCommand,
   AuthorizeSecurityGroupIngressCommand,
   CreateSecurityGroupCommand,
+  DeleteSecurityGroupCommand,
   DescribeAddressesCommand,
+  DescribeInstancesCommand,
   DescribeSecurityGroupsCommand,
   EC2Client,
+  ReleaseAddressCommand,
   RevokeSecurityGroupIngressCommand,
 } from '@aws-sdk/client-ec2';
 import {
   CreateSecretCommand,
+  DeleteSecretCommand,
   DescribeSecretCommand,
   GetSecretValueCommand,
   PutSecretValueCommand,
   SecretsManagerClient,
 } from '@aws-sdk/client-secrets-manager';
 import { randomBytes } from 'node:crypto';
-import { errorName } from './aws';
+import { errorName, listParametersUnder, sleep } from './aws';
 
 const ec2 = new EC2Client({});
 const secretsManager = new SecretsManagerClient({});
@@ -269,5 +273,104 @@ export async function readEnvApiKey(env: string): Promise<string> {
     new GetSecretValueCommand({ SecretId: apiKeySecretName(env) }),
   );
   return result.SecretString ?? '';
+}
+
+/**
+ * Every stored deploy-config under the plane's SSM path, keyed by environment
+ * name. This is how the plane knows what it has deployed when it is asked for
+ * an inventory without being named an environment.
+ */
+export async function listEnvDeployConfigs(): Promise<Map<string, string>> {
+  const configs = new Map<string, string>();
+  for (const { name, value } of await listParametersUnder('/cloud-vm-llm/')) {
+    const match = /^\/cloud-vm-llm\/([^/]+)\/deploy-config$/.exec(name);
+    if (match) {
+      configs.set(match[1], value);
+    }
+  }
+  return configs;
+}
+
+/**
+ * Every environment named by the env tag on a resource — Elastic IPs, security
+ * groups and instances alike. A resource tagged for an environment belongs to
+ * one whether or not its deploy ever wrote state, so the tag values complete
+ * the picture the deploy-config parameters start.
+ */
+export async function taggedEnvNames(): Promise<string[]> {
+  // A `*` value on a tag filter matches any value: everything that carries
+  // the env tag, which is exactly what this plane names.
+  const filters = [{ Name: `tag:${ENV_TAG_KEY}`, Values: ['*'] }];
+  const names = new Set<string>();
+  const envOf = (tags?: { Key?: string; Value?: string }[]): string | undefined =>
+    tags?.find((t) => t.Key === ENV_TAG_KEY)?.Value;
+  const addresses = await ec2.send(new DescribeAddressesCommand({ Filters: filters }));
+  for (const address of addresses.Addresses ?? []) {
+    const env = envOf(address.Tags);
+    if (env) names.add(env);
+  }
+  const groups = await ec2.send(new DescribeSecurityGroupsCommand({ Filters: filters }));
+  for (const group of groups.SecurityGroups ?? []) {
+    const env = envOf(group.Tags);
+    if (env) names.add(env);
+  }
+  const instances = await ec2.send(new DescribeInstancesCommand({ Filters: filters }));
+  for (const instance of instances.Reservations?.flatMap((r) => r.Instances ?? []) ?? []) {
+    const env = envOf(instance.Tags);
+    if (env) names.add(env);
+  }
+  return [...names];
+}
+
+/** Release an Elastic IP by allocation id. */
+export async function releaseEip(allocationId: string): Promise<void> {
+  await ec2.send(new ReleaseAddressCommand({ AllocationId: allocationId }));
+}
+
+/**
+ * How often to retry a security-group delete before giving up: an instance
+ * that was just terminated can hold its group for a few seconds on the way out.
+ */
+const SG_DELETE_ATTEMPTS = 6;
+
+/**
+ * Delete a security group by id, tolerating the brief window in which just-
+ * terminated instances still depend on it. Any other error — or a dependency
+ * that outlasts the retries — throws: an undeploy that left a group behind
+ * must say so rather than report a clean teardown.
+ */
+export async function deleteSecurityGroup(groupId: string, retryDelayMs = 2000): Promise<void> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await ec2.send(new DeleteSecurityGroupCommand({ GroupId: groupId }));
+      return;
+    } catch (err) {
+      if (errorName(err) !== 'DependencyViolation' || attempt >= SG_DELETE_ATTEMPTS) {
+        throw err;
+      }
+      await sleep(retryDelayMs);
+    }
+  }
+}
+
+/**
+ * Delete the environment's API-key secret, immediately and past recovery —
+ * the environment itself is going (or has gone). Returns whether the secret
+ * was there; with dryRun it only reports what it finds.
+ */
+export async function deleteEnvApiKey(env: string, dryRun = false): Promise<boolean> {
+  const name = apiKeySecretName(env);
+  try {
+    await secretsManager.send(new DescribeSecretCommand({ SecretId: name }));
+  } catch (err) {
+    if (errorName(err) === 'ResourceNotFoundException') {
+      return false;
+    }
+    throw err;
+  }
+  if (!dryRun) {
+    await secretsManager.send(new DeleteSecretCommand({ SecretId: name, ForceDeleteWithoutRecovery: true }));
+  }
+  return true;
 }
 

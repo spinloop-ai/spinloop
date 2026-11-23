@@ -1,39 +1,29 @@
-import {
-  CreateScheduleCommand,
-  DeleteScheduleCommand,
-  ListSchedulesCommand,
-  SchedulerClient,
-  UpdateScheduleCommand,
-} from '@aws-sdk/client-scheduler';
-import {
-  DeleteParameterCommand,
-  GetParameterCommand,
-  PutParameterCommand,
-  SSMClient,
-} from '@aws-sdk/client-ssm';
 import type { LambdaFunctionURLEvent, LambdaFunctionURLResult } from 'aws-lambda';
 import { errorName, requireEnv } from '../shared/aws';
 import { environmentFrom } from '../shared/environments';
 import { jsonResponse } from '../shared/http';
 import {
+  clearEnvSchedules,
+  readSchedulesParam,
+  reconcileSchedules,
+  writeSchedulesParam,
+} from '../shared/schedule-mirror';
+import {
   nextRuns,
-  SCHEDULE_EVENT_SOURCE,
   ScheduleError,
-  schedulerNamePrefix,
-  schedulesParam,
   toSchedulerCron,
   validateSchedules,
   type Schedule,
-  type ScheduledRunEvent,
 } from '../shared/schedules';
 
 const SCHEDULE_GROUP = requireEnv('SCHEDULE_GROUP');
-const SCHEDULER_ROLE_ARN = requireEnv('SCHEDULER_ROLE_ARN');
-const START_FN_ARN = requireEnv('START_FN_ARN');
-const STOP_FN_ARN = requireEnv('STOP_FN_ARN');
-
-const ssm = new SSMClient({});
-const scheduler = new SchedulerClient({});
+// Where a fired schedule is delivered — fixed for this control plane, wired
+// through to the mirror's reconcile.
+const SCHEDULE_TARGETS = {
+  schedulerRoleArn: requireEnv('SCHEDULER_ROLE_ARN'),
+  startFnArn: requireEnv('START_FN_ARN'),
+  stopFnArn: requireEnv('STOP_FN_ARN'),
+};
 
 /**
  * Function URL for an environment's schedules, named by `?env=`:
@@ -43,7 +33,9 @@ const scheduler = new SchedulerClient({});
  *
  * The list is kept in SSM and mirrored into EventBridge Scheduler schedules.
  * Input is validated before anything is written, so a rejected request leaves
- * the existing schedules as they were.
+ * the existing schedules as they were. The AWS calls themselves live in
+ * shared/schedule-mirror, which the stop Lambda's undeploy shares — one
+ * environment's schedules are cleared the same way here and there.
  */
 export async function handler(event: LambdaFunctionURLEvent): Promise<LambdaFunctionURLResult> {
   let env: string;
@@ -96,87 +88,19 @@ async function replace(env: string, event: LambdaFunctionURLEvent): Promise<Lamb
   if (schedules.length === 0) {
     return clear(env);
   }
-  await ssm.send(
-    new PutParameterCommand({
-      Name: schedulesParam(env),
-      Value: JSON.stringify(schedules),
-      Type: 'String',
-      Overwrite: true,
-    }),
-  );
-  await reconcile(env, schedules, expressions);
+  await writeSchedulesParam(env, JSON.stringify(schedules));
+  await reconcileSchedules(env, SCHEDULE_GROUP, SCHEDULE_TARGETS, schedules, expressions);
   console.log(JSON.stringify({ cmd: 'schedule-set', environment: env, count: schedules.length }));
   return report(env, schedules);
 }
 
 async function clear(env: string): Promise<LambdaFunctionURLResult> {
-  try {
-    await ssm.send(new DeleteParameterCommand({ Name: schedulesParam(env) }));
-  } catch (err) {
-    if (errorName(err) !== 'ParameterNotFound') {
-      throw err;
-    }
-  }
-  await reconcile(env, [], []);
+  await clearEnvSchedules(env, SCHEDULE_GROUP);
   console.log(JSON.stringify({ cmd: 'schedule-clear', environment: env }));
   return report(env, []);
 }
 
 async function readSchedules(env: string): Promise<Schedule[]> {
-  try {
-    const out = await ssm.send(new GetParameterCommand({ Name: schedulesParam(env) }));
-    return validateSchedules(JSON.parse(out.Parameter?.Value ?? '[]'));
-  } catch (err) {
-    if (errorName(err) === 'ParameterNotFound') {
-      return [];
-    }
-    throw err;
-  }
-}
-
-/** Make the environment's Scheduler schedules in the group match the list. */
-async function reconcile(env: string, schedules: Schedule[], expressions: string[]): Promise<void> {
-  const prefix = schedulerNamePrefix(env);
-  const existing = new Set<string>();
-  let token: string | undefined;
-  do {
-    const page = await scheduler.send(
-      new ListSchedulesCommand({ GroupName: SCHEDULE_GROUP, NamePrefix: prefix, NextToken: token }),
-    );
-    for (const s of page.Schedules ?? []) {
-      if (s.Name) {
-        existing.add(s.Name);
-      }
-    }
-    token = page.NextToken;
-  } while (token);
-
-  const wanted = new Set<string>();
-  for (const [i, schedule] of schedules.entries()) {
-    const name = `${prefix}${i + 1}`;
-    wanted.add(name);
-    const input: ScheduledRunEvent = {
-      source: SCHEDULE_EVENT_SOURCE,
-      action: schedule.action,
-      environment: env,
-    };
-    const params = {
-      Name: name,
-      GroupName: SCHEDULE_GROUP,
-      ScheduleExpression: expressions[i],
-      ScheduleExpressionTimezone: schedule.timezone,
-      FlexibleTimeWindow: { Mode: 'OFF' as const },
-      Target: {
-        Arn: schedule.action === 'start' ? START_FN_ARN : STOP_FN_ARN,
-        RoleArn: SCHEDULER_ROLE_ARN,
-        Input: JSON.stringify(input),
-      },
-    };
-    await scheduler.send(existing.has(name) ? new UpdateScheduleCommand(params) : new CreateScheduleCommand(params));
-  }
-  for (const name of existing) {
-    if (!wanted.has(name)) {
-      await scheduler.send(new DeleteScheduleCommand({ Name: name, GroupName: SCHEDULE_GROUP }));
-    }
-  }
+  const stored = await readSchedulesParam(env);
+  return validateSchedules(JSON.parse(stored ?? '[]'));
 }

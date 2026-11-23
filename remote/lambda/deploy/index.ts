@@ -10,7 +10,7 @@ import {
   environmentFrom,
   findEnvSecurityGroup,
 } from '../shared/environments';
-import { jsonResponse } from '../shared/http';
+import { callerPrincipal, jsonResponse } from '../shared/http';
 import { weightsPresent } from '../shared/seed';
 import { buildSeedJob, launchSeedInstance, seedInfraFromEnv } from '../shared/seed/launch';
 
@@ -156,6 +156,13 @@ export async function handler(event: LambdaFunctionURLEvent): Promise<LambdaFunc
     });
   }
 
+  // Ownership of the deployment, stamped from the authenticated identity this
+  // request arrived under — never from the body, so one caller cannot record
+  // a deploy against another's name — and replaced on every redeploy. The
+  // stored config carries an identity and a time, no secret.
+  config.deployedBy = callerPrincipal(event);
+  config.deployedAt = new Date().toISOString();
+
   await writeDeployConfig(deployConfigParam(env), config);
   console.log(
     JSON.stringify({
@@ -165,6 +172,8 @@ export async function handler(event: LambdaFunctionURLEvent): Promise<LambdaFunc
       modelId: config.modelId,
       quant: config.quant,
       weightsPrefix: config.weightsPrefix,
+      deployedBy: config.deployedBy,
+      deployedAt: config.deployedAt,
       seeding,
       seedId,
       // Distinguishes a forced re-seed from one the missing weights caused,
@@ -180,6 +189,10 @@ export async function handler(event: LambdaFunctionURLEvent): Promise<LambdaFunc
     modelId: config.modelId,
     contextSize: config.contextSize,
     weightsPrefix: config.weightsPrefix,
+    // Who this deploy recorded as the owner, and when it landed — the same
+    // values stored, echoed back so the caller can trust what was written.
+    deployedBy: config.deployedBy,
+    deployedAt: config.deployedAt,
     seeding,
     ...(seedId ? { seedId } : {}),
     // Present only when the deploy supplied a key — the action taken on the

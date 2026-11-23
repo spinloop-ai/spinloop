@@ -1,8 +1,10 @@
 import type { LambdaFunctionURLEvent, LambdaFunctionURLResult, ScheduledEvent } from 'aws-lambda';
 import {
+  deleteParameterIfPresent,
   errorName,
   findManagedInstance,
   findManagedInstances,
+  findParameter,
   isSsmAgentOnline,
   readDeployConfig,
   requireEnv,
@@ -14,14 +16,25 @@ import {
   terminateInstance,
   type InstanceInfo,
 } from '../shared/aws';
-import { deployConfigParam, ENV_TAG_KEY, environmentFrom } from '../shared/environments';
+import {
+  deleteEnvApiKey,
+  deleteSecurityGroup,
+  deployConfigParam,
+  ENV_TAG_KEY,
+  environmentFrom,
+  findEnvEip,
+  findEnvSecurityGroup,
+  releaseEip,
+} from '../shared/environments';
 import { DAEMON_STATUS_CMD, parseDaemonStatus } from '../shared/daemon';
 import { decideIdle, idleFromDaemonStatus, type MetricsResult } from '../shared/idle';
 import { jsonResponse } from '../shared/http';
+import { clearEnvSchedules, describeEnvSchedules } from '../shared/schedule-mirror';
 import { SEED_ID_TAG_KEY, SEED_TAG_VALUE } from '../shared/seed/identity';
 import { isScheduledRunEvent, type ScheduledRunEvent } from '../shared/schedules';
 import { decideSeedReap } from '../shared/seed/reap';
 import { latestStream, writeTerminalRecord } from '../shared/seed/status';
+import { wakeLockParam } from '../shared/wake-lock';
 
 const TAG_KEY = requireEnv('TAG_KEY');
 const TAG_VALUE = requireEnv('TAG_VALUE');
@@ -31,6 +44,9 @@ const MAX_RUNTIME_MINUTES = Number(requireEnv('MAX_RUNTIME_MINUTES'));
 const MAX_SEED_MINUTES = Number(requireEnv('MAX_SEED_MINUTES'));
 const SEED_STALL_MINUTES = Number(requireEnv('SEED_STALL_MINUTES'));
 const STOP_RETENTION_MINUTES = Number(requireEnv('STOP_RETENTION_MINUTES'));
+// An undeploy clears the environment's schedules through the same mirror the
+// schedule Lambda writes.
+const SCHEDULE_GROUP = requireEnv('SCHEDULE_GROUP');
 
 
 type StopEvent = ScheduledEvent | LambdaFunctionURLEvent | ScheduledRunEvent;
@@ -66,7 +82,8 @@ export async function handler(event: StopEvent): Promise<LambdaFunctionURLResult
  * Function URL — POST stops one environment's instance; GET reports it. The
  * `action` query parameter chooses the shutdown: `pause` (the default for a
  * manual `spinloop cloud pause`) stops without terminating, so the instance can
- * be re-woken; anything else terminates, which is what a manual
+ * be re-woken; `undeploy` takes the whole environment apart (see
+ * undeployEnvironment); anything else terminates, which is what a manual
  * `spinloop cloud stop` wants. A further query parameter, `force=true`, marks
  * the stop as forced: the engine is not asked to shut down first, so a wedged
  * engine or daemon cannot prevent the box from going down (a manual
@@ -88,6 +105,9 @@ async function manualStop(event: LambdaFunctionURLEvent): Promise<LambdaFunction
     return jsonResponse(200, { state: instance?.state ?? 'stopped', environment: env });
   }
   const force = event.queryStringParameters?.force === 'true';
+  if (event.queryStringParameters?.action === 'undeploy') {
+    return undeployEnvironment(env, event.queryStringParameters?.dryRun === 'true');
+  }
   if (instance) {
     if (event.queryStringParameters?.action === 'pause') {
       return pauseInstance(instance, env, force);
@@ -182,6 +202,90 @@ async function pauseInstance(
     }),
   );
   return jsonResponse(200, { state: 'stopping', environment: env });
+}
+
+/**
+ * `spinloop cloud undeploy`: take one named environment apart entirely — its
+ * instance(s), Elastic IP, security group, API-key secret, schedules and SSM
+ * state — and nothing else. Every lookup and every deletion carries the
+ * environment's name or the env tag, so this shared credential cannot touch
+ * another environment or the plane's own resources (Lambdas, roles, VPC,
+ * bucket, the seed security group). Resources already gone are not failures;
+ * the reply names only what was actually there. `dryRun=true` reports the
+ * same list having deleted nothing. An unknown environment — no deploy-config,
+ * nothing tagged to it — is refused with a 404 before any delete is issued.
+ */
+async function undeployEnvironment(env: string, dryRun: boolean): Promise<LambdaFunctionURLResult> {
+  // Existence and inventory first, by name and tag: refuse an environment
+  // this plane never held without issuing a single deletion.
+  const instances = await findManagedInstances(TAG_KEY, TAG_VALUE, [
+    { Name: `tag:${ENV_TAG_KEY}`, Values: [env] },
+  ]);
+  const eip = await findEnvEip(env);
+  const securityGroupId = await findEnvSecurityGroup(env);
+  const storedConfig = await findParameter(deployConfigParam(env));
+  if (instances.length === 0 && !eip && !securityGroupId && storedConfig === null) {
+    console.log(
+      JSON.stringify({ mode: 'manual', action: 'undeploy', environment: env, error: 'unknown environment' }),
+    );
+    return jsonResponse(404, {
+      error: `unknown environment ${JSON.stringify(env)}: no deploy-config and nothing tagged to it — nothing deleted`,
+    });
+  }
+
+  const released: string[] = [];
+  for (const instance of instances) {
+    if (!dryRun) {
+      await terminateInstance(instance.instanceId);
+    }
+    released.push(`instance:${instance.instanceId}`);
+  }
+  if (eip) {
+    if (!dryRun) {
+      await releaseEip(eip.allocationId);
+    }
+    released.push(`elastic-ip:${eip.allocationId}`);
+  }
+  if (securityGroupId) {
+    // Only after the instances that used it are gone; deleteSecurityGroup
+    // rides out the brief DependencyViolation window they leave behind.
+    if (!dryRun) {
+      await deleteSecurityGroup(securityGroupId);
+    }
+    released.push(`security-group:${securityGroupId}`);
+  }
+  if (await deleteEnvApiKey(env, dryRun)) {
+    released.push('api-key');
+  }
+  const schedules = dryRun
+    ? await describeEnvSchedules(env, SCHEDULE_GROUP)
+    : await clearEnvSchedules(env, SCHEDULE_GROUP);
+  if (schedules.parameter) {
+    released.push('schedules-parameter');
+  }
+  released.push(...schedules.names.map((name) => `schedule:${name}`));
+  if (storedConfig !== null) {
+    if (!dryRun) {
+      await deleteParameterIfPresent(deployConfigParam(env));
+    }
+    released.push('deploy-config');
+  }
+  const hadWakeLock = dryRun
+    ? (await findParameter(wakeLockParam(env))) !== null
+    : await deleteParameterIfPresent(wakeLockParam(env));
+  if (hadWakeLock) {
+    released.push('wake-lock');
+  }
+
+  console.log(
+    JSON.stringify({
+      mode: 'manual',
+      action: dryRun ? 'undeploy-dry-run' : 'undeploy',
+      environment: env,
+      released,
+    }),
+  );
+  return jsonResponse(200, { environment: env, released, ...(dryRun ? { dryRun: true } : {}) });
 }
 
 /**
