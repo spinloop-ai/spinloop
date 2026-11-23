@@ -58,7 +58,7 @@ Europe/London and applies to every schedule given; it defaults to UTC.
 		SilenceUsage:  true,
 		RunE: func(c *cobra.Command, _ []string) error {
 			resolve(c)
-			return runCloudScheduleSet(nodeName, starts, stops, timezone)
+			return runCloudScheduleSet(c.Context(), nodeName, starts, stops, timezone)
 		},
 	}
 	fs := c.Flags()
@@ -81,7 +81,7 @@ func cloudScheduleShowCmd() *cobra.Command {
 		SilenceUsage:  true,
 		RunE: func(c *cobra.Command, _ []string) error {
 			resolve(c)
-			return runCloudScheduleShow(nodeName)
+			return runCloudScheduleShow(c.Context(), nodeName)
 		},
 	}
 	c.Flags().StringVarP(&nodeName, "node", "n", "", nodeFlagUsage)
@@ -100,7 +100,7 @@ func cloudScheduleClearCmd() *cobra.Command {
 		SilenceUsage:  true,
 		RunE: func(c *cobra.Command, _ []string) error {
 			resolve(c)
-			return runCloudScheduleClear(nodeName)
+			return runCloudScheduleClear(c.Context(), nodeName)
 		},
 	}
 	c.Flags().StringVarP(&nodeName, "node", "n", "", nodeFlagUsage)
@@ -123,11 +123,11 @@ func scheduleListFor(starts, stops []string, timezone string) []cloud.Schedule {
 }
 
 // runCloudScheduleSet is the body of `spinloop cloud schedule set`.
-func runCloudScheduleSet(nodeName string, starts, stops []string, timezone string) error {
+func runCloudScheduleSet(ctx context.Context, nodeName string, starts, stops []string, timezone string) error {
 	if len(starts) == 0 && len(stops) == 0 {
 		return fmt.Errorf("nothing to set: pass --start and/or --stop (use `spinloop cloud schedule clear` to remove schedules)")
 	}
-	cfg, err := resolveCloudConfig(nodeName, "")
+	cfg, err := resolveCloudConfig(ctx, nodeName, "")
 	if err != nil {
 		return err
 	}
@@ -140,8 +140,8 @@ func runCloudScheduleSet(nodeName string, starts, stops []string, timezone strin
 }
 
 // runCloudScheduleShow is the body of `spinloop cloud schedule show`.
-func runCloudScheduleShow(nodeName string) error {
-	cfg, err := resolveCloudConfig(nodeName, "")
+func runCloudScheduleShow(ctx context.Context, nodeName string) error {
+	cfg, err := resolveCloudConfig(ctx, nodeName, "")
 	if err != nil {
 		return err
 	}
@@ -154,8 +154,8 @@ func runCloudScheduleShow(nodeName string) error {
 }
 
 // runCloudScheduleClear is the body of `spinloop cloud schedule clear`.
-func runCloudScheduleClear(nodeName string) error {
-	cfg, err := resolveCloudConfig(nodeName, "")
+func runCloudScheduleClear(ctx context.Context, nodeName string) error {
+	cfg, err := resolveCloudConfig(ctx, nodeName, "")
 	if err != nil {
 		return err
 	}

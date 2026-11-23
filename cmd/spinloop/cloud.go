@@ -37,7 +37,7 @@ import (
 // idle), status reports instance state and endpoint health, keep sets the
 // retention deadline to prevent the sweep from terminating the instance
 // early, and deploy sets what the instance will serve from the Spinloop itself.
-// Each subcommand acts on one registered environment — the --node flag names
+// Each subcommand acts on one environment on the plane — the --node flag names
 // it, and without the flag the `default` environment is used; see
 // resolveCloudConfig. Each also takes an optional Spinloop path, read for
 // its ENV instructions and adjacent .env only. The group itself does nothing
@@ -102,21 +102,18 @@ func applySpinloopEnv(sel spinloop.Selection, spinloopPath string) error {
 
 // nodeFlagUsage is the --node flag's help text on every cloud subcommand that
 // acts on one environment.
-const nodeFlagUsage = "the registered environment to act on (required)"
+const nodeFlagUsage = "the environment to act on, deployed on the control plane your credentials reach (required)"
 
-// resolveCloudConfig loads the cloud config a subcommand acts on. The --node
-// flag names an environment in the per-user registry, read from
-// clouds/<name>/cloud.json; a name with no registered configuration fails
-// saying the environment is not registered and how to create it. Without the
-// flag, the per-user config is the fallback — the `default` environment, then
-// the legacy single file, then the SPINLOOP_CLOUD_* overrides alone — so
-// `spinloop cloud` still works outside any project.
+// resolveCloudConfig resolves the environment a subcommand acts on: its name on
+// the control plane this machine's credentials and region resolve. Nothing local
+// is consulted, so an environment a colleague deployed is driven exactly as one
+// deployed here was, and the same command run by two people with credentials for
+// one plane drives the same environment.
 //
 // A Spinloop given as an argument (or the ./Spinloop in the working directory,
-// when no argument was given) is read for its ENV instructions and adjacent
-// .env only, applied before any control-plane work: it never selects an
-// environment.
-func resolveCloudConfig(nodeName, spinloopArg string) (cloud.Config, error) {
+// when no argument was given) is read for its ENV instructions and adjacent .env
+// only, applied before any control-plane work: it never selects an environment.
+func resolveCloudConfig(ctx context.Context, nodeName, spinloopArg string) (cloud.Config, error) {
 	if spinloopArg != "" {
 		sel, spinloopPath, err := readSpinloop("cloud", spinloopArg)
 		if err != nil {
@@ -135,33 +132,51 @@ func resolveCloudConfig(nodeName, spinloopArg string) (cloud.Config, error) {
 		}
 	}
 	if nodeName == "" {
-		return cloud.Config{}, errNoEnvironment()
+		return cloud.Config{}, errNoEnvironment(ctx)
 	}
-	if !cloud.IsEnvName(nodeName) {
-		return cloud.Config{}, fmt.Errorf("%q is not an environment name: an environment name is a plain identifier, with no path", nodeName)
-	}
-	return cloud.LoadEnvironment(nodeName, viperGetenv())
+	return cloud.ResolveEnvironment(ctx, nodeName, cloud.PlaneRequest{GetName: viperGetenv()})
 }
 
 // errNoEnvironment is what a cloud subcommand fails with when it names no
 // environment. There is no environment to fall back to: several of these
-// subcommands change the state of a cloud instance, and one nobody named is
-// not one to start, stop or terminate. The registered names are listed, so the
-// next thing to type is in the error rather than a directory listing away.
-func errNoEnvironment() error {
+// subcommands change the state of a cloud instance, an instance nobody named is
+// not one to start, stop or terminate, and on a shared plane an assumed name
+// could act on somebody else's deployment. The plane's environments are listed,
+// so the next thing to type is in the error rather than a directory listing away
+// — and a plane that could not be read says so, rather than looking empty.
+func errNoEnvironment(ctx context.Context) error {
 	var b strings.Builder
 	b.WriteString("no environment named: pass --node <name>")
-	envs, err := cloud.ListEnvironments()
-	if err != nil || len(envs) == 0 {
-		b.WriteString(" (none registered yet — `spinloop cloud deploy --node <name>` creates one)")
+	envs, err := cloud.Inventory(ctx, cloudConfigForPlane(ctx))
+	if err != nil {
+		// The flag is still the fix; the plane's problem is worth saying, but it
+		// must not swallow the instruction.
+		b.WriteString(" (`spinloop cloud ls` lists the plane's environments)")
 		return errors.New(b.String())
 	}
-	names := make([]string, len(envs))
-	for i, e := range envs {
-		names[i] = e.Name
+	if len(envs) == 0 {
+		b.WriteString(" (none deployed yet — `spinloop cloud deploy --node <name>` creates one)")
+		return errors.New(b.String())
 	}
-	fmt.Fprintf(&b, " (registered: %s)", strings.Join(names, ", "))
+	names := make([]string, 0, len(envs))
+	for _, e := range envs {
+		names = append(names, e.Name)
+	}
+	slices.Sort(names)
+	fmt.Fprintf(&b, " (deployed on this plane: %s)", strings.Join(names, ", "))
 	return errors.New(b.String())
+}
+
+// cloudConfigForPlane returns the resolved plane's own config, for a call that
+// is about the plane rather than one environment — listing it, naming its
+// environments in a failure. An unresolvable plane yields the empty config, and
+// the call that uses it reports why.
+func cloudConfigForPlane(ctx context.Context) cloud.Config {
+	plane, err := cloud.ResolvePlane(ctx, cloud.PlaneRequest{GetName: viperGetenv()})
+	if err != nil {
+		return cloud.Config{}
+	}
+	return plane.Config
 }
 
 // defaultSpinloopNamed reports whether there is a default Spinloop for readSpinloop
@@ -313,7 +328,7 @@ starting it.`,
 		ValidArgsFunction: aliasSlot,
 		RunE: func(c *cobra.Command, args []string) error {
 			resolve(c)
-			return runCloudEnv(nodeName, args)
+			return runCloudEnv(c.Context(), nodeName, args)
 		},
 	}
 	c.Flags().StringVarP(&nodeName, "node", "n", "", nodeFlagUsage)
@@ -322,8 +337,8 @@ starting it.`,
 }
 
 // runCloudEnv is the body of `spinloop cloud env`.
-func runCloudEnv(nodeName string, args []string) error {
-	cfg, err := resolveCloudConfig(nodeName, spinloopArg(args))
+func runCloudEnv(ctx context.Context, nodeName string, args []string) error {
+	cfg, err := resolveCloudConfig(ctx, nodeName, spinloopArg(args))
 	if err != nil {
 		return err
 	}
@@ -352,7 +367,7 @@ agent needs.`,
 		ValidArgsFunction: aliasSlot,
 		RunE: func(c *cobra.Command, args []string) error {
 			resolve(c)
-			return runCloudStart(nodeName, args, timeout, printEnv, keepD)
+			return runCloudStart(c.Context(), nodeName, args, timeout, printEnv, keepD)
 		},
 	}
 	fs := c.Flags()
@@ -365,8 +380,8 @@ agent needs.`,
 }
 
 // runCloudStart is the body of `spinloop cloud start`.
-func runCloudStart(nodeName string, args []string, timeout time.Duration, printEnv bool, keepD string) error {
-	cfg, err := resolveCloudConfig(nodeName, spinloopArg(args))
+func runCloudStart(ctx context.Context, nodeName string, args []string, timeout time.Duration, printEnv bool, keepD string) error {
+	cfg, err := resolveCloudConfig(ctx, nodeName, spinloopArg(args))
 	if err != nil {
 		return err
 	}
@@ -432,45 +447,63 @@ func runCloudStart(nodeName string, args []string, timeout time.Duration, printE
 	return nil
 }
 
-// cmdCloudList prints the registered cloud environments, each with its base
-// URL and region, marking any whose cloud.json is missing or unreadable. It
-// contacts no endpoint. Environments are registered under
-// ~/.config/spinloop/clouds/<name>/ (by `spinloop cloud bootstrap`, or by hand).
+// cloudListCmd lists the environments deployed on the control plane the
+// caller's credentials and region resolve — the plane's own record, so the list
+// is the same on every machine with access to it and includes what a colleague
+// deployed. Where the plane holds nothing it says so; where it cannot be reached
+// it fails naming where it looked, rather than printing a list that is missing
+// everything.
 func cloudListCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:               "ls",
-		Short:             "list the registered environments",
+		Short:             "list the environments deployed on the control plane",
 		Args:              cobra.ArbitraryArgs,
 		SilenceErrors:     true,
 		SilenceUsage:      true,
 		ValidArgsFunction: noPositionals,
 		RunE: func(c *cobra.Command, _ []string) error {
 			resolve(c)
-			return runCloudList()
+			return runCloudList(c.Context())
 		},
 	}
 }
 
 // runCloudList is the body of `spinloop cloud ls`.
-func runCloudList() error {
-	envs, err := cloud.ListEnvironments()
+func runCloudList(ctx context.Context) error {
+	cfg := cloudConfigForPlane(ctx)
+	envs, err := cloud.Inventory(ctx, cfg)
 	if err != nil {
 		return err
 	}
 	if len(envs) == 0 {
-		fmt.Println("No cloud environments registered. Register one with `spinloop cloud bootstrap`.")
+		fmt.Printf("No environments are deployed on %s. `spinloop cloud deploy --node <name>` deploys one.\n",
+			fleet.PlanePhrase(cfg.Region))
 		return nil
 	}
+	// The deployer is a column because the plane is shared: on a plane with
+	// several people's names on it, "who put this here, and when" is the first
+	// thing anyone asks about an environment they did not deploy.
 	for _, e := range envs {
-		if !e.OK {
-			fmt.Printf("%s\t(missing or unreadable cloud.json)\n", e.Name)
-			continue
+		fields := []string{e.Name}
+		owner := e.DeployedBy
+		if owner == "" {
+			owner = "unknown"
 		}
-		base := e.BaseURL
-		if base == "" {
-			base = "(no base URL)"
+		if since := e.Since(); since != "" {
+			owner += " at " + since
 		}
-		fmt.Printf("%s\t%s\t%s\n", e.Name, base, e.Region)
+		fields = append(fields, owner)
+		served := e.Served()
+		if served == "" {
+			served = "(nothing)"
+		}
+		fields = append(fields, served)
+		address := e.BaseURL
+		if address == "" {
+			address = "(no address)"
+		}
+		fields = append(fields, address, e.State)
+		fmt.Println(strings.Join(fields, "\t"))
 	}
 	return nil
 }
@@ -486,7 +519,7 @@ func cloudKeepCmd() *cobra.Command {
 		ValidArgsFunction: keepSlot,
 		RunE: func(c *cobra.Command, rest []string) error {
 			resolve(c)
-			return runCloudKeep(nodeName, rest)
+			return runCloudKeep(c.Context(), nodeName, rest)
 		},
 	}
 	c.Flags().StringVarP(&nodeName, "node", "n", "", nodeFlagUsage)
@@ -495,7 +528,7 @@ func cloudKeepCmd() *cobra.Command {
 }
 
 // runCloudKeep is the body of `spinloop cloud keep`.
-func runCloudKeep(nodeName string, rest []string) error {
+func runCloudKeep(ctx context.Context, nodeName string, rest []string) error {
 	if len(rest) == 0 {
 		return fmt.Errorf("usage: spinloop cloud keep <duration> [path]")
 	}
@@ -512,7 +545,7 @@ func runCloudKeep(nodeName string, rest []string) error {
 	if len(rest) > 1 {
 		spinloopPath = rest[1]
 	}
-	cfg, err := resolveCloudConfig(nodeName, spinloopPath)
+	cfg, err := resolveCloudConfig(ctx, nodeName, spinloopPath)
 	if err != nil {
 		return err
 	}
@@ -536,7 +569,7 @@ func cloudPauseCmd() *cobra.Command {
 		ValidArgsFunction: aliasSlot,
 		RunE: func(c *cobra.Command, args []string) error {
 			resolve(c)
-			return runCloudPause(nodeName, args)
+			return runCloudPause(c.Context(), nodeName, args)
 		},
 	}
 	c.Flags().StringVarP(&nodeName, "node", "n", "", nodeFlagUsage)
@@ -545,8 +578,8 @@ func cloudPauseCmd() *cobra.Command {
 }
 
 // runCloudPause is the body of `spinloop cloud pause`.
-func runCloudPause(nodeName string, args []string) error {
-	cfg, err := resolveCloudConfig(nodeName, spinloopArg(args))
+func runCloudPause(ctx context.Context, nodeName string, args []string) error {
+	cfg, err := resolveCloudConfig(ctx, nodeName, spinloopArg(args))
 	if err != nil {
 		return err
 	}
@@ -580,7 +613,7 @@ skipped: for when the engine or its daemon will not answer it.`,
 		ValidArgsFunction: aliasSlot,
 		RunE: func(c *cobra.Command, args []string) error {
 			resolve(c)
-			return runCloudRestart(nodeName, args, force, timeout)
+			return runCloudRestart(c.Context(), nodeName, args, force, timeout)
 		},
 	}
 	fs := c.Flags()
@@ -595,8 +628,8 @@ skipped: for when the engine or its daemon will not answer it.`,
 // instance in the pause manner — without terminating it, so the boot disk and
 // weights survive and the address does not change — and reuses the wake's own
 // deadline and retry handling to block until the model serves again.
-func runCloudRestart(nodeName string, args []string, force bool, timeout time.Duration) error {
-	cfg, err := resolveCloudConfig(nodeName, spinloopArg(args))
+func runCloudRestart(ctx context.Context, nodeName string, args []string, force bool, timeout time.Duration) error {
+	cfg, err := resolveCloudConfig(ctx, nodeName, spinloopArg(args))
 	if err != nil {
 		return err
 	}
@@ -648,7 +681,7 @@ func cloudStopCmd() *cobra.Command {
 		ValidArgsFunction: aliasSlot,
 		RunE: func(c *cobra.Command, args []string) error {
 			resolve(c)
-			return runCloudStop(nodeName, args)
+			return runCloudStop(c.Context(), nodeName, args)
 		},
 	}
 	c.Flags().StringVarP(&nodeName, "node", "n", "", nodeFlagUsage)
@@ -657,8 +690,8 @@ func cloudStopCmd() *cobra.Command {
 }
 
 // runCloudStop is the body of `spinloop cloud stop`.
-func runCloudStop(nodeName string, args []string) error {
-	cfg, err := resolveCloudConfig(nodeName, spinloopArg(args))
+func runCloudStop(ctx context.Context, nodeName string, args []string) error {
+	cfg, err := resolveCloudConfig(ctx, nodeName, spinloopArg(args))
 	if err != nil {
 		return err
 	}
@@ -668,6 +701,109 @@ func runCloudStop(nodeName string, args []string) error {
 	}
 	fmt.Printf("state: %s\n", resp.State)
 	return nil
+}
+
+// cloudUndeployCmd is `spinloop cloud undeploy`: the one command that ends an
+// environment rather than stopping its instance, and therefore the one that
+// asks twice — for a name, and for consent.
+func cloudUndeployCmd() *cobra.Command {
+	var nodeName string
+	var yes, dryRun bool
+	c := &cobra.Command{
+		Use:   "undeploy",
+		Short: "destroy an environment and every resource it owns",
+		Long: `destroys an environment on the control plane: its instance, address, security group, API-key secret, schedules and stored deploy config — everything the environment owns and nothing another environment shares.
+
+An environment on a shared plane may not be yours alone: the name is required (nothing defaults), consent is required (--yes, or the prompt), and --dry-run says what would go without destroying it.`,
+		Args:              cobra.NoArgs,
+		SilenceErrors:     true,
+		SilenceUsage:      true,
+		ValidArgsFunction: noPositionals,
+		RunE: func(c *cobra.Command, _ []string) error {
+			resolve(c)
+			return runCloudUndeploy(c.Context(), nodeName, yes, dryRun)
+		},
+	}
+	c.Flags().StringVarP(&nodeName, "node", "n", "", nodeFlagUsage)
+	c.Flags().BoolVar(&yes, "yes", false, "confirm the destruction without being asked")
+	c.Flags().BoolVar(&dryRun, "dry-run", false, "report what would be released, releasing nothing")
+	compRegister(c, "node", compEnvs)
+	return c
+}
+
+// runCloudUndeploy is the body of `spinloop cloud undeploy`.
+//
+// Existence is settled by the plane's inventory before anything else: a name
+// the plane does not hold is refused without a prompt and without a call, so
+// the refusal never becomes the surprise. Consent is explicit because the
+// plane is shared — --yes, or an answer at the prompt; where stdin cannot
+// answer (a script, a pipe) the command aborts naming the flag that confirms,
+// rather than reading silence as consent.
+func runCloudUndeploy(ctx context.Context, nodeName string, yes, dryRun bool) error {
+	cfg, err := resolveCloudConfig(ctx, nodeName, "")
+	if err != nil {
+		return err
+	}
+	record, found, err := planeHoldsEnvironment(ctx, cfg, nodeName)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return &cloud.NotDeployed{Environment: nodeName, Region: cfg.Region}
+	}
+	if dryRun {
+		res, err := cloud.Undeploy(ctx, cfg, true)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("dry run: %s would release: %s\n", res.Environment, releasedPhrase(res.Released))
+		fmt.Println("nothing was destroyed.")
+		return nil
+	}
+	if !yes {
+		owner := record.DeployedBy
+		if owner == "" {
+			owner = "someone"
+		}
+		fmt.Fprintf(os.Stderr,
+			"this destroys environment %q on %s — its instance, address, security group, key, schedules and deploy config.\n"+
+				"It was deployed by %s; everyone who uses this plane loses it. Proceed? [y/N] ",
+			nodeName, fleet.PlanePhrase(cfg.Region), owner)
+		if !confirmProceed() {
+			return fmt.Errorf("undeploy of %q aborted: nothing was destroyed — re-run with --yes to confirm", nodeName)
+		}
+	}
+	res, err := cloud.Undeploy(ctx, cfg, false)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("undeployed %s: released %s\n", res.Environment, releasedPhrase(res.Released))
+	return nil
+}
+
+// planeHoldsEnvironment asks the plane sitting under cfg whether it carries
+// name, and returns its record when it does. Existence belongs to the plane:
+// no local memory decides it, and a plane that cannot answer is an error, not
+// an empty list.
+func planeHoldsEnvironment(ctx context.Context, cfg cloud.Config, name string) (cloud.Environment, bool, error) {
+	envs, err := cloud.Inventory(ctx, cfg)
+	if err != nil {
+		return cloud.Environment{}, false, err
+	}
+	i := slices.IndexFunc(envs, func(e cloud.Environment) bool { return e.Name == name })
+	if i < 0 {
+		return cloud.Environment{}, false, nil
+	}
+	return envs[i], true, nil
+}
+
+// releasedPhrase words what an undeploy released. An empty list is said as
+// such: "released " after an environment reads as a bug report, not a result.
+func releasedPhrase(released []string) string {
+	if len(released) == 0 {
+		return "nothing (the environment held no allocated resources)"
+	}
+	return strings.Join(released, ", ")
 }
 
 func formatDuration(seconds int) string {
@@ -1147,10 +1283,15 @@ func presetValue(key string, layers ...[]preset.Param) string {
 
 // Seams for the deploy flow, so tests drive it without AWS or a network.
 var (
-	deployDiscoverFn   = cloud.DiscoverControlPlane
-	cloudDeployFn      = cloud.Deploy
-	cloudStatusFn      = cloud.Status
-	detectPublicCIDRFn = detectPublicCIDR
+	deployDiscoverFn = cloud.DiscoverControlPlane
+	// deployResolvePlaneFn and cloudInventoryFn are the plane's own two answers
+	// a deploy needs — where it is, and what it already holds — so a test can
+	// stand a plane in for both without a network.
+	deployResolvePlaneFn = cloud.ResolvePlane
+	cloudInventoryFn     = cloud.Inventory
+	cloudDeployFn        = cloud.Deploy
+	cloudStatusFn        = cloud.Status
+	detectPublicCIDRFn   = detectPublicCIDR
 )
 
 // metricsWatchInterval is the polling interval for --watch mode.
@@ -1186,12 +1327,12 @@ from its next fresh launch.`,
 		ValidArgsFunction: aliasSlot,
 		RunE: func(c *cobra.Command, args []string) error {
 			resolve(c)
-			return runCloudDeploy(args, nodeName, dryRun, overwrite, reseed, allowedCidr, region, spinloopVersion, instanceType, apiKeyEnv)
+			return runCloudDeploy(c.Context(), args, nodeName, dryRun, overwrite, reseed, allowedCidr, region, spinloopVersion, instanceType, apiKeyEnv)
 		},
 	}
 	fs := c.Flags()
 	fs.BoolVarP(&dryRun, "dry-run", "n", false, "print the config that would be deployed, without sending it")
-	fs.BoolVar(&overwrite, "overwrite", false, "proceed against an already-registered or live environment")
+	fs.BoolVar(&overwrite, "overwrite", false, "proceed against an environment the plane already holds, or one that is running")
 	fs.BoolVar(&reseed, "reseed", false, "re-fetch the weights even if they are already in S3 (starts a ~20-minute seed)")
 	fs.StringVar(&allowedCidr, "allowed-cidr", "", "who may reach this environment's instance (default: your public IP as a /32, on first deploy)")
 	fs.StringVar(&region, "region", "", "AWS region of the control plane (default: AWS_REGION or us-east-1)")
@@ -1204,12 +1345,12 @@ from its next fresh launch.`,
 }
 
 // runCloudDeploy is the body of `spinloop cloud deploy`.
-func runCloudDeploy(args []string, nodeName string, dryRun, overwrite, reseed bool, allowedCidr, region, spinloopVersion, instanceType, apiKeyEnv string) error {
+func runCloudDeploy(ctx context.Context, args []string, nodeName string, dryRun, overwrite, reseed bool, allowedCidr, region, spinloopVersion, instanceType, apiKeyEnv string) error {
 	_, spinloopPath, dc, err := deriveDeployTarget("spinloop cloud deploy <file>", spinloopArg(args), nodeName)
 	if err != nil {
 		return err
 	}
-	outcome, err := runDeploy(spinloopPath, nodeName, dc, deployOpts{
+	outcome, err := runDeploy(ctx, spinloopPath, nodeName, dc, deployOpts{
 		dryRun:          dryRun,
 		overwrite:       overwrite,
 		reseed:          reseed,
@@ -1301,15 +1442,14 @@ type deployOpts struct {
 // — an errDeployGuarded distinguishes "needs --overwrite" from any other
 // failure.
 type deployOutcome struct {
-	Text          string
-	DryRun        bool
-	BaseURL       string
-	Seeding       bool
-	SeedID        string
-	EnvConfigPath string
+	Text    string
+	DryRun  bool
+	BaseURL string
+	Seeding bool
+	SeedID  string
 }
 
-// errDeployGuarded means the named environment is already registered or
+// errDeployGuarded means the named environment is already deployed or
 // live, and --overwrite was not given. Distinct from any other deploy
 // failure so a caller driving several nodes (fleet deploy) can label this
 // one "guarded" rather than "failed".
@@ -1327,7 +1467,7 @@ func (e *errDeployGuarded) Error() string {
 // It writes nothing to stdout itself; the caller decides what to do with
 // deployOutcome.Text, which is how `fleet deploy` labels several nodes'
 // outcomes instead of interleaving raw prints from concurrent goroutines.
-func runDeploy(spinloopPath, env string, dc inference.DeployConfig, opts deployOpts) (deployOutcome, error) {
+func runDeploy(ctx context.Context, spinloopPath, env string, dc inference.DeployConfig, opts deployOpts) (deployOutcome, error) {
 	if opts.allowedCidr != "" && !cidrPattern.MatchString(opts.allowedCidr) {
 		return deployOutcome{}, fmt.Errorf("--allowed-cidr must be an IPv4 CIDR (e.g. 203.0.113.7/32), got %q", opts.allowedCidr)
 	}
@@ -1420,47 +1560,60 @@ func runDeploy(spinloopPath, env string, dc inference.DeployConfig, opts deployO
 		return deployOutcome{Text: buf.String(), DryRun: true}, nil
 	}
 
-	// The control URLs come from the control plane's stack outputs — the
-	// environment may not exist yet, so there is nothing local to resolve.
-	ctx := context.Background()
-	awsCfg, err := cloud.LoadAWSConfig(ctx, resolveRegion(opts.region))
+	// The plane is resolved from the caller's credentials and region. The
+	// environment may not exist yet, so there is nothing local to consult — and
+	// nothing here writes anything either: the plane is the record of what it
+	// holds, which is what makes a deploy from one machine visible from another.
+	plane, err := deployResolvePlaneFn(ctx, cloud.PlaneRequest{Region: opts.region, GetName: viperGetenv()})
 	if err != nil {
 		return deployOutcome{}, err
 	}
-	layer, err := deployDiscoverFn(ctx, awsCfg, controlPlaneStackName)
-	if err != nil {
-		return deployOutcome{}, err
-	}
-	cfg := layer.Config
+	cfg := plane.Config
 	cfg.Environment = env
 
-	// Refuse to clobber silently: an environment that is already registered, or
-	// whose instance is live, needs explicit consent to redeploy over.
-	envConfigPath, err := cloud.EnvConfigPath(env)
+	// Refuse to clobber silently. Whether the environment exists is the plane's
+	// answer rather than this machine's memory of deploying it, so the guard
+	// fires for a colleague's environment seen from a machine that has never
+	// heard of it — and names who put it there, which is what makes a name
+	// shared between people explainable.
+	planeEnvs, err := cloudInventoryFn(ctx, plane.Config)
 	if err != nil {
 		return deployOutcome{}, err
 	}
-	registered := false
-	if _, err := os.Stat(envConfigPath); err == nil {
-		registered = true
+	deployment := -1
+	for i, e := range planeEnvs {
+		if e.Name == env {
+			deployment = i
+			break
+		}
 	}
 	live := false
 	if status, err := cloudStatusFn(ctx, cfg); err == nil {
 		live = status.State == "running" || status.State == "pending" || status.State == "starting"
 	}
-	if (registered || live) && !opts.overwrite {
-		what := "is already registered"
+	if (deployment >= 0 || live) && !opts.overwrite {
+		what := "is already deployed"
 		if live {
 			what = "has a live instance"
+		}
+		if deployment >= 0 {
+			what = fmt.Sprintf("%s (%s)", what, deployerPhrase(planeEnvs[deployment]))
 		}
 		return deployOutcome{}, &errDeployGuarded{env: env, what: what}
 	}
 
-	// Ingress is per environment. A fresh environment needs a CIDR (default:
-	// the caller's public address); an existing one keeps its ingress unless a
-	// CIDR is given explicitly.
+	// Ingress is per environment. A fresh environment needs a CIDR, defaulted to
+	// the caller's own public address. An existing environment is never
+	// defaulted: on a shared plane, widening a colleague's ingress to whichever
+	// IP is deploying this minute is not a safe default, so the deploy refuses
+	// and leaves the environment's ingress exactly as it stands.
 	allowedCidr := opts.allowedCidr
-	if allowedCidr == "" && !registered {
+	if allowedCidr == "" {
+		if deployment >= 0 || live {
+			return deployOutcome{}, fmt.Errorf(
+				"environment %q already has its own allowed ingress: pass --allowed-cidr to set it "+
+					"(e.g. --allowed-cidr 203.0.113.7/32) — nothing is changed without it", env)
+		}
 		allowedCidr, err = detectPublicCIDRFn(ctx)
 		if err != nil {
 			return deployOutcome{}, fmt.Errorf("detecting your public IP for the allowed CIDR: %w (pass --allowed-cidr)", err)
@@ -1473,16 +1626,12 @@ func runDeploy(spinloopPath, env string, dc inference.DeployConfig, opts deployO
 		return deployOutcome{}, err
 	}
 
-	// Register the environment so REMOTE <env> (and the other cloud
-	// subcommands) resolve to it from now on.
-	cfg.BaseURL = resp.BaseURL
-	if err := cloud.SaveEnvironment(env, cfg); err != nil {
-		return deployOutcome{}, err
-	}
-
 	buf.WriteByte('\n')
 	fmt.Fprintf(&buf, "deployed: environment %s at %s\n", env, resp.BaseURL)
-	fmt.Fprintf(&buf, "registered: %s\n", envConfigPath)
+	// The plane is named because a name is only unique on one: an operator who
+	// deploys `dev` and then cannot find it from another account has to be told
+	// which plane this landed on.
+	fmt.Fprintf(&buf, "on: %s\n", fleet.PlanePhrase(cfg.Region))
 	// A rotation is worth stating out loud: it invalidates the key a live
 	// agent may still be holding, and the action — never the value — is all
 	// the reply carries.
@@ -1500,12 +1649,31 @@ func runDeploy(spinloopPath, env string, dc inference.DeployConfig, opts deployO
 	}
 
 	return deployOutcome{
-		Text:          buf.String(),
-		BaseURL:       resp.BaseURL,
-		Seeding:       resp.Seeding,
-		SeedID:        resp.SeedID,
-		EnvConfigPath: envConfigPath,
+		Text:    buf.String(),
+		BaseURL: resp.BaseURL,
+		Seeding: resp.Seeding,
+		SeedID:  resp.SeedID,
 	}, nil
+}
+
+// deployerPhrase says who deployed an environment, when, and what it serves.
+// It is what makes a name taken by somebody else explicable: on a shared plane a
+// refusal that only says "already exists" leaves the operator guessing whether
+// it is their own stale deployment from another machine or a colleague's live
+// one.
+func deployerPhrase(e cloud.Environment) string {
+	owner := e.DeployedBy
+	if owner == "" {
+		owner = "an unknown deployer"
+	}
+	phrase := "deployed by " + owner
+	if since := e.Since(); since != "" {
+		phrase += " at " + since
+	}
+	if served := e.Served(); served != "" {
+		phrase += ", serving " + served
+	}
+	return phrase
 }
 
 // cidrPattern matches an IPv4 CIDR, the same shape the deploy Lambda accepts.
@@ -1546,6 +1714,7 @@ func cmdCloudStart(args []string) error     { return execCmd(cloudStartCmd(), ar
 func cmdCloudPause(args []string) error     { return execCmd(cloudPauseCmd(), args) }
 func cmdCloudRestart(args []string) error   { return execCmd(cloudRestartCmd(), args) }
 func cmdCloudStop(args []string) error      { return execCmd(cloudStopCmd(), args) }
+func cmdCloudUndeploy(args []string) error  { return execCmd(cloudUndeployCmd(), args) }
 func cmdCloudDeploy(args []string) error    { return execCmd(cloudDeployCmd(), args) }
 func cmdCloudEnv(args []string) error       { return execCmd(cloudEnvCmd(), args) }
 func cmdCloudList(args []string) error      { return execCmd(cloudListCmd(), args) }

@@ -445,8 +445,8 @@ func cloudCmd() *cobra.Command {
 		Use:   "cloud",
 		Short: "control the cloud GPU inference instance",
 		Long: `runs the model on a cloud GPU that exists only while you use it, from
-the same Spinloop. Each environment is registered under
-~/.config/spinloop/clouds/<name>/ and selected with --node <name>. Each
+the same Spinloop. Environments live on the control plane — deployed once,
+named with --node <name> by anyone holding credentials for it — and each
 subcommand's --help says what that step does.`,
 		Args:          groupArgs,
 		SilenceErrors: true,
@@ -461,6 +461,7 @@ subcommand's --help says what that step does.`,
 		cloudPauseCmd(),
 		cloudRestartCmd(),
 		cloudStopCmd(),
+		cloudUndeployCmd(),
 		cloudDeployCmd(),
 		cloudSeedCmd(),
 		cloudEnvCmd(),

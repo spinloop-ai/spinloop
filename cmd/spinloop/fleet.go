@@ -319,7 +319,7 @@ func fleetStartCmd() *cobra.Command {
 		SilenceUsage:  true,
 		RunE: func(c *cobra.Command, args []string) error {
 			resolve(c)
-			cfg, err := resolveFleetTarget(fleetTarget{nodeName: nodeName, fleetPath: path})
+			cfg, err := resolveFleetTarget(c.Context(), fleetTarget{nodeName: nodeName, fleetPath: path})
 			if err != nil {
 				return err
 			}
@@ -353,7 +353,7 @@ func fleetStopCmd() *cobra.Command {
 		SilenceUsage:  true,
 		RunE: func(c *cobra.Command, args []string) error {
 			resolve(c)
-			cfg, err := resolveFleetTarget(fleetTarget{nodeName: nodeName, fleetPath: path})
+			cfg, err := resolveFleetTarget(c.Context(), fleetTarget{nodeName: nodeName, fleetPath: path})
 			if err != nil {
 				return err
 			}
@@ -497,7 +497,7 @@ derivation, consent, and registration behaviour as "spinloop cloud deploy".`,
 		SilenceUsage:  true,
 		RunE: func(c *cobra.Command, args []string) error {
 			resolve(c)
-			return runFleetDeploy(fleetTarget{nodeName: nodeName, fleetPath: path}, all, args, deployOpts{
+			return runFleetDeploy(c.Context(), fleetTarget{nodeName: nodeName, fleetPath: path}, all, args, deployOpts{
 				dryRun:          dryRun,
 				overwrite:       overwrite,
 				reseed:          reseed,
@@ -513,7 +513,7 @@ derivation, consent, and registration behaviour as "spinloop cloud deploy".`,
 	fs.StringVar(&nodeName, "node", "", nodeFlagTargetUsage)
 	fs.BoolVar(&all, "all", false, "deploy every kind: cloud node in the fleet")
 	fs.BoolVarP(&dryRun, "dry-run", "n", false, "print the config that would be deployed, without sending it")
-	fs.BoolVar(&overwrite, "overwrite", false, "proceed against an already-registered or live environment")
+	fs.BoolVar(&overwrite, "overwrite", false, "proceed against an environment the plane already holds, or one that is running")
 	fs.BoolVar(&reseed, "reseed", false, "re-fetch the weights even if they are already in S3 (starts a ~20-minute seed)")
 	fs.StringVar(&allowedCidr, "allowed-cidr", "", "who may reach each environment's instance (default: your public IP as a /32, on first deploy)")
 	fs.StringVar(&region, "region", "", "AWS region of the control plane (default: AWS_REGION or us-east-1)")
@@ -526,8 +526,8 @@ derivation, consent, and registration behaviour as "spinloop cloud deploy".`,
 }
 
 // runFleetDeploy is the body of `spinloop fleet deploy`.
-func runFleetDeploy(target fleetTarget, all bool, names []string, opts deployOpts) error {
-	cfg, err := resolveFleetTarget(target)
+func runFleetDeploy(ctx context.Context, target fleetTarget, all bool, names []string, opts deployOpts) error {
+	cfg, err := resolveFleetTarget(ctx, target)
 	if err != nil {
 		return err
 	}
@@ -592,7 +592,7 @@ func runFleetDeploy(target fleetTarget, all bool, names []string, opts deployOpt
 		wg.Add(1)
 		go func(i int, name string) {
 			defer wg.Done()
-			r := deployOneNode(cfg, name, opts)
+			r := deployOneNode(ctx, cfg, name, opts)
 			mu.Lock()
 			results[i] = r
 			done[i] = true
@@ -727,12 +727,12 @@ func (r fleetDeployResult) text() string {
 }
 
 // deployOneNode resolves and deploys a single targeted node. The node's own
-// name is the registered environment the deploy creates: a kind: cloud node
+// name is the environment the deploy creates on the plane: a kind: cloud node
 // is only driveable by the fleet commands under that name, so there is no
 // override. It never returns an error itself — a bad node becomes a
 // fleetDeployResult, so the caller's fan-out can label it without aborting
 // the others.
-func deployOneNode(cfg *fleet.Config, name string, opts deployOpts) fleetDeployResult {
+func deployOneNode(ctx context.Context, cfg *fleet.Config, name string, opts deployOpts) fleetDeployResult {
 	entry, _ := cfg.Node(name)
 	arg, source, err := resolveNodeSpinloop(entry, cfg.Dir)
 	if err != nil {
@@ -748,7 +748,7 @@ func deployOneNode(cfg *fleet.Config, name string, opts deployOpts) fleetDeployR
 	// leaves it empty, i.e. the control plane's default).
 	nodeOpts := opts
 	nodeOpts.instanceType = entry.InstanceType
-	outcome, err := runDeploy(spinloopPath, name, dc, nodeOpts)
+	outcome, err := runDeploy(ctx, spinloopPath, name, dc, nodeOpts)
 	if err != nil {
 		var guarded *errDeployGuarded
 		if errors.As(err, &guarded) {
@@ -812,12 +812,12 @@ func fleetRouteCmd() *cobra.Command {
 		SilenceUsage:  true,
 		RunE: func(c *cobra.Command, args []string) error {
 			resolve(c)
-			return runFleetRoute(path, node, prefer, args)
+			return runFleetRoute(c.Context(), path, node, prefer, args)
 		},
 	}
 	fs := c.Flags()
 	fs.StringVarP(&path, "fleet", "f", "", fleetFileUsage)
-	fs.StringVarP(&node, "node", "n", "", "report this node rather than choosing one; names a registered environment to route through when no fleet is in force")
+	fs.StringVarP(&node, "node", "n", "", "report this node rather than choosing one; names an environment on the control plane to route through when no fleet is in force")
 	fs.StringVar(&prefer, "prefer", "", "rank nodes by `idle` or `active` (overrides the fleet file)")
 	c.ValidArgsFunction = aliasSlot
 	compRegister(c, "fleet", compFiles)
@@ -826,7 +826,7 @@ func fleetRouteCmd() *cobra.Command {
 }
 
 // runFleetRoute is the body of `spinloop fleet route`.
-func runFleetRoute(path, node, prefer string, args []string) error {
+func runFleetRoute(ctx context.Context, path, node, prefer string, args []string) error {
 	var spinloopPath string
 	if len(args) > 0 {
 		spinloopPath = args[0]
@@ -847,7 +847,7 @@ func runFleetRoute(path, node, prefer string, args []string) error {
 	// the user. A named Spinloop routes only by flag, as a launch does.
 	// A --node does not suppress discovery, as it does not for a launch:
 	// where a fleet is in force the flag is a pin into it, and it names a
-	// registered environment only where none is.
+	// environment on the plane only where none is.
 	target := path
 	if target == "" && spinloopPath == "" && !spinloopAliasInForce() {
 		if _, err := os.Stat(fleet.DefaultFile); err == nil {
@@ -863,7 +863,7 @@ func runFleetRoute(path, node, prefer string, args []string) error {
 	if target != "" {
 		cfg, err = fleet.Resolve(target)
 	} else {
-		cfg, err = fleet.ForEnvironment(node)
+		cfg, err = fleet.ForEnvironment(ctx, node)
 	}
 	if err != nil {
 		return err

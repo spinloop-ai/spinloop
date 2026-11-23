@@ -37,6 +37,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -190,7 +191,7 @@ func envFileDir(spinloopPath string) string {
 // pre-computed directory, so a relative PRESET resolves correctly whether the
 // Spinloop is local or URL-sourced; it is empty when no Spinloop is involved
 // (an `spinloop harness add` from flags). envName is the --node flag's value,
-// the registered environment the selection is applied against, empty for a
+// environment on the control plane the selection is applied against, empty for a
 // local apply. resolve looks up API key variables — normally
 // opencode.EnvResolver of the Spinloop's local directory, but `spinloop
 // harness` widens it with the key it fetched from a cloud endpoint, which it
@@ -218,28 +219,39 @@ func applySelection(sel spinloop.Selection, h harness.Harness, spinloopPath, env
 	// name: for an environment that is its name, so the model reads as
 	// <env>/<model> and each environment keeps its own block rather than
 	// several engines-of-the-same-kind overwriting one. The name comes from
-	// removeSelection too, so apply and unapply stay symmetric. The flag is an
-	// explicit name, so a missing registration is a mistake to report rather
-	// than a config to wait for.
+	// removeSelection too, so apply and unapply stay symmetric.
 	var envCfg *cloud.Config
 	if envName != "" {
-		if !cloud.IsEnvName(envName) {
-			return fmt.Errorf("%q is not an environment name: an environment name is a plain identifier, with no path", envName)
-		}
-		envPath, err := cloud.EnvConfigPath(envName)
+		// The name is resolved against the plane the caller's credentials reach,
+		// so an environment a colleague deployed applies exactly as one deployed
+		// here did — there is nothing to register first, and nothing to write.
+		ctx := context.Background()
+		plane, err := cloud.ResolvePlane(ctx, cloud.PlaneRequest{GetName: viperGetenv()})
 		if err != nil {
 			return err
 		}
-		if _, err := os.Stat(envPath); err != nil {
-			if os.IsNotExist(err) {
-				return fmt.Errorf("environment %q is not registered: run `spinloop cloud deploy --node %q` to create it", envName, envName)
+		envs, err := cloud.Inventory(ctx, plane.Config)
+		if err != nil {
+			return err
+		}
+		holding := false
+		var record cloud.Environment
+		for _, e := range envs {
+			if e.Name == envName {
+				holding, record = true, e
+				break
 			}
-			return err
 		}
-		cfg, err := cloud.LoadEnvironment(envName, viperGetenv())
+		if !holding {
+			return &cloud.NotDeployed{Environment: envName, Region: plane.Config.Region}
+		}
+		cfg, err := cloud.ResolveEnvironment(ctx, envName, cloud.PlaneRequest{GetName: viperGetenv()})
 		if err != nil {
 			return err
 		}
+		// A Spinloop that states no BASEURL is applied at the address the plane
+		// reports, without starting the environment to learn it.
+		cfg.BaseURL = record.BaseURL
 		envCfg = &cfg
 		sel.Provider = envName
 		// The provider is now keyed on the environment; label it so it reads
@@ -261,9 +273,9 @@ func applySelection(sel spinloop.Selection, h harness.Harness, spinloopPath, env
 	}
 
 	// A Spinloop applied against an environment states no BASEURL: the address
-	// belongs to the deployment, which records it in the environment's
-	// registered cloud.json. Take it from there — but only when the Spinloop
-	// stated none, so a hand-written BASEURL still wins.
+	// belongs to the deployment, which records it on the plane. Take it from
+	// there — but only when the Spinloop stated none, so a hand-written
+	// BASEURL still wins.
 	// The harness reports the base URL it wrote, so this needs no announcement
 	// of its own beyond naming where it came from.
 	if sel.BaseURL == "" && envCfg != nil && envCfg.BaseURL != "" {
@@ -497,9 +509,9 @@ func applyCmd() *cobra.Command {
 		Short: "apply a Spinloop file (defaults to ./Spinloop)",
 		Long: `applies a Spinloop file — a declarative, Dockerfile-style description of
 one provider selection — as if you had run the equivalent add. With --node,
-applies it against a registered cloud environment: the provider is keyed on
-the environment's name and, absent a BASEURL, takes its address from the
-environment's registered cloud.json.`,
+applies it against an environment on the control plane: the provider is
+keyed on the environment's name and, absent a BASEURL, takes its address
+from what the plane records for it.`,
 		Args:          cobra.ArbitraryArgs,
 		SilenceErrors: true,
 		SilenceUsage:  true,
@@ -532,7 +544,7 @@ environment's registered cloud.json.`,
 	fs.StringVar(&providers, "providers", "", "path to a providers.yaml override")
 	fs.StringVarP(&output, "output", "o", "", "max output tokens (overrides the Spinloop's OUTPUT)")
 	fs.StringVarP(&harnessName, "harness", "H", "", "which harness to configure")
-	fs.StringVarP(&nodeName, "node", "n", "", "apply against this registered environment (its name keys the provider; its cloud.json supplies the base URL)")
+	fs.StringVarP(&nodeName, "node", "n", "", "apply against this environment on the control plane (its name keys the provider; the plane's record supplies the base URL)")
 	compRegister(c, "node", compEnvs)
 	fs.SetInterspersed(false)
 	c.ValidArgsFunction = aliasSlot
@@ -582,7 +594,7 @@ applied the Spinloop against, or there is nothing to remove.`,
 	fs := c.Flags()
 	fs.StringVar(&providers, "providers", "", "path to a providers.yaml override")
 	fs.StringVarP(&harnessName, "harness", "H", "", "which harness to configure")
-	fs.StringVarP(&nodeName, "node", "n", "", "the registered environment the Spinloop was applied against")
+	fs.StringVarP(&nodeName, "node", "n", "", "the environment the Spinloop was applied against")
 	compRegister(c, "node", compEnvs)
 	fs.SetInterspersed(false)
 	c.ValidArgsFunction = aliasSlot
@@ -1220,7 +1232,7 @@ func splitHarnessArgs(fs *pflag.FlagSet, spinloopPath *spinloopPathFlag, args []
 				// on a word the harness never owned, with the launch quietly
 				// mis-targeted. Name the new spelling instead.
 				if tok == "--env" || strings.HasPrefix(tok, "--env=") || tok == "-e" {
-					return nil, fmt.Errorf("%s was renamed --node: pass --node <name> (a fleet node with a fleet in force, a registered environment otherwise)", tok)
+					return nil, fmt.Errorf("%s was renamed --node: pass --node <name> (a fleet node with a fleet in force, a control-plane environment otherwise)", tok)
 				}
 				return args[i:], nil
 			}
@@ -1427,10 +1439,10 @@ func applyRoutedSpinloop(sel spinloop.Selection, path string, providers string, 
 		sel.BaseURL = choice.BaseURL
 	}
 	// envTarget is the --node value only when no fleet is in force, so the
-	// name resolves as a registered environment — a fleet of one. Everything
+	// name resolves as an environment on the plane — a fleet of one. Everything
 	// cloud-shaped (the endpoint fetch, the provider key, the environment
 	// labelling) hangs off this, not off the flag: with a fleet in force
-	// --node answered as a pin, and a name that also sits in the registry
+	// --node answered as a pin, and a name that also sits on the plane
 	// must not then fetch a cloud endpoint.
 	envTarget := ""
 	if route.node != "" && route.fleetFile() == "" {
@@ -1454,7 +1466,7 @@ func applyRoutedSpinloop(sel spinloop.Selection, path string, providers string, 
 	}
 	// Before the apply, so a launch that cannot authenticate stops without
 	// having rewritten the harness config.
-	cloudResp, err := fetchCloudEnv(sel, envTarget, localResolve)
+	cloudResp, err := fetchCloudEnv(context.Background(), sel, envTarget, localResolve)
 	if err != nil {
 		return spinloop.Selection{}, "", nil, nil, err
 	}
@@ -1637,29 +1649,31 @@ const cloudEnvTimeout = 30 * time.Second
 // already to hand (exported, in the `.env` beside the Spinloop, or set by an ENV
 // instruction) the fetch was only a convenience, so it warns and carries on.
 //
-// An environment whose configuration is not registered is a different failure:
-// the name points at nothing on this machine, so it is reported as-is rather
-// than downgraded.
-func fetchCloudEnv(sel spinloop.Selection, envName string, resolve func(string) string) (*cloud.Response, error) {
+// A name the control plane does not hold is a different failure: the plane is
+// the record of what is deployed, so a name it does not carry is not an
+// environment at all. That is reported as-is rather than downgraded to a
+// warning, whatever the caller could otherwise fall back to.
+func fetchCloudEnv(ctx context.Context, sel spinloop.Selection, envName string, resolve func(string) string) (*cloud.Response, error) {
 	if envName == "" {
 		return nil, nil
 	}
-	if !cloud.IsEnvName(envName) {
-		return nil, fmt.Errorf("%q is not an environment name: an environment name is a plain identifier, with no path", envName)
-	}
-	envPath, err := cloud.EnvConfigPath(envName)
+	plane, err := cloud.ResolvePlane(ctx, cloud.PlaneRequest{GetName: viperGetenv()})
 	if err != nil {
 		return nil, err
 	}
-	if _, err := os.Stat(envPath); err != nil {
-		if os.IsNotExist(err) {
-			return nil, fmt.Errorf("environment %q is not registered: run `spinloop cloud deploy --node %q` to create it", envName, envName)
-		}
+	// The plane is the record of what is deployed, so it is the plane that says
+	// whether this name is an environment at all — a clean failure here, rather
+	// than one control call that happens to fail.
+	envs, err := cloud.Inventory(ctx, plane.Config)
+	if err != nil {
 		return nil, err
+	}
+	if !slices.ContainsFunc(envs, func(e cloud.Environment) bool { return e.Name == envName }) {
+		return nil, &cloud.NotDeployed{Environment: envName, Region: plane.Config.Region}
 	}
 	// The call crosses the network, and a cold control plane is not instant.
 	fmt.Fprintf(os.Stderr, "Fetching the endpoint's environment from %s...\n", envName)
-	cfg, err := cloud.LoadEnvironment(envName, viperGetenv())
+	cfg, err := cloud.ResolveEnvironment(ctx, envName, cloud.PlaneRequest{GetName: viperGetenv()})
 	if err == nil {
 		ctx, cancel := context.WithTimeout(context.Background(), cloudEnvTimeout)
 		defer cancel()

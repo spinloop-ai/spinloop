@@ -350,7 +350,7 @@ func (h *Handler) wakeableModels(ctx context.Context) map[string]string {
 // while running rather than falling back to the bare model id.
 func (h *Handler) cloudConfigFor(ctx context.Context) fleet.ConfigFor {
 	return func(entry fleet.NodeConfig) (inference.DeployConfig, error) {
-		node, err := h.cfg.NewNode(entry)
+		node, err := h.cfg.NewNode(ctx, entry)
 		if err != nil {
 			return inference.DeployConfig{}, err
 		}

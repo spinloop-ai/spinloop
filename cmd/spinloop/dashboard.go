@@ -1,5 +1,6 @@
 // `spinloop dashboard`: the interactive board over whatever the target names —
-// a fleet, or a single registered environment, which opens as a board of one.
+// a fleet, or a single environment on the control plane, which opens as a
+// board of one.
 // The model and the renderers live in dashboard_model.go and
 // dashboard_render.go, and the program in fleet_dashboard.go; this is the
 // command.
@@ -18,7 +19,7 @@ func dashboardCmd() *cobra.Command {
 		Long: `An interactive live view of the target: a tile per node, each drawing
 what the gauge format of fleet metrics prints — state, what it serves, the
 resource gauges, the token counters — repainted on an interval. A single
-registered environment (--node) opens as a board of one.
+single environment on the plane (--node) opens as a board of one.
 
 The view is read-only apart from four keys: s starts the selected node, k
 keeps a cloud environment for a duration you type — it asks how long,

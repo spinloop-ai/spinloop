@@ -517,16 +517,31 @@ func TestSplitModelQuant(t *testing.T) {
 // stubDeploySeams wires the deploy flow's seams: discovery returns a layer
 // whose control URLs are serverURL, the environment reports the given state,
 // and the public-IP probe is fixed. Restores on cleanup.
-func stubDeploySeams(t *testing.T, serverURL, statusState string) {
+// stubDeploySeams stands the control plane a deploy resolves in: its endpoints
+// are serverURL, a status read answers statusState, and the public-address probe
+// reports the caller's own IP. The plane holds the environments given — none by
+// default, which is a fresh plane where any name is free.
+func stubDeploySeams(t *testing.T, serverURL, statusState string, holds ...cloud.Environment) {
 	t.Helper()
-	origDiscover, origStatus, origDetect := deployDiscoverFn, cloudStatusFn, detectPublicCIDRFn
+	origDiscover, origStatus, origDetect, origPlane, origInventory :=
+		deployDiscoverFn, cloudStatusFn, detectPublicCIDRFn, deployResolvePlaneFn, cloudInventoryFn
 	t.Cleanup(func() {
 		deployDiscoverFn, cloudStatusFn, detectPublicCIDRFn = origDiscover, origStatus, origDetect
+		deployResolvePlaneFn, cloudInventoryFn = origPlane, origInventory
 	})
 	deployDiscoverFn = func(context.Context, aws.Config, string) (cloud.ControlPlane, error) {
 		return cloud.ControlPlane{Config: cloud.Config{
 			StartURL: serverURL, StopURL: serverURL, DeployURL: serverURL, Region: "us-east-1",
 		}}, nil
+	}
+	deployResolvePlaneFn = func(context.Context, cloud.PlaneRequest) (cloud.ControlPlane, error) {
+		return cloud.ControlPlane{Config: cloud.Config{
+			StartURL: serverURL, StopURL: serverURL, DeployURL: serverURL, StatsURL: serverURL,
+			Region: "us-east-1",
+		}}, nil
+	}
+	cloudInventoryFn = func(context.Context, cloud.Config) ([]cloud.Environment, error) {
+		return holds, nil
 	}
 	cloudStatusFn = func(context.Context, cloud.Config) (*cloud.Response, error) {
 		return &cloud.Response{StatusCode: 200, State: statusState}, nil
@@ -549,7 +564,7 @@ func writeDeploySpinloopCwd(t *testing.T) {
 	}
 }
 
-func TestCloudDeploy_PostsTheConfigAndRegisters(t *testing.T) {
+func TestCloudDeploy_PostsTheConfigToThePlane(t *testing.T) {
 	isolateConfig(t)
 	stubAWSEnv(t)
 
@@ -601,22 +616,39 @@ func TestCloudDeploy_PostsTheConfigAndRegisters(t *testing.T) {
 		t.Errorf("seeding should name the follow-up command, got:\n%s", out)
 	}
 
-	// The environment is registered, owner-only, carrying the base URL and id.
-	path := must1(cloud.EnvConfigPath("testenv"))
-	fi, err := os.Stat(path)
+	// Nothing is recorded locally: the plane is the record of what it holds, so
+	// a deploy leaves no file behind for the next command to distrust.
+	nothingWrittenToThePlaneDir(t)
+	// A name is only unique on one plane, so the report says which one this
+	// landed on: an operator who cannot find it from another account has to be
+	// told where it was put.
+	if !strings.Contains(out, "us-east-1") {
+		t.Errorf("the deploy report should name the plane, got:\n%s", out)
+	}
+}
+
+// nothingWrittenToThePlaneDir asserts the config directory holds no cloud
+// state: it is where `clouds/<name>/cloud.json` used to be written, and the
+// plane being the record means a deploy — or a failed one — writes nothing there.
+func nothingWrittenToThePlaneDir(t *testing.T) {
+	t.Helper()
+	home, err := cloud.ConfigHome()
 	if err != nil {
-		t.Fatalf("environment not registered: %v", err)
-	}
-	if fi.Mode().Perm() != 0o600 {
-		t.Errorf("registered cloud.json mode = %v, want 0600", fi.Mode().Perm())
-	}
-	data, _ := os.ReadFile(path)
-	var saved cloud.Config
-	if err := json.Unmarshal(data, &saved); err != nil {
 		t.Fatal(err)
 	}
-	if saved.Environment != "testenv" || saved.BaseURL != "http://198.51.100.9:8000/v1" || saved.DeployURL != server.URL {
-		t.Errorf("registered config wrong: %+v", saved)
+	entries, err := os.ReadDir(home)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return
+		}
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if e.Name() == "clouds" {
+			t.Errorf("%s/clouds exists: the plane is the record of what is deployed", home)
+			continue
+		}
+		t.Errorf("the deploy wrote %s/%s", home, e.Name())
 	}
 }
 
@@ -624,8 +656,10 @@ func TestCloudDeploy_NotBootstrapped(t *testing.T) {
 	isolateConfig(t)
 	stubAWSEnv(t)
 	stubDeploySeams(t, "https://unused", "undeployed")
-	deployDiscoverFn = func(context.Context, aws.Config, string) (cloud.ControlPlane, error) {
-		return cloud.ControlPlane{}, fmt.Errorf("the control plane (stack %q) is not deployed in this account and region — run `spinloop cloud bootstrap` first", "cloud-vm-llm")
+	deployResolvePlaneFn = func(context.Context, cloud.PlaneRequest) (cloud.ControlPlane, error) {
+		return cloud.ControlPlane{}, fmt.Errorf(
+			"no cloud control plane in us-east-1: stack %q is not deployed there — run `spinloop cloud bootstrap`",
+			cloud.ControlPlaneStackName)
 	}
 	writeDeploySpinloopCwd(t)
 
@@ -633,9 +667,7 @@ func TestCloudDeploy_NotBootstrapped(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "spinloop cloud bootstrap") {
 		t.Errorf("want a bootstrap-first error, got %v", err)
 	}
-	if _, statErr := os.Stat(must1(cloud.EnvConfigPath("testenv"))); !os.IsNotExist(statErr) {
-		t.Error("nothing should be registered when the account is not bootstrapped")
-	}
+	nothingWrittenToThePlaneDir(t)
 }
 
 func TestCloudDeploy_RequiresEnvName(t *testing.T) {
@@ -660,22 +692,29 @@ func TestCloudDeploy_RequiresEnvName(t *testing.T) {
 
 func TestCloudDeploy_OverwriteGuard(t *testing.T) {
 	deployBody := `{"deployed":true,"environment":"testenv","base_url":"http://198.51.100.9:8000/v1"}`
+	colleagues := cloud.Environment{
+		Name: "testenv", DeployedBy: "colleague@example", DeployedAt: "2026-11-20T09:00:00Z",
+		ServedName: "qwen3.6-27b", State: "stopped",
+	}
 
-	t.Run("registered environment needs --overwrite", func(t *testing.T) {
+	t.Run("an environment the plane holds needs --overwrite", func(t *testing.T) {
 		isolateConfig(t)
 		stubAWSEnv(t)
-		stubDeploySeams(t, "https://unused", "undeployed")
-		if err := cloud.SaveEnvironment("testenv", cloud.Config{StartURL: "https://s", StopURL: "https://x", Region: "us-east-1"}); err != nil {
-			t.Fatal(err)
-		}
+		stubDeploySeams(t, "https://unused", "undeployed", colleagues)
 		writeDeploySpinloopCwd(t)
 		err := cmdCloudDeploy([]string{"--node", "testenv"})
 		if err == nil || !strings.Contains(err.Error(), "--overwrite") {
 			t.Errorf("want an overwrite refusal, got %v", err)
 		}
+		// The plane is shared, so a name taken by someone else has to say so:
+		// "already deployed" alone leaves the operator guessing whether it is
+		// their own stale deployment or a colleague's.
+		if err != nil && !strings.Contains(err.Error(), "colleague@example") {
+			t.Errorf("refusal %v should name who deployed it", err)
+		}
 	})
 
-	t.Run("live environment needs --overwrite", func(t *testing.T) {
+	t.Run("a live instance needs --overwrite", func(t *testing.T) {
 		isolateConfig(t)
 		stubAWSEnv(t)
 		stubDeploySeams(t, "https://unused", "running")
@@ -686,7 +725,64 @@ func TestCloudDeploy_OverwriteGuard(t *testing.T) {
 		}
 	})
 
-	t.Run("--overwrite proceeds", func(t *testing.T) {
+	t.Run("--overwrite widens ingress only when told to", func(t *testing.T) {
+		// The environment already exists, so defaulting its ingress to whichever
+		// IP is deploying this minute would quietly rewrite a colleague's
+		// security group. Nothing changes without the CIDR being named.
+		isolateConfig(t)
+		stubAWSEnv(t)
+		stubDeploySeams(t, "https://unused", "undeployed", colleagues)
+		writeDeploySpinloopCwd(t)
+		err := cmdCloudDeploy([]string{"--node", "testenv", "--overwrite"})
+		if err == nil || !strings.Contains(err.Error(), "--allowed-cidr") {
+			t.Errorf("want a refusal naming --allowed-cidr, got %v", err)
+		}
+	})
+
+	t.Run("--overwrite with a CIDR proceeds", func(t *testing.T) {
+		isolateConfig(t)
+		stubAWSEnv(t)
+		var gotCidr string
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			var body struct {
+				AllowedCidr string `json:"allowedCidr"`
+			}
+			bodyBytes, _ := io.ReadAll(r.Body)
+			_ = json.Unmarshal(bodyBytes, &body)
+			gotCidr = body.AllowedCidr
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(deployBody))
+		}))
+		defer server.Close()
+		stubDeploySeams(t, server.URL, "undeployed", colleagues)
+		writeDeploySpinloopCwd(t)
+		out := captureStdout(t, func() {
+			if err := cmdCloudDeploy([]string{
+				"--node", "testenv", "--overwrite", "--allowed-cidr", "198.51.100.0/24",
+			}); err != nil {
+				t.Errorf("cmdCloudDeploy --overwrite --allowed-cidr: %v", err)
+			}
+		})
+		if !strings.Contains(out, "deployed: environment testenv") {
+			t.Errorf("expected a deploy report, got:\n%s", out)
+		}
+		if gotCidr != "198.51.100.0/24" {
+			t.Errorf("allowedCidr = %q, want the one named, not the detected address", gotCidr)
+		}
+	})
+
+	t.Run("a live environment's ingress needs naming too", func(t *testing.T) {
+		isolateConfig(t)
+		stubAWSEnv(t)
+		stubDeploySeams(t, "https://unused", "running")
+		writeDeploySpinloopCwd(t)
+		err := cmdCloudDeploy([]string{"--node", "testenv", "--overwrite"})
+		if err == nil || !strings.Contains(err.Error(), "--allowed-cidr") {
+			t.Errorf("want a refusal naming --allowed-cidr, got %v", err)
+		}
+	})
+
+	t.Run("--overwrite with a CIDR over a live instance proceeds", func(t *testing.T) {
 		isolateConfig(t)
 		stubAWSEnv(t)
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -697,7 +793,9 @@ func TestCloudDeploy_OverwriteGuard(t *testing.T) {
 		stubDeploySeams(t, server.URL, "running")
 		writeDeploySpinloopCwd(t)
 		out := captureStdout(t, func() {
-			if err := cmdCloudDeploy([]string{"--node", "testenv", "--overwrite"}); err != nil {
+			if err := cmdCloudDeploy([]string{
+				"--node", "testenv", "--overwrite", "--allowed-cidr", "203.0.113.7/32",
+			}); err != nil {
 				t.Errorf("cmdCloudDeploy --overwrite: %v", err)
 			}
 		})
@@ -720,11 +818,17 @@ func TestCloudDeploy_RejectsBadCIDR(t *testing.T) {
 func TestCloudDeploy_DryRunSendsNothing(t *testing.T) {
 	isolateConfig(t)
 	called := false
-	origDiscover := deployDiscoverFn
-	t.Cleanup(func() { deployDiscoverFn = origDiscover })
-	deployDiscoverFn = func(context.Context, aws.Config, string) (cloud.ControlPlane, error) {
+	origDiscover, origPlane := deployDiscoverFn, deployResolvePlaneFn
+	t.Cleanup(func() {
+		deployDiscoverFn, deployResolvePlaneFn = origDiscover, origPlane
+	})
+	boom := func(context.Context, cloud.PlaneRequest) (cloud.ControlPlane, error) {
 		called = true
 		return cloud.ControlPlane{}, fmt.Errorf("must not be called")
+	}
+	deployResolvePlaneFn = boom
+	deployDiscoverFn = func(context.Context, aws.Config, string) (cloud.ControlPlane, error) {
+		return boom(context.Background(), cloud.PlaneRequest{})
 	}
 	writeDeploySpinloopCwd(t)
 
@@ -734,7 +838,7 @@ func TestCloudDeploy_DryRunSendsNothing(t *testing.T) {
 		}
 	})
 	if called {
-		t.Error("--dry-run must touch nothing — not even discovery")
+		t.Error("--dry-run must touch nothing — not even the plane")
 	}
 	if !strings.Contains(out, "unsloth/Qwen3.6-27B-MTP-GGUF") || !strings.Contains(out, "environment: testenv") {
 		t.Errorf("--dry-run should print the config and environment, got:\n%s", out)

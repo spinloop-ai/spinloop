@@ -7,6 +7,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 
@@ -23,7 +24,7 @@ func runFleetDashboard(target fleetTarget) error {
 		return fmt.Errorf("the dashboard needs an interactive terminal — " +
 			"stream the metrics instead with fleet metrics --watch")
 	}
-	m, err := dashModelFor(target)
+	m, err := dashModelFor(context.Background(), target)
 	if err != nil {
 		return err
 	}
@@ -34,8 +35,8 @@ func runFleetDashboard(target fleetTarget) error {
 // and — for the entries that could not become nodes — the standing outcome
 // their tile shows. A broken fleet file is an error here, before any part of
 // the view exists.
-func dashModelFor(target fleetTarget) (dashModel, error) {
-	cfg, err := resolveFleetTarget(target)
+func dashModelFor(ctx context.Context, target fleetTarget) (dashModel, error) {
+	cfg, err := resolveFleetTarget(ctx, target)
 	if err != nil {
 		return dashModel{}, err
 	}
@@ -51,7 +52,7 @@ func dashModelFor(target fleetTarget) (dashModel, error) {
 	actions := make([]dashAction, 0, len(cfg.Nodes))
 	for _, entry := range cfg.Nodes {
 		e := dashEntry{name: entry.Name, kind: entry.Kind}
-		node, err := cfg.NewNode(entry)
+		node, err := cfg.NewNode(ctx, entry)
 		if err != nil {
 			e.standing = fleet.NodeResult{
 				Name:    entry.Name,

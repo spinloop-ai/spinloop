@@ -9,11 +9,14 @@
 package fleet
 
 import (
+	"context"
 	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"time"
 
 	"gopkg.in/yaml.v3"
 
@@ -44,7 +47,7 @@ const (
 	// control API. Addressed by its `host`.
 	KindDaemon = "daemon"
 	// KindCloud is an `spinloop cloud` environment, driven through its cloud
-	// control plane. Addressed by the registered environment it names.
+	// control plane. Addressed by the environment name it carries.
 	KindCloud = "cloud"
 )
 
@@ -229,16 +232,42 @@ type Config struct {
 	// beside it fills token references.
 	Path string `yaml:"-"`
 	Dir  string `yaml:"-"`
+
+	// plane is this fleet's cached read of the control plane's inventory — its
+	// record of which environments are deployed — with the instant it was read
+	// and any failure that read met. In memory only, and bounded by a TTL, so
+	// a fan-out over ten cloud nodes asks the plane once and a long-lived
+	// process still notices a deployment a colleague made. See plane.go.
+	//
+	// It is a pointer so that narrowing a fleet shares the read with the fleet
+	// it came from instead of paying for it again, and so a fleet assembled by
+	// hand rather than loaded from a file works too: with no cache it simply
+	// asks the plane each time.
+	plane *planeInventory
+}
+
+// planeInventory is one fleet's read of the plane's inventory, and the queue a
+// fan-out waits behind while the first reader is still asking. A fleet's nodes
+// are read from one goroutine each, all against a cold cache, and ten
+// concurrent reads of the same answer is ten calls where the fleet needs one.
+type planeInventory struct {
+	mu   sync.Mutex
+	at   time.Time
+	envs []cloud.Environment
+	err  error
 }
 
 // NodeConfig is one machine as the fleet file describes it. The live node the
 // client talks to is a Node (see node.go); this is just the entry.
 type NodeConfig struct {
 	// Name identifies the node in output and to `fleet start|stop <node>`. For
-	// a kind-cloud node it is also the key of the registered environment it
-	// drives, <config-dir>/clouds/<name>/cloud.json — the environment is
-	// already user-named at `spinloop cloud deploy`, so a cloud node has no
-	// separate address to give. The control URLs live in that env's cloud.json
+	// a kind-cloud node it is also the name of the cloud environment it drives
+	// on the control plane the operator's credentials and region resolve — the
+	// environment is named at `spinloop cloud deploy`, so a cloud node has no
+	// address to give, and no account, host or region either: the same file
+	// serves anyone with credentials for that plane, which is why it is safe to
+	// commit. Because the name is the environment's key, it is constrained to an
+	// environment shape. See plane.go.
 	// anyway, so nothing identifying a deployment is written into the fleet file.
 	Name string `yaml:"name"`
 	// Host is where the daemon answers — a LAN name, a tailscale name, or an
@@ -380,7 +409,7 @@ func Load(path string) (*Config, error) {
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, fmt.Errorf(
-				"no fleet at %s: create one listing your nodes, or name a target — --fleet <path> for a file, --node <name> for a registered environment", path)
+				"no fleet at %s: create one listing your nodes, or name a target — --fleet <path> for a file, --node <name> for an environment on the control plane", path)
 		}
 		return nil, err
 	}
@@ -393,6 +422,7 @@ func Load(path string) (*Config, error) {
 	}
 	cfg.Path = path
 	cfg.Dir = filepath.Dir(path)
+	cfg.plane = &planeInventory{}
 	if err := cfg.validate(); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
@@ -411,16 +441,19 @@ func Resolve(flagPath string) (*Config, error) {
 }
 
 // ForEnvironment builds the fleet a `--node <name>` target names: one cloud
-// node, named by the registered environment whose cloud.json holds its
-// control config. A registered environment and a one-node fleet file naming it
-// describe the same thing — `fleet deploy` registers an environment under its
-// node's name, which is why every other fleet command can find one by name —
-// so this is the same fleet, assembled from the registry rather than read from
-// a file.
+// node for the environment of that name on the plane this machine's credentials
+// and region resolve. An environment and a one-node fleet file naming it
+// describe the same thing — `fleet deploy` deploys under a node's own name,
+// which is why every other fleet command can find one by name — so this is the
+// same fleet, assembled from the plane rather than read from a file. Whoever
+// deployed it, and from which machine, changes nothing about it.
 //
-// The name is checked here rather than at the socket: a value that is not a
-// plain identifier, and a name nothing is registered under, each fail naming
-// the fix before any node is contacted.
+// The name is checked here rather than at the socket, and existence is settled
+// by the plane's inventory: a value that is not a plain identifier, and a name
+// the plane does not hold, each fail naming the fix before any environment is
+// contacted. What the plane says about a name it does not hold is reported as
+// itself — no stack, a rejected credential — rather than as a missing
+// environment.
 //
 // Path and Dir are deliberately empty. Dir feeds the adjacent-.env lookup that
 // resolves a node's token reference, and a cloud node names none — it is
@@ -430,18 +463,15 @@ func Resolve(flagPath string) (*Config, error) {
 // concurrency, a fleet-wide key), and takes each of their defaults; all of
 // them describe how several nodes are used, which a fleet of one has no
 // occasion for.
-func ForEnvironment(name string) (*Config, error) {
+func ForEnvironment(ctx context.Context, name string) (*Config, error) {
 	if !cloud.IsEnvName(name) {
 		return nil, fmt.Errorf(
 			"%q is not an environment name: an environment name is a plain identifier, with no path", name)
 	}
-	// Loading it is the check: every environment resolves the one way, by
-	// name, and a name that resolves to nothing fails here rather than at the
-	// first control call.
-	if _, err := cloud.LoadEnvironment(name, os.Getenv); err != nil {
+	cfg := &Config{Nodes: []NodeConfig{{Name: name, Kind: KindCloud}}, plane: &planeInventory{}}
+	if err := cfg.requireEnvironment(ctx, name); err != nil {
 		return nil, err
 	}
-	cfg := &Config{Nodes: []NodeConfig{{Name: name, Kind: KindCloud}}}
 	// The same validation a parsed file gets, so a fleet of one cannot reach a
 	// command in a state a fleet file could not.
 	if err := cfg.validate(); err != nil {
@@ -550,12 +580,13 @@ func (c *Config) validate() error {
 					n.Name, KindDaemon)
 			}
 		case KindCloud:
-			// The node's name *is* the registered environment's key, so it must
-			// be env-shaped; a path-like name would be read as a registry
-			// subdirectory rather than named.
+			// The node's name *is* the environment's name on the control plane,
+			// so it must be env-shaped; a path-like name could never be one,
+			// and would send the fleet hunting for an environment nobody names
+			// that way.
 			if !cloud.IsEnvName(n.Name) {
 				return fmt.Errorf(
-					"node %q is kind %q: its name must be a registered environment name (no /, no .json)",
+					"node %q is kind %q: its name must be a cloud environment name (no /, no .json)",
 					n.Name, KindCloud)
 			}
 			if n.InstanceType != "" && !cloud.IsInstanceType(n.InstanceType) {

@@ -1,12 +1,15 @@
 package main
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/spinloop-ai/spinloop/internal/catalog"
+	"github.com/spinloop-ai/spinloop/internal/cloud"
 	"github.com/spinloop-ai/spinloop/internal/opencode"
 	"github.com/spinloop-ai/spinloop/internal/spinloop"
 )
@@ -17,6 +20,18 @@ func mustWrite(t *testing.T, path, content string) {
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// planeHolding stands a plane in holding one deployed environment, served at
+// the address given — the record `apply --node <name>` reads to key the
+// provider and to know where the endpoint answers. It replaces the cloud.json
+// a deploy used to register on this machine: the plane is the record now, and
+// an apply reads it whether or not this machine did the deploying.
+func planeHolding(t *testing.T, name, baseURL string) {
+	t.Helper()
+	stubPlaneEnvs(t, nil, []cloud.Environment{{
+		Name: name, State: "running", BaseURL: baseURL, DeployedBy: "someone@example",
+	}})
 }
 
 // TestCmdApply_ContextOutputAndBaseURL checks that CONTEXT, OUTPUT, and BASEURL
@@ -462,20 +477,15 @@ func TestCmdApply_DirectoryWithoutSpinloop(t *testing.T) {
 	}
 }
 
-// TestCmdApply_BaseURLFromCloudConfig checks that a Spinloop with no BASEURL,
-// applied against a registered environment, takes the endpoint address from the
-// environment's cloud.json base_url — the deployment writes that file, so the
-// Spinloop does not have to carry it.
-func TestCmdApply_BaseURLFromCloudConfig(t *testing.T) {
+// TestCmdApply_BaseURLFromThePlanesRecord checks that a Spinloop with no
+// BASEURL, applied against a deployed environment, takes the endpoint address
+// from what the plane records for it — the plane is the record of a deployment,
+// so the Spinloop does not have to carry it.
+func TestCmdApply_BaseURLFromThePlanesRecord(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
 
-	envConfig := filepath.Join(dir, "spinloop", "clouds", "dev-1", "cloud.json")
-	if err := os.MkdirAll(filepath.Dir(envConfig), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	mustWrite(t, envConfig,
-		`{"start_url":"https://start.example/","stop_url":"https://stop.example/","region":"us-east-1","base_url":"http://198.51.100.7:8000/v1"}`)
+	planeHolding(t, "dev-1", "http://198.51.100.7:8000/v1")
 	spinloopDir := t.TempDir()
 	spinloopFile := filepath.Join(spinloopDir, "Spinloop")
 	mustWrite(t, spinloopFile, "PROVIDER llamacpp\nALIAS qwen\n")
@@ -492,22 +502,18 @@ func TestCmdApply_BaseURLFromCloudConfig(t *testing.T) {
 	m := readConfigMap(t, filepath.Join(dir, "opencode", "opencode.json"))
 	dev1 := m["provider"].(map[string]any)["dev-1"].(map[string]any)
 	if got := dev1["options"].(map[string]any)["baseURL"]; got != "http://198.51.100.7:8000/v1" {
-		t.Errorf("baseURL = %v, want the cloud config's base_url", got)
+		t.Errorf("baseURL = %v, want the plane's recorded address", got)
 	}
 }
 
-// TestCmdApply_SpinloopBaseURLBeatsCloudConfig checks the precedence: a BASEURL
-// the user wrote in the Spinloop wins over the environment's cloud.json.
-func TestCmdApply_SpinloopBaseURLBeatsCloudConfig(t *testing.T) {
+// TestCmdApply_SpinloopBaseURLBeatsThePlanesRecord checks the precedence: a
+// BASEURL the user wrote in the Spinloop wins over the address the plane
+// records for the environment.
+func TestCmdApply_SpinloopBaseURLBeatsThePlanesRecord(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
 
-	envConfig := filepath.Join(dir, "spinloop", "clouds", "dev-1", "cloud.json")
-	if err := os.MkdirAll(filepath.Dir(envConfig), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	mustWrite(t, envConfig,
-		`{"start_url":"https://start.example/","stop_url":"https://stop.example/","region":"us-east-1","base_url":"http://198.51.100.7:8000/v1"}`)
+	planeHolding(t, "dev-1", "http://198.51.100.7:8000/v1")
 	spinloopDir := t.TempDir()
 	spinloopFile := filepath.Join(spinloopDir, "Spinloop")
 	mustWrite(t, spinloopFile, "PROVIDER llamacpp\nALIAS qwen\nBASEURL http://127.0.0.1:9090/v1\n")
@@ -525,12 +531,14 @@ func TestCmdApply_SpinloopBaseURLBeatsCloudConfig(t *testing.T) {
 	}
 }
 
-// TestCmdApply_UnregisteredEnvironmentFails checks that --node naming an
-// environment that has never been deployed fails, naming the deploy command that
-// creates it.
-func TestCmdApply_UnregisteredEnvironmentFails(t *testing.T) {
+// TestCmdApply_AnEnvironmentThePlaneDoesNotHoldFails checks that --node naming
+// an environment the plane holds nothing for fails, naming the deploy command
+// that creates it — the plane is the record, so a name off it is not an
+// environment at all.
+func TestCmdApply_AnEnvironmentThePlaneDoesNotHoldFails(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
+	stubPlaneEmpty(t)
 
 	spinloopDir := t.TempDir()
 	spinloopFile := filepath.Join(spinloopDir, "Spinloop")
@@ -538,53 +546,48 @@ func TestCmdApply_UnregisteredEnvironmentFails(t *testing.T) {
 
 	err := cmdApply([]string{"--node", "dev-1", spinloopFile})
 	if err == nil {
-		t.Fatal("expected an error for an unregistered environment")
+		t.Fatal("expected an error for an environment the plane does not hold")
 	}
-	if !strings.Contains(err.Error(), "not registered") ||
-		!strings.Contains(err.Error(), "`spinloop cloud deploy --node \"dev-1\"`") {
-		t.Errorf("error = %v, want the not-registered error naming the deploy command", err)
+	if !strings.Contains(err.Error(), "holds no environment") ||
+		!strings.Contains(err.Error(), "`spinloop cloud deploy --node dev-1`") {
+		t.Errorf("error = %v, want the not-deployed error naming the deploy command", err)
 	}
 }
 
-// TestCmdApply_RemoteConfigMalformed checks that applying against a registered
-// environment whose cloud.json is malformed fails loudly, rather than silently
-// applying under the wrong base URL.
-func TestCmdApply_RemoteConfigMalformed(t *testing.T) {
+// TestCmdApply_UnreadablePlaneRecordFails checks that applying against a plane
+// whose inventory reply is unreadable fails loudly, rather than silently
+// applying under a half-read record's base URL.
+func TestCmdApply_UnreadablePlaneRecordFails(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
 
-	envConfig := filepath.Join(dir, "spinloop", "clouds", "dev-1", "cloud.json")
-	if err := os.MkdirAll(filepath.Dir(envConfig), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	mustWrite(t, envConfig, "{not valid json")
+	// A plane that answers the inventory read with something that is not JSON.
+	srv := httptest.NewServer(planeControlAnswers("{not valid json", http.StatusOK))
+	t.Cleanup(srv.Close)
+	stubPlaneEndpoints(t, srv.URL)
+
 	spinloopDir := t.TempDir()
 	spinloopFile := filepath.Join(spinloopDir, "Spinloop")
 	mustWrite(t, spinloopFile, "PROVIDER llamacpp\nALIAS qwen\n")
 
 	err := cmdApply([]string{"--node", "dev-1", spinloopFile})
 	if err == nil {
-		t.Fatal("expected an error for a malformed cloud config")
+		t.Fatal("expected an error for an unreadable plane record")
 	}
 	if !strings.Contains(err.Error(), "parsing") {
-		t.Errorf("error = %v, want it to mention parsing the cloud config", err)
+		t.Errorf("error = %v, want it to mention parsing the plane's inventory", err)
 	}
 }
 
 // TestCmdApply_RemoteNameIsProviderName checks that --node keys the harness
 // provider on the environment name — configured from the PROVIDER's catalogue
-// entry — with the default model reading as <env>/<model> and the base URL taken
-// from that environment's cloud.json.
+// entry — with the default model reading as <env>/<model> and the base URL
+// taken from what the plane records for the environment.
 func TestCmdApply_RemoteNameIsProviderName(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
 
-	envConfig := filepath.Join(dir, "spinloop", "clouds", "dev-1", "cloud.json")
-	if err := os.MkdirAll(filepath.Dir(envConfig), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	mustWrite(t, envConfig,
-		`{"start_url":"https://start.example/","stop_url":"https://stop.example/","region":"us-east-1","base_url":"http://198.51.100.7:8000/v1","environment":"dev-1"}`)
+	planeHolding(t, "dev-1", "http://198.51.100.7:8000/v1")
 
 	spinloopDir := t.TempDir()
 	spinloopFile := filepath.Join(spinloopDir, "Spinloop")
@@ -612,7 +615,7 @@ func TestCmdApply_RemoteNameIsProviderName(t *testing.T) {
 		t.Errorf("default model = %v, want dev-1/qwen", got)
 	}
 	if got := dev1["options"].(map[string]any)["baseURL"]; got != "http://198.51.100.7:8000/v1" {
-		t.Errorf("baseURL = %v, want the environment's base_url", got)
+		t.Errorf("baseURL = %v, want the plane's recorded address", got)
 	}
 }
 
@@ -623,12 +626,7 @@ func TestCmdApply_RemoteProviderLabelledPerEnvironment(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
 
-	envConfig := filepath.Join(dir, "spinloop", "clouds", "dev-2", "cloud.json")
-	if err := os.MkdirAll(filepath.Dir(envConfig), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	mustWrite(t, envConfig,
-		`{"start_url":"https://start.example/","stop_url":"https://stop.example/","region":"us-east-1","base_url":"http://198.51.100.7:8000/v1","environment":"dev-2"}`)
+	planeHolding(t, "dev-2", "http://198.51.100.7:8000/v1")
 
 	spinloopDir := t.TempDir()
 	cloudSpinloop := filepath.Join(spinloopDir, "Spinloop")
@@ -674,12 +672,7 @@ func TestCmdApply_RemoteReapplyRefreshesLabel(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
 
-	envConfig := filepath.Join(dir, "spinloop", "clouds", "dev-2", "cloud.json")
-	if err := os.MkdirAll(filepath.Dir(envConfig), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	mustWrite(t, envConfig,
-		`{"start_url":"https://start.example/","stop_url":"https://stop.example/","region":"us-east-1","base_url":"http://198.51.100.7:8000/v1","environment":"dev-2"}`)
+	planeHolding(t, "dev-2", "http://198.51.100.7:8000/v1")
 
 	// Seed a config as an earlier apply would have left it: the dev-2 provider
 	// carries the bare engine name, with no environment qualifier.
@@ -715,12 +708,7 @@ func TestCmdUnapply_RemoveEnvironmentNamedProvider(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
 
-	envConfig := filepath.Join(dir, "spinloop", "clouds", "dev-1", "cloud.json")
-	if err := os.MkdirAll(filepath.Dir(envConfig), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	mustWrite(t, envConfig,
-		`{"start_url":"https://start.example/","stop_url":"https://stop.example/","region":"us-east-1","base_url":"http://198.51.100.7:8000/v1","environment":"dev-1"}`)
+	planeHolding(t, "dev-1", "http://198.51.100.7:8000/v1")
 
 	spinloopDir := t.TempDir()
 	spinloopFile := filepath.Join(spinloopDir, "Spinloop")

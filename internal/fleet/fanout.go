@@ -131,7 +131,7 @@ func (c *Config) FanOut(ctx context.Context, call Call) []NodeResult {
 	producers := make([]func() NodeResult, len(c.Nodes))
 	for i, entry := range c.Nodes {
 		producers[i] = func() NodeResult {
-			node, err := c.NewNode(entry)
+			node, err := c.NewNode(ctx, entry)
 			if err != nil {
 				// The node could not even be built — an unresolved token
 				// reference. Say so against this node, not as an auth failure.

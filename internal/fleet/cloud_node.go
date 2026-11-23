@@ -197,15 +197,14 @@ func (n *cloudNode) StartWithProgress(ctx context.Context, report func(StartPhas
 // conflate — so dc and engineKey are ignored, and this boots the instance
 // exactly as Start does.
 //
-// An undeployed environment is not checked for here: a status read cannot
-// tell a stopped-but-deployed environment from an undeployed one — the
-// control plane only relays what an environment serves on its status reply
-// while it is running — so that check has to happen where deployment is
-// actually confirmed, by reading the environment's deploy config directly
-// (its stats reply, in the gateway's own candidate matching) before a
-// candidate ever reaches this call. A caller that skips that matching and
-// hands an undeployed environment straight to StartWith gets the boot
-// call's own answer instead, whatever that turns out to be.
+// Whether the environment exists at all is settled by the plane's inventory,
+// where a fleet's membership is built (see Config.NewNode) and where the
+// gateway chooses a candidate — not by a status read, which cannot tell a
+// stopped-but-deployed environment from an undeployed one, since the control
+// plane only relays what an environment serves while it is running. A caller
+// that skips that check and hands an environment the plane does not hold
+// straight to StartWith gets the boot call's own answer instead, whatever that
+// turns out to be.
 func (n *cloudNode) StartWith(ctx context.Context, dc *inference.DeployConfig, engineKey string) (daemon.StatusResponse, error) {
 	_ = dc
 	_ = engineKey

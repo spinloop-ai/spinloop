@@ -1,5 +1,5 @@
 // `spinloop logs`: what every engine in the target has said. The target is
-// whatever names one — a registered environment, a fleet file, or the fleet
+// whatever names one — an environment on the control plane, a fleet file, or
 // file in the working directory. Reading and following live in fleet_logs.go;
 // this is the command.
 
@@ -34,7 +34,8 @@ func logsCmd() *cobra.Command {
 answers with — a daemon's log file, or a cloud environment's log store.
 Naming a node reads only that one. Nodes are read concurrently.
 
-The target is a registered environment (--node), a fleet file (--fleet), or
+The target is an environment on the control plane (--node), a fleet file
+(--fleet), or
 the fleet.yaml in the working directory. --fleet has no -f here: that is
 --follow's short form, and a flag cannot carry two meanings on one command
 line.

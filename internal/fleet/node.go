@@ -3,8 +3,8 @@ package fleet
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/spinloop-ai/spinloop/internal/cloud"
@@ -207,14 +207,29 @@ func (n *daemonNode) Logs(ctx context.Context, offset int64, limit int) (daemon.
 // NewNode builds the live Node for one fleet-file entry. A daemon node resolves
 // its bearer token here — a reference that resolves to nothing fails before any
 // call is attempted, naming the variable rather than surfacing later as a 401.
-// A cloud node loads its registered environment's control config; a missing
-// environment fails the same way, as a per-node error the fan-out renders as a
-// row rather than a blanked view.
-func (c *Config) NewNode(entry NodeConfig) (Node, error) {
+// A cloud node resolves the control plane the caller's credentials and region
+// point at, and the plane's inventory says whether its environment is deployed
+// there: an environment the plane does not hold fails as a per-node
+// configuration error naming the plane it was looked for on, which the fan-out
+// renders as one row rather than blanking the view.
+func (c *Config) NewNode(ctx context.Context, entry NodeConfig) (Node, error) {
 	if entry.Kind == KindCloud {
-		// The node's name is the registered environment's key, and every
-		// environment resolves the one way: by name, from the registry.
-		cfg, err := cloud.LoadEnvironment(entry.Name, os.Getenv)
+		// The node's name is the environment's key, and every environment
+		// resolves the one way: by name, on the plane this machine's
+		// credentials reach — whoever deployed it, from whatever machine. A
+		// name that could never be one fails for that reason rather than as a
+		// name the plane happens not to hold.
+		if !cloud.IsEnvName(entry.Name) {
+			return nil, fmt.Errorf(
+				"%q is not an environment name: an environment name is a plain identifier, with no path",
+				entry.Name)
+		}
+		if _, found, err := c.environment(ctx, entry.Name); err != nil {
+			return nil, err
+		} else if !found {
+			return nil, c.notDeployedError(entry.Name, c.planeRegion(ctx))
+		}
+		cfg, err := c.planeConfig(ctx, entry.Name)
 		if err != nil {
 			return nil, err
 		}

@@ -29,7 +29,7 @@ type routeOptions struct {
 	// node is the one name the launch gives for the node its agent talks to,
 	// from --node/-n. With a fleet in force it pins the selection to that
 	// fleet's node of the name; with no fleet in force the same name is a
-	// registered environment — a fleet of one — to apply against.
+	// environment on the control plane — a fleet of one — to apply against.
 	node string
 	// prefer overrides the fleet file's activity preference.
 	prefer string

@@ -557,7 +557,7 @@ func TestWakeStartsADeployedCloudNode(t *testing.T) {
 			engine.Close()
 		}
 	})
-	registerCloudEnv(t, "cloud", srv.URL, srv.URL)
+	stubPlaneAt(t, srv.URL, "cloud")
 
 	path := writeFleet(t, "nodes:\n  - name: cloud\n    kind: cloud\n", "")
 	cfg, err := Load(path)
@@ -638,7 +638,7 @@ func TestWakeWaitsForARemoteEngineToBecomeHealthy(t *testing.T) {
 			engine.Close()
 		}
 	})
-	registerCloudEnv(t, "cloud", srv.URL, srv.URL)
+	stubPlaneAt(t, srv.URL, "cloud")
 
 	path := writeFleet(t, "nodes:\n  - name: cloud\n    kind: cloud\n", "")
 	cfg, err := Load(path)

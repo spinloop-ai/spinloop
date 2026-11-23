@@ -1,5 +1,5 @@
 // `spinloop metrics`: what every engine in the target is doing with its
-// hardware. The target is whatever names one — a registered environment, a
+// hardware. The target is whatever names one — an environment on the plane, a
 // fleet file, or the fleet file in the working directory — so an environment
 // and a fleet holding it are read by the one command. The formats live beside
 // the fleet's other views in fleet.go and metrics_render.go; this is the
@@ -31,7 +31,8 @@ func metricsCmd() *cobra.Command {
 resource use, its token and request counters, and the release the node is
 running. One block per node, queried concurrently.
 
-The target is a registered environment (--node), a fleet file (--fleet), or
+The target is an environment on the control plane (--node), a fleet file
+(--fleet), or
 the fleet.yaml in the working directory. A node that cannot be reached is
 reported rather than omitted, and never fails the command.
 
@@ -51,7 +52,7 @@ cost at all.`,
 			if err := validateMetricsFormat(format); err != nil {
 				return err
 			}
-			cfg, err := resolveFleetTarget(fleetTarget{nodeName: nodeName, fleetPath: path})
+			cfg, err := resolveFleetTarget(c.Context(), fleetTarget{nodeName: nodeName, fleetPath: path})
 			if err != nil {
 				return err
 			}

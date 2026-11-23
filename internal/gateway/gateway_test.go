@@ -10,7 +10,6 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -19,38 +18,41 @@ import (
 	"testing"
 	"time"
 
+	"github.com/spinloop-ai/spinloop/internal/cloud"
 	"github.com/spinloop-ai/spinloop/internal/daemon"
 	"github.com/spinloop-ai/spinloop/internal/fleet"
 	"github.com/spinloop-ai/spinloop/internal/inference"
 )
 
-// registerCloudEnv points the environment registry (SPINLOOP_CONFIG_DIR) at
-// a temp config directory and writes one environment's cloud.json, whose
-// control plane — start, stop and stats alike — is the server url given, and
-// stubs the AWS credential chain so a signed control call reaches it.
-// Reproduced from internal/fleet's own helper of the same name because it
-// lives in a different package.
-func registerCloudEnv(t *testing.T, name, url string) {
+// registerCloudEnv states the control plane the gateway resolves: the
+// lifecycle endpoints on the control server given, its stats endpoint beside
+// them, and a region — the complete statement resolves without AWS, and the
+// server's env-less stats read is what says which environments it holds. The
+// registry file this used to write no longer exists: the plane is the record.
+// It stubs the AWS credential chain so a signed control call still reaches
+// the server. Reproduced from internal/fleet's own helper of the same name
+// because it lives in a different package.
+func registerCloudEnv(t *testing.T, url string) {
 	t.Helper()
 	t.Setenv("AWS_ACCESS_KEY_ID", "AKIATESTTESTTESTTEST")
 	t.Setenv("AWS_SECRET_ACCESS_KEY", "test-secret")
 	t.Setenv("AWS_SESSION_TOKEN", "")
 	t.Setenv("AWS_PROFILE", "")
+	t.Setenv("AWS_REGION", "")
+	t.Setenv("AWS_DEFAULT_REGION", "")
 	t.Setenv("AWS_CONFIG_FILE", filepath.Join(t.TempDir(), "no-such-file"))
 	t.Setenv("AWS_SHARED_CREDENTIALS_FILE", filepath.Join(t.TempDir(), "no-such-file"))
 	t.Setenv("AWS_EC2_METADATA_DISABLED", "true")
 
-	home := t.TempDir()
-	t.Setenv("SPINLOOP_CONFIG_DIR", home)
-	envDir := filepath.Join(home, "clouds", name)
-	if err := os.MkdirAll(envDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	body := fmt.Sprintf(`{"start_url":%q,"stop_url":%q,"stats_url":%q,"region":"us-east-1","environment":%q}`,
-		url, url, url+"/stats", name)
-	if err := os.WriteFile(filepath.Join(envDir, "cloud.json"), []byte(body), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	t.Setenv("SPINLOOP_CLOUD_START_URL", url)
+	t.Setenv("SPINLOOP_CLOUD_STOP_URL", url)
+	t.Setenv("SPINLOOP_CLOUD_ENV_URL", url)
+	t.Setenv("SPINLOOP_CLOUD_STATS_URL", url+"/stats")
+	t.Setenv("SPINLOOP_CLOUD_REGION", "us-east-1")
+	// The resolution is remembered per process, and each test's plane is a
+	// different server: every test must resolve its own.
+	cloud.ForgetPlanes()
+	t.Cleanup(cloud.ForgetPlanes)
 }
 
 // fakeNode is one machine: its daemon's control API and, once running, its
@@ -481,8 +483,8 @@ func TestModelsListsOnlyWhatRunsWhenWakeIsOff(t *testing.T) {
 // the model id, so a stopped environment lists the same name it would report
 // while running rather than the bare model id.
 func TestModelsListsADeployedCloudEnvironment(t *testing.T) {
-	url, _ := cloudControlServer(t)
-	registerCloudEnv(t, "env", url)
+	url, _ := cloudControlServer(t, "env")
+	registerCloudEnv(t, url)
 	cfg := &fleet.Config{Path: "fleet.yaml", Dir: t.TempDir(), Nodes: []fleet.NodeConfig{
 		{Name: "env", Kind: fleet.KindCloud},
 	}}
@@ -493,9 +495,9 @@ func TestModelsListsADeployedCloudEnvironment(t *testing.T) {
 	}
 }
 
-// An undeployed cloud environment's stats read fails outright — the stats
-// Lambda has no deploy config to read — so it has nothing to be woken with
-// and is not listed.
+// A cloud environment the plane does not hold is not an environment at all:
+// the inventory settles that before any stats read, so it has nothing to be
+// woken with and is not listed.
 func TestModelsLeavesOutAnUndeployedCloudEnvironment(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
@@ -503,12 +505,17 @@ func TestModelsLeavesOutAnUndeployedCloudEnvironment(t *testing.T) {
 		w.Write([]byte(`{"state":"undeployed"}`))
 	})
 	mux.HandleFunc("GET /stats", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("env") == "" {
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"environments":[]}`) // the plane holds nothing
+			return
+		}
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte(`{"error":"cannot read deploy config: run spinloop cloud deploy first"}`))
 	})
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
-	registerCloudEnv(t, "env", srv.URL)
+	registerCloudEnv(t, srv.URL)
 
 	cfg := &fleet.Config{Path: "fleet.yaml", Dir: t.TempDir(), Nodes: []fleet.NodeConfig{
 		{Name: "env", Kind: fleet.KindCloud},
@@ -522,8 +529,8 @@ func TestModelsLeavesOutAnUndeployedCloudEnvironment(t *testing.T) {
 // A cloud node with its own wake disabled is not listed, even though it is
 // deployed, and even under a fleet that wakes.
 func TestModelsLeavesOutARemoteEnvironmentWithWakeDisabled(t *testing.T) {
-	url, _ := cloudControlServer(t)
-	registerCloudEnv(t, "env", url)
+	url, _ := cloudControlServer(t, "env")
+	registerCloudEnv(t, url)
 	cfg := &fleet.Config{Path: "fleet.yaml", Dir: t.TempDir(), Nodes: []fleet.NodeConfig{
 		{Name: "env", Kind: fleet.KindCloud, WakePolicy: fleet.WakeOff},
 	}}
@@ -533,19 +540,20 @@ func TestModelsLeavesOutARemoteEnvironmentWithWakeDisabled(t *testing.T) {
 	}
 }
 
-// A cloud node whose environment is not registered fails before any network
-// call, naming the node the way a daemon node with no resolvable Spinloop
-// source would.
-func TestCloudConfigForUnregisteredEnvironment(t *testing.T) {
-	t.Setenv("SPINLOOP_CONFIG_DIR", t.TempDir())
+// A cloud node whose environment the plane does not hold fails before any
+// control call, naming the node the way a daemon node with no resolvable
+// Spinloop source would.
+func TestCloudConfigForAnEnvironmentThePlaneDoesNotHold(t *testing.T) {
+	url, _ := cloudControlServer(t, "env")
+	registerCloudEnv(t, url)
 	cfg := &fleet.Config{Path: "fleet.yaml", Dir: t.TempDir(), Nodes: []fleet.NodeConfig{
-		{Name: "env", Kind: fleet.KindCloud},
+		{Name: "elsewhere", Kind: fleet.KindCloud},
 	}}
 	h := New(cfg, "", Options{})
 	cfgFor := h.cloudConfigFor(context.Background())
-	if _, err := cfgFor(fleet.NodeConfig{Name: "env", Kind: fleet.KindCloud}); err == nil ||
-		!strings.Contains(err.Error(), "env") {
-		t.Errorf("an unregistered environment should fail naming it, got %v", err)
+	if _, err := cfgFor(fleet.NodeConfig{Name: "elsewhere", Kind: fleet.KindCloud}); err == nil ||
+		!strings.Contains(err.Error(), "elsewhere") {
+		t.Errorf("a name the plane does not hold should fail naming it, got %v", err)
 	}
 }
 
@@ -1179,8 +1187,10 @@ func TestNothingCanServeNamesEveryRefusal(t *testing.T) {
 // modelId (never servedName — the stats reply has none), since the stats
 // Lambda reads the deploy config directly rather than relaying it alongside
 // instance state; that is what the gateway now resolves a stopped remote
-// node's wakeable model from.
-func cloudControlServer(t *testing.T) (url string, started func() bool) {
+// node's wakeable model from. It holds the named environments in its
+// inventory — the env-less stats read — which is what settles whether a
+// cloud node's name exists at all.
+func cloudControlServer(t *testing.T, holds ...string) (url string, started func() bool) {
 	t.Helper()
 	var (
 		mu      sync.Mutex
@@ -1208,6 +1218,21 @@ func cloudControlServer(t *testing.T) (url string, started func() bool) {
 	})
 	mux.HandleFunc("GET /stats", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Query().Get("env") == "" {
+			// The env-less read is the inventory — the plane's own record of
+			// what is deployed, which settles whether a node's name exists.
+			var b strings.Builder
+			b.WriteString(`{"environments":[`)
+			for i, n := range holds {
+				if i > 0 {
+					b.WriteString(",")
+				}
+				fmt.Fprintf(&b, `{"environment":%q,"state":"stopped","runner":"llamacpp","modelId":"org/deployed","servedName":"deployed"}`, n)
+			}
+			b.WriteString("]}")
+			fmt.Fprint(w, b.String())
+			return
+		}
 		fmt.Fprint(w, `{"state":"stopped","runner":"llamacpp","modelId":"org/deployed","servedName":"deployed"}`)
 	})
 	mux.HandleFunc("POST /", func(w http.ResponseWriter, r *http.Request) {
@@ -1247,8 +1272,8 @@ func TestColdRequestWakesADeployedCloudNode(t *testing.T) {
 		t.Cleanup(func() { fleet.WakeTimeout = old })
 	}
 	shortWake(t)
-	url, started := cloudControlServer(t)
-	registerCloudEnv(t, "cloud", url)
+	url, started := cloudControlServer(t, "cloud")
+	registerCloudEnv(t, url)
 
 	cfg := &fleet.Config{Path: "fleet.yaml", Dir: t.TempDir(), Nodes: []fleet.NodeConfig{
 		{Name: "cloud", Kind: fleet.KindCloud},
@@ -1276,8 +1301,8 @@ func TestColdRequestWakesADeployedCloudNodeByItsServedName(t *testing.T) {
 		t.Cleanup(func() { fleet.WakeTimeout = old })
 	}
 	shortWake(t)
-	url, started := cloudControlServer(t)
-	registerCloudEnv(t, "cloud", url)
+	url, started := cloudControlServer(t, "cloud")
+	registerCloudEnv(t, url)
 
 	cfg := &fleet.Config{Path: "fleet.yaml", Dir: t.TempDir(), Nodes: []fleet.NodeConfig{
 		{Name: "cloud", Kind: fleet.KindCloud},
@@ -1293,9 +1318,10 @@ func TestColdRequestWakesADeployedCloudNodeByItsServedName(t *testing.T) {
 	}
 }
 
-// An undeployed cloud node's stats read fails outright — nothing deployed
-// to read — so it does not match any request and the failure says so,
-// naming the deploy path, without holding the request for the wake timeout.
+// A cloud node the plane holds nothing for is refused from the inventory
+// before its instance is ever read: it does not match any request and the
+// failure says so, naming the deploy path, without holding the request for
+// the wake timeout.
 func TestWakeRefusesAnUndeployedCloudNode(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
@@ -1303,12 +1329,17 @@ func TestWakeRefusesAnUndeployedCloudNode(t *testing.T) {
 		w.Write([]byte(`{"state":"undeployed"}`))
 	})
 	mux.HandleFunc("GET /stats", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("env") == "" {
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"environments":[]}`) // the plane holds nothing
+			return
+		}
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte(`{"error":"cannot read deploy config: run spinloop cloud deploy first"}`))
 	})
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
-	registerCloudEnv(t, "cloud", srv.URL)
+	registerCloudEnv(t, srv.URL)
 
 	cfg := &fleet.Config{Path: "fleet.yaml", Dir: t.TempDir(), Nodes: []fleet.NodeConfig{
 		{Name: "cloud", Kind: fleet.KindCloud},
@@ -1328,8 +1359,8 @@ func TestWakeRefusesAnUndeployedCloudNode(t *testing.T) {
 // last status matches the request, and the failure says waking is off for
 // it rather than that nothing can serve the model at all.
 func TestWakeDisabledForAMatchingCloudNodeNamesIt(t *testing.T) {
-	url, started := cloudControlServer(t)
-	registerCloudEnv(t, "cloud", url)
+	url, started := cloudControlServer(t, "cloud")
+	registerCloudEnv(t, url)
 
 	cfg := &fleet.Config{Path: "fleet.yaml", Dir: t.TempDir(), Nodes: []fleet.NodeConfig{
 		{Name: "cloud", Kind: fleet.KindCloud, WakePolicy: fleet.WakeOff},

@@ -28,7 +28,7 @@ func statsServer(t *testing.T, body string) {
 	}))
 	t.Cleanup(server.Close)
 	writeCloudConfig(t, server.URL)
-	t.Setenv("SPINLOOP_CLOUD_STATS_URL", server.URL)
+	planeStatsAt(t, server.URL)
 }
 
 const runningWithActivity = `{

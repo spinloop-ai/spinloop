@@ -2,21 +2,22 @@ package fleet
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/spinloop-ai/spinloop/internal/cloud"
 )
 
-// A registered environment becomes a fleet of one, whose single node is the
-// cloud node the same name in a fleet file would build.
+// An environment the plane holds becomes a fleet of one, whose single node is
+// the cloud node the same name in a fleet file would build.
 func TestForEnvironmentBuildsAFleetOfOne(t *testing.T) {
-	stubAWSCreds(t)
-	up := cloudControlServer(t, `{"state":"running","healthy":true}`, http.StatusOK)
-	registerCloudEnv(t, "prod", up.URL, up.URL)
+	stubPlane(t, controlAnswers(`{"state":"running","healthy":true}`, http.StatusOK), "prod")
 
-	cfg, err := ForEnvironment("prod")
+	cfg, err := ForEnvironment(context.Background(), "prod")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -31,7 +32,7 @@ func TestForEnvironmentBuildsAFleetOfOne(t *testing.T) {
 	}
 	// The node builds and answers, which is the whole claim: the fan-out and
 	// the renderers need nothing special for a fleet assembled this way.
-	node, err := cfg.NewNode(cfg.Nodes[0])
+	node, err := cfg.NewNode(context.Background(), cfg.Nodes[0])
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -44,16 +45,14 @@ func TestForEnvironmentBuildsAFleetOfOne(t *testing.T) {
 // same reading, so what a command prints does not depend on how the
 // environment was named.
 func TestForEnvironmentMatchesTheSameNodeInAFile(t *testing.T) {
-	stubAWSCreds(t)
-	up := cloudControlServer(t, `{"state":"running","healthy":true}`, http.StatusOK)
-	registerCloudEnv(t, "prod", up.URL, up.URL)
+	stubPlane(t, controlAnswers(`{"state":"running","healthy":true}`, http.StatusOK), "prod")
 
 	path := writeFleet(t, "nodes:\n  - name: prod\n    kind: cloud\n", "")
 	fromFile, err := Load(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	fromEnv, err := ForEnvironment("prod")
+	fromEnv, err := ForEnvironment(context.Background(), "prod")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,10 +69,10 @@ func TestForEnvironmentMatchesTheSameNodeInAFile(t *testing.T) {
 	}
 }
 
-// A name that is not a plain identifier, and a name nothing is registered
-// under, each fail naming the fix — before anything is contacted.
+// A name that is not a plain identifier fails before the plane is asked
+// anything at all, and a name the plane does not hold fails naming the plane it
+// was looked for on and the command that would create it.
 func TestForEnvironmentRejects(t *testing.T) {
-	t.Setenv("SPINLOOP_CONFIG_DIR", t.TempDir())
 	tests := []struct {
 		name string
 		env  string
@@ -83,11 +82,12 @@ func TestForEnvironmentRejects(t *testing.T) {
 		{"a nested path", "envs/prod", "plain identifier"},
 		{"a json file", "prod.json", "plain identifier"},
 		{"empty", "", "plain identifier"},
-		{"unregistered", "nope", "clouds/nope/cloud.json"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := ForEnvironment(tt.env)
+			// No plane is stubbed: a name that is not an identifier must not
+			// cost a call to find out it is not one.
+			_, err := ForEnvironment(context.Background(), tt.env)
 			if err == nil {
 				t.Fatalf("ForEnvironment(%q) succeeded, want an error", tt.env)
 			}
@@ -98,16 +98,76 @@ func TestForEnvironmentRejects(t *testing.T) {
 	}
 }
 
-// An environment that resolves to nothing fails naming the file to create, so
-// the message is a repair rather than a report.
-func TestForEnvironmentUnregisteredNamesTheFix(t *testing.T) {
-	t.Setenv("SPINLOOP_CONFIG_DIR", t.TempDir())
-	_, err := ForEnvironment("nope")
+// A name the plane does not hold is not an environment, and the failure says
+// where it looked and what to type — whoever holds the credentials, since the
+// plane is shared and nothing local can settle existence.
+func TestForEnvironmentNamesThePlaneItLookedOn(t *testing.T) {
+	stubPlaneEmpty(t)
+	_, err := ForEnvironment(context.Background(), "nope")
 	if err == nil {
 		t.Fatal("want an error")
 	}
-	if !strings.Contains(err.Error(), "clouds/nope/cloud.json") {
-		t.Errorf("error %q does not name the environment's registry path", err)
+	var missing *cloud.NotDeployed
+	if !errors.As(err, &missing) {
+		t.Fatalf("error is %T, want *cloud.NotDeployed: %v", err, err)
+	}
+	if missing.Region != "us-east-1" {
+		t.Errorf("region = %q, want the plane it was looked for on", missing.Region)
+	}
+	for _, want := range []string{"nope", "us-east-1", "spinloop cloud deploy --node nope"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not mention %q", err, want)
+		}
+	}
+}
+
+// A plane that cannot be read is never reported as an empty one: an unusable
+// credential or a region with no stack is not "your environment is gone".
+func TestForEnvironmentReportsAnUnreadablePlane(t *testing.T) {
+	t.Run("nothing resolves", func(t *testing.T) {
+		stubPlaneUnresolvable(t)
+		_, err := ForEnvironment(context.Background(), "prod")
+		if err == nil {
+			t.Fatal("want an error")
+		}
+		if !strings.Contains(err.Error(), "region") {
+			t.Errorf("error %q should say no plane resolved and why", err)
+		}
+		if strings.Contains(err.Error(), "no environment") {
+			t.Errorf("error %q reports an empty plane rather than an unreadable one", err)
+		}
+	})
+
+	t.Run("the plane refuses the inventory", func(t *testing.T) {
+		stubPlaneRefused(t, `{"error":"env is required"}`)
+		_, err := ForEnvironment(context.Background(), "prod")
+		if err == nil {
+			t.Fatal("want an error")
+		}
+		if strings.Contains(err.Error(), "no environment") {
+			t.Errorf("error %q reports an empty plane rather than a refused read", err)
+		}
+		if !strings.Contains(err.Error(), "bootstrap") {
+			t.Errorf("error %q should name the fix", err)
+		}
+	})
+}
+
+// A colleague's deployment is driven exactly as one's own: the plane's record
+// carries who deployed it, and nothing about that changes what the fleet of one
+// looks like here.
+func TestForEnvironmentHoldsAnotherDeployersEnvironment(t *testing.T) {
+	stubPlaneEnvs(t, nil, []cloud.Environment{{
+		Name: "prod", DeployedBy: "colleague", State: "stopped",
+		BaseURL: "http://203.0.113.9:8000/v1",
+	}})
+
+	cfg, err := ForEnvironment(context.Background(), "prod")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Nodes) != 1 || cfg.Nodes[0].Name != "prod" {
+		t.Fatalf("nodes = %+v, want just prod", cfg.Nodes)
 	}
 }
 
@@ -115,11 +175,9 @@ func TestForEnvironmentUnregisteredNamesTheFix(t *testing.T) {
 // off it — and the fleet-wide settings a file would supply are absent rather
 // than inherited from anywhere.
 func TestForEnvironmentCarriesNoFileOrFleetWideSettings(t *testing.T) {
-	stubAWSCreds(t)
-	up := cloudControlServer(t, `{"state":"running"}`, http.StatusOK)
-	registerCloudEnv(t, "prod", up.URL, up.URL)
+	stubPlane(t, controlAnswers(`{"state":"running"}`, http.StatusOK), "prod")
 
-	cfg, err := ForEnvironment("prod")
+	cfg, err := ForEnvironment(context.Background(), "prod")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,9 +213,7 @@ func TestForEnvironmentCarriesNoFileOrFleetWideSettings(t *testing.T) {
 // A fleet.yaml in the working directory supplies a fleet of one with nothing:
 // the target is the environment, and the file is not consulted.
 func TestForEnvironmentIgnoresADirectoryFleetFile(t *testing.T) {
-	stubAWSCreds(t)
-	up := cloudControlServer(t, `{"state":"running"}`, http.StatusOK)
-	registerCloudEnv(t, "prod", up.URL, up.URL)
+	stubPlane(t, controlAnswers(`{"state":"running"}`, http.StatusOK), "prod")
 
 	dir := t.TempDir()
 	body := "prefer: active\nnodes:\n  - name: other\n    host: elsewhere\n"
@@ -166,7 +222,7 @@ func TestForEnvironmentIgnoresADirectoryFleetFile(t *testing.T) {
 	}
 	t.Chdir(dir)
 
-	cfg, err := ForEnvironment("prod")
+	cfg, err := ForEnvironment(context.Background(), "prod")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -181,9 +237,7 @@ func TestForEnvironmentIgnoresADirectoryFleetFile(t *testing.T) {
 // A cloud node names no token variable, so a fleet of one resolves none and
 // never looks for a .env — which is what lets it carry no directory at all.
 func TestForEnvironmentReadsNoAdjacentEnvFile(t *testing.T) {
-	stubAWSCreds(t)
-	up := cloudControlServer(t, `{"state":"running"}`, http.StatusOK)
-	registerCloudEnv(t, "prod", up.URL, up.URL)
+	stubPlane(t, controlAnswers(`{"state":"running"}`, http.StatusOK), "prod")
 
 	dir := t.TempDir()
 	// A .env that would be read if the lookup ever ran, holding a value no
@@ -193,7 +247,7 @@ func TestForEnvironmentReadsNoAdjacentEnvFile(t *testing.T) {
 	}
 	t.Chdir(dir)
 
-	cfg, err := ForEnvironment("prod")
+	cfg, err := ForEnvironment(context.Background(), "prod")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -203,5 +257,34 @@ func TestForEnvironmentReadsNoAdjacentEnvFile(t *testing.T) {
 	}
 	if token != "" {
 		t.Errorf("token = %q, want empty: a cloud node names none", token)
+	}
+}
+
+// The plane is asked for its inventory once per fleet rather than once per
+// node: a fan-out over ten cloud nodes reads it once, so a board refresh does
+// not multiply a read that always gives the same answer.
+func TestEnvironmentsReadsThePlaneOncePerFleet(t *testing.T) {
+	reads := 0
+	stubPlaneCounting(t, []cloud.Environment{{Name: "a"}, {Name: "b"}, {Name: "c"}}, &reads)
+
+	path := writeFleet(t, "nodes:\n"+
+		"  - name: a\n    kind: cloud\n"+
+		"  - name: b\n    kind: cloud\n"+
+		"  - name: c\n    kind: cloud\n", "")
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	results := cfg.FanOut(context.Background(), StatusCall)
+	if len(results) != 3 {
+		t.Fatalf("results = %d, want 3", len(results))
+	}
+	for _, r := range results {
+		if !r.OK() {
+			t.Errorf("node %s = %+v, want observed", r.Name, r)
+		}
+	}
+	if reads != 1 {
+		t.Errorf("inventory reads = %d, want the one read the fleet shares", reads)
 	}
 }

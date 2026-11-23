@@ -115,7 +115,7 @@ func (c *Config) Wake(ctx context.Context, w Want, cfgFor ConfigFor, results []N
 			refused = append(refused, fmt.Sprintf("%s: %v", cand.entry.Name, err))
 			continue
 		}
-		node, err := c.NewNode(cand.entry)
+		node, err := c.NewNode(ctx, cand.entry)
 		if err != nil {
 			refused = append(refused, fmt.Sprintf("%s: %v", cand.entry.Name, err))
 			continue
@@ -247,7 +247,7 @@ func (c *Config) WaitLoading(ctx context.Context, w Want, results []NodeResult, 
 		return nil, &ErrNoneServing{Results: results, Want: w, Path: c.Path}
 	}
 	cand := cands[0]
-	node, err := c.NewNode(cand.entry)
+	node, err := c.NewNode(ctx, cand.entry)
 	if err != nil {
 		return nil, err
 	}

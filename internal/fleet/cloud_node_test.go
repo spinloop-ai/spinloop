@@ -578,7 +578,7 @@ func TestFanOutNodesOverAMixedSet(t *testing.T) {
 	up := stubDaemon(t, "", "running")
 	cfg := fleetFor(t, up, "")
 	entry, _ := cfg.Node("box")
-	dnode, err := cfg.NewNode(entry)
+	dnode, err := cfg.NewNode(context.Background(), entry)
 	if err != nil {
 		t.Fatal(err)
 	}

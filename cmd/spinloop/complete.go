@@ -11,9 +11,12 @@ package main
 // tree to enforce that.
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -201,30 +204,58 @@ func compNoValues(_ *cobra.Command, _ []string, _ string) ([]string, cobra.Shell
 	return nil, cobra.ShellCompDirectiveNoFileComp
 }
 
-// compEnvs offers the registered environment names. An unreadable registry
-// yields no candidates rather than an error, as completion must never fail.
+// completionPlaneTimeout bounds what completion will wait for the control
+// plane. A shell should not hang on a network read: past this the candidates
+// simply do not appear, which is the same outcome as a plane that cannot be
+// reached, and completion still exits clean.
+const completionPlaneTimeout = 2 * time.Second
+
+// compEnvs offers the environments deployed on the control plane the caller's
+// credentials and region resolve. A plane that cannot be resolved or reached
+// yields no candidates rather than an error: completion must never fail, and
+// being offline is not the operator's mistake.
 func compEnvs(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
-	envs, err := cloud.ListEnvironments()
-	if err != nil {
-		return nil, cobra.ShellCompDirectiveNoFileComp
-	}
-	names := make([]string, len(envs))
-	for i, e := range envs {
-		names[i] = e.Name
-	}
-	return names, cobra.ShellCompDirectiveNoFileComp
+	return planeEnvironmentNames(), cobra.ShellCompDirectiveNoFileComp
 }
 
-// compNodeNames completes a --node value: the registered environment names,
-// plus the node names of the fleet in force on the command line — the --fleet
-// value where given, else ./fleet.yaml when one sits in the working directory.
-// An unreadable fleet yields just the environments rather than an error:
-// completion must never fail, and the fleet may simply not exist yet.
+// planeEnvironmentNames reads the plane's inventory for completion, offering
+// nothing when it cannot.
+func planeEnvironmentNames() []string {
+	ctx, cancel := context.WithTimeout(context.Background(), completionPlaneTimeout)
+	defer cancel()
+	plane, err := cloud.ResolvePlane(ctx, cloud.PlaneRequest{GetName: viperGetenv()})
+	if err != nil {
+		return nil
+	}
+	envs, err := cloud.Inventory(ctx, plane.Config)
+	if err != nil {
+		return nil
+	}
+	names := make([]string, 0, len(envs))
+	for _, e := range envs {
+		names = append(names, e.Name)
+	}
+	slices.Sort(names)
+	return names
+}
+
+// compNodeNames completes a --node value: the node names of the fleet in force
+// on the command line — the --fleet value where given, else ./fleet.yaml when one
+// sits in the working directory — followed by the environments the resolved plane
+// holds. The fleet leads because a command acting on a fleet acts on its nodes.
+// An unreadable fleet yields just the plane's environments, and an unreachable
+// plane just the fleet's: completion must never fail, and either source may
+// simply be absent.
 func compNodeNames(args []string) ([]string, cobra.ShellCompDirective) {
-	names, _ := compEnvs(nil, nil, "")
-	seen := make(map[string]bool, len(names))
-	for _, n := range names {
-		seen[n] = true
+	var names []string
+	seen := map[string]bool{}
+	add := func(more ...string) {
+		for _, n := range more {
+			if !seen[n] {
+				seen[n] = true
+				names = append(names, n)
+			}
+		}
 	}
 	target := ""
 	for i, w := range args {
@@ -238,21 +269,16 @@ func compNodeNames(args []string) ([]string, cobra.ShellCompDirective) {
 		}
 	}
 	if target == "" {
-		if _, err := os.Stat(fleet.DefaultFile); err != nil {
-			return names, cobra.ShellCompDirectiveNoFileComp
-		}
-		target = fleet.DefaultFile
-	}
-	cfg, err := fleet.Load(target)
-	if err != nil {
-		return names, cobra.ShellCompDirectiveNoFileComp
-	}
-	for _, n := range cfg.Nodes {
-		if !seen[n.Name] {
-			seen[n.Name] = true
-			names = append(names, n.Name)
+		if _, err := os.Stat(fleet.DefaultFile); err == nil {
+			target = fleet.DefaultFile
 		}
 	}
+	if target != "" {
+		if cfg, err := fleet.Load(target); err == nil {
+			add(cfg.Names()...)
+		}
+	}
+	add(planeEnvironmentNames()...)
 	return names, cobra.ShellCompDirectiveNoFileComp
 }
 

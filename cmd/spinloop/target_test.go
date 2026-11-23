@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,9 +11,8 @@ import (
 	"github.com/spinloop-ai/spinloop/internal/fleet"
 )
 
-// registerTargetEnv points the registry at a temp config directory and
-// registers one environment there, so a --node target has something to
-// resolve.
+// registerTargetEnv stands a plane in holding one environment, so a --node
+// target has something to resolve.
 func registerTargetEnv(t *testing.T, name string) {
 	t.Helper()
 	t.Setenv("SPINLOOP_CONFIG_DIR", t.TempDir())
@@ -32,7 +32,7 @@ func TestResolveFleetTarget(t *testing.T) {
 	t.Run("a named environment", func(t *testing.T) {
 		registerTargetEnv(t, "prod")
 		t.Chdir(t.TempDir())
-		cfg, err := resolveFleetTarget(fleetTarget{nodeName: "prod"})
+		cfg, err := resolveFleetTarget(context.Background(), fleetTarget{nodeName: "prod"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -50,7 +50,7 @@ func TestResolveFleetTarget(t *testing.T) {
 		if err := os.WriteFile(path, []byte(oneNodeFleetBody), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		cfg, err := resolveFleetTarget(fleetTarget{fleetPath: path})
+		cfg, err := resolveFleetTarget(context.Background(), fleetTarget{fleetPath: path})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -61,7 +61,7 @@ func TestResolveFleetTarget(t *testing.T) {
 
 	t.Run("the working directory's fleet file", func(t *testing.T) {
 		writeFleetFile(t, oneNodeFleetBody)
-		cfg, err := resolveFleetTarget(fleetTarget{})
+		cfg, err := resolveFleetTarget(context.Background(), fleetTarget{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -72,7 +72,7 @@ func TestResolveFleetTarget(t *testing.T) {
 
 	t.Run("no fleet file names the expected path", func(t *testing.T) {
 		t.Chdir(t.TempDir())
-		_, err := resolveFleetTarget(fleetTarget{})
+		_, err := resolveFleetTarget(context.Background(), fleetTarget{})
 		if err == nil {
 			t.Fatal("want an error")
 		}
@@ -95,7 +95,7 @@ func TestResolveFleetTargetNamedFleetNarrows(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cfg, err := resolveFleetTarget(fleetTarget{nodeName: "gpu-a", fleetPath: path})
+	cfg, err := resolveFleetTarget(context.Background(), fleetTarget{nodeName: "gpu-a", fleetPath: path})
 	if err != nil {
 		t.Fatalf("--fleet and one of its nodes: %v", err)
 	}
@@ -104,9 +104,9 @@ func TestResolveFleetTargetNamedFleetNarrows(t *testing.T) {
 		t.Errorf("want only gpu-a, got %+v", narrowed.Nodes)
 	}
 
-	_, err = resolveFleetTarget(fleetTarget{nodeName: "prod", fleetPath: path})
+	_, err = resolveFleetTarget(context.Background(), fleetTarget{nodeName: "prod", fleetPath: path})
 	if err == nil {
-		t.Fatal("a name the named file lacks should fail, not fall back to the registry")
+		t.Fatal("a name the named file lacks should fail, not fall back to the plane")
 	}
 	for _, want := range []string{"prod", path, "gpu-a", "gpu-b"} {
 		if !strings.Contains(err.Error(), want) {
@@ -122,7 +122,7 @@ func TestResolveFleetTargetIgnoresTheDirectoryFileWithEnv(t *testing.T) {
 	registerTargetEnv(t, "prod")
 	writeFleetFile(t, oneNodeFleetBody)
 
-	cfg, err := resolveFleetTarget(fleetTarget{nodeName: "prod"})
+	cfg, err := resolveFleetTarget(context.Background(), fleetTarget{nodeName: "prod"})
 	if err != nil {
 		t.Fatalf("a directory fleet file was treated as a conflict: %v", err)
 	}
@@ -131,17 +131,35 @@ func TestResolveFleetTargetIgnoresTheDirectoryFileWithEnv(t *testing.T) {
 	}
 }
 
-// An unresolvable environment fails before anything is contacted, naming the
-// repair.
-func TestResolveFleetTargetUnregisteredEnv(t *testing.T) {
-	t.Setenv("SPINLOOP_CONFIG_DIR", t.TempDir())
+// A name the plane does not hold fails before anything is contacted, naming the
+// plane it was looked for on and the command that would create it. A plane that
+// cannot be read is reported as that, never as a name that is missing.
+func TestResolveFleetTargetAnEnvironmentThePlaneDoesNotHold(t *testing.T) {
+	stubPlaneEmpty(t)
 	t.Chdir(t.TempDir())
-	_, err := resolveFleetTarget(fleetTarget{nodeName: "nope"})
+	_, err := resolveFleetTarget(context.Background(), fleetTarget{nodeName: "nope"})
 	if err == nil {
 		t.Fatal("want an error")
 	}
-	if !strings.Contains(err.Error(), "clouds/nope/cloud.json") {
-		t.Errorf("error %q does not name the environment's registry path", err)
+	for _, want := range []string{"nope", "us-east-1", "spinloop cloud deploy --node nope"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not name %q", err, want)
+		}
+	}
+}
+
+// An unreadable plane is never read as an empty one: the failure is the plane's
+// own, because "your node is gone" would send the operator hunting for something
+// that was never lost.
+func TestResolveFleetTargetAnUnreadablePlane(t *testing.T) {
+	stubPlaneUnresolvable(t)
+	t.Chdir(t.TempDir())
+	_, err := resolveFleetTarget(context.Background(), fleetTarget{nodeName: "prod"})
+	if err == nil {
+		t.Fatal("want an error")
+	}
+	if strings.Contains(err.Error(), "no environment") {
+		t.Errorf("error %q reports an empty plane rather than an unreadable one", err)
 	}
 }
 
@@ -149,7 +167,7 @@ func TestResolveFleetTargetUnregisteredEnv(t *testing.T) {
 // environment instead of printing an empty string.
 func TestDescribeTarget(t *testing.T) {
 	registerTargetEnv(t, "prod")
-	fromEnv, err := fleet.ForEnvironment("prod")
+	fromEnv, err := fleet.ForEnvironment(context.Background(), "prod")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -171,17 +189,13 @@ func TestDescribeTarget(t *testing.T) {
 	}
 }
 
-// Every fleet command that takes a target completes --node from the
-// registered environments and from the fleet in force on the line: the
-// working directory's file here, and an explicit --fleet value below.
+// Every fleet command that takes a target completes --node from the fleet in
+// force on the line — the
+// working directory's file here and an explicit --fleet value below — and
+// from the environments the resolved plane holds.
 func TestFleetCommandsCompleteEnv(t *testing.T) {
-	registerTargetEnv(t, "prod")
-	registerEnv(t, "staging", cloud.Config{
-		StartURL:    "https://s.example/start",
-		StopURL:     "https://s.example/stop",
-		Region:      "us-east-1",
-		Environment: "staging",
-	})
+	// One plane holding both, as a real one would.
+	stubPlane(t, nil, "prod", "staging")
 	dir := t.TempDir()
 	t.Chdir(dir)
 	mustWrite(t, filepath.Join(dir, fleet.DefaultFile),
@@ -292,7 +306,7 @@ func TestFleetStatusEnvNeedsNoFleetFile(t *testing.T) {
 
 // The pair through the real command line: --fleet beside --node narrows the
 // read to that node; a name the named file lacks fails naming it, rather
-// than falling through to a registered environment of that name.
+// than falling through to an environment of that name on the plane.
 func TestFleetStatusFleetAndNodePair(t *testing.T) {
 	t.Setenv("SPINLOOP_CONFIG_DIR", t.TempDir())
 	registerEnv(t, "prod", cloud.Config{
@@ -329,14 +343,14 @@ func TestFleetStatusFleetAndNodePair(t *testing.T) {
 func TestResolveTargetNoFileResolvesRegistry(t *testing.T) {
 	registerTargetEnv(t, "prod")
 	t.Chdir(t.TempDir())
-	cfg, err := resolveFleetTarget(fleetTarget{nodeName: "prod"})
+	cfg, err := resolveFleetTarget(context.Background(), fleetTarget{nodeName: "prod"})
 	if err != nil {
 		t.Fatalf("a registered environment with no fleet in force: %v", err)
 	}
 	if len(cfg.Nodes) != 1 || cfg.Nodes[0].Name != "prod" {
 		t.Errorf("want the one prod node, got %+v", cfg.Nodes)
 	}
-	if _, err := resolveFleetTarget(fleetTarget{nodeName: "nope"}); err == nil {
+	if _, err := resolveFleetTarget(context.Background(), fleetTarget{nodeName: "nope"}); err == nil {
 		t.Error("an unregistered name with no fleet should fail")
 	}
 }
@@ -350,7 +364,7 @@ func TestResolveTargetNarrowsDiscoveredFleet(t *testing.T) {
 	mustWrite(t, filepath.Join(dir, fleet.DefaultFile),
 		"nodes:\n  - name: gpu-a\n    host: a.local\n  - name: gpu-b\n    host: b.local\n")
 
-	cfg, err := resolveFleetTarget(fleetTarget{nodeName: "gpu-a"})
+	cfg, err := resolveFleetTarget(context.Background(), fleetTarget{nodeName: "gpu-a"})
 	if err != nil {
 		t.Fatalf("--node gpu-a beside a fleet holding it: %v", err)
 	}
@@ -360,7 +374,7 @@ func TestResolveTargetNarrowsDiscoveredFleet(t *testing.T) {
 	}
 
 	registerTargetEnv(t, "prod")
-	cfg, err = resolveFleetTarget(fleetTarget{nodeName: "prod"})
+	cfg, err = resolveFleetTarget(context.Background(), fleetTarget{nodeName: "prod"})
 	if err != nil {
 		t.Fatalf("a registry name beside a fleet without it: %v", err)
 	}
@@ -368,7 +382,7 @@ func TestResolveTargetNarrowsDiscoveredFleet(t *testing.T) {
 		t.Errorf("want the prod environment's node, got %+v", cfg.Nodes)
 	}
 
-	_, err = resolveFleetTarget(fleetTarget{nodeName: "ghost"})
+	_, err = resolveFleetTarget(context.Background(), fleetTarget{nodeName: "ghost"})
 	if err == nil {
 		t.Fatal("a name the fleet and the registry both refuse should fail")
 	}

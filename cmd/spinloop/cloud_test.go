@@ -24,31 +24,26 @@ func stubAWSEnv(t *testing.T) {
 	t.Setenv("AWS_SECRET_ACCESS_KEY", "test-secret")
 	t.Setenv("AWS_SESSION_TOKEN", "")
 	t.Setenv("AWS_PROFILE", "")
+	// No region: the chain yields none, so a test that wants one states it
+	// explicitly rather than inheriting whatever the machine running the suite
+	// happens to have configured.
+	t.Setenv("AWS_REGION", "")
+	t.Setenv("AWS_DEFAULT_REGION", "")
 	t.Setenv("AWS_CONFIG_FILE", filepath.Join(t.TempDir(), "no-such-file"))
 	t.Setenv("AWS_SHARED_CREDENTIALS_FILE", filepath.Join(t.TempDir(), "no-such-file"))
 	t.Setenv("AWS_EC2_METADATA_DISABLED", "true")
 }
 
-// writeCloudConfig registers the `default` environment pointing at the test
-// server — the registry is the only place a configuration is read from.
+// writeCloudConfig stands a plane in holding the `default` environment, driven
+// from the test server.
 func writeCloudConfig(t *testing.T, serverURL string) {
 	t.Helper()
-	path := must1(cloud.EnvConfigPath("default"))
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	data, err := json.Marshal(cloud.Config{
+	registerEnv(t, "default", cloud.Config{
 		StartURL: serverURL,
 		StopURL:  serverURL,
 		EnvURL:   serverURL,
 		Region:   "eu-west-1",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, data, 0o600); err != nil {
-		t.Fatal(err)
-	}
 }
 
 func TestCloudDispatch(t *testing.T) {
@@ -69,6 +64,10 @@ func TestCloudDispatch(t *testing.T) {
 
 func TestCloud_Unconfigured(t *testing.T) {
 	isolateConfig(t)
+	// Credentials the chain can hold, but no region anywhere: resolution fails
+	// where it should — on the missing half of a plane's identity — rather
+	// than sending the SDK to look for a chain nobody configured.
+	stubAWSEnv(t)
 	// deploy needs a Spinloop, covered separately. metrics, logs and status
 	// moved to the top level — cmd/spinloop/commands_test.go covers their
 	// signpost under the old spelling.
@@ -81,11 +80,12 @@ func TestCloud_Unconfigured(t *testing.T) {
 			t.Errorf("cloud %s with no environment should name the flag, got %v", sub, err)
 		}
 	}
-	// Naming one that has no configuration explains the setup.
+	// Naming one explains how to make a plane resolvable: with no plane there
+	// is no environment either, and the fix is the region the plane lives in.
 	for _, sub := range subs {
 		err := run([]string{"cloud", sub, "--node", "default"})
-		if err == nil || !strings.Contains(err.Error(), "not configured") {
-			t.Errorf("cloud %s without config should explain setup, got %v", sub, err)
+		if err == nil || !strings.Contains(err.Error(), "SPINLOOP_CLOUD_REGION") {
+			t.Errorf("cloud %s with no plane should name the region fix, got %v", sub, err)
 		}
 	}
 }
@@ -229,23 +229,13 @@ func TestCloudStatus_PrintsVersion(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	path := must1(cloud.EnvConfigPath("default"))
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	data, err := json.Marshal(cloud.Config{
+	registerEnv(t, "default", cloud.Config{
 		StartURL: server.URL + "/start",
 		StopURL:  server.URL + "/stop",
 		EnvURL:   server.URL + "/env",
 		StatsURL: server.URL + "/stats",
 		Region:   "eu-west-1",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, data, 0o600); err != nil {
-		t.Fatal(err)
-	}
 
 	out := captureStdout(t, func() {
 		if err := cmdStatus([]string{"--node", "default"}); err != nil {
@@ -517,16 +507,28 @@ func TestCloud_RestartInGeneratedHelp(t *testing.T) {
 func TestCloud_SpinloopDiscovery(t *testing.T) {
 	isolateConfig(t) // no per-user config exists, so success proves the ENV reached it
 	stubAWSEnv(t)
-	unsetEnvOnCleanup(t, "SPINLOOP_CLOUD_START_URL", "SPINLOOP_CLOUD_STOP_URL", "SPINLOOP_CLOUD_REGION")
+	unsetEnvOnCleanup(t, "SPINLOOP_CLOUD_START_URL", "SPINLOOP_CLOUD_STOP_URL",
+		"SPINLOOP_CLOUD_STATS_URL", "SPINLOOP_CLOUD_REGION")
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Query().Get("env") == "" {
+			// The env-less read is the inventory — the plane's record of what
+			// it holds — and a node named by --node has to be in it.
+			json.NewEncoder(w).Encode(map[string]any{"environments": []map[string]any{
+				{"environment": "default", "state": "running"},
+			}})
+			return
+		}
 		w.Write([]byte(`{"state":"running","healthy":true,"base_url":"http://198.51.100.1:8000/v1"}`))
 	}))
 	defer server.Close()
 
 	dir := t.TempDir()
 	t.Chdir(dir)
-	spinloopFile := fmt.Sprintf("PROVIDER openai-compatible\nENV SPINLOOP_CLOUD_START_URL=%s\nENV SPINLOOP_CLOUD_STOP_URL=%s\nENV SPINLOOP_CLOUD_REGION=eu-west-1\n", server.URL, server.URL)
+	spinloopFile := fmt.Sprintf("PROVIDER openai-compatible\n"+
+		"ENV SPINLOOP_CLOUD_START_URL=%s\nENV SPINLOOP_CLOUD_STOP_URL=%s\n"+
+		"ENV SPINLOOP_CLOUD_STATS_URL=%s\nENV SPINLOOP_CLOUD_REGION=eu-west-1\n",
+		server.URL, server.URL, server.URL)
 	if err := os.WriteFile("Spinloop", []byte(spinloopFile), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -641,7 +643,7 @@ func TestCloudMetrics_Running(t *testing.T) {
 	}))
 	defer server.Close()
 	writeCloudConfig(t, server.URL)
-	t.Setenv("SPINLOOP_CLOUD_STATS_URL", server.URL)
+	planeStatsAt(t, server.URL)
 
 	out := captureStdout(t, func() {
 		if err := cmdMetrics([]string{"--node", "default", "--format=table"}); err != nil {
@@ -685,7 +687,7 @@ func TestCloudMetrics_Stopped(t *testing.T) {
 	}))
 	defer server.Close()
 	writeCloudConfig(t, server.URL)
-	t.Setenv("SPINLOOP_CLOUD_STATS_URL", server.URL)
+	planeStatsAt(t, server.URL)
 
 	out := captureStdout(t, func() {
 		if err := cmdMetrics([]string{"--node", "default", "--format=table"}); err != nil {
@@ -714,7 +716,7 @@ func TestCloudMetrics_WithErrors(t *testing.T) {
 	}))
 	defer server.Close()
 	writeCloudConfig(t, server.URL)
-	t.Setenv("SPINLOOP_CLOUD_STATS_URL", server.URL)
+	planeStatsAt(t, server.URL)
 
 	errOut := captureStderr(t, func() {
 		if err := cmdMetrics([]string{"--node", "default"}); err != nil {
@@ -749,7 +751,7 @@ func TestCloudMetrics_DefaultFormat(t *testing.T) {
 	}))
 	defer server.Close()
 	writeCloudConfig(t, server.URL)
-	t.Setenv("SPINLOOP_CLOUD_STATS_URL", server.URL)
+	planeStatsAt(t, server.URL)
 
 	out := captureStdout(t, func() {
 		if err := cmdMetrics([]string{"--node", "default"}); err != nil {
@@ -786,7 +788,7 @@ func TestCloudMetrics_JsonFormat(t *testing.T) {
 	}))
 	defer server.Close()
 	writeCloudConfig(t, server.URL)
-	t.Setenv("SPINLOOP_CLOUD_STATS_URL", server.URL)
+	planeStatsAt(t, server.URL)
 
 	out := captureStdout(t, func() {
 		if err := cmdMetrics([]string{"--node", "default", "--format=json"}); err != nil {
@@ -828,7 +830,7 @@ func TestCloudMetrics_JsonFormatWithCost(t *testing.T) {
 	}))
 	defer server.Close()
 	writeCloudConfig(t, server.URL)
-	t.Setenv("SPINLOOP_CLOUD_STATS_URL", server.URL)
+	planeStatsAt(t, server.URL)
 
 	out := captureStdout(t, func() {
 		if err := cmdMetrics([]string{"--node", "default", "--format=json", "--cost"}); err != nil {
@@ -879,7 +881,7 @@ func TestCloudMetrics_BarFormat(t *testing.T) {
 	}))
 	defer server.Close()
 	writeCloudConfig(t, server.URL)
-	t.Setenv("SPINLOOP_CLOUD_STATS_URL", server.URL)
+	planeStatsAt(t, server.URL)
 
 	out := captureStdout(t, func() {
 		err := cmdMetrics([]string{"--node", "default", "--format=bar"})
@@ -924,7 +926,7 @@ func TestCloudMetrics_BarFormatStopped(t *testing.T) {
 	}))
 	defer server.Close()
 	writeCloudConfig(t, server.URL)
-	t.Setenv("SPINLOOP_CLOUD_STATS_URL", server.URL)
+	planeStatsAt(t, server.URL)
 
 	out := captureStdout(t, func() {
 		err := cmdMetrics([]string{"--node", "default", "--format=bar"})
@@ -995,7 +997,7 @@ func TestCloudMetrics_WatchMode(t *testing.T) {
 	}))
 	defer server.Close()
 	writeCloudConfig(t, server.URL)
-	t.Setenv("SPINLOOP_CLOUD_STATS_URL", server.URL)
+	planeStatsAt(t, server.URL)
 
 	// Short interval so the test completes quickly.
 	oldInterval := metricsWatchInterval
@@ -1036,7 +1038,7 @@ func TestCloudMetrics_WatchShortFlag(t *testing.T) {
 	}))
 	defer server.Close()
 	writeCloudConfig(t, server.URL)
-	t.Setenv("SPINLOOP_CLOUD_STATS_URL", server.URL)
+	planeStatsAt(t, server.URL)
 
 	oldInterval := metricsWatchInterval
 	metricsWatchInterval = 10 * time.Millisecond
@@ -1072,7 +1074,7 @@ func TestCloudMetrics_MultiGPU(t *testing.T) {
 	}))
 	defer server.Close()
 	writeCloudConfig(t, server.URL)
-	t.Setenv("SPINLOOP_CLOUD_STATS_URL", server.URL)
+	planeStatsAt(t, server.URL)
 
 	out := captureStdout(t, func() {
 		if err := cmdMetrics([]string{"--node", "default", "--format=table"}); err != nil {
@@ -1095,7 +1097,7 @@ func TestCloudMetrics_JsonStopped(t *testing.T) {
 	}))
 	defer server.Close()
 	writeCloudConfig(t, server.URL)
-	t.Setenv("SPINLOOP_CLOUD_STATS_URL", server.URL)
+	planeStatsAt(t, server.URL)
 
 	out := captureStdout(t, func() {
 		if err := cmdMetrics([]string{"--node", "default", "--format=json"}); err != nil {
@@ -1129,7 +1131,7 @@ func TestCloudMetrics_JsonWithErrors(t *testing.T) {
 	}))
 	defer server.Close()
 	writeCloudConfig(t, server.URL)
-	t.Setenv("SPINLOOP_CLOUD_STATS_URL", server.URL)
+	planeStatsAt(t, server.URL)
 
 	out := captureStdout(t, func() {
 		if err := cmdMetrics([]string{"--node", "default", "--format=json"}); err != nil {
@@ -1284,7 +1286,7 @@ func TestCloudMetrics_WatchBuffersBeforeClear(t *testing.T) {
 	}))
 	defer server.Close()
 	writeCloudConfig(t, server.URL)
-	t.Setenv("SPINLOOP_CLOUD_STATS_URL", server.URL)
+	planeStatsAt(t, server.URL)
 
 	oldInterval := metricsWatchInterval
 	metricsWatchInterval = 50 * time.Millisecond
@@ -1341,15 +1343,12 @@ func TestCloudKeep_PrintsDeadline(t *testing.T) {
 		w.Write([]byte(`{"environment":"test"}`))
 	}))
 	defer server.Close()
-	writeCloudConfig(t, server.URL)
-
-	// Also need to write the update URL.
-	path := must1(cloud.EnvConfigPath("default"))
-	data := must1(os.ReadFile(path))
-	var cfg cloud.Config
-	json.Unmarshal(data, &cfg)
-	cfg.UpdateURL = server.URL
-	os.WriteFile(path, must1(json.Marshal(cfg)), 0o600)
+	registerEnv(t, "default", cloud.Config{
+		StartURL:  server.URL,
+		StopURL:   server.URL,
+		UpdateURL: server.URL,
+		Region:    "eu-west-1",
+	})
 
 	out := captureStdout(t, func() {
 		if err := cmdCloudKeep([]string{"--node", "default", "4h"}); err != nil {

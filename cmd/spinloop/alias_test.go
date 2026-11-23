@@ -893,22 +893,22 @@ func TestEnvAlias_RemoteFailsRatherThanFallingBack(t *testing.T) {
 
 // TestEnvAlias_RemoteFallsBackWithoutREMOTE checks the other side of that gate:
 // resolving the variable is not the same as it having an endpoint. A Spinloop
-// with no REMOTE leaves the per-user default in charge, exactly as a ./Spinloop
-// without one always has.
+// with no ENV leaves the machine's own plane resolution in charge, exactly as a
+// ./Spinloop without one always has.
 func TestEnvAlias_RemoteFallsBackWithoutREMOTE(t *testing.T) {
 	isolateConfig(t)
 	stubAWSEnv(t)
 
-	registerSpinloop(t, "PROVIDER llamacpp\nALIAS q3\n") // no REMOTE
+	registerSpinloop(t, "PROVIDER llamacpp\nALIAS q3\n") // no ENV instructions
 	t.Chdir(t.TempDir())
 	t.Setenv("SPINLOOP_ALIAS", "q3")
 
 	err := cmdCloudStop([]string{"--node", "default"})
 	if err == nil {
-		t.Fatal("expected an error: there is no default endpoint config either")
+		t.Fatal("expected an error: the Spinloop states no plane and neither does the machine")
 	}
-	if !strings.Contains(err.Error(), "cloud is not configured") {
-		t.Errorf("error = %q, want the default-config failure (the fallback still applies)", err)
+	if !strings.Contains(err.Error(), "no AWS region resolves") {
+		t.Errorf("error = %q, want the bare plane-resolution failure (the fallback still applies)", err)
 	}
 }
 
