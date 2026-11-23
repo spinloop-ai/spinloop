@@ -263,7 +263,9 @@ Rules:
   variable is unset or empty), with `$$` for a literal `$` — resolved when
   `serve` or `deploy` builds the command, not when the file is read, so
   `export` and `show` keep the raw text. A malformed reference fails naming
-  the PARAM key. Used only by
+  the PARAM key. There is a runnable walkthrough in
+  [`examples/env-refs/`](https://github.com/spinloop-ai/spinloop/tree/main/examples/env-refs).
+  Used only by
   [`spinloop serve`](commands/serve.md) and
   [`spinloop cloud deploy`](commands/cloud.md); `apply` ignores it, as it does
   `PRESET`.
