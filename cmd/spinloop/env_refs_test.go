@@ -87,10 +87,14 @@ func TestCmdServe_EnvRefMalformed(t *testing.T) {
 func TestDeployConfigFor_ResolvesEnvRefs(t *testing.T) {
 	t.Setenv("HF_TAG", "Q8_0")
 	t.Setenv("DEPLOY_TEMP", "1.0")
+	t.Setenv("DEPLOY_SEED", "7")
 	dc := deployConfigFrom(t,
-		"PROVIDER llamacpp\nALIAS qwen\nCONTEXT 32k\nPARAM hf = org/model:$HF_TAG\n", "")
+		"PROVIDER llamacpp\nALIAS qwen\nCONTEXT 32k\nPARAM hf = org/model:$HF_TAG\nPARAM seed = $DEPLOY_SEED\n", "")
 	if dc.ModelID != "org/model" || dc.Quant != "Q8_0" {
 		t.Errorf("model = %q:%q, want the resolved org/model:Q8_0", dc.ModelID, dc.Quant)
+	}
+	if args := strings.Join(dc.ServeArgs, " "); !strings.Contains(args, "--seed 7") {
+		t.Errorf("serveArgs %q should carry the resolved PARAM value", args)
 	}
 
 	dc = deployConfigFrom(t,
@@ -119,8 +123,8 @@ func TestDeployConfigFor_EnvRefMalformed(t *testing.T) {
 	}
 }
 
-// On paths that apply the Spinloop's own environment first (deploy, a
-// supervised engine), a PARAM value may reference a variable the Spinloop's
+// On paths that apply the Spinloop's own environment before deriving (deploy
+// and a node wake do), a PARAM value may reference a variable the Spinloop's
 // own ENV contributes.
 func TestSelectionParams_EnvInstructionFeedsParam(t *testing.T) {
 	sel, err := spinloop.Parse([]byte(

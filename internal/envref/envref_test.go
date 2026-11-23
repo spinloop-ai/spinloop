@@ -31,6 +31,7 @@ func TestExpand_Forms(t *testing.T) {
 		{"default ignored when set", "${FOO:-fallback}", "bar"},
 		{"empty default valid", "${NOPE:-}", ""},
 		{"default may hold punctuation", "${NOPE:-a:-b/c}", "a:-b/c"},
+		{"default is literal, not rescanned", "${NOPE:-$FOO}", "$FOO"},
 		// Escapes and stray dollars.
 		{"escaped dollar", "$$5", "$5"},
 		{"escaped before a name", "$$FOO", "$FOO"},

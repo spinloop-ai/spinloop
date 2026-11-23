@@ -8,9 +8,10 @@ When `spinloop serve` builds its engine command, every value it takes from the
 referenced preset and from the Spinloop's `PARAM` instructions SHALL have its
 environment references resolved (see the Spinloop Files specification's
 Environment references requirement) against the process environment as serve
-holds it at that moment — on the supervised and deployed paths, where the
-command applies the Spinloop's `ENV` instructions and adjacent `.env` before
-building, that includes the variables the Spinloop itself contributes.
+holds it at that moment. Since serve builds the command from the environment
+it inherited, references resolve from the shell (or whatever launched serve);
+the derivation that wakes a node applies the Spinloop's own `ENV` instructions
+and `.env` first, so a deployment sees what the Spinloop itself contributes.
 Resolution happens before layer merging and rendering, so
 a resolved value participates in override and canonicalisation exactly as a
 literal one does. A printed command — including `--dry-run` — SHALL show the
@@ -31,11 +32,11 @@ render exactly as before.
   `1.0` — the resolved PARAM standing over the preset as an unresolved one
   would
 
-#### Scenario: The Spinloop's own ENV feeds a PARAM value
+#### Scenario: Keys are not resolved
 
-- **WHEN** a Spinloop states `ENV SLOT=3` and `PARAM port = ${SLOT}000`, and
-  the command applies the Spinloop's environment before building
-- **THEN** the printed command carries `--port 3000`
+- **WHEN** the Spinloop states `PARAM ${FOO} = 1` while `FOO` is set
+- **THEN** the key passes through as the literal flag name spelled from
+  `${FOO}` and the variable's value appears nowhere in the command
 
 #### Scenario: Dry run shows the resolved command
 

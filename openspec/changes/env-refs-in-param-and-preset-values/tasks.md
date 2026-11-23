@@ -39,6 +39,6 @@
 
 ## 5. Docs
 
-- [ ] 5.1 Document the syntax on the Spinloop-file and preset docs pages
+- [x] 5.1 Document the syntax on the Spinloop-file and preset docs pages
   (values only, `$$` escape, failure names the line/key), with a small
   example each.

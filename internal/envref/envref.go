@@ -15,6 +15,9 @@
 //     cannot start a name, or ending the value — stays literal, so values
 //     that merely contain a dollar sign are untouched.
 //
+// A default is literal: a `$` inside `${NAME:-...}` is text, not a nested
+// reference, and is never rescanned; the first `}` closes the reference.
+//
 // A `$` beginning a malformed reference (an unterminated `${`, an invalid or
 // empty name, or any other `${...}` form such as `${NAME:+x}`) is an error:
 // the syntax does not define it, and quietly passing it to an engine that

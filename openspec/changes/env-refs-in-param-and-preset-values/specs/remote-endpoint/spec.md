@@ -23,6 +23,13 @@ as before.
 - **THEN** the deployment names the repository `org/model` and quantisation
   `Q8_0`, and no `HF_TAG` text reaches the engine's arguments
 
+#### Scenario: The Spinloop's own ENV feeds a value
+
+- **WHEN** a Spinloop states `ENV SLOT=3` and `PARAM seed = ${SLOT}000`, and
+  is deployed or a node is woken with it
+- **THEN** the derivation has applied the Spinloop's environment first, and
+  the deployment's engine arguments carry the resolved seed
+
 #### Scenario: A preset reference deploys resolved
 
 - **WHEN** `TEMP` is set to `1.0` and a preset entry states

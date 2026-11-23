@@ -245,7 +245,10 @@ Rules:
   its own, fetched only when `serve` (or `spinloop cloud deploy`) builds the
   launch command — never merely because the Spinloop was read. The file is read
   in the flag vocabulary of the engine `PROVIDER` names, so a preset written
-  for llama.cpp is not portable to oMLX and vice versa.
+  for llama.cpp is not portable to oMLX and vice versa. Its entry values
+  resolve environment references the same way a `PARAM` value does, so a
+  shared preset can carry a machine-specific path or tag; its keys do not,
+  being flag names.
 - `PARAM` sets engine flags the Spinloop's typed instructions don't cover. It
   is repeatable — one `key = value` per line — in the same flag vocabulary a
   `PRESET` is read in, so `ngl` becomes `--n-gpu-layers` and `fa` becomes
@@ -255,7 +258,12 @@ Rules:
   value (`PARAM jinja =`). Where a PARAM and a preset set the same flag, the
   PARAM stands over the preset; where the Spinloop states an instruction of its
   own, the instruction stands over the PARAM — `PARAM ctx-size = 65536` loses
-  to `CONTEXT 131072`. Used only by
+  to `CONTEXT 131072`. A value may pull an environment variable in —
+  `$FOO`, `${FOO}`, or `${FOO:-fallback}` (the fallback stands when the
+  variable is unset or empty), with `$$` for a literal `$` — resolved when
+  `serve` or `deploy` builds the command, not when the file is read, so
+  `export` and `show` keep the raw text. A malformed reference fails naming
+  the PARAM key. Used only by
   [`spinloop serve`](commands/serve.md) and
   [`spinloop cloud deploy`](commands/cloud.md); `apply` ignores it, as it does
   `PRESET`.

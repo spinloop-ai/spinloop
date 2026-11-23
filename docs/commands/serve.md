@@ -217,7 +217,12 @@ tweak one field per project: `CONTEXT` overrides the section's `ctx-size`,
 `BASEURL` its `host`/`port`, `ALIAS` its `alias`, and `MODEL` its `hf`/`model`.
 Keys map straight to flags — `ctx-size = 262144` becomes `--ctx-size 262144`,
 `hf` becomes `--hf-repo`, and boolean toggles like `mmap = 1` become a bare
-`--mmap`. Which section runs:
+`--mmap`. A value may pull an environment variable in — `$FOO`, `${FOO}`, or
+`${FOO:-fallback}` (the fallback stands when the variable is unset or empty),
+with `$$` for a literal `$` — resolved when the preset is read to build the
+command, so a shared preset can carry machine-specific paths and tags; a
+malformed reference fails the command, naming the preset line. Which section
+runs:
 
 - `ALIAS` names the section.
 - With no `ALIAS`, a preset holding exactly one section serves that one.
