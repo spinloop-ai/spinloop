@@ -3,6 +3,8 @@ package main
 import (
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -647,5 +649,64 @@ func TestServeViewScrollMovesWholeWrappedLine(t *testing.T) {
 	m.Update(tea.KeyMsg{Type: tea.KeyDown})
 	if got := countARows(m.View()); got != 2 {
 		t.Errorf("down did not bring the wrapped line back whole, got %d rows", got)
+	}
+}
+
+// The crash report writes the captured log's tail under a header naming the
+// log's path, so the engine's own words outlive the closed view — bounded to
+// its budget, verbatim otherwise.
+func TestReportEngineLogTailWritesTheBoundedTail(t *testing.T) {
+	logPath := filepath.Join(t.TempDir(), "engine.log")
+	var b strings.Builder
+	for i := 0; i < 500; i++ {
+		fmt.Fprintf(&b, "load %d: padding padding padding padding padding padding padding\n", i)
+	}
+	b.WriteString("error: invalid argument: --nope-flag\n")
+	if err := os.WriteFile(logPath, []byte(b.String()), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var out strings.Builder
+	reportEngineLogTail(&out, logPath)
+	got := out.String()
+	if !strings.Contains(got, logPath) {
+		t.Errorf("the header must name the log's path:\n%s", got)
+	}
+	if !strings.Contains(got, "error: invalid argument: --nope-flag") {
+		t.Errorf("the engine's own error line must be written:\n%s", got)
+	}
+	if strings.Contains(got, "load 0:") {
+		t.Errorf("the report must be bounded to its budget, oldest lines included:\n%s", got)
+	}
+	if !strings.HasSuffix(got, "\n") {
+		t.Errorf("the report must end on a whole line:\n%q", got)
+	}
+}
+
+// A log the engine wrote nothing to is said plainly, not left as silence
+// under a header that promises a tail.
+func TestReportEngineLogTailEmptyLogSaysSo(t *testing.T) {
+	logPath := filepath.Join(t.TempDir(), "engine.log")
+	if err := os.WriteFile(logPath, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var out strings.Builder
+	reportEngineLogTail(&out, logPath)
+	got := out.String()
+	if !strings.Contains(got, "holds nothing") || !strings.Contains(got, logPath) {
+		t.Errorf("an empty log must be said plainly, naming the path:\n%s", got)
+	}
+	if strings.Contains(got, "last of the engine log") {
+		t.Errorf("an empty log carries no tail:\n%s", got)
+	}
+}
+
+// No log file at all follows the same plain note as an empty one.
+func TestReportEngineLogTailMissingLogSaysSo(t *testing.T) {
+	logPath := filepath.Join(t.TempDir(), "engine.log")
+	var out strings.Builder
+	reportEngineLogTail(&out, logPath)
+	if got := out.String(); !strings.Contains(got, "holds nothing") || !strings.Contains(got, logPath) {
+		t.Errorf("a missing log must be said plainly, naming the path:\n%s", got)
 	}
 }

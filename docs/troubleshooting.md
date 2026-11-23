@@ -34,6 +34,11 @@ You applied a selection and the agent still runs something else.
 - **The port is taken.** The engine binds the `BASEURL` address (or the
   engine's own default). Change `BASEURL` in the Spinloop, or stop whatever
   holds the port.
+- **The engine rejects a parameter.** An unknown `PARAM` key or a value the
+  engine refuses kills it at startup, and the reason is in the engine's own
+  words, not spinloop's. Under the serve view those lines are captured to
+  `daemon/engine.log`; when the engine dies there, serve writes the last of
+  that log to stderr as it exits, naming the file for the whole record.
 - **A `PRESET` with several sections and no `ALIAS`** is an error, naming the
   sections — name one. Presets are written in one engine's flag vocabulary and
   are not portable between engines.

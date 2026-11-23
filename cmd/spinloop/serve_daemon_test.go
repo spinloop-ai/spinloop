@@ -589,6 +589,9 @@ func TestCmdServe_ViewRunCapturesEngineOutput(t *testing.T) {
 	if strings.Contains(stdout, "llama-server") {
 		t.Errorf("the printed command must stay off the view's screen:\n%s", stdout)
 	}
+	if strings.Contains(stderr, "exited with an error") {
+		t.Errorf("a clean engine exit must write no crash report:\n%s", stderr)
+	}
 	stateDir, err := daemon.StateDir()
 	if err != nil {
 		t.Fatal(err)
@@ -635,6 +638,48 @@ func TestCmdServe_ViewRunExitsWithEngineStatus(t *testing.T) {
 	})
 }
 
+// TestCmdServe_ViewCrashWritesEngineLogTail covers the diagnosis rule: an
+// engine that dies at startup — the PARAM it rejects, above all — leaves the
+// console with more than an exit status. Its captured output is written to
+// stderr after the view closes, under a header naming the engine log's path,
+// and the run still exits with the engine's status.
+func TestCmdServe_ViewCrashWritesEngineLogTail(t *testing.T) {
+	configHome := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", configHome)
+	t.Setenv(daemon.TokenEnvVar, "tok")
+	argsFile := filepath.Join(t.TempDir(), "args")
+	stubEngineView(t, argsFile, "'engine loading'",
+		"echo 'llama-server: error: invalid argument: --nope-flag' 1>&2\nexit 3")
+	fakeTerminal(t)
+	fakeViewProgram(t)
+	dir := t.TempDir()
+	spinloopPath := filepath.Join(dir, "Spinloop")
+	mustWrite(t, spinloopPath, "PROVIDER llamacpp\nMODEL org/model:Q4_K_M\n")
+
+	done := make(chan error, 1)
+	var stderr string
+	captureStdout(t, func() {
+		stderr = captureStderr(t, func() {
+			go func() { done <- cmdServe([]string{spinloopPath}) }()
+			select {
+			case err := <-done:
+				if err == nil {
+					t.Fatal("serve must report the engine's failure status")
+				}
+			case <-time.After(20 * time.Second):
+				t.Fatal("serve did not exit after the engine did")
+			}
+		})
+	})
+	engineLog := filepath.Join(configHome, "spinloop", "daemon", "engine.log")
+	if !strings.Contains(stderr, "error: invalid argument: --nope-flag") {
+		t.Errorf("the engine's own error line must reach the console after the crash:\n%s", stderr)
+	}
+	if !strings.Contains(stderr, engineLog) {
+		t.Errorf("the report must name the full engine log's path:\n%s", stderr)
+	}
+}
+
 // TestCmdServe_ViewQuitStopsTheEngine covers the quit key end to end: q goes
 // through the view's own stop — the engine goes down through the supervisor,
 // and serve exits cleanly after it is actually stopped. The Spinloop names no
@@ -667,8 +712,9 @@ func TestCmdServe_ViewQuitStopsTheEngine(t *testing.T) {
 	}()
 
 	done := make(chan error, 1)
+	var stderr string
 	captureStdout(t, func() {
-		captureStderr(t, func() {
+		stderr = captureStderr(t, func() {
 			go func() { done <- cmdServe([]string{spinloopPath}) }()
 			select {
 			case err := <-done:
@@ -680,6 +726,9 @@ func TestCmdServe_ViewQuitStopsTheEngine(t *testing.T) {
 			}
 		})
 	})
+	if strings.Contains(stderr, "exited with an error") {
+		t.Errorf("a stop on request must write no crash report:\n%s", stderr)
+	}
 	stateDir, err := daemon.StateDir()
 	if err != nil {
 		t.Fatal(err)
