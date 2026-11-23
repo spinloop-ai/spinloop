@@ -17,6 +17,8 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -467,13 +469,43 @@ func (m serveView) View() string {
 	return strings.Join(parts, "\n")
 }
 
+// serveCrashTailBytes is the byte budget of the log tail printed when the
+// engine dies on its own — a last-words dump for the console, not a pager, so
+// it sits well under the view's own 200-line backlog budget. The header names
+// the log file, which holds the whole record.
+const serveCrashTailBytes = 40 * bytesPerLineGuess
+
+// reportEngineLogTail writes the captured engine log's tail to w, so the
+// engine's own account of why it died outlives the closed view: the view drew
+// the log on the alternate screen, and a startup failure — a PARAM the engine
+// rejects, above all — otherwise leaves the console with nothing but an exit
+// status. The tail is the engine's bytes verbatim, read through the daemon's
+// own bounded log read, under a header naming the full log's path; an empty
+// or unreadable log is said plainly rather than left as silence.
+func reportEngineLogTail(w io.Writer, logPath string) {
+	reply, err := daemon.ReadLog(logPath, daemon.TailLog, serveCrashTailBytes)
+	switch {
+	case err != nil:
+		fmt.Fprintf(w, "engine exited with an error — its log (%s) could not be read: %v\n", logPath, err)
+	case reply.Missing || reply.Content == "":
+		fmt.Fprintf(w, "engine exited with an error — its log (%s) holds nothing\n", logPath)
+	default:
+		fmt.Fprintf(w, "engine exited with an error — last of the engine log (%s):\n\n%s", logPath, reply.Content)
+		if !strings.HasSuffix(reply.Content, "\n") {
+			fmt.Fprintln(w)
+		}
+	}
+}
+
 // runServeView is `spinloop serve` on a terminal: the engine runs through
 // the shared supervised-foreground construction with its output captured to
 // the daemon's state-dir engine log, and the view draws on the alternate
 // screen for the life of the run. The engine starts before the view opens,
 // so a missing binary fails with its install hint around no view, and the
 // run reports the engine's exit status whatever closed the view — the
-// operator's q or the engine's own exit.
+// operator's q or the engine's own exit. An engine that died on its own also
+// gets its captured log's tail on stderr, since the view that showed it is
+// gone and those lines are the diagnosis.
 func runServeView(sel spinloop.Selection, spinloopPath string, engine serveEngine, argv []string, apiOn bool, apiAddr, logLevel string) error {
 	stateDir, err := daemon.StateDir()
 	if err != nil {
@@ -514,6 +546,12 @@ func runServeView(sel spinloop.Selection, spinloopPath string, engine serveEngin
 	}
 	// The view has left and the engine is down: the run reports the
 	// engine's exit status as a foreground serve always has, a stop on
-	// request counting as success.
-	return run.wait()
+	// request counting as success. A crash also gets the captured log's tail
+	// on stderr — the view that showed those lines has closed, and on a
+	// startup failure they are the only account of why the engine died.
+	err = run.wait()
+	if err != nil {
+		reportEngineLogTail(os.Stderr, logPath)
+	}
+	return err
 }

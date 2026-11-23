@@ -63,7 +63,12 @@ follow holds the window, and resuming fetches whatever the engine wrote in
 the meantime — nothing is lost.
 
 The engine's own exit closes the view and serve exits with the engine's exit
-status, exactly as a foreground serve does.
+status, exactly as a foreground serve does. When the engine dies on its own —
+a `PARAM` the engine rejects at startup, above all — serve also writes the
+last of the captured engine log to stderr before it exits, under a header
+naming the log's path, so the engine's own error lines outlive the closed view
+instead of leaving the console with a bare exit status. A stop on request and
+a clean exit print nothing extra.
 
 Under the view, the engine's stdout and stderr are captured to the same
 `daemon/engine.log` [spinloop's daemon](#the-control-api-api-and-spinloop-daemon)
