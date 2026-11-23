@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [1.49.0] - 2026-11-23
+### Added
+- feat: resolve env refs in PARAM lines and preset values (#285)
+
+### Changed
+- docs(examples): add env-refs example for PARAM and preset env references (#287)
+
 ## [1.48.0] - 2026-11-23
 ### Added
 - feat(serve): write the engine's captured log tail when a view run crashes
