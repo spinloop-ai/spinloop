@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [1.48.0] - 2026-11-23
+### Added
+- feat(serve): write the engine's captured log tail when a view run crashes
+
 ## [1.47.0] - 2026-11-02
 ### Added
 - feat(metrics): read the three-second tg_3s rate for engine speed (#277)
