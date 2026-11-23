@@ -58,6 +58,58 @@ func TestParse_InlineCommentsAndJSON(t *testing.T) {
 	}
 }
 
+func TestParse_EnvRefs(t *testing.T) {
+	t.Setenv("HF_TAG", "Q8_0")
+	t.Setenv("EMPTY", "")
+	in := "[*]\n" +
+		"cache-dir = $CACHE_ROOT_UNSET/k\n" +
+		"temp = ${HF_TAG:-0.7}\n" +
+		"[m]\n" +
+		"hf = org/model:${HF_TAG}\n" +
+		"price = $$5\n" +
+		"${FOO} = 1\n"
+	p, err := Parse([]byte(in))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	// Unset expands to empty; the default stands when unset or empty.
+	if p.Global[0].Value != "/k" || p.Global[1].Value != "Q8_0" {
+		t.Errorf("globals = %+v", p.Global)
+	}
+	sec := p.Sections[0]
+	if sec.Params[0].Value != "org/model:Q8_0" {
+		t.Errorf("hf = %q, want the resolved tag", sec.Params[0].Value)
+	}
+	if sec.Params[1].Value != "$5" {
+		t.Errorf("price = %q, want the escaped dollar", sec.Params[1].Value)
+	}
+	// Keys are flag names: a `${...}` key is not a reference.
+	if sec.Params[2].Key != "${FOO}" {
+		t.Errorf("key = %q, want it kept literal", sec.Params[2].Key)
+	}
+}
+
+func TestParse_EnvRefErrorsNameTheLine(t *testing.T) {
+	cases := []struct {
+		in        string
+		wantLine  string
+		wantSubst string
+	}{
+		{"[*]\nmmap = 1\n[m]\ntemp = ${1FOO}\n", "line 4:", "invalid"},
+		{"[m]\ntemp = ${FOO:+x}\n", "line 2:", "unsupported"},
+		{"[m]\ntemp = ${FOO\n", "line 2:", "unterminated"},
+	}
+	for _, tc := range cases {
+		_, err := Parse([]byte(tc.in))
+		if err == nil {
+			t.Fatalf("expected an error for %q", tc.in)
+		}
+		if !strings.HasPrefix(err.Error(), tc.wantLine) || !strings.Contains(err.Error(), tc.wantSubst) {
+			t.Errorf("Parse(%q) error = %q, want %q naming an %s reference", tc.in, err, tc.wantLine, tc.wantSubst)
+		}
+	}
+}
+
 func TestParse_GlobalAlias(t *testing.T) {
 	p, err := Parse([]byte("[global]\nmmap = 1\n[m]\nhf = a/b\n"))
 	if err != nil {
