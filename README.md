@@ -733,6 +733,7 @@ with a ready-to-apply `Spinloop`:
 - [Gemma-4-E2B on oMLX (Apple Silicon)](examples/omlx/gemma-4-e2b/README.md)
 - [Qwen3.8-27B on MTPLX (Apple Silicon)](examples/mtplx/qwen3.8-27b/README.md)
 - [Fetching a Spinloop from a URL](examples/remote-spinloop/README.md)
+- [Environment references in Spinloop values](examples/env-refs/README.md)
 
 ## Adding providers and models
 
