@@ -6,7 +6,7 @@ on an interval, with the keys to drive the one you have selected.
 ```sh
 spinloop dashboard                       # the fleet.yaml in this directory
 spinloop dashboard --fleet ./cluster.yaml
-spinloop dashboard --node prod            # one environment, as a board of one
+spinloop dashboard --node prod            # one cloud node, as a board of one
 ```
 
 Each tile draws what the gauge format of
@@ -21,14 +21,14 @@ metrics view cannot word the same reading differently.
 | `↑ ↓ ← →` | move the selection |
 | `enter` | open the selected node's detail view |
 | `s` | start the selected node's engine |
-| `k` | keep a cloud environment for a duration you type (asks how long, pre-filled `4h`) |
+| `k` | keep a cloud node for a duration you type (asks how long, pre-filled `4h`) |
 | `a` | abandon a start still in flight — the wait ends, the node is free; a wake the cloud is already carrying goes on |
 | `x` | stop the selected node, after a confirmation |
 | `r` | force a refresh |
 | `q` / `ctrl-c` | leave |
 
-`k` shows only for a node that can be kept — a cloud environment — and a kept
-environment carries its deadline beside the last-active line on both the tile
+`k` shows only for a node that can be kept — a cloud node — and a kept
+node carries its deadline beside the last-active line on both the tile
 and the detail view, whatever the engine's state.
 
 In the detail view the engine's log wraps long lines to the pane's width by
@@ -40,12 +40,12 @@ title bar names the state beside the log's follow state.
 The three ways every command that acts on a fleet takes one — `--node <name>`,
 `--fleet <path>`, or the working directory's `fleet.yaml`. Beside a fleet,
 `--node` narrows the board to that node alone; a name a *discovered* fleet
-lacks opens a control-plane environment as a board of one panel, which
+lacks opens a cloud node as a board of one panel, which
 needs no
 fleet file at all.
 
-A problem with the target itself — a missing or unparseable fleet file, an
-environment that the plane does not hold — fails before the view opens.
+A problem with the target itself — a missing or unparseable fleet file, a
+cloud node that the plane does not hold — fails before the view opens.
 A problem
 with any *node* does not: an unreachable node is a tile showing why, and a
 node whose token reference cannot be resolved holds its reason for the life of

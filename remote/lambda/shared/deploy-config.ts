@@ -149,7 +149,7 @@ export interface DeployConfig {
    */
   spinloopVersion: string;
   /**
-   * The EC2 instance type the environment's instances launch as. Optional;
+   * The EC2 instance type the node's instances launch as. Optional;
    * absent/undefined means launch as the control plane's default type. A
    * property of the deployment — stored here and read back on the next fresh
    * launch, so a re-wake of a stopped instance keeps the type it launched

@@ -85,19 +85,19 @@ func TestSeedStart_OmitsEmptyOptionalFields(t *testing.T) {
 	}
 }
 
-func TestSeedStart_SendsNoEnvironment(t *testing.T) {
+func TestSeedStart_SendsNoNode(t *testing.T) {
 	stubAWSEnv(t)
 	server, got := newSeedServer(t, 200, `{"seedId":"vllm--org-m","started":true}`)
 
-	// Seeds are account-wide: one model seeded once serves every environment,
-	// so an environment on the config must not leak onto a seed call.
+	// Seeds are account-wide: one model seeded once serves every cloud node,
+	// so a node on the config must not leak onto a seed call.
 	cfg := seedCfg(server.URL)
-	cfg.Environment = "prod"
+	cfg.Node = "prod"
 	if _, err := SeedStart(context.Background(), cfg, SeedRequest{Runner: "vllm", ModelID: "org/m"}); err != nil {
 		t.Fatal(err)
 	}
 	if _, present := got.Query["env"]; present {
-		t.Errorf("a seed call must not carry an environment, got %+v", got.Query)
+		t.Errorf("a seed call must not carry a node, got %+v", got.Query)
 	}
 }
 

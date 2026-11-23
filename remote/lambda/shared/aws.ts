@@ -143,7 +143,7 @@ export async function deleteParameterIfPresent(name: string): Promise<boolean> {
 /**
  * Every parameter under an SSM path, across all pages. GetParametersByPath is
  * the only way to ask SSM "what exists under here"; the stats Lambda uses it
- * to enumerate the plane's environments from the deploy-configs it holds.
+ * to enumerate the plane's nodes from the deploy-configs it holds.
  */
 export async function listParametersUnder(path: string): Promise<Array<{ name: string; value: string }>> {
   const found: Array<{ name: string; value: string }> = [];

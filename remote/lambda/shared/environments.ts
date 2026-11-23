@@ -62,10 +62,10 @@ export function environmentFrom(
 ): string {
   const name = query?.env ?? (typeof bodyEnvironment === 'string' ? bodyEnvironment : '');
   if (!name) {
-    throw new Error('missing environment: pass ?env=<name> (or "environment" in the body)');
+    throw new Error('missing node: pass ?env=<name> (or "environment" in the body)');
   }
   if (!isValidEnvironmentName(name)) {
-    throw new Error(`invalid environment name ${JSON.stringify(name)}`);
+    throw new Error(`invalid node name ${JSON.stringify(name)}`);
   }
   return name;
 }
@@ -276,9 +276,9 @@ export async function readEnvApiKey(env: string): Promise<string> {
 }
 
 /**
- * Every stored deploy-config under the plane's SSM path, keyed by environment
+ * Every stored deploy-config under the plane's SSM path, keyed by node
  * name. This is how the plane knows what it has deployed when it is asked for
- * an inventory without being named an environment.
+ * an inventory without being named a node.
  */
 export async function listEnvDeployConfigs(): Promise<Map<string, string>> {
   const configs = new Map<string, string>();
@@ -292,8 +292,8 @@ export async function listEnvDeployConfigs(): Promise<Map<string, string>> {
 }
 
 /**
- * Every environment named by the env tag on a resource — Elastic IPs, security
- * groups and instances alike. A resource tagged for an environment belongs to
+ * Every node named by the env tag on a resource — Elastic IPs, security
+ * groups and instances alike. A resource tagged for a node belongs to
  * one whether or not its deploy ever wrote state, so the tag values complete
  * the picture the deploy-config parameters start.
  */
@@ -354,8 +354,8 @@ export async function deleteSecurityGroup(groupId: string, retryDelayMs = 2000):
 }
 
 /**
- * Delete the environment's API-key secret, immediately and past recovery —
- * the environment itself is going (or has gone). Returns whether the secret
+ * Delete the node's API-key secret, immediately and past recovery —
+ * the node itself is going (or has gone). Returns whether the secret
  * was there; with dryRun it only reports what it finds.
  */
 export async function deleteEnvApiKey(env: string, dryRun = false): Promise<boolean> {

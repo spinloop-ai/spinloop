@@ -488,7 +488,7 @@ async function wake(
     return jsonResponse(503, {
       state: 'undeployed',
       environment: env,
-      message: `environment ${JSON.stringify(env)} has no deployed infrastructure — run \`spinloop cloud deploy\``,
+      message: `node ${JSON.stringify(env)} has no deployed infrastructure — run \`spinloop cloud deploy\``,
       retry_after_seconds: 300,
     });
   }
@@ -503,7 +503,7 @@ async function wake(
   try {
     if (!(await acquireWakeLock(env, owner, expiresAt))) {
       console.log(JSON.stringify({ phase: 'lock-held', environment: env }));
-      return startInProgress(env, `another start for environment ${JSON.stringify(env)} is in progress`);
+      return startInProgress(env, `another start for node ${JSON.stringify(env)} is in progress`);
     }
   } catch (err) {
     console.log(JSON.stringify({ phase: 'lock-error', environment: env, error: errorName(err) }));

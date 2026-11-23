@@ -126,7 +126,7 @@ func TestFetchLogsMergesGroupsInTimeOrder(t *testing.T) {
 		BootLogGroup():             {page("", event("c", 1500, "prod/i-1", "boot line"))},
 	}}
 
-	got, err := fetchLogs(context.Background(), api, LogQuery{Environment: "prod", Source: LogSourceAll}, "us-east-1")
+	got, err := fetchLogs(context.Background(), api, LogQuery{Node: "prod", Source: LogSourceAll}, "us-east-1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,7 +149,7 @@ func TestFetchLogsOrdersEventsSharingAMillisecondByEventID(t *testing.T) {
 		EngineLogGroup("vllm"):     {page("", event("a", 1000, "prod/i-2", "first"))},
 	}}
 
-	got, err := fetchLogs(context.Background(), api, LogQuery{Environment: "prod", Source: LogSourceEngine}, "us-east-1")
+	got, err := fetchLogs(context.Background(), api, LogQuery{Node: "prod", Source: LogSourceEngine}, "us-east-1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,12 +162,12 @@ func TestFetchLogsOrdersEventsSharingAMillisecondByEventID(t *testing.T) {
 	}
 }
 
-func TestFetchLogsAsksForTheEnvironmentsStreamsAndWindow(t *testing.T) {
+func TestFetchLogsAsksForTheNodesStreamsAndWindow(t *testing.T) {
 	api := &fakeLogs{}
 	start := time.UnixMilli(1_700_000_000_000)
 	end := start.Add(time.Hour)
 	if _, err := fetchLogs(context.Background(), api, LogQuery{
-		Environment: "prod", Source: LogSourceBoot, Start: start, End: end,
+		Node: "prod", Source: LogSourceBoot, Start: start, End: end,
 	}, "us-east-1"); err != nil {
 		t.Fatal(err)
 	}
@@ -197,7 +197,7 @@ func TestFetchLogsPagesAndKeepsTheMostRecentWithinTheLimit(t *testing.T) {
 	}}
 
 	got, err := fetchLogs(context.Background(), api, LogQuery{
-		Environment: "prod", Source: LogSourceBoot, Limit: 3,
+		Node: "prod", Source: LogSourceBoot, Limit: 3,
 	}, "us-east-1")
 	if err != nil {
 		t.Fatal(err)
@@ -223,7 +223,7 @@ func TestFetchLogsFiltersToOneInstance(t *testing.T) {
 	}}
 
 	got, err := fetchLogs(context.Background(), api, LogQuery{
-		Environment: "prod", Source: LogSourceBoot, Instance: "i-2",
+		Node: "prod", Source: LogSourceBoot, Instance: "i-2",
 	}, "us-east-1")
 	if err != nil {
 		t.Fatal(err)
@@ -243,7 +243,7 @@ func TestFetchLogsToleratesAGroupThatDoesNotExist(t *testing.T) {
 		},
 	}
 
-	got, err := fetchLogs(context.Background(), api, LogQuery{Environment: "prod", Source: LogSourceEngine}, "us-east-1")
+	got, err := fetchLogs(context.Background(), api, LogQuery{Node: "prod", Source: LogSourceEngine}, "us-east-1")
 	if err != nil {
 		t.Fatalf("a missing group for the other engine should not fail the read: %v", err)
 	}
@@ -258,7 +258,7 @@ func TestFetchLogsReportsWhenNoGroupExistsAtAll(t *testing.T) {
 		EngineLogGroup("vllm"):     &cwltypes.ResourceNotFoundException{},
 	}}
 
-	_, err := fetchLogs(context.Background(), api, LogQuery{Environment: "prod", Source: LogSourceEngine}, "us-east-1")
+	_, err := fetchLogs(context.Background(), api, LogQuery{Node: "prod", Source: LogSourceEngine}, "us-east-1")
 	if err == nil {
 		t.Fatal("every group missing should be an error, not an empty result")
 	}
@@ -278,7 +278,7 @@ func (deniedErr) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
 func TestFetchLogsExplainsAccessDenied(t *testing.T) {
 	api := &fakeLogs{errs: map[string]error{BootLogGroup(): deniedErr{}}}
 
-	_, err := fetchLogs(context.Background(), api, LogQuery{Environment: "prod", Source: LogSourceBoot}, "us-east-1")
+	_, err := fetchLogs(context.Background(), api, LogQuery{Node: "prod", Source: LogSourceBoot}, "us-east-1")
 	if err == nil {
 		t.Fatal("expected the denial to be reported")
 	}
@@ -291,7 +291,7 @@ func TestFetchLogsExplainsExpiredCredentials(t *testing.T) {
 	stubAWSEnv(t)
 	api := &fakeLogs{errs: map[string]error{BootLogGroup(): errors.New("ExpiredToken: the token has expired")}}
 
-	_, err := fetchLogs(context.Background(), api, LogQuery{Environment: "prod", Source: LogSourceBoot}, "us-east-1")
+	_, err := fetchLogs(context.Background(), api, LogQuery{Node: "prod", Source: LogSourceBoot}, "us-east-1")
 	if err == nil {
 		t.Fatal("expected the expiry to be reported")
 	}
@@ -308,7 +308,7 @@ func TestFetchLogsExplainsExpiredStoredCredentials(t *testing.T) {
 	storeCredForTest(t, testCred(region))
 	api := &fakeLogs{errs: map[string]error{BootLogGroup(): errors.New("ExpiredToken: the token has expired")}}
 
-	_, err := fetchLogs(context.Background(), api, LogQuery{Environment: "prod", Source: LogSourceBoot}, region)
+	_, err := fetchLogs(context.Background(), api, LogQuery{Node: "prod", Source: LogSourceBoot}, region)
 	if err == nil {
 		t.Fatal("expected the expiry to be reported")
 	}
@@ -325,7 +325,7 @@ func TestFetchLogsReturnsNoEventsWithoutError(t *testing.T) {
 		BootLogGroup(): {page("")},
 	}}
 
-	got, err := fetchLogs(context.Background(), api, LogQuery{Environment: "prod", Source: LogSourceBoot}, "us-east-1")
+	got, err := fetchLogs(context.Background(), api, LogQuery{Node: "prod", Source: LogSourceBoot}, "us-east-1")
 	if err != nil {
 		t.Fatalf("an empty window is not an error: %v", err)
 	}
@@ -342,7 +342,7 @@ func TestFetchLogsStopsPagingAnUnboundedWindow(t *testing.T) {
 	}
 	api := &fakeLogs{pages: map[string][]*cloudwatchlogs.FilterLogEventsOutput{BootLogGroup(): endless}}
 
-	_, err := fetchLogs(context.Background(), api, LogQuery{Environment: "prod", Source: LogSourceBoot}, "us-east-1")
+	_, err := fetchLogs(context.Background(), api, LogQuery{Node: "prod", Source: LogSourceBoot}, "us-east-1")
 	if err == nil {
 		t.Fatal("an endlessly paging window should be reported, not truncated silently")
 	}
@@ -354,13 +354,13 @@ func TestFetchLogsStopsPagingAnUnboundedWindow(t *testing.T) {
 	}
 }
 
-func TestFetchLogsRequiresAnEnvironmentName(t *testing.T) {
+func TestFetchLogsRequiresANodeName(t *testing.T) {
 	_, err := FetchLogs(context.Background(), Config{Region: "eu-west-2"}, LogQuery{Source: LogSourceEngine})
 	if err == nil {
-		t.Fatal("a config with no environment cannot identify its streams")
+		t.Fatal("a config with no node cannot identify its streams")
 	}
-	if !strings.Contains(err.Error(), "spinloop cloud deploy") {
-		t.Errorf("error = %q, want it to say how to re-register", err)
+	if !strings.Contains(err.Error(), "--node") || !strings.Contains(err.Error(), "spinloop cloud ls") {
+		t.Errorf("error = %q, want it to name the fix", err)
 	}
 }
 

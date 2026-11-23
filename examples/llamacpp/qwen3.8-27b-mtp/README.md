@@ -143,7 +143,7 @@ weights, the rest become the server's flags — and drops the settings the
 cloud owns (the bind, `ctx-size`, …) from them, exactly as it would from a
 preset. See [`spinloop cloud`](../../../docs/commands/cloud.md) for the
 rest: `logs`, `metrics`, and how to name and switch between multiple
-deployed environments.
+deployed cloud nodes.
 
 ## See also
 

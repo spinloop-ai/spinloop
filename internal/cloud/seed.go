@@ -8,9 +8,9 @@ import (
 	"net/url"
 )
 
-// Seeds are account-wide rather than per-environment: one model seeded once
-// serves every environment that names it. So none of these calls carries an
-// environment, and none of them uses the shared Response struct — the seed
+// Seeds are account-wide rather than per-node: one model seeded once
+// serves every cloud node that names it. So none of these calls carries a
+// node, and none of them uses the shared Response struct — the seed
 // Lambda's replies have their own shapes.
 
 // SeedRequest asks for a model's weights to be fetched into S3. Deliberately no

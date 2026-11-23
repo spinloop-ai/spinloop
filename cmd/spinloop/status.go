@@ -1,7 +1,7 @@
 // `spinloop status`: what every engine in the target is doing, one row each.
-// The target is whatever names one — an environment on the control plane,
-// a fleet file, or the fleet file in the working directory — so an environment
-// and a fleet holding that same environment read identically. The rendering
+// The target is whatever names one — a cloud node on the control plane,
+// a fleet file, or the fleet file in the working directory — so a cloud node
+// and a fleet holding that same node read identically. The rendering
 // the fleet's other views in fleet.go; this is the command.
 
 package main
@@ -24,12 +24,12 @@ serves, how long since it last did work, and the spinloop version of the
 daemon running it. One row per node, queried concurrently, so the command
 takes as long as the slowest node rather than all of them added up.
 
-The target is an environment on the control plane (--node), a fleet file
+The target is a cloud node on the control plane (--node), a fleet file
 (--fleet), or
 the fleet.yaml in the working directory. A node that cannot be reached is a
 row saying so, not a failure: one unreachable machine never blanks the rest.
 
-An environment's endpoint address is spinloop cloud env, and its retention
+A cloud node's endpoint address is spinloop cloud env, and its retention
 deadline spinloop fleet metrics — neither is a column here, because neither
 applies to every node.`,
 		Args:          cobra.NoArgs,

@@ -34,11 +34,11 @@ func stubAWSEnv(t *testing.T) {
 	t.Setenv("AWS_EC2_METADATA_DISABLED", "true")
 }
 
-// writeCloudConfig stands a plane in holding the `default` environment, driven
+// writeCloudConfig stands a plane in holding the `default` cloud node, driven
 // from the test server.
 func writeCloudConfig(t *testing.T, serverURL string) {
 	t.Helper()
-	registerEnv(t, "default", cloud.Config{
+	registerNode(t, "default", cloud.Config{
 		StartURL: serverURL,
 		StopURL:  serverURL,
 		EnvURL:   serverURL,
@@ -72,16 +72,16 @@ func TestCloud_Unconfigured(t *testing.T) {
 	// moved to the top level — cmd/spinloop/commands_test.go covers their
 	// signpost under the old spelling.
 	subs := []string{"start", "restart", "stop"}
-	// Naming no environment is its own failure: these commands act on one
+	// Naming no cloud node is its own failure: these commands act on one
 	// instance, and an instance nobody named is not one to act on.
 	for _, sub := range subs {
 		err := run([]string{"cloud", sub})
 		if err == nil || !strings.Contains(err.Error(), "pass --node") {
-			t.Errorf("cloud %s with no environment should name the flag, got %v", sub, err)
+			t.Errorf("cloud %s with no cloud node named should name the flag, got %v", sub, err)
 		}
 	}
 	// Naming one explains how to make a plane resolvable: with no plane there
-	// is no environment either, and the fix is the region the plane lives in.
+	// is no cloud node either, and the fix is the region the plane lives in.
 	for _, sub := range subs {
 		err := run([]string{"cloud", sub, "--node", "default"})
 		if err == nil || !strings.Contains(err.Error(), "SPINLOOP_CLOUD_REGION") {
@@ -144,7 +144,7 @@ func TestCloudStart_FlagAfterPositional(t *testing.T) {
 		w.Write([]byte(`{"state":"ready","base_url":"http://198.51.100.1:8000/v1","api_key":"sk-test"}`))
 	}))
 	defer server.Close()
-	registerEnv(t, "testenv", cloud.Config{StartURL: server.URL, StopURL: server.URL, EnvURL: server.URL, Region: "eu-west-1"})
+	registerNode(t, "testenv", cloud.Config{StartURL: server.URL, StopURL: server.URL, EnvURL: server.URL, Region: "eu-west-1"})
 
 	dir := t.TempDir()
 	spinloopFile := "PROVIDER openai-compatible\n"
@@ -229,7 +229,7 @@ func TestCloudStatus_PrintsVersion(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	registerEnv(t, "default", cloud.Config{
+	registerNode(t, "default", cloud.Config{
 		StartURL: server.URL + "/start",
 		StopURL:  server.URL + "/stop",
 		EnvURL:   server.URL + "/env",
@@ -397,7 +397,7 @@ func TestCloudRestart_TimeoutFlag(t *testing.T) {
 	}
 }
 
-// Restarting an environment that is already stopped behaves as a start: the
+// Restarting a node that is already stopped behaves as a start: the
 // pause-style stop is a no-op, and the wake still brings the endpoint back.
 func TestCloudRestart_AlreadyStoppedBehavesAsStart(t *testing.T) {
 	isolateConfig(t)
@@ -410,14 +410,14 @@ func TestCloudRestart_AlreadyStoppedBehavesAsStart(t *testing.T) {
 
 	out := captureStdout(t, func() {
 		if err := cmdCloudRestart([]string{"--node", "default"}); err != nil {
-			t.Errorf("cloud restart on a stopped environment: %v", err)
+			t.Errorf("cloud restart on a stopped node: %v", err)
 		}
 	})
 	if !strings.Contains(out, "base url: http://198.51.100.1:8000/v1") {
-		t.Errorf("restart of a stopped environment should print the base URL, got:\n%s", out)
+		t.Errorf("restart of a stopped node should print the base URL, got:\n%s", out)
 	}
 	if wakes != 1 {
-		t.Errorf("restart of a stopped environment should still wake, got wakes=%d", wakes)
+		t.Errorf("restart of a stopped node should still wake, got wakes=%d", wakes)
 	}
 }
 
@@ -514,8 +514,8 @@ func TestCloud_SpinloopDiscovery(t *testing.T) {
 		if r.URL.Query().Get("env") == "" {
 			// The env-less read is the inventory — the plane's record of what
 			// it holds — and a node named by --node has to be in it.
-			json.NewEncoder(w).Encode(map[string]any{"environments": []map[string]any{
-				{"environment": "default", "state": "running"},
+			json.NewEncoder(w).Encode(map[string]any{"nodes": []map[string]any{
+				{"node": "default", "state": "running"},
 			}})
 			return
 		}
@@ -544,10 +544,10 @@ func TestCloud_SpinloopDiscovery(t *testing.T) {
 }
 
 // --spinloop reads a Spinloop for its ENV instructions and the adjacent
-// .env; it never selects an environment by itself. One with no ENV lines
+// .env; it never selects a cloud node by itself. One with no ENV lines
 // supplies nothing, so with no --node or --fleet either the command fails on
 // the missing target, not on the Spinloop.
-func TestCloud_ExplicitSpinloopDoesNotNameAnEnvironment(t *testing.T) {
+func TestCloud_ExplicitSpinloopDoesNotNameACloudNode(t *testing.T) {
 	isolateConfig(t)
 	t.Chdir(t.TempDir())
 	if err := os.WriteFile("Spinloop", []byte("PROVIDER ollama\n"), 0o600); err != nil {
@@ -1343,7 +1343,7 @@ func TestCloudKeep_PrintsDeadline(t *testing.T) {
 		w.Write([]byte(`{"environment":"test"}`))
 	}))
 	defer server.Close()
-	registerEnv(t, "default", cloud.Config{
+	registerNode(t, "default", cloud.Config{
 		StartURL:  server.URL,
 		StopURL:   server.URL,
 		UpdateURL: server.URL,

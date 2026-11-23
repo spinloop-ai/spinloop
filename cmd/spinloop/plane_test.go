@@ -22,25 +22,25 @@ import (
 //
 // stubPlane is the common shape: one server for the whole plane, splitting the
 // one request the plane is asked for itself — the env-less stats read, which is
-// the inventory — from the environment-named control calls a node makes.
+// the inventory — from the node-named control calls a node makes.
 
-// stubPlane stands the CLI's control plane in: it holds the environments named,
-// and every environment-named control call is answered by handler (nil for one
+// stubPlane stands the CLI's control plane in: it holds the cloud nodes named,
+// and every node-named control call is answered by handler (nil for one
 // that says the instance is running). It returns the server, so a test can
 // assert against it.
 func stubPlane(t *testing.T, handler http.Handler, names ...string) *httptest.Server {
 	t.Helper()
-	envs := make([]cloud.Environment, 0, len(names))
+	nodes := make([]cloud.Node, 0, len(names))
 	for _, n := range names {
-		envs = append(envs, cloud.Environment{Name: n, State: "running"})
+		nodes = append(nodes, cloud.Node{Name: n, State: "running"})
 	}
-	return stubPlaneEnvs(t, handler, envs)
+	return stubPlaneNodes(t, handler, nodes)
 }
 
-// stubPlaneEnvs is stubPlane for a test that cares what the plane says about an
-// environment beyond that it holds the name — who deployed it, what it serves,
+// stubPlaneNodes is stubPlane for a test that cares what the plane says about a
+// cloud node beyond that it holds the name — who deployed it, what it serves,
 // the address it answers on.
-func stubPlaneEnvs(t *testing.T, handler http.Handler, envs []cloud.Environment) *httptest.Server {
+func stubPlaneNodes(t *testing.T, handler http.Handler, nodes []cloud.Node) *httptest.Server {
 	t.Helper()
 	if handler == nil {
 		handler = planeControlAnswers(`{"state":"running","healthy":true}`, http.StatusOK)
@@ -48,28 +48,28 @@ func stubPlaneEnvs(t *testing.T, handler http.Handler, envs []cloud.Environment)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if r.URL.Query().Get("env") == "" {
-			json.NewEncoder(w).Encode(map[string]any{"environments": envs})
+			json.NewEncoder(w).Encode(map[string]any{"nodes": nodes})
 			return
 		}
 		handler.ServeHTTP(w, r)
 	}))
 	t.Cleanup(srv.Close)
-	stubPlaneEndpoints(t, srv.URL, envs...)
+	stubPlaneEndpoints(t, srv.URL, nodes...)
 	return srv
 }
 
 // stubPlaneAt points the resolved plane at a control server the test already
 // built and answers its inventory from a server of the stub's own, holding the
-// environments named. It is for a test whose control replies are stateful — the
+// cloud nodes named. It is for a test whose control replies are stateful — the
 // deploy fake that reports a fresh instance — where one server answering
 // everything would swallow the env-less inventory read.
 func stubPlaneAt(t *testing.T, controlURL string, names ...string) {
 	t.Helper()
-	envs := make([]cloud.Environment, 0, len(names))
+	nodes := make([]cloud.Node, 0, len(names))
 	for _, n := range names {
-		envs = append(envs, cloud.Environment{Name: n, State: "stopped"})
+		nodes = append(nodes, cloud.Node{Name: n, State: "stopped"})
 	}
-	stubPlaneEndpoints(t, controlURL, envs...)
+	stubPlaneEndpoints(t, controlURL, nodes...)
 }
 
 // stubPlaneEndpoints states a plane's endpoints outright — which resolves it
@@ -77,7 +77,7 @@ func stubPlaneAt(t *testing.T, controlURL string, names ...string) {
 // the stub's own. With none, the plane's stats endpoint stays where the control
 // endpoints are: a command that never lists the plane need not care what it
 // answers.
-func stubPlaneEndpoints(t *testing.T, controlURL string, envs ...cloud.Environment) {
+func stubPlaneEndpoints(t *testing.T, controlURL string, nodes ...cloud.Node) {
 	t.Helper()
 	stubAWSEnv(t)
 	// Every endpoint the plane has, stated outright: a test server standing in
@@ -92,8 +92,8 @@ func stubPlaneEndpoints(t *testing.T, controlURL string, envs ...cloud.Environme
 		t.Setenv(key, controlURL)
 	}
 	t.Setenv("SPINLOOP_CLOUD_REGION", "us-east-1")
-	if envs != nil {
-		servePlaneInventory(t, envs)
+	if nodes != nil {
+		servePlaneInventory(t, nodes)
 	} else {
 		planeInventory = nil
 	}
@@ -105,13 +105,13 @@ func stubPlaneEndpoints(t *testing.T, controlURL string, envs ...cloud.Environme
 
 // servePlaneInventory points the plane's stats endpoint at a small proxy that
 // answers the env-less read — the inventory — itself and forwards every
-// environment-named read on to the plane's real stats endpoint.
+// node-named read on to the plane's real stats endpoint.
 //
 // The proxy is what lets a test whose control server also serves stats keep
 // both: the inventory and a version string live at the same URL on a real
-// plane, separated only by whether the request names an environment, and a
+// plane, separated only by whether the request names a node, and a
 // stub that simply replaced the URL would swallow one of them.
-func servePlaneInventory(t *testing.T, envs []cloud.Environment) {
+func servePlaneInventory(t *testing.T, nodes []cloud.Node) {
 	t.Helper()
 	upstream := os.Getenv("SPINLOOP_CLOUD_STATS_URL")
 	target, err := url.Parse(upstream)
@@ -121,7 +121,7 @@ func servePlaneInventory(t *testing.T, envs []cloud.Environment) {
 	forward := httputil.NewSingleHostReverseProxy(target)
 	inventory := func(w http.ResponseWriter) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"environments": envs})
+		json.NewEncoder(w).Encode(map[string]any{"nodes": nodes})
 	}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("env") == "" {
@@ -132,13 +132,13 @@ func servePlaneInventory(t *testing.T, envs []cloud.Environment) {
 	}))
 	t.Cleanup(srv.Close)
 	t.Setenv("SPINLOOP_CLOUD_STATS_URL", srv.URL)
-	planeInventory = envs
+	planeInventory = nodes
 }
 
 // planeInventory remembers what the running test's plane holds, so a fixture
 // that moves the stats endpoint afterwards re-installs the inventory proxy over
 // the new address instead of losing the inventory with it.
-var planeInventory []cloud.Environment
+var planeInventory []cloud.Node
 
 // planeStatsAt points the plane's stats endpoint at a test server — which
 // answers both the node's own stats read and, through the proxy, the env-less
@@ -154,7 +154,7 @@ func planeStatsAt(t *testing.T, statsURL string) {
 // stubPlaneEmpty is a plane that resolves and holds nothing: the shape a name
 // that was never deployed meets, and an honest empty `cloud ls`.
 func stubPlaneEmpty(t *testing.T) *httptest.Server {
-	return stubPlaneEnvs(t, nil, []cloud.Environment{})
+	return stubPlaneNodes(t, nil, []cloud.Node{})
 }
 
 // stubPlaneRefused is a plane that resolves but cannot answer for itself — the

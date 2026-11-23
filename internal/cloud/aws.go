@@ -171,7 +171,7 @@ func ControlPlaneStackDeployed(ctx context.Context, cfg aws.Config, stackName st
 }
 
 // ControlPlane is what `spinloop cloud bootstrap` deployed once for the account:
-// the control URLs every environment shares, plus the weights bucket. It is
+// the control URLs every cloud node shares, plus the weights bucket. It is
 // discovered from the control-plane stack's CloudFormation outputs, so it reflects
 // what is actually deployed and works from any machine with account access.
 type ControlPlane struct {
@@ -234,13 +234,13 @@ func controlPlaneFromOutputs(stackName string, outputs map[string]string) (Contr
 
 // pricingConfig resolves the AWS config for the pricing call. The pricing
 // service is global, so the endpoint stays us-east-1; the credential, though,
-// resolves with the environment's region precedence — the stored
+// resolves with the cloud node's region precedence — the stored
 // control-plane key, when nothing explicit is set, signs the call the same as
 // every other day-to-day command, and the user policy's pricing:GetProducts
 // grant is what authorises it.
-func pricingConfig(ctx context.Context, envRegion string) (aws.Config, error) {
+func pricingConfig(ctx context.Context, nodeRegion string) (aws.Config, error) {
 	opts := []func(*awsconfig.LoadOptions) error{awsconfig.WithRegion("us-east-1")}
-	if opt, ok := storedCredsOption(envRegion); ok {
+	if opt, ok := storedCredsOption(nodeRegion); ok {
 		opts = append(opts, opt)
 	}
 	return awsconfig.LoadDefaultConfig(ctx, opts...)

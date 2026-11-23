@@ -103,7 +103,7 @@ the window — and the PARAMs ride into the server's flags the way they do
 locally, the settings the cloud owns dropped. See
 [`spinloop cloud`](../../../docs/commands/cloud.md) for the rest: `logs`,
 `metrics`, and how to name and switch between multiple deployed
-environments.
+cloud nodes.
 
 ## See also
 

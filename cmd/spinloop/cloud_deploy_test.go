@@ -515,13 +515,13 @@ func TestSplitModelQuant(t *testing.T) {
 }
 
 // stubDeploySeams wires the deploy flow's seams: discovery returns a layer
-// whose control URLs are serverURL, the environment reports the given state,
+// whose control URLs are serverURL, the node reports the given state,
 // and the public-IP probe is fixed. Restores on cleanup.
 // stubDeploySeams stands the control plane a deploy resolves in: its endpoints
 // are serverURL, a status read answers statusState, and the public-address probe
-// reports the caller's own IP. The plane holds the environments given — none by
+// reports the caller's own IP. The plane holds the cloud nodes given — none by
 // default, which is a fresh plane where any name is free.
-func stubDeploySeams(t *testing.T, serverURL, statusState string, holds ...cloud.Environment) {
+func stubDeploySeams(t *testing.T, serverURL, statusState string, holds ...cloud.Node) {
 	t.Helper()
 	origDiscover, origStatus, origDetect, origPlane, origInventory :=
 		deployDiscoverFn, cloudStatusFn, detectPublicCIDRFn, deployResolvePlaneFn, cloudInventoryFn
@@ -540,7 +540,7 @@ func stubDeploySeams(t *testing.T, serverURL, statusState string, holds ...cloud
 			Region: "us-east-1",
 		}}, nil
 	}
-	cloudInventoryFn = func(context.Context, cloud.Config) ([]cloud.Environment, error) {
+	cloudInventoryFn = func(context.Context, cloud.Config) ([]cloud.Node, error) {
 		return holds, nil
 	}
 	cloudStatusFn = func(context.Context, cloud.Config) (*cloud.Response, error) {
@@ -550,7 +550,7 @@ func stubDeploySeams(t *testing.T, serverURL, statusState string, holds ...cloud
 }
 
 // writeDeploySpinloopCwd writes the Spinloop a deploy reads for the engine,
-// model and context + its preset, in a new working directory. The environment
+// model and context + its preset, in a new working directory. The cloud node's
 // name travels as --node, not in the file.
 func writeDeploySpinloopCwd(t *testing.T) {
 	t.Helper()
@@ -599,14 +599,14 @@ func TestCloudDeploy_PostsTheConfigToThePlane(t *testing.T) {
 	if !strings.Contains(gotAuth, "AWS4-HMAC-SHA256") {
 		t.Errorf("request was not SigV4-signed: %q", gotAuth)
 	}
-	// The environment travels on the call; the Lambdas require it.
+	// The name travels on the call as the `env` parameter; the Lambdas require it.
 	if gotEnv != "testenv" {
 		t.Errorf("env query = %q, want testenv", gotEnv)
 	}
 	if got.Runner != "llamacpp" || got.ModelID != "unsloth/Qwen3.6-27B-MTP-GGUF" || got.ContextSize != 131072 {
 		t.Errorf("posted config is wrong: %+v", got.DeployConfig)
 	}
-	// A fresh environment gets the detected CIDR.
+	// A fresh node gets the detected CIDR.
 	if got.AllowedCidr != "203.0.113.7/32" {
 		t.Errorf("allowedCidr = %q, want the detected /32", got.AllowedCidr)
 	}
@@ -670,7 +670,7 @@ func TestCloudDeploy_NotBootstrapped(t *testing.T) {
 	nothingWrittenToThePlaneDir(t)
 }
 
-func TestCloudDeploy_RequiresEnvName(t *testing.T) {
+func TestCloudDeploy_RequiresNodeName(t *testing.T) {
 	isolateConfig(t)
 	t.Chdir(t.TempDir())
 	if err := os.WriteFile("Spinloop", []byte(
@@ -678,26 +678,26 @@ func TestCloudDeploy_RequiresEnvName(t *testing.T) {
 	), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	// No --node: deploy cannot tell which environment to create.
+	// No --node: deploy cannot tell which cloud node to create.
 	err := cmdCloudDeploy(nil)
-	if err == nil || !strings.Contains(err.Error(), "deploy must name the environment it creates") {
+	if err == nil || !strings.Contains(err.Error(), "deploy must name the cloud node it creates") {
 		t.Errorf("want an error asking for --node, got %v", err)
 	}
-	// A path-shaped value is not an environment name.
+	// A path-shaped value is not a node name.
 	err = cmdCloudDeploy([]string{"--node", "./cloud.json"})
-	if err == nil || !strings.Contains(err.Error(), "is not an environment name") {
-		t.Errorf("want an environment-name error, got %v", err)
+	if err == nil || !strings.Contains(err.Error(), "is not a node name") {
+		t.Errorf("want a node-name error, got %v", err)
 	}
 }
 
 func TestCloudDeploy_OverwriteGuard(t *testing.T) {
 	deployBody := `{"deployed":true,"environment":"testenv","base_url":"http://198.51.100.9:8000/v1"}`
-	colleagues := cloud.Environment{
+	colleagues := cloud.Node{
 		Name: "testenv", DeployedBy: "colleague@example", DeployedAt: "2026-11-20T09:00:00Z",
 		ServedName: "qwen3.6-27b", State: "stopped",
 	}
 
-	t.Run("an environment the plane holds needs --overwrite", func(t *testing.T) {
+	t.Run("a cloud node the plane holds needs --overwrite", func(t *testing.T) {
 		isolateConfig(t)
 		stubAWSEnv(t)
 		stubDeploySeams(t, "https://unused", "undeployed", colleagues)
@@ -726,7 +726,7 @@ func TestCloudDeploy_OverwriteGuard(t *testing.T) {
 	})
 
 	t.Run("--overwrite widens ingress only when told to", func(t *testing.T) {
-		// The environment already exists, so defaulting its ingress to whichever
+		// The node already exists, so defaulting its ingress to whichever
 		// IP is deploying this minute would quietly rewrite a colleague's
 		// security group. Nothing changes without the CIDR being named.
 		isolateConfig(t)
@@ -763,7 +763,7 @@ func TestCloudDeploy_OverwriteGuard(t *testing.T) {
 				t.Errorf("cmdCloudDeploy --overwrite --allowed-cidr: %v", err)
 			}
 		})
-		if !strings.Contains(out, "deployed: environment testenv") {
+		if !strings.Contains(out, "deployed: node testenv") {
 			t.Errorf("expected a deploy report, got:\n%s", out)
 		}
 		if gotCidr != "198.51.100.0/24" {
@@ -771,7 +771,7 @@ func TestCloudDeploy_OverwriteGuard(t *testing.T) {
 		}
 	})
 
-	t.Run("a live environment's ingress needs naming too", func(t *testing.T) {
+	t.Run("a live node's ingress needs naming too", func(t *testing.T) {
 		isolateConfig(t)
 		stubAWSEnv(t)
 		stubDeploySeams(t, "https://unused", "running")
@@ -799,7 +799,7 @@ func TestCloudDeploy_OverwriteGuard(t *testing.T) {
 				t.Errorf("cmdCloudDeploy --overwrite: %v", err)
 			}
 		})
-		if !strings.Contains(out, "deployed: environment testenv") {
+		if !strings.Contains(out, "deployed: node testenv") {
 			t.Errorf("expected a deploy report, got:\n%s", out)
 		}
 	})
@@ -840,8 +840,8 @@ func TestCloudDeploy_DryRunSendsNothing(t *testing.T) {
 	if called {
 		t.Error("--dry-run must touch nothing — not even the plane")
 	}
-	if !strings.Contains(out, "unsloth/Qwen3.6-27B-MTP-GGUF") || !strings.Contains(out, "environment: testenv") {
-		t.Errorf("--dry-run should print the config and environment, got:\n%s", out)
+	if !strings.Contains(out, "unsloth/Qwen3.6-27B-MTP-GGUF") || !strings.Contains(out, "node: testenv") {
+		t.Errorf("--dry-run should print the config and node, got:\n%s", out)
 	}
 	// No pin means the plan promises latest, so a dry run says what a fresh
 	// boot would install rather than leaving it unstated.
@@ -936,9 +936,9 @@ func TestCloudDeploy_SpinloopVersion(t *testing.T) {
 	})
 }
 
-// An instance type is recorded on the environment: it reaches the signed body
+// An instance type is recorded for the cloud node: it reaches the signed body
 // so the deploy Lambda persists it, and the plan names the machine the
-// environment will launch as — a promise when named, the default otherwise.
+// node will launch as — a promise when named, the default otherwise.
 func TestCloudDeploy_InstanceType(t *testing.T) {
 	t.Run("the type reaches the deploy body and the plan", func(t *testing.T) {
 		isolateConfig(t)
@@ -1021,7 +1021,7 @@ func TestCloudDeploy_InstanceType(t *testing.T) {
 	})
 }
 
-// A supplied key is resolved from the environment the Spinloop's local
+// A supplied key is resolved from the variables the Spinloop's local
 // environment populated, reaches the signed body as a request-scoped field,
 // and the report says what happened to it — the action, never the value.
 func TestCloudDeploy_APIKeyEnvReachesTheRequest(t *testing.T) {
@@ -1131,7 +1131,7 @@ func TestRunnerFor(t *testing.T) {
 }
 
 // providerForRunner is runnerFor's reverse, for a launch that auto-configures
-// from a deployed environment's reported runner rather than a Spinloop's
+// from a deployed cloud node's reported runner rather than a Spinloop's
 // PROVIDER. Since runnerFor only ever accepts llamacpp/vllm, no other runner
 // value can ever reach a deploy-config — but the reverse mapping still has to
 // reject one, rather than trust an unrecognised string as a provider name.

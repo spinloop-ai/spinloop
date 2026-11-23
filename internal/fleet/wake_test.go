@@ -342,7 +342,7 @@ func TestWakeTimesOutWithoutStopping(t *testing.T) {
 // Two Wake calls racing to wake the same node coalesce into one actual
 // start. This fixture's own /v1/start does not itself reject a concurrent
 // call the way a real daemon's supervisor mutex does — unlike a daemon
-// node, a cloud environment's control plane has no such guard at all — so
+// node, a cloud node's control plane has no such guard at all — so
 // without wakeSingleflight both calls would reach StartWith and each start
 // their own engine (or, for a cloud node, each launch their own instance).
 func TestWakeCoalescesConcurrentCallsForTheSameNode(t *testing.T) {
@@ -503,7 +503,7 @@ func TestWakeWithoutAKeyIsUngated(t *testing.T) {
 // The wake path stays daemon-only: a remote is never woken — what it serves is
 // set by `spinloop cloud deploy`. Wake boots its instance and waits for its
 // engine to answer the same way it does for a daemon node, without pushing
-// the candidate resolver's config onto it — the environment already knows
+// the candidate resolver's config onto it — the node already knows
 // what it serves.
 func TestWakeStartsADeployedCloudNode(t *testing.T) {
 	shortWake(t)
@@ -519,7 +519,7 @@ func TestWakeStartsADeployedCloudNode(t *testing.T) {
 		defer mu.Unlock()
 		if engine == nil {
 			// The control plane carries no deploy facts on a stopped
-			// environment's status reply — only a running one's does — so
+			// the node's status reply — only a running one's does — so
 			// this deliberately reports none, the way the real one does.
 			return `{"state":"stopped"}`
 		}
@@ -580,7 +580,7 @@ func TestWakeStartsADeployedCloudNode(t *testing.T) {
 	mu.Lock()
 	defer mu.Unlock()
 	if !started {
-		t.Error("the environment's instance was never started")
+		t.Error("the node's instance was never started")
 	}
 }
 

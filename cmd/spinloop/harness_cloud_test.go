@@ -14,19 +14,19 @@ import (
 	"github.com/spinloop-ai/spinloop/internal/spinloop"
 )
 
-// cloudSpinloopDir registers an environment served by envURL and writes a
+// cloudSpinloopDir registers a cloud node served by envURL and writes a
 // Spinloop in a fresh directory, returning the directory. baseURL is the
-// endpoint address the environment records — a public one, so the apply has a
+// endpoint address the node records — a public one, so the apply has a
 // key to warn about when it has none.
 func cloudSpinloopDir(t *testing.T, name, envURL, baseURL string) string {
 	t.Helper()
-	registerEnv(t, name, cloud.Config{
-		StartURL:    envURL,
-		StopURL:     envURL,
-		EnvURL:      envURL,
-		BaseURL:     baseURL,
-		Region:      "eu-west-1",
-		Environment: name,
+	registerNode(t, name, cloud.Config{
+		StartURL: envURL,
+		StopURL:  envURL,
+		EnvURL:   envURL,
+		BaseURL:  baseURL,
+		Region:   "eu-west-1",
+		Node:     name,
 	})
 	dir := t.TempDir()
 	mustWrite(t, filepath.Join(dir, "Spinloop"), "PROVIDER llamacpp\nALIAS q3\n")
@@ -43,7 +43,7 @@ func envServer(t *testing.T) *httptest.Server {
 }
 
 // deployedEnvServer answers the env Lambda call the way an upgraded control
-// plane does for an environment with a model deployed to it: base_url/api_key
+// plane does for a cloud node with a model deployed to it: base_url/api_key
 // alongside the deploy-config facts a bare `spinloop harness --node` needs to
 // configure the harness with no Spinloop at all.
 func deployedEnvServer(t *testing.T) *httptest.Server {
@@ -172,9 +172,9 @@ func TestHarness_BareEnvAutoConfiguresAndLaunches(t *testing.T) {
 
 	server := deployedEnvServer(t)
 	defer server.Close()
-	registerEnv(t, "dev-3", cloud.Config{
+	registerNode(t, "dev-3", cloud.Config{
 		StartURL: server.URL, StopURL: server.URL, EnvURL: server.URL,
-		BaseURL: "http://198.51.100.1:8000/v1", Region: "eu-west-1", Environment: "dev-3",
+		BaseURL: "http://198.51.100.1:8000/v1", Region: "eu-west-1", Node: "dev-3",
 	})
 
 	forwarded, out := launchedArgs(t, []string{"--node", "dev-3", "--prompt", "hello"})
@@ -193,8 +193,8 @@ func TestHarness_BareEnvAutoConfiguresAndLaunches(t *testing.T) {
 
 // TestHarness_AppliedSpinloopStillWinsOverDeployConfig guards the precedence
 // rule: applying a Spinloop alongside --node uses the Spinloop's own values,
-// never the environment's deploy-config, exactly as a hand-written BASEURL
-// already wins over the environment's registered address.
+// never the cloud node's deploy-config, exactly as a hand-written BASEURL
+// already wins over the node's registered address.
 func TestHarness_AppliedSpinloopStillWinsOverDeployConfig(t *testing.T) {
 	home := isolateConfig(t)
 	stubAWSEnv(t)
@@ -376,7 +376,7 @@ func TestApplyBeforeLaunch_LocalSpinloopFetchesNothing(t *testing.T) {
 		t.Fatalf("applyBeforeLaunch: %v", res.err)
 	}
 	if res.resp != nil {
-		t.Errorf("a local Spinloop should fetch no cloud environment, got %+v", res.resp)
+		t.Errorf("a local Spinloop should fetch no cloud node, got %+v", res.resp)
 	}
 	if strings.Contains(stderr, "could not fetch") {
 		t.Errorf("nothing was fetched, so nothing should be reported:\n%s", stderr)
@@ -385,7 +385,7 @@ func TestApplyBeforeLaunch_LocalSpinloopFetchesNothing(t *testing.T) {
 
 // With a fleet in force, --node is the fleet's: a name that is not one of its
 // nodes fails naming the known nodes, and specifically does NOT fall back to a
-// registered environment of the same name — the cloud endpoint stays unfetched.
+// cloud node on the plane of the same name — the cloud endpoint stays unfetched.
 func TestApplyBeforeLaunch_NodeNamesFleetNode(t *testing.T) {
 	isolateConfig(t)
 	stubAWSEnv(t)
@@ -406,22 +406,22 @@ func TestApplyBeforeLaunch_NodeNamesFleetNode(t *testing.T) {
 		t.Errorf("the failure should name the pin and the fleet's known nodes, got %v", err)
 	}
 	if strings.Contains(msg, "not registered") {
-		t.Errorf("the name must not be sought in the environment registry, got %v", err)
+		t.Errorf("the name must not be sought on the plane, got %v", err)
 	}
 }
 
 // A bare `spinloop harness --node <name>` — no Spinloop at all — configures
-// the harness from what the environment reports is deployed to it.
-func TestApplyFromEnvironment_ConfiguresFromDeployConfig(t *testing.T) {
+// the harness from what the cloud node reports is deployed to it.
+func TestApplyFromCloudNode_ConfiguresFromDeployConfig(t *testing.T) {
 	home := isolateConfig(t)
 	stubAWSEnv(t)
 	t.Setenv("OPENAI_API_KEY", "")
 
 	server := deployedEnvServer(t)
 	defer server.Close()
-	registerEnv(t, "dev-3", cloud.Config{
+	registerNode(t, "dev-3", cloud.Config{
 		StartURL: server.URL, StopURL: server.URL, EnvURL: server.URL,
-		BaseURL: "http://198.51.100.1:8000/v1", Region: "eu-west-1", Environment: "dev-3",
+		BaseURL: "http://198.51.100.1:8000/v1", Region: "eu-west-1", Node: "dev-3",
 	})
 
 	h, _ := harness.Lookup("opencode")
@@ -431,11 +431,11 @@ func TestApplyFromEnvironment_ConfiguresFromDeployConfig(t *testing.T) {
 	var err error
 	captureStderr(t, func() {
 		captureStdout(t, func() {
-			sel, _, resp, choice, err = applyFromEnvironment("", h, routeOptions{node: "dev-3"})
+			sel, _, resp, choice, err = applyFromCloudNode("", h, routeOptions{node: "dev-3"})
 		})
 	})
 	if err != nil {
-		t.Fatalf("applyFromEnvironment: %v", err)
+		t.Fatalf("applyFromCloudNode: %v", err)
 	}
 	if choice != nil {
 		t.Errorf("no fleet routing should have happened, got %+v", choice)
@@ -459,7 +459,7 @@ func TestApplyFromEnvironment_ConfiguresFromDeployConfig(t *testing.T) {
 // An unregistered runner value could never actually reach a deploy-config —
 // runnerFor already refuses anything but llamacpp/vllm at deploy time — but
 // the launch must still fail rather than trust one, should it ever happen.
-func TestApplyFromEnvironment_UnrecognisedRunnerFails(t *testing.T) {
+func TestApplyFromCloudNode_UnrecognisedRunnerFails(t *testing.T) {
 	isolateConfig(t)
 	stubAWSEnv(t)
 
@@ -468,38 +468,38 @@ func TestApplyFromEnvironment_UnrecognisedRunnerFails(t *testing.T) {
 		w.Write([]byte(`{"base_url":"http://198.51.100.1:8000/v1","api_key":"sk-remote","deployed":true,"runner":"bogus","servedName":"q3"}`))
 	}))
 	defer server.Close()
-	registerEnv(t, "dev-3", cloud.Config{
-		StartURL: server.URL, StopURL: server.URL, EnvURL: server.URL, Region: "eu-west-1", Environment: "dev-3",
+	registerNode(t, "dev-3", cloud.Config{
+		StartURL: server.URL, StopURL: server.URL, EnvURL: server.URL, Region: "eu-west-1", Node: "dev-3",
 	})
 
 	h, _ := harness.Lookup("opencode")
 	captureStderr(t, func() {
 		captureStdout(t, func() {
-			if _, _, _, _, err := applyFromEnvironment("", h, routeOptions{node: "dev-3"}); err == nil {
+			if _, _, _, _, err := applyFromCloudNode("", h, routeOptions{node: "dev-3"}); err == nil {
 				t.Fatal("an unrecognised runner should fail the launch")
 			}
 		})
 	})
 }
 
-// With nothing deployed to the environment, a bare `--node` launch fails
-// naming the environment and how to fix it, rather than launching an
+// With nothing deployed to the cloud node, a bare `--node` launch fails
+// naming the node and how to fix it, rather than launching an
 // unconfigured harness or falling through to applySelection's generic error.
-func TestApplyFromEnvironment_FailsWithNothingDeployed(t *testing.T) {
+func TestApplyFromCloudNode_FailsWithNothingDeployed(t *testing.T) {
 	home := isolateConfig(t)
 	stubAWSEnv(t)
 
 	server := envServer(t) // base_url/api_key only — no deploy-config fields
 	defer server.Close()
-	registerEnv(t, "dev-3", cloud.Config{
-		StartURL: server.URL, StopURL: server.URL, EnvURL: server.URL, Region: "eu-west-1", Environment: "dev-3",
+	registerNode(t, "dev-3", cloud.Config{
+		StartURL: server.URL, StopURL: server.URL, EnvURL: server.URL, Region: "eu-west-1", Node: "dev-3",
 	})
 
 	h, _ := harness.Lookup("opencode")
 	var err error
 	captureStderr(t, func() {
 		captureStdout(t, func() {
-			_, _, _, _, err = applyFromEnvironment("", h, routeOptions{node: "dev-3"})
+			_, _, _, _, err = applyFromCloudNode("", h, routeOptions{node: "dev-3"})
 		})
 	})
 	if err == nil {

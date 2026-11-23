@@ -11,7 +11,7 @@ import (
 )
 
 // defaultBakeRunners is what `spinloop cloud bake` bakes when no runners are
-// named, and the full accepted set — the two engines an environment can run.
+// named, and the full accepted set — the two engines a node can run.
 var defaultBakeRunners = []string{"llamacpp", "vllm"}
 
 // isBakeRunner reports whether r is a runner bake accepts.
@@ -55,7 +55,7 @@ func cloudBakeCmd() *cobra.Command {
 	)
 	c := &cobra.Command{
 		Use:   "bake [runner...]",
-		Short: "bake the runner AMIs an environment runs from",
+		Short: "bake the runner AMIs a node runs from",
 		Long: `starts an AMI bake for each named runner (llamacpp and vllm when
 none are named) and waits until the AMI(s) are available (~20-40 min). It
 drives the same CDK project bootstrap deploys, deploys nothing — the control

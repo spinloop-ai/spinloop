@@ -260,9 +260,9 @@ func BuildProviderBlock(id string, p *Provider, modelOverride, baseURLOverride s
 }
 
 // CloudProviderLabel is the display name for a harness provider that a remote
-// environment has renamed, so it reads distinctly from a local engine of the
-// same kind: the engine's display name qualified by the environment, e.g.
-// "llama.cpp (dev-2)". With no engine name it is the environment alone, which is
+// cloud node has renamed it, so it reads distinctly from a local engine of
+// the same kind: the engine's display name qualified by the cloud node, e.g.
+// "llama.cpp (dev-2)". With no engine name it is the cloud node alone, which is
 // still unique — no local provider shares it.
 func CloudProviderLabel(engine, env string) string {
 	if engine == "" {

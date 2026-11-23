@@ -96,7 +96,7 @@ spinloop cloud keep 4h   # hold it against the idle sweep while you work
 spinloop cloud stop      # terminate now, rather than waiting for the idle timer
 ```
 
-A cloud environment is also just another node: give it `kind: cloud` in `fleet.yaml` and it
+A cloud node is also just another node: give it `kind: cloud` in `fleet.yaml` and it
 sits on the same board as the machines you own. That is `vllm-1` in the picture
 above — configured, no instance running, costing nothing until someone presses
 `s`. → [Cloud inference instance](#cloud-inference-instance)
@@ -534,7 +534,7 @@ nodes:
     engine:
       port: 18080         # only when the daemon cannot report the engine's address
   - name: qwen
-    kind: cloud          # a `spinloop cloud` environment, driven as a fleet node
+    kind: cloud          # a `spinloop cloud` node, driven as a fleet node
 ```
 
 A node's `host`/`port` are the **daemon's**, not the model server's — those are
@@ -643,7 +643,7 @@ spinloop cloud schedule set --node dev-2 --start "0 8 * * 1-5" --stop "0 18 * * 
                           # start it at 08:00 and pause it at 18:00, Monday to Friday
 spinloop cloud stop --node dev-2                # terminate now instead of waiting
                           # for the idle timer
-spinloop cloud undeploy --node dev-2            # take the environment apart entirely:
+spinloop cloud undeploy --node dev-2            # take the node apart entirely:
                           # instance, address, key, schedules, deploy
                           # config (--dry-run says what would go)
 ```
@@ -657,11 +657,11 @@ Environments live on the **control plane**, not on your disk: which ones exist,
 what each serves and where it answers are the plane's own record, so every
 machine holding credentials for the plane sees the same list — including what
 a colleague deployed — with nothing to register per machine. A `cloud` command
-acts on exactly the one environment `--node` names; there is no `default` to
+acts on exactly the one cloud node `--node` names; there is no `default` to
 fall back to, because on a shared plane an assumed name could act on someone
 else's instance. The plane itself resolves from your credentials and region —
 the well-known stack there — and `spinloop cloud ls` reads its inventory. The
-Spinloop says only what the environment serves; the environment name stays
+Spinloop says only what the node serves; the node name stays
 out of the file.
 
 The endpoints are Lambda Function URLs on the bootstrapped plane. You never

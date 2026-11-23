@@ -45,7 +45,7 @@ func opencodeBlock(p *catalog.Provider, sel spinloop.Selection, contextWindow, o
 	if !setDefaultModel {
 		defaultModel = ""
 	}
-	// A cloud selection renames the provider after its environment and carries a
+	// A cloud selection renames the provider after its cloud node and carries a
 	// display name to match; opencode's model picker lists providers by that
 	// name, so use it in place of the catalogue engine's name to tell the cloud
 	// provider apart from a local engine of the same kind.

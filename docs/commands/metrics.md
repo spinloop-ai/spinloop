@@ -6,7 +6,7 @@ request counters, and what the node it runs on is.
 ```sh
 spinloop metrics                      # the fleet.yaml in this directory
 spinloop metrics --fleet ./cluster.yaml
-spinloop metrics --node prod           # one cloud environment, no file needed
+spinloop metrics --node prod           # one cloud node, no file needed
 spinloop metrics -w                   # redraw in place every 60 seconds
 spinloop metrics --cost               # add what each priceable node has spent
 ```
@@ -17,14 +17,14 @@ The three ways every command that reads engines takes one:
 
 | | target |
 | --- | --- |
-| `--node <name>` (`-n`) | that node of the fleet in force; with no fleet named, an environment on the control plane when none holds the name |
+| `--node <name>` (`-n`) | that node of the fleet in force; with no fleet named, a cloud node on the control plane when none holds the name |
 | `--fleet <path>` (`-f`) | that fleet file |
 | neither | the `fleet.yaml` in the working directory |
 
 `--fleet` names the fleet and `--node` the node within it, so the pair
 narrows the read to that node alone — and a name the named file lacks fails
 naming it and its nodes. Beside a *discovered* `fleet.yaml`, a name the file
-lacks falls back to a control-plane environment of that name. With none of the
+lacks falls back to a cloud node of that name. With none of the
 three resolvable the command fails naming all of them.
 
 ## Formats
@@ -64,7 +64,7 @@ Some facts only one kind of node has. A flag that asks for one applies to the
 nodes that can answer it and leaves the rest exactly as they read without it —
 a fleet of daemons asked for a cost shows no cost and still succeeds.
 
-| flag / field | cloud environment | daemon node |
+| flag / field | cloud node | daemon node |
 | --- | --- | --- |
 | `--cost` | priced from its instance type and region | — |
 | `instance`, `instanceType` | reported | — |

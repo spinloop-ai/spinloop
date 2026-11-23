@@ -139,7 +139,7 @@ func resolvePackageManagerName(flagVal string) (name string, pinned bool, err er
 
 // cloudBootstrapCmd deploys the account-level control plane once —
 // analogous to `cdk bootstrap` — by downloading the remote/ CDK project and
-// driving its control-plane deploy. It creates no EIP, instance, or environment;
+// driving its control-plane deploy. It creates no EIP, instance, or cloud node;
 // those come from `spinloop cloud deploy`. It starts no AMI bake either —
 // `spinloop cloud bake` is the separate step after it.
 func cloudBootstrapCmd() *cobra.Command {
@@ -249,9 +249,9 @@ func runCloudBootstrap(hfToken, ref, dir, region string, dryRun, assumeYes bool,
 		return err
 	}
 
-	fmt.Println("\nThe account is bootstrapped. Before an environment can start, its AMI needs baking:")
-	fmt.Println("  spinloop cloud bake <runner>   # bakes the AMI(s) an environment runs from; waits until available")
-	fmt.Println("  spinloop cloud deploy <env>    # names an environment; discovers this control plane")
+	fmt.Println("\nThe account is bootstrapped. Before a cloud node can start, its AMI needs baking:")
+	fmt.Println("  spinloop cloud bake <runner>         # bakes the AMI(s) a node runs from; waits until available")
+	fmt.Println("  spinloop cloud deploy --node <name> # names a cloud node; discovers this control plane")
 
 	return pruneSourceCaches(loc)
 }
@@ -405,13 +405,13 @@ func renderBootstrapPlan(account, region string, ref, cdkDir string, alreadyBoot
 		fmt.Fprintln(w, "Note:         the account is already bootstrapped; this will update the control plane.")
 	}
 	fmt.Fprintln(w)
-	fmt.Fprintln(w, "This deploys the control plane every environment reuses:")
+	fmt.Fprintln(w, "This deploys the control plane every cloud node reuses:")
 	fmt.Fprintln(w, "  • EC2 Image Builder pipelines (the AMI bakes are a separate step: spinloop cloud bake)")
 	fmt.Fprintln(w, "  • the lifecycle Lambdas (start/stop/monitor/deploy) and their IAM")
 	fmt.Fprintln(w, "  • the shared S3 weights bucket, IAM roles, and VPC")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Cost: an ongoing at-rest cost (bucket, and AMIs once baked) plus a per-hour GPU cost only while")
-	fmt.Fprintln(w, "an environment is running. See remote/docs/costs.md for the breakdown.")
+	fmt.Fprintln(w, "a cloud node is running. See remote/docs/costs.md for the breakdown.")
 	fmt.Fprintln(w, "Note: the GPU vCPU quota must be > 0 in this region or a later launch fails.")
 	fmt.Fprintln(w)
 	fmt.Fprintf(w, "Commands (in %s, using %s):\n", cdkDir, pm.name)

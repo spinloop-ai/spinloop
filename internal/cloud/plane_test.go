@@ -124,19 +124,19 @@ func TestResolvePlane_ResolvedOncePerProcess(t *testing.T) {
 	calls := stubPlane(t, func(_ context.Context, _ aws.Config, _ string) (ControlPlane, error) {
 		return foundPlane("eu-west-1"), nil
 	})
-	// Four environments read one after another — a fleet fan-out, or the
+	// Four cloud nodes read one after another — a fleet fan-out, or the
 	// dashboard's refresh loop — resolve the plane once.
 	for _, name := range []string{"a", "b", "c", "d"} {
-		cfg, err := ResolveEnvironment(context.Background(), name, PlaneRequest{})
+		cfg, err := ResolveNode(context.Background(), name, PlaneRequest{})
 		if err != nil {
 			t.Fatal(err)
 		}
-		if cfg.Environment != name {
-			t.Errorf("environment = %q, want %q", cfg.Environment, name)
+		if cfg.Node != name {
+			t.Errorf("node = %q, want %q", cfg.Node, name)
 		}
 	}
 	if *calls != 1 {
-		t.Errorf("the stack was read %d times for four environments, want 1", *calls)
+		t.Errorf("the stack was read %d times for four nodes, want 1", *calls)
 	}
 }
 
@@ -156,7 +156,7 @@ func TestResolvePlane_ConcurrentResolversShareOneRead(t *testing.T) {
 	errs := make(chan error, 4)
 	for _, name := range []string{"a", "b", "c", "d"} {
 		go func(name string) {
-			_, err := ResolveEnvironment(context.Background(), name, PlaneRequest{})
+			_, err := ResolveNode(context.Background(), name, PlaneRequest{})
 			errs <- err
 		}(name)
 	}
@@ -207,15 +207,15 @@ func TestResolvePlane_VariableOverrides(t *testing.T) {
 			"SPINLOOP_CLOUD_DEPLOY_URL": "https://deploy.example.com",
 			"SPINLOOP_CLOUD_STATS_URL":  "https://stats.example.com",
 		}
-		cfg, err := ResolveEnvironment(context.Background(), "ci", PlaneRequest{GetName: envMap(vars)})
+		cfg, err := ResolveNode(context.Background(), "ci", PlaneRequest{GetName: envMap(vars)})
 		if err != nil {
 			t.Fatal(err)
 		}
 		if *calls != 0 {
 			t.Errorf("a plane stated entirely by variables read the stack %d times, want 0", *calls)
 		}
-		if cfg.Environment != "ci" {
-			t.Errorf("environment = %q, want the name given", cfg.Environment)
+		if cfg.Node != "ci" {
+			t.Errorf("node = %q, want the name given", cfg.Node)
 		}
 		if cfg.StatsURL != vars["SPINLOOP_CLOUD_STATS_URL"] {
 			t.Errorf("stats URL = %q", cfg.StatsURL)
@@ -283,15 +283,15 @@ func TestResolvePlane_UnresolvableNamesWhereItLooked(t *testing.T) {
 	})
 }
 
-func TestResolveEnvironment_RejectsNonNames(t *testing.T) {
+func TestResolveNode_RejectsNonNames(t *testing.T) {
 	resetPlane(t)
 	stubPlaneChain(t, "eu-west-1")
 	calls := stubPlane(t, func(_ context.Context, _ aws.Config, _ string) (ControlPlane, error) {
 		return foundPlane("eu-west-1"), nil
 	})
 	for _, value := range []string{"", "./cloud.json", "a/b", "name.json"} {
-		if _, err := ResolveEnvironment(context.Background(), value, PlaneRequest{}); err == nil {
-			t.Errorf("%q was accepted as an environment name", value)
+		if _, err := ResolveNode(context.Background(), value, PlaneRequest{}); err == nil {
+			t.Errorf("%q was accepted as a node name", value)
 		}
 	}
 	if *calls != 0 {
@@ -299,7 +299,7 @@ func TestResolveEnvironment_RejectsNonNames(t *testing.T) {
 	}
 }
 
-func TestResolveEnvironment_WritesNothingAnywhere(t *testing.T) {
+func TestResolveNode_WritesNothingAnywhere(t *testing.T) {
 	home := isolateConfig(t)
 	resetPlane(t)
 	stubPlaneChain(t, "eu-west-1")
@@ -307,7 +307,7 @@ func TestResolveEnvironment_WritesNothingAnywhere(t *testing.T) {
 		return foundPlane("eu-west-1"), nil
 	})
 	for _, name := range []string{"prod", "staging"} {
-		if _, err := ResolveEnvironment(context.Background(), name, PlaneRequest{}); err != nil {
+		if _, err := ResolveNode(context.Background(), name, PlaneRequest{}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -333,7 +333,7 @@ func TestResolvePlane_OptionalEndpointsTravelWithThePlane(t *testing.T) {
 		stubPlane(t, func(_ context.Context, _ aws.Config, _ string) (ControlPlane, error) {
 			return foundPlane("eu-west-1"), nil
 		})
-		cfg, err := ResolveEnvironment(context.Background(), "default", PlaneRequest{GetName: noEnv})
+		cfg, err := ResolveNode(context.Background(), "default", PlaneRequest{GetName: noEnv})
 		if err != nil {
 			t.Fatalf("a plane with no seed, env, update or schedule endpoint must still resolve: %v", err)
 		}
@@ -350,7 +350,7 @@ func TestResolvePlane_OptionalEndpointsTravelWithThePlane(t *testing.T) {
 			plane.Config.SeedURL = "http://from-the-stack"
 			return plane, nil
 		})
-		cfg, err := ResolveEnvironment(context.Background(), "default", PlaneRequest{
+		cfg, err := ResolveNode(context.Background(), "default", PlaneRequest{
 			GetName: envMap(map[string]string{"SPINLOOP_CLOUD_SEED_URL": "http://stated"}),
 		})
 		if err != nil {
@@ -410,7 +410,7 @@ func TestRefreshPlane_HealsAPlaneThatMoved(t *testing.T) {
 	stubPlane(t, func(_ context.Context, _ aws.Config, _ string) (ControlPlane, error) {
 		return foundPlane("eu-west-1"), nil
 	})
-	stale, err := ResolveEnvironment(context.Background(), "prod", PlaneRequest{})
+	stale, err := ResolveNode(context.Background(), "prod", PlaneRequest{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -434,8 +434,8 @@ func TestRefreshPlane_HealsAPlaneThatMoved(t *testing.T) {
 	if fresh.StartURL != "https://fresh.lambda-url.eu-west-1.on.aws/" {
 		t.Errorf("start URL = %q, want the current one", fresh.StartURL)
 	}
-	if fresh.Environment != "prod" {
-		t.Errorf("the retry must still act on prod, got %q", fresh.Environment)
+	if fresh.Node != "prod" {
+		t.Errorf("the retry must still act on prod, got %q", fresh.Node)
 	}
 	if called, ok := swapEndpoint(stale, fresh, stale.StartURL); !ok || called != fresh.StartURL {
 		t.Errorf("swapEndpoint = %q, %v", called, ok)
@@ -454,7 +454,7 @@ func TestRevalidate_RetriesOnceAgainstTheMovedPlane(t *testing.T) {
 
 	live := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("env") != "prod" {
-			t.Errorf("the retried call lost its environment: %q", r.URL.RawQuery)
+			t.Errorf("the retried call lost its node name: %q", r.URL.RawQuery)
 		}
 		fmt.Fprint(w, `{"state":"running","base_url":"http://198.51.100.10:8000/v1"}`)
 	}))
@@ -480,7 +480,7 @@ func TestRevalidate_RetriesOnceAgainstTheMovedPlane(t *testing.T) {
 	})
 
 	stubAWSEnv(t)
-	cfg, err := ResolveEnvironment(context.Background(), "prod", PlaneRequest{})
+	cfg, err := ResolveNode(context.Background(), "prod", PlaneRequest{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -513,7 +513,7 @@ func TestRevalidate_DoesNotRetryAnOrdinaryFailure(t *testing.T) {
 		}}, nil
 	})
 	stubAWSEnv(t)
-	cfg, err := ResolveEnvironment(context.Background(), "prod", PlaneRequest{})
+	cfg, err := ResolveNode(context.Background(), "prod", PlaneRequest{})
 	if err != nil {
 		t.Fatal(err)
 	}

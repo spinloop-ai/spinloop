@@ -300,7 +300,7 @@ func TestCodeFleetNoSpinloopUsesGatewayModels(t *testing.T) {
 	}
 	host := strings.TrimPrefix(gw.URL, "http://")
 	if name, _ := entry["name"].(string); name != "Gateway ("+host+")" {
-		t.Errorf("name = %q, want it to read like the remote-environment pattern (e.g. %q)", name, "Gateway ("+host+")")
+		t.Errorf("name = %q, want it to read like the gateway label pattern (e.g. %q)", name, "Gateway ("+host+")")
 	}
 }
 
@@ -593,7 +593,7 @@ func TestCodeFleetNoSpinloopLucinateNoModelList(t *testing.T) {
 	}
 	host := strings.TrimPrefix(gw.URL, "http://")
 	if name, _ := conn["name"].(string); name != "Gateway ("+host+")" {
-		t.Errorf("name = %q, want it to read like the remote-environment pattern (e.g. %q)", name, "Gateway ("+host+")")
+		t.Errorf("name = %q, want it to read like the gateway label pattern (e.g. %q)", name, "Gateway ("+host+")")
 	}
 }
 

@@ -26,11 +26,11 @@ const ControlPlaneStackName = "cloud-vm-llm"
 // must track the group names in remote/lib/llm-stack.ts.
 const logGroupPrefix = "/" + ControlPlaneStackName
 
-// Runners are the inference engines an environment can run, and so the engine
-// log groups its instances can ship to. An environment's runner is not knowable
+// Runners are the inference engines a node can run, and so the engine
+// log groups its instances can ship to. A node's runner is not knowable
 // locally once its instance is gone — the stats Lambda only answers for a
 // running one, and a Spinloop states intent rather than what last ran — so the
-// reader asks every engine group and merges. That is also what an environment
+// reader asks every engine group and merges. That is also what a node
 // whose runner changed needs, since its history spans two groups. It must track
 // RUNNERS in remote/lambda/shared/deploy-config.ts, and runnerFor's switch.
 var Runners = []string{"llamacpp", "vllm"}
@@ -47,7 +47,7 @@ const (
 var LogSources = []string{LogSourceEngine, LogSourceBoot, LogSourceAll}
 
 // EngineLogGroup is the CloudWatch log group one engine's instances ship their
-// engine output to, across every environment.
+// engine output to, across every node.
 func EngineLogGroup(runner string) string {
 	return logGroupPrefix + "/" + runner
 }
@@ -58,17 +58,17 @@ func BootLogGroup() string {
 	return logGroupPrefix + "/boot"
 }
 
-// LogQuery describes which of an environment's shipped logs to read. Start and
+// LogQuery describes which of a node's shipped logs to read. Start and
 // End bound the window (a zero End means now); Limit caps how many events are
 // returned, keeping the most recent; Instance, when set, narrows to one
 // instance's streams.
 type LogQuery struct {
-	Environment string
-	Source      string
-	Start       time.Time
-	End         time.Time
-	Limit       int
-	Instance    string
+	Node     string
+	Source   string
+	Start    time.Time
+	End      time.Time
+	Limit    int
+	Instance string
 }
 
 // LogEvent is one shipped log line, attributed to the source and instance that
@@ -132,15 +132,15 @@ func logGroupsFor(source string) ([]logGroup, error) {
 	}
 }
 
-// FetchLogs reads an environment's shipped logs from CloudWatch Logs with the
+// FetchLogs reads a node's shipped logs from CloudWatch Logs with the
 // caller's own AWS credentials — the same ones that sign the control calls — so
 // the logs are readable whether or not the instance still exists, and without
 // the control plane having to answer.
 func FetchLogs(ctx context.Context, cfg Config, q LogQuery) (LogResult, error) {
-	if q.Environment == "" {
+	if q.Node == "" {
 		return LogResult{}, fmt.Errorf(
-			"this cloud config names no environment, so its log streams cannot be identified: " +
-				"re-register it with `spinloop cloud deploy` (which writes the environment name)")
+			"this log read names no node, so its streams cannot be identified: " +
+				"pass --node <name> (`spinloop cloud ls` lists what the plane holds)")
 	}
 	awsCfg, err := LoadAWSConfig(ctx, cfg.Region)
 	if err != nil {
@@ -150,8 +150,8 @@ func FetchLogs(ctx context.Context, cfg Config, q LogQuery) (LogResult, error) {
 }
 
 // fetchLogs queries every group the source selects and merges the results. A
-// group that does not exist is skipped rather than failing the read — an
-// environment only ever ships to the group for the engine it runs — but a read
+// group that does not exist is skipped rather than failing the read — a
+// node only ever ships to the group for the engine it runs — but a read
 // where every group is absent is the control plane predating log shipping, which
 // is reported.
 func fetchLogs(ctx context.Context, api logsAPI, q LogQuery, region string) (LogResult, error) {
@@ -179,7 +179,7 @@ func fetchLogs(ctx context.Context, api logsAPI, q LogQuery, region string) (Log
 	}
 	if missing == len(groups) {
 		return LogResult{}, fmt.Errorf(
-			"no log group exists for this environment's %s logs (looked for %s): "+
+			"no log group exists for this node's %s logs (looked for %s): "+
 				"the control plane was deployed before log shipping — re-deploy it with `spinloop cloud bootstrap`",
 			q.Source, strings.Join(groupNames(groups), ", "))
 	}
@@ -198,7 +198,7 @@ func fetchLogs(ctx context.Context, api logsAPI, q LogQuery, region string) (Log
 func fetchGroup(ctx context.Context, api logsAPI, g logGroup, q LogQuery) ([]LogEvent, int, error) {
 	in := &cloudwatchlogs.FilterLogEventsInput{
 		LogGroupName:        aws.String(g.name),
-		LogStreamNamePrefix: aws.String(q.Environment + "/"),
+		LogStreamNamePrefix: aws.String(q.Node + "/"),
 	}
 	if !q.Start.IsZero() {
 		in.StartTime = aws.Int64(q.Start.UnixMilli())
@@ -256,8 +256,8 @@ func logEventFrom(e cwltypes.FilteredLogEvent, source string) LogEvent {
 	}
 }
 
-// streamInstance takes the instance id out of an "<environment>/<instance-id>"
-// stream name. An environment name cannot contain a slash (see IsEnvName), so
+// streamInstance takes the instance id out of a "<node>/<instance-id>"
+// stream name. A node name cannot contain a slash (see IsNodeName), so
 // the last segment is the instance.
 func streamInstance(stream string) string {
 	if i := strings.LastIndex(stream, "/"); i >= 0 {

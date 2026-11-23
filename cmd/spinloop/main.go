@@ -190,9 +190,9 @@ func envFileDir(spinloopPath string) string {
 // spinloopPath is the Spinloop the selection came from — its own path, not a
 // pre-computed directory, so a relative PRESET resolves correctly whether the
 // Spinloop is local or URL-sourced; it is empty when no Spinloop is involved
-// (an `spinloop harness add` from flags). envName is the --node flag's value,
-// environment on the control plane the selection is applied against, empty for a
-// local apply. resolve looks up API key variables — normally
+// (an `spinloop harness add` from flags). nodeName is the --node flag's
+// value, the cloud node on the control plane the selection is applied against,
+// empty for a local apply. resolve looks up API key variables — normally
 // opencode.EnvResolver of the Spinloop's local directory, but `spinloop
 // harness` widens it with the key it fetched from a cloud endpoint, which it
 // is about to put in the launched agent's environment. gatewayLabel waives the
@@ -200,7 +200,7 @@ func envFileDir(spinloopPath string) string {
 // when the selection is routed at a gateway with no model or alias of its own,
 // since a gateway resolves the model per request and needs no Spinloop to name
 // one — see the rename below for what the label is used for.
-func applySelection(sel spinloop.Selection, h harness.Harness, spinloopPath, envName, gatewayLabel string, resolve func(string) string) error {
+func applySelection(sel spinloop.Selection, h harness.Harness, spinloopPath, nodeName, gatewayLabel string, resolve func(string) string) error {
 	if sel.Model == "" && sel.Alias == "" && gatewayLabel == "" {
 		return fmt.Errorf("a provider selection needs a model or an alias")
 	}
@@ -216,14 +216,14 @@ func applySelection(sel spinloop.Selection, h harness.Harness, spinloopPath, env
 
 	// The catalogue provider p is resolved above by the PROVIDER value, which
 	// stays the engine definition. From here on sel.Provider is the harness-facing
-	// name: for an environment that is its name, so the model reads as
-	// <env>/<model> and each environment keeps its own block rather than
+	// name: for a cloud node that is its name, so the model reads as
+	// <node>/<model> and each cloud node keeps its own block rather than
 	// several engines-of-the-same-kind overwriting one. The name comes from
 	// removeSelection too, so apply and unapply stay symmetric.
-	var envCfg *cloud.Config
-	if envName != "" {
+	var cloudCfg *cloud.Config
+	if nodeName != "" {
 		// The name is resolved against the plane the caller's credentials reach,
-		// so an environment a colleague deployed applies exactly as one deployed
+		// so a cloud node a colleague deployed applies exactly as one deployed
 		// here did — there is nothing to register first, and nothing to write.
 		ctx := context.Background()
 		plane, err := cloud.ResolvePlane(ctx, cloud.PlaneRequest{GetName: viperGetenv()})
@@ -235,34 +235,34 @@ func applySelection(sel spinloop.Selection, h harness.Harness, spinloopPath, env
 			return err
 		}
 		holding := false
-		var record cloud.Environment
+		var record cloud.Node
 		for _, e := range envs {
-			if e.Name == envName {
+			if e.Name == nodeName {
 				holding, record = true, e
 				break
 			}
 		}
 		if !holding {
-			return &cloud.NotDeployed{Environment: envName, Region: plane.Config.Region}
+			return &cloud.NotDeployed{Node: nodeName, Region: plane.Config.Region}
 		}
-		cfg, err := cloud.ResolveEnvironment(ctx, envName, cloud.PlaneRequest{GetName: viperGetenv()})
+		cfg, err := cloud.ResolveNode(ctx, nodeName, cloud.PlaneRequest{GetName: viperGetenv()})
 		if err != nil {
 			return err
 		}
 		// A Spinloop that states no BASEURL is applied at the address the plane
-		// reports, without starting the environment to learn it.
+		// reports, without starting the node to learn it.
 		cfg.BaseURL = record.BaseURL
-		envCfg = &cfg
-		sel.Provider = envName
-		// The provider is now keyed on the environment; label it so it reads
+		cloudCfg = &cfg
+		sel.Provider = nodeName
+		// The provider is now keyed on the cloud node; label it so it reads
 		// distinctly from a local engine of the same kind in a model picker
 		// (e.g. "llama.cpp (dev-2)" rather than another bare "llama.cpp").
-		sel.DisplayName = catalog.CloudProviderLabel(p.Name, envName)
+		sel.DisplayName = catalog.CloudProviderLabel(p.Name, nodeName)
 	} else if gatewayLabel != "" {
 		// A gateway-routed selection with no model of its own carries the
 		// catalogue's shared "openai-compatible" id, which every gateway a
 		// fleet might name would otherwise collide under. Key it by the
-		// gateway instead — mirroring the environment rename above — so a
+		// gateway instead — mirroring the cloud-node rename above — so a
 		// second gateway gets its own block. The display name leads with
 		// "Gateway" rather than the catalogue engine's own name: p.Name is
 		// always the generic "OpenAI-compatible" here, which carries no
@@ -272,15 +272,15 @@ func applySelection(sel spinloop.Selection, h harness.Harness, spinloopPath, env
 		sel.DisplayName = catalog.CloudProviderLabel("Gateway", gatewayLabel)
 	}
 
-	// A Spinloop applied against an environment states no BASEURL: the address
+	// A Spinloop applied against a cloud node states no BASEURL: the address
 	// belongs to the deployment, which records it on the plane. Take it from
 	// there — but only when the Spinloop stated none, so a hand-written
 	// BASEURL still wins.
 	// The harness reports the base URL it wrote, so this needs no announcement
 	// of its own beyond naming where it came from.
-	if sel.BaseURL == "" && envCfg != nil && envCfg.BaseURL != "" {
-		fmt.Printf("Taking the base URL from the %s environment.\n", envName)
-		sel.BaseURL = envCfg.BaseURL
+	if sel.BaseURL == "" && cloudCfg != nil && cloudCfg.BaseURL != "" {
+		fmt.Printf("Taking the base URL from the %s cloud node.\n", nodeName)
+		sel.BaseURL = cloudCfg.BaseURL
 	}
 
 	var contextSize, outputSize int
@@ -509,8 +509,8 @@ func applyCmd() *cobra.Command {
 		Short: "apply a Spinloop file (defaults to ./Spinloop)",
 		Long: `applies a Spinloop file — a declarative, Dockerfile-style description of
 one provider selection — as if you had run the equivalent add. With --node,
-applies it against an environment on the control plane: the provider is
-keyed on the environment's name and, absent a BASEURL, takes its address
+applies it against a cloud node on the control plane: the provider is
+keyed on the node's name and, absent a BASEURL, takes its address
 from what the plane records for it.`,
 		Args:          cobra.ArbitraryArgs,
 		SilenceErrors: true,
@@ -544,8 +544,8 @@ from what the plane records for it.`,
 	fs.StringVar(&providers, "providers", "", "path to a providers.yaml override")
 	fs.StringVarP(&output, "output", "o", "", "max output tokens (overrides the Spinloop's OUTPUT)")
 	fs.StringVarP(&harnessName, "harness", "H", "", "which harness to configure")
-	fs.StringVarP(&nodeName, "node", "n", "", "apply against this environment on the control plane (its name keys the provider; the plane's record supplies the base URL)")
-	compRegister(c, "node", compEnvs)
+	fs.StringVarP(&nodeName, "node", "n", "", "apply against this cloud node on the control plane (its name keys the provider; the plane's record supplies the base URL)")
+	compRegister(c, "node", compCloudNodes)
 	fs.SetInterspersed(false)
 	c.ValidArgsFunction = aliasSlot
 	compRegister(c, "providers", compFiles)
@@ -563,7 +563,7 @@ func unapplyCmd() *cobra.Command {
 		Use:   "unapply",
 		Short: "remove what a Spinloop file selects",
 		Long: `removes what a Spinloop file selects, as if you had run the equivalent
-remove. The inverse of apply: --node must name the same environment apply
+remove. The inverse of apply: --node must name the same cloud node apply
 applied the Spinloop against, or there is nothing to remove.`,
 		Args:          cobra.ArbitraryArgs,
 		SilenceErrors: true,
@@ -594,8 +594,8 @@ applied the Spinloop against, or there is nothing to remove.`,
 	fs := c.Flags()
 	fs.StringVar(&providers, "providers", "", "path to a providers.yaml override")
 	fs.StringVarP(&harnessName, "harness", "H", "", "which harness to configure")
-	fs.StringVarP(&nodeName, "node", "n", "", "the environment the Spinloop was applied against")
-	compRegister(c, "node", compEnvs)
+	fs.StringVarP(&nodeName, "node", "n", "", "the cloud node the Spinloop was applied against")
+	compRegister(c, "node", compCloudNodes)
 	fs.SetInterspersed(false)
 	c.ValidArgsFunction = aliasSlot
 	compRegister(c, "providers", compFiles)
@@ -958,17 +958,17 @@ func exportLimit(sel spinloop.Selection, st harness.ProviderState, values map[st
 // removeSelection removes a single provider selection from the active harness's
 // config. It is the shared core of `remove` and `unapply`: both resolve a
 // selection (from flags or a Spinloop file) and hand it here. It is the inverse
-// of applySelection, so it names the provider the same way — for an
-// environment that is its name, not the PROVIDER value — to remove exactly what
-// apply wrote. envName is the --node flag's value, empty when the selection is
+// of applySelection, so it names the provider the same way — for a
+// cloud node that is its name, not the PROVIDER value — to remove exactly what
+// apply wrote. nodeName is the --node flag's value, empty when the selection is
 // local; it must match the --node apply wrote the block under, or the removal
 // finds nothing and says so.
-func removeSelection(sel spinloop.Selection, h harness.Harness, spinloopPath, envName string) error {
-	if envName != "" {
-		if !cloud.IsEnvName(envName) {
-			return fmt.Errorf("%q is not an environment name: an environment name is a plain identifier, with no path", envName)
+func removeSelection(sel spinloop.Selection, h harness.Harness, spinloopPath, nodeName string) error {
+	if nodeName != "" {
+		if !cloud.IsNodeName(nodeName) {
+			return fmt.Errorf("%q is not a node name: a node name is a plain identifier, with no path", nodeName)
 		}
-		sel.Provider = envName
+		sel.Provider = nodeName
 	}
 
 	// Resolve the model keys to remove. With no model or alias, the whole
@@ -1232,7 +1232,7 @@ func splitHarnessArgs(fs *pflag.FlagSet, spinloopPath *spinloopPathFlag, args []
 				// on a word the harness never owned, with the launch quietly
 				// mis-targeted. Name the new spelling instead.
 				if tok == "--env" || strings.HasPrefix(tok, "--env=") || tok == "-e" {
-					return nil, fmt.Errorf("%s was renamed --node: pass --node <name> (a fleet node with a fleet in force, a control-plane environment otherwise)", tok)
+					return nil, fmt.Errorf("%s was renamed --node: pass --node <name> (a fleet node with a fleet in force, a cloud node on the control plane otherwise)", tok)
 				}
 				return args[i:], nil
 			}
@@ -1316,10 +1316,10 @@ func namesAnSpinloopOrAlias(arg string) bool {
 // meant for the flag.
 // It returns the applied Spinloop's directory and selection, so the launched
 // agent can be given the same keys the apply resolved, along with the cloud
-// endpoint's live environment when --node names an environment.
+// endpoint's live variables when --node names a cloud node.
 //
 // The cloud key is fetched before the apply, not after, so the apply resolves
-// against the environment the agent will actually run with. Fetching it
+// against the cloud node the agent will actually run with. Fetching it
 // afterwards left the apply warning that no key was set while the launch was
 // about to supply one.
 func applyBeforeLaunch(f spinloopPathFlag, providers string, h harness.Harness, rest []string, route routeOptions) (spinloop.Selection, string, *cloud.Response, *fleet.Choice, error) {
@@ -1345,12 +1345,12 @@ func applyBeforeLaunch(f spinloopPathFlag, providers string, h harness.Harness, 
 	return sel, envDir, cloudResp, choice, nil
 }
 
-// applyFromEnvironment configures the harness with no Spinloop at all: a bare
+// applyFromCloudNode configures the harness with no Spinloop at all: a bare
 // `spinloop harness --node <name>` reaches here. It is applyBeforeLaunch's
 // counterpart for that case — same return shape, same launch continuation —
 // except there is no Spinloop to read, so routing and the provider selection
-// come entirely from the named environment's live deploy-config.
-func applyFromEnvironment(providers string, h harness.Harness, route routeOptions) (spinloop.Selection, string, *cloud.Response, *fleet.Choice, error) {
+// come entirely from the named cloud node's live deploy-config.
+func applyFromCloudNode(providers string, h harness.Harness, route routeOptions) (spinloop.Selection, string, *cloud.Response, *fleet.Choice, error) {
 	return applyRoutedSpinloop(spinloop.Selection{}, "", providers, h, route, true)
 }
 
@@ -1362,7 +1362,7 @@ const gatewayProviderID = "openai-compatible"
 
 // applyFromGateway configures the harness for a fleet's gateway with no
 // Spinloop at all: a launch that names a fleet but wears nothing reaches here.
-// It is applyFromEnvironment's counterpart for the other way a launch can
+// It is applyFromCloudNode's counterpart for the other way a launch can
 // know where the model is served without being told which model.
 //
 // A gateway matches no node against a model — it resolves one per request — so
@@ -1404,10 +1404,10 @@ func applyFromGateway(providers string, h harness.Harness, route routeOptions) (
 // its own terms. Both then run this one path.
 //
 // autoConfigure is set only by a bare `spinloop harness --node <name>`: no
-// Spinloop was read (sel is empty and path is ""), so once the environment's
+// Spinloop was read (sel is empty and path is ""), so once the cloud node's
 // live response is in hand, its deploy-config — what is actually deployed
 // there — supplies the provider selection instead, exactly as if a Spinloop
-// had stated the same PROVIDER/ALIAS/CONTEXT. An environment reporting
+// had stated the same PROVIDER/ALIAS/CONTEXT. A cloud node reporting
 // nothing deployed (or an env Lambda predating this) fails the launch rather
 // than reaching applySelection's generic "needs a model or an alias" error,
 // so the message names the actual cause and how to fix it.
@@ -1438,15 +1438,15 @@ func applyRoutedSpinloop(sel spinloop.Selection, path string, providers string, 
 		// cloud endpoint's address is written to.
 		sel.BaseURL = choice.BaseURL
 	}
-	// envTarget is the --node value only when no fleet is in force, so the
-	// name resolves as an environment on the plane — a fleet of one. Everything
-	// cloud-shaped (the endpoint fetch, the provider key, the environment
+	// cloudTarget is the --node value only when no fleet is in force, so the
+	// name resolves as a cloud node on the plane — a fleet of one. Everything
+	// cloud-shaped (the endpoint fetch, the provider key, the cloud-node
 	// labelling) hangs off this, not off the flag: with a fleet in force
 	// --node answered as a pin, and a name that also sits on the plane
 	// must not then fetch a cloud endpoint.
-	envTarget := ""
+	cloudTarget := ""
 	if route.node != "" && route.fleetFile() == "" {
-		envTarget = route.node
+		cloudTarget = route.node
 	}
 	// label names what is being applied in the messages below: the Spinloop's
 	// own path normally, or the fleet file when there is no Spinloop at all —
@@ -1458,7 +1458,7 @@ func applyRoutedSpinloop(sel spinloop.Selection, path string, providers string, 
 	switch {
 	case autoConfigure:
 		// Nothing to apply yet — the deploy-config print below covers this
-		// case once the environment's live response is in hand.
+		// case once the cloud node's live response is in hand.
 	case path != "":
 		fmt.Printf("Applying %s\n\n", path)
 	default:
@@ -1466,17 +1466,17 @@ func applyRoutedSpinloop(sel spinloop.Selection, path string, providers string, 
 	}
 	// Before the apply, so a launch that cannot authenticate stops without
 	// having rewritten the harness config.
-	cloudResp, err := fetchCloudEnv(context.Background(), sel, envTarget, localResolve)
+	cloudResp, err := fetchCloudEnv(context.Background(), sel, cloudTarget, localResolve)
 	if err != nil {
 		return spinloop.Selection{}, "", nil, nil, err
 	}
 	if autoConfigure {
 		if cloudResp == nil || !cloudResp.Deployed || cloudResp.Runner == "" || cloudResp.ServedName == "" {
 			return spinloop.Selection{}, "", nil, nil, fmt.Errorf(
-				"nothing is deployed to environment %q to configure the harness with: "+
+				"nothing is deployed to cloud node %q to configure the harness with: "+
 					"run `spinloop cloud deploy <spinloop> --node %s` to deploy one, "+
 					"or `spinloop cloud bootstrap` to update the control plane if %s already has something deployed",
-				envTarget, envTarget, envTarget)
+				cloudTarget, cloudTarget, cloudTarget)
 		}
 		provider, err := providerForRunner(cloudResp.Runner)
 		if err != nil {
@@ -1487,7 +1487,7 @@ func applyRoutedSpinloop(sel spinloop.Selection, path string, providers string, 
 		if cloudResp.ContextSize > 0 {
 			sel.Context = strconv.Itoa(cloudResp.ContextSize)
 		}
-		fmt.Printf("Configuring from what is deployed to %s.\n\n", envTarget)
+		fmt.Printf("Configuring from what is deployed to %s.\n\n", cloudTarget)
 	}
 	resolve := cloudLaunchResolver(localResolve, cloudResp)
 	if choice != nil && choice.APIKey != "" {
@@ -1536,7 +1536,7 @@ func applyRoutedSpinloop(sel spinloop.Selection, path string, providers string, 
 			}
 		}
 	}
-	if err := applySelection(sel, h, path, envTarget, gatewayLabel, resolve); err != nil {
+	if err := applySelection(sel, h, path, cloudTarget, gatewayLabel, resolve); err != nil {
 		return spinloop.Selection{}, "", nil, nil, err
 	}
 	fmt.Println()
@@ -1638,7 +1638,7 @@ func fleetLaunchResolver(base func(string) string, key string) func(string) stri
 const cloudEnvTimeout = 30 * time.Second
 
 // fetchCloudEnv returns the live base URL and API key of the endpoint the
-// environment named by --node serves, or nil when the flag is absent. The
+// cloud node named by --node serves, or nil when the flag is absent. The
 // endpoint is started with a key that only the control plane knows, so this is
 // the one place it can come from; `spinloop harness` puts it in the
 // environment of the agent it launches.
@@ -1650,11 +1650,11 @@ const cloudEnvTimeout = 30 * time.Second
 // instruction) the fetch was only a convenience, so it warns and carries on.
 //
 // A name the control plane does not hold is a different failure: the plane is
-// the record of what is deployed, so a name it does not carry is not an
-// environment at all. That is reported as-is rather than downgraded to a
+// the record of what is deployed, so a name it does not carry is not a cloud
+// node at all. That is reported as-is rather than downgraded to a
 // warning, whatever the caller could otherwise fall back to.
-func fetchCloudEnv(ctx context.Context, sel spinloop.Selection, envName string, resolve func(string) string) (*cloud.Response, error) {
-	if envName == "" {
+func fetchCloudEnv(ctx context.Context, sel spinloop.Selection, nodeName string, resolve func(string) string) (*cloud.Response, error) {
+	if nodeName == "" {
 		return nil, nil
 	}
 	plane, err := cloud.ResolvePlane(ctx, cloud.PlaneRequest{GetName: viperGetenv()})
@@ -1662,18 +1662,18 @@ func fetchCloudEnv(ctx context.Context, sel spinloop.Selection, envName string, 
 		return nil, err
 	}
 	// The plane is the record of what is deployed, so it is the plane that says
-	// whether this name is an environment at all — a clean failure here, rather
+	// whether this name is a cloud node at all — a clean failure here, rather
 	// than one control call that happens to fail.
 	envs, err := cloud.Inventory(ctx, plane.Config)
 	if err != nil {
 		return nil, err
 	}
-	if !slices.ContainsFunc(envs, func(e cloud.Environment) bool { return e.Name == envName }) {
-		return nil, &cloud.NotDeployed{Environment: envName, Region: plane.Config.Region}
+	if !slices.ContainsFunc(envs, func(e cloud.Node) bool { return e.Name == nodeName }) {
+		return nil, &cloud.NotDeployed{Node: nodeName, Region: plane.Config.Region}
 	}
 	// The call crosses the network, and a cold control plane is not instant.
-	fmt.Fprintf(os.Stderr, "Fetching the endpoint's environment from %s...\n", envName)
-	cfg, err := cloud.ResolveEnvironment(ctx, envName, cloud.PlaneRequest{GetName: viperGetenv()})
+	fmt.Fprintf(os.Stderr, "Fetching the endpoint's environment from %s...\n", nodeName)
+	cfg, err := cloud.ResolveNode(ctx, nodeName, cloud.PlaneRequest{GetName: viperGetenv()})
 	if err == nil {
 		ctx, cancel := context.WithTimeout(context.Background(), cloudEnvTimeout)
 		defer cancel()
@@ -1686,11 +1686,11 @@ func fetchCloudEnv(ctx context.Context, sel spinloop.Selection, envName string, 
 		return nil, fmt.Errorf(
 			"could not fetch the API key for %s: %w\n"+
 				"Start the endpoint with `spinloop cloud start --node %s` if it is stopped, or export %s yourself",
-			envName, err, envName, cloudAPIKeyEnv)
+			nodeName, err, nodeName, cloudAPIKeyEnv)
 	}
 	fmt.Fprintf(os.Stderr,
 		"Warning: could not fetch the API key for %s (%v).\nCarrying on with the %s already set here.\n",
-		envName, err, cloudAPIKeyEnv)
+		nodeName, err, cloudAPIKeyEnv)
 	return nil, nil
 }
 

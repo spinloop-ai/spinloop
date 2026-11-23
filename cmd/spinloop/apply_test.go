@@ -22,14 +22,14 @@ func mustWrite(t *testing.T, path, content string) {
 	}
 }
 
-// planeHolding stands a plane in holding one deployed environment, served at
+// planeHolding stands a plane in holding one deployed cloud node, served at
 // the address given — the record `apply --node <name>` reads to key the
 // provider and to know where the endpoint answers. It replaces the cloud.json
 // a deploy used to register on this machine: the plane is the record now, and
 // an apply reads it whether or not this machine did the deploying.
 func planeHolding(t *testing.T, name, baseURL string) {
 	t.Helper()
-	stubPlaneEnvs(t, nil, []cloud.Environment{{
+	stubPlaneNodes(t, nil, []cloud.Node{{
 		Name: name, State: "running", BaseURL: baseURL, DeployedBy: "someone@example",
 	}})
 }
@@ -478,7 +478,7 @@ func TestCmdApply_DirectoryWithoutSpinloop(t *testing.T) {
 }
 
 // TestCmdApply_BaseURLFromThePlanesRecord checks that a Spinloop with no
-// BASEURL, applied against a deployed environment, takes the endpoint address
+// BASEURL, applied against a deployed cloud node, takes the endpoint address
 // from what the plane records for it — the plane is the record of a deployment,
 // so the Spinloop does not have to carry it.
 func TestCmdApply_BaseURLFromThePlanesRecord(t *testing.T) {
@@ -508,7 +508,7 @@ func TestCmdApply_BaseURLFromThePlanesRecord(t *testing.T) {
 
 // TestCmdApply_SpinloopBaseURLBeatsThePlanesRecord checks the precedence: a
 // BASEURL the user wrote in the Spinloop wins over the address the plane
-// records for the environment.
+// records for the cloud node.
 func TestCmdApply_SpinloopBaseURLBeatsThePlanesRecord(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
@@ -532,10 +532,10 @@ func TestCmdApply_SpinloopBaseURLBeatsThePlanesRecord(t *testing.T) {
 }
 
 // TestCmdApply_AnEnvironmentThePlaneDoesNotHoldFails checks that --node naming
-// an environment the plane holds nothing for fails, naming the deploy command
+// a cloud node the plane holds nothing for fails, naming the deploy command
 // that creates it — the plane is the record, so a name off it is not an
-// environment at all.
-func TestCmdApply_AnEnvironmentThePlaneDoesNotHoldFails(t *testing.T) {
+// cloud node at all.
+func TestCmdApply_ACloudNodeThePlaneDoesNotHoldFails(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
 	stubPlaneEmpty(t)
@@ -546,9 +546,9 @@ func TestCmdApply_AnEnvironmentThePlaneDoesNotHoldFails(t *testing.T) {
 
 	err := cmdApply([]string{"--node", "dev-1", spinloopFile})
 	if err == nil {
-		t.Fatal("expected an error for an environment the plane does not hold")
+		t.Fatal("expected an error for a cloud node the plane does not hold")
 	}
-	if !strings.Contains(err.Error(), "holds no environment") ||
+	if !strings.Contains(err.Error(), "has no cloud node") ||
 		!strings.Contains(err.Error(), "`spinloop cloud deploy --node dev-1`") {
 		t.Errorf("error = %v, want the not-deployed error naming the deploy command", err)
 	}
@@ -580,9 +580,9 @@ func TestCmdApply_UnreadablePlaneRecordFails(t *testing.T) {
 }
 
 // TestCmdApply_RemoteNameIsProviderName checks that --node keys the harness
-// provider on the environment name — configured from the PROVIDER's catalogue
+// provider on the cloud node name — configured from the PROVIDER's catalogue
 // entry — with the default model reading as <env>/<model> and the base URL
-// taken from what the plane records for the environment.
+// taken from what the plane records for the cloud node.
 func TestCmdApply_RemoteNameIsProviderName(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
@@ -602,7 +602,7 @@ func TestCmdApply_RemoteNameIsProviderName(t *testing.T) {
 	m := readConfigMap(t, filepath.Join(dir, "opencode", "opencode.json"))
 	prov := m["provider"].(map[string]any)
 	if _, ok := prov["llamacpp"]; ok {
-		t.Error("provider should be keyed on the environment name, not PROVIDER llamacpp")
+		t.Error("provider should be keyed on the cloud node name, not PROVIDER llamacpp")
 	}
 	dev1, ok := prov["dev-1"].(map[string]any)
 	if !ok {
@@ -620,9 +620,9 @@ func TestCmdApply_RemoteNameIsProviderName(t *testing.T) {
 }
 
 // TestCmdApply_RemoteProviderLabelledPerEnvironment checks that a cloud provider
-// gets a display name qualified by its environment, so it reads distinctly from a
+// gets a display name qualified by its cloud node, so it reads distinctly from a
 // local engine of the same kind, which keeps the bare engine name.
-func TestCmdApply_RemoteProviderLabelledPerEnvironment(t *testing.T) {
+func TestCmdApply_RemoteProviderLabelledPerCloudNode(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
 
@@ -666,7 +666,7 @@ func TestCmdApply_RemoteProviderLabelledPerEnvironment(t *testing.T) {
 // TestCmdApply_RemoteReapplyRefreshesLabel checks the stale-label mitigation: a
 // provider that a previous apply left with a bare engine name (as it would be
 // before this behaviour existed) has its display name refreshed to the
-// environment-qualified label when the same Spinloop is applied again — the
+// cloud-node-qualified label when the same Spinloop is applied again — the
 // deep-merge overwrites the old name rather than keeping it.
 func TestCmdApply_RemoteReapplyRefreshesLabel(t *testing.T) {
 	dir := t.TempDir()
@@ -675,7 +675,7 @@ func TestCmdApply_RemoteReapplyRefreshesLabel(t *testing.T) {
 	planeHolding(t, "dev-2", "http://198.51.100.7:8000/v1")
 
 	// Seed a config as an earlier apply would have left it: the dev-2 provider
-	// carries the bare engine name, with no environment qualifier.
+	// carries the bare engine name, with no cloud-node qualifier.
 	opencodeDir := filepath.Join(dir, "opencode")
 	if err := os.MkdirAll(opencodeDir, 0o755); err != nil {
 		t.Fatal(err)
@@ -702,9 +702,9 @@ func TestCmdApply_RemoteReapplyRefreshesLabel(t *testing.T) {
 }
 
 // TestCmdUnapply_RemoveEnvironmentNamedProvider checks apply/unapply symmetry for
-// a cloud Spinloop: unapply removes the environment-named provider that apply
+// a cloud Spinloop: unapply removes the cloud-node-named provider that apply
 // wrote, not the PROVIDER-named one (which was never written).
-func TestCmdUnapply_RemoveEnvironmentNamedProvider(t *testing.T) {
+func TestCmdUnapply_RemoveCloudNodeNamedProvider(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
 

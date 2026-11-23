@@ -210,17 +210,17 @@ func compNoValues(_ *cobra.Command, _ []string, _ string) ([]string, cobra.Shell
 // reached, and completion still exits clean.
 const completionPlaneTimeout = 2 * time.Second
 
-// compEnvs offers the environments deployed on the control plane the caller's
-// credentials and region resolve. A plane that cannot be resolved or reached
-// yields no candidates rather than an error: completion must never fail, and
-// being offline is not the operator's mistake.
-func compEnvs(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
-	return planeEnvironmentNames(), cobra.ShellCompDirectiveNoFileComp
+// compCloudNodes offers the cloud nodes deployed on the control plane the
+// caller's credentials and region resolve. A plane that cannot be resolved or
+// reached yields no candidates rather than an error: completion must never
+// fail, and being offline is not the operator's mistake.
+func compCloudNodes(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+	return planeNodeNames(), cobra.ShellCompDirectiveNoFileComp
 }
 
-// planeEnvironmentNames reads the plane's inventory for completion, offering
+// planeNodeNames reads the plane's inventory for completion, offering
 // nothing when it cannot.
-func planeEnvironmentNames() []string {
+func planeNodeNames() []string {
 	ctx, cancel := context.WithTimeout(context.Background(), completionPlaneTimeout)
 	defer cancel()
 	plane, err := cloud.ResolvePlane(ctx, cloud.PlaneRequest{GetName: viperGetenv()})
@@ -241,9 +241,9 @@ func planeEnvironmentNames() []string {
 
 // compNodeNames completes a --node value: the node names of the fleet in force
 // on the command line — the --fleet value where given, else ./fleet.yaml when one
-// sits in the working directory — followed by the environments the resolved plane
+// sits in the working directory — followed by the cloud nodes the resolved plane
 // holds. The fleet leads because a command acting on a fleet acts on its nodes.
-// An unreadable fleet yields just the plane's environments, and an unreachable
+// An unreadable fleet yields just the plane's nodes, and an unreachable
 // plane just the fleet's: completion must never fail, and either source may
 // simply be absent.
 func compNodeNames(args []string) ([]string, cobra.ShellCompDirective) {
@@ -278,7 +278,7 @@ func compNodeNames(args []string) ([]string, cobra.ShellCompDirective) {
 			add(cfg.Names()...)
 		}
 	}
-	add(planeEnvironmentNames()...)
+	add(planeNodeNames()...)
 	return names, cobra.ShellCompDirectiveNoFileComp
 }
 

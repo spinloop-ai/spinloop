@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// countingPlane is a control plane that answers every environment-named read
+// countingPlane is a control plane that answers every node-named read
 // with one body and counts the reads, so a test can assert that reading a
 // retained fact costs none. The plane's own inventory read never reaches the
 // counter: the stub answers that one itself.
@@ -43,7 +43,7 @@ func TestDaemonNodeImplementsNoCloudCapability(t *testing.T) {
 // rather than by asking what kind it is.
 func TestCloudNodeImplementsTheCloudCapabilities(t *testing.T) {
 	stubPlane(t, controlAnswers(`{"state":"running"}`, http.StatusOK), "prod")
-	cfg, err := ForEnvironment(context.Background(), "prod")
+	cfg, err := ForCloudNode(context.Background(), "prod")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +68,7 @@ func TestCloudNodeInstanceComesFromTheMetricsReading(t *testing.T) {
 	countingPlane(t,
 		`{"state":"running","version":"1.40.0","instanceId":"i-0abc","instanceType":"g6e.xlarge","uptimeSeconds":7200}`,
 		"prod", &calls)
-	cfg, err := ForEnvironment(context.Background(), "prod")
+	cfg, err := ForCloudNode(context.Background(), "prod")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +98,7 @@ func TestCloudNodeInstanceComesFromTheMetricsReading(t *testing.T) {
 // claims it cost nothing, which is a different statement.
 func TestCloudNodeCostIsUnreportedWithoutAReading(t *testing.T) {
 	stubPlane(t, controlAnswers(`{"state":"stopped"}`, http.StatusOK), "prod")
-	cfg, err := ForEnvironment(context.Background(), "prod")
+	cfg, err := ForCloudNode(context.Background(), "prod")
 	if err != nil {
 		t.Fatal(err)
 	}

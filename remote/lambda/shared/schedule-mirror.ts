@@ -1,11 +1,11 @@
 /**
- * The AWS half of an environment's schedules: the SSM list parameter and its
+ * The AWS half of a node's schedules: the SSM list parameter and its
  * EventBridge Scheduler mirror.
  *
  * The schedule Lambda owns the lifecycle (set, read, clear) — but clearing is
- * needed by more than it. `spinloop cloud undeploy` must take an environment's
+ * needed by more than it. `spinloop cloud undeploy` must take a node's
  * schedules out with the rest of it, and doing that any other way would leave
- * orphaned schedules firing at an environment that no longer exists. So the
+ * orphaned schedules firing at a node that no longer exists. So the
  * mirror calls live here, where both Lambdas import the same clear logic. The
  * pure half — naming, cron, validation — stays in ./schedules.
  */
@@ -42,7 +42,7 @@ export interface ScheduleTargets {
   stopFnArn: string;
 }
 
-/** What the mirror holds for one environment: whether the list is stored, and which Scheduler schedule names exist. */
+/** What the mirror holds for one node: whether the list is stored, and which Scheduler schedule names exist. */
 export interface EnvSchedules {
   parameter: boolean;
   names: string[];
@@ -86,7 +86,7 @@ async function clearSchedulesParam(env: string): Promise<boolean> {
   }
 }
 
-/** The Scheduler schedule names the environment currently has, across every page. */
+/** The Scheduler schedule names the node currently has, across every page. */
 async function listScheduleNames(env: string, group: string): Promise<string[]> {
   const names: string[] = [];
   let token: string | undefined;
@@ -108,13 +108,13 @@ async function listScheduleNames(env: string, group: string): Promise<string[]> 
   return names;
 }
 
-/** What the mirror holds for the environment — reads only, safe beside a dry run. */
+/** What the mirror holds for the node — reads only, safe beside a dry run. */
 export async function describeEnvSchedules(env: string, group: string): Promise<EnvSchedules> {
   const parameter = (await readSchedulesParam(env)) !== null;
   return { parameter, names: await listScheduleNames(env, group) };
 }
 
-/** Make the environment's Scheduler schedules match the list: create or update each, then remove the rest. */
+/** Make the node's Scheduler schedules match the list: create or update each, then remove the rest. */
 export async function reconcileSchedules(
   env: string,
   group: string,
@@ -156,7 +156,7 @@ export async function reconcileSchedules(
 
 /**
  * Remove everything: the stored list and every Scheduler schedule of the
- * environment. Returns what was there, so a caller taking the environment
+ * node. Returns what was there, so a caller taking the node
  * apart can report exactly what it released.
  */
 export async function clearEnvSchedules(env: string, group: string): Promise<EnvSchedules> {

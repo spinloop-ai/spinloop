@@ -46,8 +46,8 @@ const (
 	// KindDaemon is a machine running `spinloop daemon`, reached over its
 	// control API. Addressed by its `host`.
 	KindDaemon = "daemon"
-	// KindCloud is an `spinloop cloud` environment, driven through its cloud
-	// control plane. Addressed by the environment name it carries.
+	// KindCloud is an `spinloop cloud` node, driven through its cloud
+	// control plane. Addressed by the cloud node name it carries.
 	KindCloud = "cloud"
 )
 
@@ -234,7 +234,7 @@ type Config struct {
 	Dir  string `yaml:"-"`
 
 	// plane is this fleet's cached read of the control plane's inventory — its
-	// record of which environments are deployed — with the instant it was read
+	// record of which cloud nodes are deployed — with the instant it was read
 	// and any failure that read met. In memory only, and bounded by a TTL, so
 	// a fan-out over ten cloud nodes asks the plane once and a long-lived
 	// process still notices a deployment a colleague made. See plane.go.
@@ -251,23 +251,23 @@ type Config struct {
 // are read from one goroutine each, all against a cold cache, and ten
 // concurrent reads of the same answer is ten calls where the fleet needs one.
 type planeInventory struct {
-	mu   sync.Mutex
-	at   time.Time
-	envs []cloud.Environment
-	err  error
+	mu    sync.Mutex
+	at    time.Time
+	nodes []cloud.Node
+	err   error
 }
 
 // NodeConfig is one machine as the fleet file describes it. The live node the
 // client talks to is a Node (see node.go); this is just the entry.
 type NodeConfig struct {
 	// Name identifies the node in output and to `fleet start|stop <node>`. For
-	// a kind-cloud node it is also the name of the cloud environment it drives
+	// a kind-cloud node it is also the name of the cloud node it drives
 	// on the control plane the operator's credentials and region resolve — the
-	// environment is named at `spinloop cloud deploy`, so a cloud node has no
+	// node is named at `spinloop cloud deploy`, so a cloud node has no
 	// address to give, and no account, host or region either: the same file
 	// serves anyone with credentials for that plane, which is why it is safe to
-	// commit. Because the name is the environment's key, it is constrained to an
-	// environment shape. See plane.go.
+	// commit. Because the name is the node's key, it is constrained to a
+	// node shape. See plane.go.
 	// anyway, so nothing identifying a deployment is written into the fleet file.
 	Name string `yaml:"name"`
 	// Host is where the daemon answers — a LAN name, a tailscale name, or an
@@ -292,20 +292,20 @@ type NodeConfig struct {
 	// reached through a tunnel.
 	Engine *EngineOverride `yaml:"engine"`
 	// File names the Spinloop file that describes what this node runs —
-	// what `spinloop fleet deploy` reads to create a kind: cloud node's
-	// environment, and what `spinloop fleet start` reads to tell a kind:
-	// daemon node's engine what to run. Resolved relative to the fleet
+	// what `spinloop fleet deploy` reads to deploy the cloud node behind
+	// a kind: cloud node, and what `spinloop fleet start` reads to tell a
+	// kind: daemon node's engine what to run. Resolved relative to the fleet
 	// file's directory. Optional: a node's own Name is tried as a
 	// registered `spinloop alias`, then as a same-named subdirectory
 	// beside the fleet file, before either command gives up on it. Not
 	// read by any other fleet command.
 	File string `yaml:"file"`
 	// InstanceType names the EC2 instance type a kind: cloud node's
-	// environment launches as, read by `spinloop fleet deploy` into the
-	// deploy config it derives. It is a property of the cloud environment
+	// instance launches as, read by `spinloop fleet deploy` into the
+	// deploy config it derives. It is a property of a cloud node
 	// only — a kind: daemon node's hardware is the operator's to choose, so
-	// naming one there is a configuration error. Empty means the node's
-	// environment launches as the control plane's default type.
+	// naming one there is a configuration error. Empty means the node
+	// launches as the control plane's default type.
 	InstanceType string `yaml:"instance-type"`
 	// Tags is the operator's description of what work this node can take on
 	// — capability, hardware, or anything else a dispatcher matches on. A
@@ -316,7 +316,7 @@ type NodeConfig struct {
 	// WakePolicy overrides the fleet-wide wake policy for this node alone,
 	// in the same `on`/`off` shape. Empty means the fleet-wide setting
 	// decides for this node, as it always has. It exists because waking is
-	// not free the same way on every node — a cloud environment's wake
+	// not free the same way on every node — a cloud node's wake
 	// boots a cloud instance, unlike a local daemon's engine — so an
 	// operator may want to decide one node's waking on its own terms rather
 	// than through a single fleet-wide switch.
@@ -409,7 +409,7 @@ func Load(path string) (*Config, error) {
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, fmt.Errorf(
-				"no fleet at %s: create one listing your nodes, or name a target — --fleet <path> for a file, --node <name> for an environment on the control plane", path)
+				"no fleet at %s: create one listing your nodes, or name a target — --fleet <path> for a file, --node <name> for a cloud node on the control plane", path)
 		}
 		return nil, err
 	}
@@ -440,9 +440,9 @@ func Resolve(flagPath string) (*Config, error) {
 	return Load(path)
 }
 
-// ForEnvironment builds the fleet a `--node <name>` target names: one cloud
-// node for the environment of that name on the plane this machine's credentials
-// and region resolve. An environment and a one-node fleet file naming it
+// ForCloudNode builds the fleet a `--node <name>` target names: one cloud
+// node for the cloud node of that name on the plane this machine's credentials
+// and region resolve. A cloud node and a one-node fleet file naming it
 // describe the same thing — `fleet deploy` deploys under a node's own name,
 // which is why every other fleet command can find one by name — so this is the
 // same fleet, assembled from the plane rather than read from a file. Whoever
@@ -450,10 +450,10 @@ func Resolve(flagPath string) (*Config, error) {
 //
 // The name is checked here rather than at the socket, and existence is settled
 // by the plane's inventory: a value that is not a plain identifier, and a name
-// the plane does not hold, each fail naming the fix before any environment is
+// the plane does not hold, each fail naming the fix before any node is
 // contacted. What the plane says about a name it does not hold is reported as
 // itself — no stack, a rejected credential — rather than as a missing
-// environment.
+// node.
 //
 // Path and Dir are deliberately empty. Dir feeds the adjacent-.env lookup that
 // resolves a node's token reference, and a cloud node names none — it is
@@ -463,13 +463,13 @@ func Resolve(flagPath string) (*Config, error) {
 // concurrency, a fleet-wide key), and takes each of their defaults; all of
 // them describe how several nodes are used, which a fleet of one has no
 // occasion for.
-func ForEnvironment(ctx context.Context, name string) (*Config, error) {
-	if !cloud.IsEnvName(name) {
+func ForCloudNode(ctx context.Context, name string) (*Config, error) {
+	if !cloud.IsNodeName(name) {
 		return nil, fmt.Errorf(
-			"%q is not an environment name: an environment name is a plain identifier, with no path", name)
+			"%q is not a node name: a node name is a plain identifier, with no path", name)
 	}
 	cfg := &Config{Nodes: []NodeConfig{{Name: name, Kind: KindCloud}}, plane: &planeInventory{}}
-	if err := cfg.requireEnvironment(ctx, name); err != nil {
+	if err := cfg.requireCloudNode(ctx, name); err != nil {
 		return nil, err
 	}
 	// The same validation a parsed file gets, so a fleet of one cannot reach a
@@ -576,17 +576,17 @@ func (c *Config) validate() error {
 			}
 			if n.InstanceType != "" {
 				return fmt.Errorf(
-					"node %q is kind %q: instance-type names the cloud environment's machine, and a daemon's hardware is the operator's to choose, not the fleet file's",
+					"node %q is kind %q: instance-type names a cloud node's machine, and a daemon's hardware is the operator's to choose, not the fleet file's",
 					n.Name, KindDaemon)
 			}
 		case KindCloud:
-			// The node's name *is* the environment's name on the control plane,
-			// so it must be env-shaped; a path-like name could never be one,
-			// and would send the fleet hunting for an environment nobody names
+			// The node's name *is* the cloud node's name on the control plane,
+			// so it must be a plain identifier; a path-like name could never be
+			// one, and would send the fleet hunting for a node nobody names
 			// that way.
-			if !cloud.IsEnvName(n.Name) {
+			if !cloud.IsNodeName(n.Name) {
 				return fmt.Errorf(
-					"node %q is kind %q: its name must be a cloud environment name (no /, no .json)",
+					"node %q is kind %q: its name must be a cloud node name (no /, no .json)",
 					n.Name, KindCloud)
 			}
 			if n.InstanceType != "" && !cloud.IsInstanceType(n.InstanceType) {
@@ -681,7 +681,7 @@ func (c *Config) CloudEngineToken(n NodeConfig) (string, error) {
 	}
 	if name == "" {
 		return "", fmt.Errorf(
-			"node %q is a cloud environment, so its engine key must be set: name the variable holding it, in this node's `engineTokenEnv` or the file's fleet-wide `apiKeyEnv` (%s)",
+			"node %q is a cloud node, so its engine key must be set: name the variable holding it, in this node's `engineTokenEnv` or the file's fleet-wide `apiKeyEnv` (%s)",
 			n.Name, c.Path)
 	}
 	return c.resolveTokenEnv(fmt.Sprintf("node %q", n.Name), name)

@@ -62,7 +62,7 @@ function retainUntilIfActive(instance: InstanceInfo | null): string | undefined 
  * parallel second. Collection itself lives in spinloop's internal/metrics.
  *
  * Without an `env` query parameter the same URL answers the plane's
- * inventory instead — every environment it holds — because an inventory is a
+ * inventory instead — every node it holds — because an inventory is a
  * question about the plane, not about one endpoint. Older CLIs always send
  * `env`, so their behaviour is unchanged.
  */
@@ -185,9 +185,9 @@ async function readDaemonVersion(instanceId: string): Promise<string | undefined
   }
 }
 
-/** One environment in the inventory reply. Unknown facts are empty strings; `partial` marks an environment the plane could name but not fully read. */
+/** One node in the inventory reply. Unknown facts are empty strings; `partial` marks a node the plane could name but not fully read. */
 interface InventoryEntry {
-  environment: string;
+  node: string;
   deployedBy: string;
   deployedAt: string;
   runner: string;
@@ -201,14 +201,14 @@ interface InventoryEntry {
 }
 
 /**
- * `GET {statsUrl}` with no `env`: every environment this plane holds. The
+ * `GET {statsUrl}` with no `env`: every node this plane holds. The
  * names are the union of the deploy-config parameters under `/cloud-vm-llm/`
  * and the `cloud-vm-llm:env` tag values on Elastic IPs, security groups and
- * instances — an environment with a config but no instance is still listed,
+ * instances — a node with a config but no instance is still listed,
  * and one tagged but never deployed cannot go unmentioned. Each
- * per-environment read is best-effort: one failure marks that entry partial
+ * per-node read is best-effort: one failure marks that entry partial
  * and is noted in `errors`, never failing the listing. A plane with nothing
- * answers `{"environments":[]}`.
+ * answers `{"nodes":[]}`.
  */
 async function inventory(): Promise<LambdaFunctionURLResult> {
   const errors: string[] = [];
@@ -227,14 +227,14 @@ async function inventory(): Promise<LambdaFunctionURLResult> {
       names.add(env);
     }
   } catch (err) {
-    errors.push(`environment tags: ${errorName(err)}`);
+    errors.push(`node tags: ${errorName(err)}`);
   }
 
-  const environments: InventoryEntry[] = [];
+  const nodes: InventoryEntry[] = [];
   for (const env of [...names].sort()) {
-    environments.push(await inventoryEntry(env, storedConfigs.get(env), errors));
+    nodes.push(await inventoryEntry(env, storedConfigs.get(env), errors));
   }
-  return jsonResponse(200, { environments, ...(errors.length > 0 ? { errors } : {}) });
+  return jsonResponse(200, { nodes, ...(errors.length > 0 ? { errors } : {}) });
 }
 
 /** Assemble one inventory entry. Never throws: a failed read marks the entry partial and notes the error instead. */
@@ -246,7 +246,7 @@ async function inventoryEntry(
   let partial = false;
   let config: DeployConfig | null = null;
   try {
-    // Reuse the value the enumeration read when it has one; an environment
+    // Reuse the value the enumeration read when it has one; a node
     // known only from a tag that has no parameter was never deployed, which
     // is a fact, not a read failure.
     const raw = storedConfig ?? (await findParameter(deployConfigParam(env)));
@@ -272,7 +272,7 @@ async function inventoryEntry(
     errors.push(`${env}: instance lookup ${errorName(err)}`);
   }
   return {
-    environment: env,
+    node: env,
     deployedBy: config?.deployedBy ?? '',
     deployedAt: config?.deployedAt ?? '',
     runner: config?.runner ?? '',

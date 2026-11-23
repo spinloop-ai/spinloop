@@ -362,7 +362,7 @@ func TestDashAbortDrivesNothingOnAKeep(t *testing.T) {
 // The keep hint shows only where the key would drive something: a cloud node
 // shows it, a local node hides it, and a busy cloud node hides it. The start
 // and stop entries sit beside it by the node's own state: a stopped cloud
-// environment shows keep and start, a running one shows keep and stop, and a
+// stopped cloud node shows keep and start, a running one shows keep and stop, and a
 // busy one shows neither.
 func TestDashKeepHintOnlyWhereItDrivesSomething(t *testing.T) {
 	read := func(state string) fleet.NodeResult {
@@ -450,7 +450,7 @@ func TestDashTileAndDetailShowKeep(t *testing.T) {
 	}
 }
 
-// A read without a deadline — a local node, or an unkept or lapsed environment —
+// A read without a deadline — a local node, or an unkept or lapsed node —
 // draws no keep on the tile.
 func TestDashTileOmitsKeepWhenAbsent(t *testing.T) {
 	r := fleet.NodeResult{

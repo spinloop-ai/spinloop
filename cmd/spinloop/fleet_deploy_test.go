@@ -17,39 +17,39 @@ import (
 	"github.com/spinloop-ai/spinloop/internal/config"
 )
 
-// deployedEnvs records which environments a deploy was asked to create, in the
+// deployedNodes records which cloud nodes a deploy was asked to create, in the
 // order asked. It replaces the assertion that a registry file appeared: the
 // plane is the record of what is deployed now, so what a deploy did is what it
 // sent to the plane.
-type deployedEnvs struct {
+type deployedNodes struct {
 	mu   sync.Mutex
 	envs []string
 }
 
-func (d *deployedEnvs) add(env string) {
+func (d *deployedNodes) add(env string) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.envs = append(d.envs, env)
 }
 
-func (d *deployedEnvs) has(env string) bool {
+func (d *deployedNodes) has(env string) bool {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	return slices.Contains(d.envs, env)
 }
 
-func (d *deployedEnvs) all() []string {
+func (d *deployedNodes) all() []string {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	return slices.Clone(d.envs)
 }
 
-// fleetDeployServer answers every environment's deploy call with a
+// fleetDeployServer answers every node's deploy call with a
 // deterministic base URL, so a fan-out over several nodes can be told apart by
-// the environment each request named, and records which it was asked for.
-func fleetDeployServer(t *testing.T) (*httptest.Server, *deployedEnvs) {
+// the cloud node each request named, and records which it was asked for.
+func fleetDeployServer(t *testing.T) (*httptest.Server, *deployedNodes) {
 	t.Helper()
-	deployed := &deployedEnvs{}
+	deployed := &deployedNodes{}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		env := r.URL.Query().Get("env")
 		deployed.add(env)
@@ -60,11 +60,11 @@ func fleetDeployServer(t *testing.T) (*httptest.Server, *deployedEnvs) {
 	return srv, deployed
 }
 
-// stubFleetDeploySeams points the deploy seams at server for every environment.
-// The plane holds the environments given — none by default, so no node needs
+// stubFleetDeploySeams points the deploy seams at server for every node.
+// The plane holds the cloud nodes given — none by default, so no node needs
 // --overwrite — and no node's instance is live, unless the caller overrides the
 // seams again after this returns.
-func stubFleetDeploySeams(t *testing.T, server *httptest.Server, holds ...cloud.Environment) {
+func stubFleetDeploySeams(t *testing.T, server *httptest.Server, holds ...cloud.Node) {
 	t.Helper()
 	origDiscover, origStatus, origDetect, origPlane, origInventory :=
 		deployDiscoverFn, cloudStatusFn, detectPublicCIDRFn, deployResolvePlaneFn, cloudInventoryFn
@@ -82,7 +82,7 @@ func stubFleetDeploySeams(t *testing.T, server *httptest.Server, holds ...cloud.
 	deployResolvePlaneFn = func(context.Context, cloud.PlaneRequest) (cloud.ControlPlane, error) {
 		return plane, nil
 	}
-	cloudInventoryFn = func(context.Context, cloud.Config) ([]cloud.Environment, error) {
+	cloudInventoryFn = func(context.Context, cloud.Config) ([]cloud.Node, error) {
 		return holds, nil
 	}
 	cloudStatusFn = func(context.Context, cloud.Config) (*cloud.Response, error) {
@@ -116,7 +116,7 @@ nodes:
   - name: studio
     host: studio.local
 `)
-	// The node's own name is the environment its deploy creates on the plane;
+	// The node's own name is the cloud node its deploy creates on the plane;
 	// the Spinloop carries only the model.
 	write := func(name string) {
 		t.Helper()
@@ -162,7 +162,7 @@ func TestCmdFleetDeployAll(t *testing.T) {
 
 	for _, env := range []string{"gpu-a", "gpu-b", "aliased", "subdir-env"} {
 		if !deployed.has(env) {
-			t.Errorf("environment %q was never deployed (deployed: %v)", env, deployed.all())
+			t.Errorf("cloud node %q was never deployed (deployed: %v)", env, deployed.all())
 		}
 	}
 	if !strings.Contains(err.Error(), "no-source") {
@@ -181,7 +181,7 @@ func TestCmdFleetDeployNamedNodes(t *testing.T) {
 	}
 	for _, env := range []string{"gpu-a", "gpu-b"} {
 		if !deployed.has(env) {
-			t.Errorf("environment %q was never deployed (deployed: %v)", env, deployed.all())
+			t.Errorf("cloud node %q was never deployed (deployed: %v)", env, deployed.all())
 		}
 	}
 	// Untargeted nodes must be left alone.
@@ -325,7 +325,7 @@ func TestCmdFleetDeployAliasWinsOverSubdirectory(t *testing.T) {
 		t.Errorf("the alias's Spinloop should have been used, got:\n%s", out)
 	}
 	if !deployed.has("subdir-env") {
-		t.Errorf("the node-named environment was never deployed (deployed: %v)", deployed.all())
+		t.Errorf("the node's own cloud node was never deployed (deployed: %v)", deployed.all())
 	}
 }
 
@@ -335,7 +335,7 @@ func TestCmdFleetDeployGuardDoesNotBlockSiblings(t *testing.T) {
 	server, deployed := fleetDeployServer(t)
 	// gpu-a's deployer is a colleague: the plane holds the name, so this
 	// machine needs --overwrite for it, while gpu-b is still free.
-	stubFleetDeploySeams(t, server, cloud.Environment{
+	stubFleetDeploySeams(t, server, cloud.Node{
 		Name: "gpu-a", DeployedBy: "colleague@example", State: "stopped",
 	})
 
@@ -374,7 +374,7 @@ func TestCmdFleetDeployDryRunTouchesNothing(t *testing.T) {
 	if called {
 		t.Error("--dry-run must touch nothing — not even the plane")
 	}
-	for _, want := range []string{"gpu-a", "gpu-b", "environment: gpu-a", "environment: gpu-b"} {
+	for _, want := range []string{"gpu-a", "gpu-b", "node: gpu-a", "node: gpu-b"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("dry-run output missing %q:\n%s", want, out)
 		}

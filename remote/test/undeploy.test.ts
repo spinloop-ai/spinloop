@@ -2,11 +2,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Context, LambdaFunctionURLEvent, LambdaFunctionURLResult } from 'aws-lambda';
 import { schedulerNamePrefix } from '../lambda/shared/schedules';
 
-// `POST {stopUrl}?action=undeploy&env=<name>`: taking exactly one environment
+// `POST {stopUrl}?action=undeploy&env=<name>`: taking exactly one cloud node
 // apart. Every AWS SDK client is stubbed at the client boundary (the
 // env-api-key.test.ts pattern) with the real command classes kept, so the
 // assertions inspect the actual command inputs — every filter, name and id
-// must carry this one environment.
+// must carry this one node.
 
 const LAMBDA_ENV = {
   TAG_KEY: 'cloud-vm-llm:managed',
@@ -112,7 +112,7 @@ function emptyPlane() {
   );
 }
 
-/** The whole environment present: instance, EIP, SG, secret, schedules, config, wake-lock — plus a second environment nothing here may touch. */
+/** The whole node present: instance, EIP, SG, secret, schedules, config, wake-lock — plus a second node nothing here may touch. */
 function fullPlane() {
   emptyPlane();
   ec2Send.mockImplementation(async (cmd: unknown) => {
@@ -172,14 +172,14 @@ function fullPlane() {
 }
 
 describe('undeploy', () => {
-  it('releases every resource of the named environment and lists exactly those', async () => {
+  it('releases every resource of the named node and lists exactly those', async () => {
     fullPlane();
 
     const result = await handler(undeployEvent(), {} as Context);
     const body = bodyOf(result);
     expect((result as { statusCode: number }).statusCode).toBe(200);
     expect(body).toEqual({
-      environment: 'glimmer',
+      node: 'glimmer',
       released: [
         'instance:i-run',
         'elastic-ip:eipalloc-1',
@@ -191,7 +191,7 @@ describe('undeploy', () => {
       ],
     });
 
-    // Instance discovery is scoped to the plane tag AND this one environment.
+    // Instance discovery is scoped to the plane tag AND this one node.
     const [describe] = sent(ec2Send);
     expect(describe[0]).toBe('DescribeInstancesCommand');
     expect(describe[1].Filters).toEqual(
@@ -213,12 +213,12 @@ describe('undeploy', () => {
     expect(sentNames(ec2Send).indexOf('DeleteSecurityGroupCommand')).toBeGreaterThan(
       sentNames(ec2Send).indexOf('TerminateInstancesCommand'),
     );
-    // Secret deleted for this environment's key only, past recovery.
+    // Secret deleted for this node's key only, past recovery.
     expect(sent(secretsSend)).toContainEqual([
       'DeleteSecretCommand',
       { SecretId: 'cloud-vm-llm/glimmer/api-key', ForceDeleteWithoutRecovery: true },
     ]);
-    // Only this environment's SSM state was deleted — and its schedule was
+    // Only this node's SSM state was deleted — and its schedule was
     // deleted from the group by its own hashed-name prefix. The wake-lock was
     // never there; its tolerated ParameterNotFound does not make the report.
     for (const [, input] of sent(ssmSend).filter(([n]) => n === 'DeleteParameterCommand')) {
@@ -232,12 +232,12 @@ describe('undeploy', () => {
     expect(schedulerNamePrefix('glimmer')).not.toBe(schedulerNamePrefix('other'));
   });
 
-  it('refuses an unknown environment with a 404 and deletes nothing', async () => {
+  it('refuses a node the plane never held with a 404 and deletes nothing', async () => {
     emptyPlane();
 
     const result = await handler(undeployEvent(), {} as Context);
     expect((result as { statusCode: number }).statusCode).toBe(404);
-    expect(bodyOf(result).error).toMatch(/unknown environment "glimmer"/);
+    expect(bodyOf(result).error).toMatch(/no node named "glimmer"/);
     expect(sentNames(ec2Send).every((n) => n.startsWith('Describe'))).toBe(true);
     expect(sentNames(ssmSend)).not.toContain('DeleteParameterCommand');
     expect(sentNames(secretsSend)).not.toContain('DeleteSecretCommand');
@@ -348,7 +348,7 @@ describe('deleteSecurityGroup dependency tolerance', () => {
 });
 
 describe('plane enumeration (shared environments helpers)', () => {
-  it('keys every deploy-config under the plane path by environment, across pages', async () => {
+  it('keys every deploy-config under the plane path by node, across pages', async () => {
     emptyPlane();
     let pages = 0;
     ssmSend.mockImplementation(async (cmd: unknown) => {
@@ -378,7 +378,7 @@ describe('plane enumeration (shared environments helpers)', () => {
     expect(listings[0][1]).toMatchObject({ Path: '/cloud-vm-llm/', Recursive: true });
   });
 
-  it('names every environment the env tag mentions — EIPs, groups and instances alike', async () => {
+  it('names every node the env tag mentions — EIPs, groups and instances alike', async () => {
     emptyPlane();
     ec2Send.mockImplementation(async (cmd: unknown) => {
       const filters = (cmd as { input: { Filters?: unknown } }).input.Filters;

@@ -3,7 +3,7 @@
 Every machine you run serves engines from a [`spinloop daemon`](daemon.md); a
 `fleet.yaml` names those machines, and `spinloop` observes and drives all of
 them from one place — status, metrics, an interactive dashboard, starts and
-stops, and logs. A fleet can also hold [cloud environments](cloud.md) as
+stops, and logs. A fleet can also hold [cloud nodes](cloud.md) as
 nodes, beside daemons, in the same rows.
 
 ```sh
@@ -17,7 +17,7 @@ spinloop fleet stop gpu-box    # stop one or more nodes' engines
 ```
 
 `status` and `dashboard` are top-level verbs — they take the same target
-(`./fleet.yaml`, `--fleet <path>`, or `--node <name>` for one environment as a
+(`./fleet.yaml`, `--fleet <path>`, or `--node <name>` for one cloud node as a
 fleet of one), and the `fleet` subcommands drive the nodes: `start`, `stop`,
 `deploy`, `route`, `metrics`, and `logs`.
 
@@ -37,12 +37,12 @@ nodes:
     port: 4242              # optional; the daemon's default when omitted
     tokenEnv: GPU_BOX_TOKEN # the *name* of the variable, never the token
 
-  - name: qwen              # a cloud environment, beside the daemons
+  - name: qwen              # a cloud node, beside the daemons
     kind: cloud
 ```
 
-A `kind: cloud` node is a [cloud environment](cloud.md) on the control plane:
-its `name` is the environment's name there, no `host` is needed, and it is
+A `kind: cloud` node is a [cloud node](cloud.md) on the control plane:
+its `name` is the node's name there, no `host` is needed, and it is
 reached through
 its control plane. The file is found the way a `Spinloop` is — `./fleet.yaml`
 in the working directory, or `--fleet <path>`.

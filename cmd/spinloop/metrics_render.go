@@ -1,7 +1,7 @@
 // Shared metrics rendering. Both `spinloop cloud metrics` (one cloud endpoint)
 // and `spinloop fleet metrics` (a node per machine) display the same
 // internal/metrics stats, so the parts that draw those stats live here and
-// each caller supplies only its own heading — the environment and instance
+// each caller supplies only its own heading — the cloud node and instance
 // type for cloud, the node name for fleet.
 
 package main

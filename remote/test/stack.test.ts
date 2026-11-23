@@ -83,9 +83,9 @@ describe('environments (pure helpers)', () => {
     expect(environmentFrom(undefined, 'staging')).toBe('staging');
     expect(environmentFrom({ env: 'prod' }, 'staging')).toBe('prod'); // query wins
     // Defaults are a CLI affordance; the AWS API is explicit.
-    expect(() => environmentFrom(undefined)).toThrow(/missing environment/);
-    expect(() => environmentFrom({})).toThrow(/missing environment/);
-    expect(() => environmentFrom({ env: 'a/b' })).toThrow(/invalid environment/);
+    expect(() => environmentFrom(undefined)).toThrow(/missing node/);
+    expect(() => environmentFrom({})).toThrow(/missing node/);
+    expect(() => environmentFrom({ env: 'a/b' })).toThrow(/invalid node/);
   });
 
   it('derives per-environment resource names', () => {

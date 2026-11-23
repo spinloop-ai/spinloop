@@ -33,7 +33,7 @@ func (u *undeployRecorder) handler() http.Handler {
 			w.Write([]byte(u.replay))
 			return
 		}
-		w.Write([]byte(`{"environment":"dev","released":["instance","address","security-group","secret","schedules","deploy-config"]}`))
+		w.Write([]byte(`{"node":"dev","released":["instance","address","security-group","secret","schedules","deploy-config"]}`))
 	})
 }
 
@@ -44,7 +44,7 @@ func (u *undeployRecorder) undeployCalls() (int, url.Values) {
 }
 
 // The release is the plane's to perform and the report's to give: the command
-// posts the undeploy action for the named environment and says what came back
+// posts the undeploy action for the named cloud node and says what came back
 // released.
 func TestCloudUndeploy_ReleasesAndReports(t *testing.T) {
 	isolateConfig(t)
@@ -90,10 +90,10 @@ func TestCloudUndeploy_DryRunReleasesNothing(t *testing.T) {
 	}
 }
 
-// Consent is required: with no --yes and nothing to answer the prompt (the
-// test's stdin is no terminal), the command stops — naming the environment it
-// did not destroy and the flag that would have confirmed it — and the plane is
-// never asked to destroy.
+// Consent is required: with no --yes and nothing to answer the typed-name
+// prompt (the test's stdin is no terminal), the command stops — naming the
+// cloud node it did not destroy and the flag that would have confirmed it —
+// and the plane is never asked to destroy.
 func TestCloudUndeploy_ConsentIsRequired(t *testing.T) {
 	isolateConfig(t)
 	rec := &undeployRecorder{}
@@ -105,7 +105,7 @@ func TestCloudUndeploy_ConsentIsRequired(t *testing.T) {
 	}
 	for _, want := range []string{"dev", "--yes"} {
 		if !strings.Contains(err.Error(), want) {
-			t.Errorf("error %q should name %q — the environment and the confirming flag", err, want)
+			t.Errorf("error %q should name %q — the cloud node and the confirming flag", err, want)
 		}
 	}
 	if calls, _ := rec.undeployCalls(); calls != 0 {
@@ -113,7 +113,7 @@ func TestCloudUndeploy_ConsentIsRequired(t *testing.T) {
 	}
 }
 
-// No name destroys nothing: there is no default environment, and the refusal
+// No name destroys nothing: there is no default cloud node, and the refusal
 // names the flag that would have said which.
 func TestCloudUndeploy_NoNameDestroysNothing(t *testing.T) {
 	isolateConfig(t)
@@ -122,7 +122,7 @@ func TestCloudUndeploy_NoNameDestroysNothing(t *testing.T) {
 
 	err := cmdCloudUndeploy(nil)
 	if err == nil {
-		t.Fatal("an undeploy with no environment named was accepted")
+		t.Fatal("an undeploy with no cloud node named was accepted")
 	}
 	for _, want := range []string{"--node", "dev", "prod"} {
 		if !strings.Contains(err.Error(), want) {
@@ -136,7 +136,7 @@ func TestCloudUndeploy_NoNameDestroysNothing(t *testing.T) {
 
 // A name the plane does not hold is refused from its inventory — before the
 // prompt and before any call — because existence belongs to the plane.
-func TestCloudUndeploy_AnEnvironmentThePlaneDoesNotHold(t *testing.T) {
+func TestCloudUndeploy_ACloudNodeThePlaneDoesNotHold(t *testing.T) {
 	isolateConfig(t)
 	rec := &undeployRecorder{}
 	stubPlane(t, rec.handler(), "prod")
@@ -145,7 +145,7 @@ func TestCloudUndeploy_AnEnvironmentThePlaneDoesNotHold(t *testing.T) {
 	if err == nil {
 		t.Fatal("an undeploy of a name the plane does not hold was accepted")
 	}
-	for _, want := range []string{"ghost", "holds no environment"} {
+	for _, want := range []string{"ghost", "has no cloud node"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q should name %q", err, want)
 		}
@@ -159,7 +159,7 @@ func TestCloudUndeploy_AnEnvironmentThePlaneDoesNotHold(t *testing.T) {
 // a trailing "released nothing" to read as a bug.
 func TestCloudUndeploy_ReportsAnEmptyReleasePlainly(t *testing.T) {
 	isolateConfig(t)
-	rec := &undeployRecorder{replay: `{"environment":"dev","released":[]}`}
+	rec := &undeployRecorder{replay: `{"node":"dev","released":[]}`}
 	stubPlane(t, rec.handler(), "dev")
 
 	out := captureStdout(t, func() {

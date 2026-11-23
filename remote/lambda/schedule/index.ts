@@ -35,7 +35,7 @@ const SCHEDULE_TARGETS = {
  * Input is validated before anything is written, so a rejected request leaves
  * the existing schedules as they were. The AWS calls themselves live in
  * shared/schedule-mirror, which the stop Lambda's undeploy shares — one
- * environment's schedules are cleared the same way here and there.
+ * node's schedules are cleared the same way here and there.
  */
 export async function handler(event: LambdaFunctionURLEvent): Promise<LambdaFunctionURLResult> {
   let env: string;

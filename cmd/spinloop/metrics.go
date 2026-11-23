@@ -1,6 +1,6 @@
 // `spinloop metrics`: what every engine in the target is doing with its
-// hardware. The target is whatever names one — an environment on the plane, a
-// fleet file, or the fleet file in the working directory — so an environment
+// hardware. The target is whatever names one — a cloud node on the plane, a
+// fleet file, or the fleet file in the working directory — so a cloud node
 // and a fleet holding it are read by the one command. The formats live beside
 // the fleet's other views in fleet.go and metrics_render.go; this is the
 // command.
@@ -31,13 +31,13 @@ func metricsCmd() *cobra.Command {
 resource use, its token and request counters, and the release the node is
 running. One block per node, queried concurrently.
 
-The target is an environment on the control plane (--node), a fleet file
+The target is a cloud node on the control plane (--node), a fleet file
 (--fleet), or
 the fleet.yaml in the working directory. A node that cannot be reached is
 reported rather than omitted, and never fails the command.
 
 --cost adds what a node has spent on its running session, priced from the
-instance type it launched as. Only a cloud environment can be priced — a
+instance type it launched as. Only a cloud node can be priced — a
 machine you already own has no hourly rate — so nodes that cannot be read
 as they are without the flag, and a target with none succeeds showing no
 cost at all.`,

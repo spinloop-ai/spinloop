@@ -1,7 +1,7 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LambdaFunctionURLEvent } from 'aws-lambda';
 
-// GET {statsUrl} with no `env`: the plane's environment inventory. AWS calls
+// GET {statsUrl} with no `env`: the plane's node inventory. AWS calls
 // are stubbed at the shared-module boundary (the stop.test.ts pattern), so
 // these cover the enumeration union, the field assembly and the partial/
 // errors accounting — not EC2 or SSM themselves. parseDeployConfig stays real,
@@ -85,9 +85,9 @@ beforeEach(() => {
 });
 
 describe('inventory (GET without env)', () => {
-  it('lists every environment with its fields, from configs and tags alike', async () => {
+  it('lists every node with its fields, from configs and tags alike', async () => {
     // dev and lab have stored configs; lab and tagged-only share tags; the
-    // tag-only environment has no config at all.
+    // tag-only node has no config at all.
     listEnvDeployConfigs.mockResolvedValue(
       new Map([
         ['dev', storedConfig('dev')],
@@ -115,20 +115,20 @@ describe('inventory (GET without env)', () => {
     const result = await handler(inventoryEvent());
     expect(statusOf(result)).toBe(200);
     const body = bodyOf(result);
-    expect(Object.keys(body)).toEqual(['environments']);
-    expect(body.environments.map((e: { environment: string }) => e.environment)).toEqual([
+    expect(Object.keys(body)).toEqual(['nodes']);
+    expect(body.nodes.map((e: { node: string }) => e.node)).toEqual([
       'dev',
       'lab',
       'untagged-state',
     ]);
 
-    const dev = body.environments[0];
+    const dev = body.nodes[0];
     expect(Object.keys(dev).sort()).toEqual(
       [
         'baseUrl',
         'deployedAt',
         'deployedBy',
-        'environment',
+        'node',
         'instanceId',
         'instanceType',
         'modelId',
@@ -139,7 +139,7 @@ describe('inventory (GET without env)', () => {
       ].sort(),
     );
     expect(dev).toMatchObject({
-      environment: 'dev',
+      node: 'dev',
       deployedBy: 'arn:aws:sts::0:assumed-role/deployer/dev',
       deployedAt: '2026-11-01T09:00:00.000Z',
       runner: 'llamacpp',
@@ -153,8 +153,8 @@ describe('inventory (GET without env)', () => {
     });
 
     // A config with no instance is still listed — stopped, no address.
-    expect(body.environments[1]).toMatchObject({
-      environment: 'lab',
+    expect(body.nodes[1]).toMatchObject({
+      node: 'lab',
       runner: 'vllm',
       deployedBy: 'arn:aws:iam::0:user/other',
       state: 'stopped',
@@ -165,8 +165,8 @@ describe('inventory (GET without env)', () => {
 
     // Named only by a tag: everything the config would say is empty, and an
     // absent config is not a failure.
-    expect(body.environments[2]).toMatchObject({
-      environment: 'untagged-state',
+    expect(body.nodes[2]).toMatchObject({
+      node: 'untagged-state',
       deployedBy: '',
       deployedAt: '',
       runner: '',
@@ -178,7 +178,7 @@ describe('inventory (GET without env)', () => {
       instanceId: '',
       partial: false,
     });
-    // Named environments query their config only when the listing did not carry it.
+    // Named nodes query their config only when the listing did not carry it.
     expect(findParameter).toHaveBeenCalledTimes(1);
     expect(findParameter).toHaveBeenCalledWith('/cloud-vm-llm/untagged-state/deploy-config');
   });
@@ -186,10 +186,10 @@ describe('inventory (GET without env)', () => {
   it('answers an empty plane with an empty list at 200', async () => {
     const result = await handler(inventoryEvent());
     expect(statusOf(result)).toBe(200);
-    expect(bodyOf(result)).toEqual({ environments: [] });
+    expect(bodyOf(result)).toEqual({ nodes: [] });
   });
 
-  it('a failing per-environment read marks that entry partial, notes it, and never fails the listing', async () => {
+  it('a failing per-node read marks that entry partial, notes it, and never fails the listing', async () => {
     listEnvDeployConfigs.mockResolvedValue(
       new Map([
         ['bad', storedConfig('bad')],
@@ -206,9 +206,9 @@ describe('inventory (GET without env)', () => {
     const result = await handler(inventoryEvent());
     expect(statusOf(result)).toBe(200);
     const body = bodyOf(result);
-    expect(body.environments).toHaveLength(2);
-    const [bad, good] = body.environments;
-    expect(bad.environment).toBe('bad');
+    expect(body.nodes).toHaveLength(2);
+    const [bad, good] = body.nodes;
+    expect(bad.node).toBe('bad');
     expect(bad.partial).toBe(true);
     // What could be read is still reported.
     expect(bad.runner).toBe('llamacpp');
@@ -218,7 +218,7 @@ describe('inventory (GET without env)', () => {
   });
 
   it('an unreadable deploy-config marks the entry partial and the rest still list', async () => {
-    // The listing failed wholesale, so each environment's own GetParameter is
+    // The listing failed wholesale, so each node's own GetParameter is
     // asked — and one of those fails.
     listEnvDeployConfigs.mockResolvedValue(new Map());
     taggedEnvNames.mockResolvedValue(['unreadable', 'never-deployed']);
@@ -230,12 +230,12 @@ describe('inventory (GET without env)', () => {
 
     const body = bodyOf(await handler(inventoryEvent()));
     // Sorted by name: never-deployed first, unreadable second.
-    const [never, unreadable] = body.environments;
-    expect(unreadable.environment).toBe('unreadable');
+    const [never, unreadable] = body.nodes;
+    expect(unreadable.node).toBe('unreadable');
     expect(unreadable.partial).toBe(true);
     expect(body.errors.some((e: string) => e.startsWith('unreadable: deploy-config'))).toBe(true);
     // A parameter that is simply absent was never deployed — not partial.
-    expect(never.environment).toBe('never-deployed');
+    expect(never.node).toBe('never-deployed');
     expect(never.partial).toBe(false);
   });
 
@@ -246,11 +246,11 @@ describe('inventory (GET without env)', () => {
     taggedEnvNames.mockResolvedValue(['tagged']);
     const body = bodyOf(await handler(inventoryEvent()));
     expect(body.errors).toEqual(['deploy-configs: ThrottlingException']);
-    expect(body.environments.map((e: { environment: string }) => e.environment)).toEqual(['tagged']);
+    expect(body.nodes.map((e: { node: string }) => e.node)).toEqual(['tagged']);
   });
 });
 
-describe('per-environment stats is unchanged by the branch', () => {
+describe('per-node stats is unchanged by the branch', () => {
   it('an event with env never reaches the inventory', async () => {
     readDeployConfig.mockResolvedValue({ runner: 'llamacpp', modelId: 'org/m' });
     findManagedInstance.mockResolvedValue({ instanceId: 'i-run', state: 'running' });

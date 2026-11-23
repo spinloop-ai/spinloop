@@ -115,6 +115,6 @@ describe('validation', () => {
     const result = await handler(updateEvent({ cmd: 'set-keep', retainUntil: '2025-01-01T04:00:00Z' }));
     const body = bodyOf(result);
     expect(statusOf(result)).toBe(400);
-    expect(body.error).toContain('missing environment');
+    expect(body.error).toContain('missing node');
   });
 });

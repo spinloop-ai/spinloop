@@ -91,7 +91,7 @@ func TestCloudMetricsJSONCarriesLastActive(t *testing.T) {
 		}
 	})
 	// One object per node, since the one command reads a fleet as readily as
-	// one environment.
+	// one cloud node.
 	var nodes []struct {
 		Metrics struct {
 			LastActiveAt string `json:"lastActiveAt"`
@@ -230,7 +230,7 @@ func TestCloudStatusShowsLastActive(t *testing.T) {
 	if !strings.Contains(out, "(active 2m 5s ago)") {
 		t.Errorf("status missing the active line:\n%s", out)
 	}
-	// Every fact the environment-only status printed is still here: the state,
+	// Every fact the cloud-only status printed is still here: the state,
 	// the address, and — for a healthy endpoint — no not-ready mark, which is
 	// how health reads on a row that serves both node kinds.
 	for _, want := range []string{"running", "http://198.51.100.7:8000"} {

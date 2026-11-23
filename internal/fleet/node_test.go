@@ -272,13 +272,13 @@ func TestResultCarriesTheStatusAndTheVerdict(t *testing.T) {
 	}
 }
 
-// A cloud node whose environment the plane does not hold is a per-node error
+// A cloud node whose cloud node the plane does not hold is a per-node error
 // the way every other missing thing is, and the failure names the plane the
 // name was looked for on: on a shared plane, a missing node is usually the
 // wrong account or region rather than a deleted one. A name that could never be
-// an environment's fails for that reason instead.
-func TestNewNodeForACloudEnvironmentThePlaneDoesNotHold(t *testing.T) {
-	t.Run("the plane holds no such environment", func(t *testing.T) {
+// a node's fails for that reason instead.
+func TestNewNodeForACloudNodeThePlaneDoesNotHold(t *testing.T) {
+	t.Run("the plane holds no such node", func(t *testing.T) {
 		stubPlaneEmpty(t)
 		cfg := &Config{}
 		_, err := cfg.NewNode(context.Background(), NodeConfig{Name: "env", Kind: KindCloud})
@@ -311,7 +311,7 @@ func TestNewNodeForACloudEnvironmentThePlaneDoesNotHold(t *testing.T) {
 		if err == nil {
 			t.Fatal("want an error")
 		}
-		if strings.Contains(err.Error(), "no environment") {
+		if strings.Contains(err.Error(), "no cloud node") {
 			t.Errorf("error %q reports an empty plane rather than an unreadable one", err)
 		}
 	})

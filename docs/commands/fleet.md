@@ -13,12 +13,12 @@ spinloop fleet route my-spinloop # which node a harness launch would pick
 spinloop fleet start gpu-box     # start one or more nodes' engines
 spinloop fleet start --all       # start every node in the fleet
 spinloop fleet stop gpu-box      # stop one or more nodes' engines
-spinloop fleet deploy --all      # create every kind: cloud node's AWS environment
+spinloop fleet deploy --all      # create every kind: cloud node in the file
 ```
 
 [`spinloop status`](status.md) and [`spinloop dashboard`](dashboard.md) are
 top-level commands, not part of this group: they read whatever target you name
-— a fleet file, or a single environment on the control plane — so there is
+— a fleet file, or a single cloud node on the control plane — so there is
 one command
 for "what is running", however it is configured.
 
@@ -32,7 +32,7 @@ Every `spinloop fleet` command takes its target one of three ways:
 
 | | target |
 | --- | --- |
-| `--node <name>` (`-n`, except on `deploy`) | a node of the fleet in force, narrowing the command to it — or, with no fleet named, one control-plane environment as a fleet of one |
+| `--node <name>` (`-n`, except on `deploy`) | a node of the fleet in force, narrowing the command to it — or, with no fleet named, a cloud node on the control plane as a fleet of one |
 | `--fleet <path>` (`-f`, except on `logs`) | that fleet file |
 | neither | the `fleet.yaml` in the working directory |
 
@@ -40,35 +40,35 @@ Every `spinloop fleet` command takes its target one of three ways:
 fleet — the file you name, or the working directory's — `--node` narrows the
 command to that node alone. A name the *named* file lacks fails naming the
 file and its nodes; only beside a *discovered* `fleet.yaml` does a name the
-file lacks fall back to a control-plane environment of that name, because a file
+file lacks fall back to a cloud node of that name, because a file
 that merely sits in the working directory states no intent.
 
 ```sh
 spinloop fleet start -f cluster.yaml -n gpu-box   # that file's gpu-box alone
 spinloop status -n gpu-box                        # the same, in the directory holding cluster.yaml…
-spinloop status -n qwen                           # …or the cloud environment, if no local fleet holds the name
+spinloop status -n qwen                           # …or the cloud node, if no local fleet holds the name
 ```
 
-### One environment, no fleet file
+### One cloud node, no fleet file
 
-A control-plane environment and a one-node fleet file naming it describe the same
+A cloud node and a one-node fleet file naming it describe the same
 thing, so `--node` lets you skip writing the file:
 
 ```sh
 spinloop status --node qwen      # the same row a one-node fleet file gives
-spinloop dashboard --node qwen   # the tiled view, on one environment
+spinloop dashboard --node qwen   # the tiled view, on one cloud node
 spinloop logs --node qwen        # its engine's log
 ```
 
 Because such a fleet has no file, it carries none of the settings a fleet file
 supplies — no `prefer`, no wake policy, no `gateway`, no concurrency limits —
 and takes each of their defaults. All of them describe how several nodes are
-used, which a fleet of one has no occasion for; put the environment in a
+used, which a fleet of one has no occasion for; put the cloud node in a
 `fleet.yaml` when you want any of them.
 
-To launch an agent against a single environment, use
+To launch an agent against a single cloud node, use
 [`spinloop code --node <name>`](code.md), which configures the harness from what
-that environment reports is deployed.
+that node reports is deployed.
 
 ## Try it without any hardware
 
@@ -102,7 +102,7 @@ nodes:
 The file is found the way a `Spinloop` is: `./fleet.yaml` in the working
 directory, or `--fleet <path>`. The full format reference — every field, a
 node's [Spinloop source](../fleet-file.md#a-nodes-spinloop-source),
-[cloud environments](../fleet-file.md#cloud-environments),
+[cloud nodes](../fleet-file.md#cloud-nodes),
 [`prefer`](../fleet-file.md#spreading-or-consolidating) and
 [`wake`](../fleet-file.md#waking), [tags](../fleet-file.md#tags) and
 [concurrency](../fleet-file.md#concurrency), the [gateway section](../fleet-file.md#gateway),
@@ -154,11 +154,11 @@ node's engine has done some work. A node whose engine has *stopped* still
 shows it — the daemon keeps the record across a stop, and "how long since this
 did anything?" is worth more about a stopped engine than about a busy one.
 
-A `kind: cloud` environment carries a relative keep after that figure, on the
+A `kind: cloud` node carries a relative keep after that figure, on the
 same line — `active  2m 5s ago  keep for 2h` — on the same omitted-when-absent
 terms: it shows how long the idle sweep will hold the box while the deadline is
 in the future, and is gone once it has passed or was never set. It is the same
-line the dashboard draws on a kept environment's tile and detail screen, from
+line the dashboard draws on a kept node's tile and detail screen, from
 the same read.
 
 `--watch`/`-w` redraws the whole fleet on an interval, clearing the screen in
@@ -203,13 +203,13 @@ spinloop dashboard --fleet f.yaml # another fleet file
 | `r` | Force a refresh of every node, now |
 | `g` | Toggle every tile's resource series between bar (sparklines of the retained history) and gauge (the current reading) |
 | `s` | Start the selected node — without confirmation — shown only for a node that is not running, and only while it has no action in flight |
-| `k` | Keep a cloud environment for a duration you type — shown only for a node that can be kept, and only while it has no action in flight |
+| `k` | Keep a cloud node for a duration you type — shown only for a node that can be kept, and only while it has no action in flight |
 | `a` | Abandon a start in flight on the selected node — the wait ends, the node is free again (a stop in flight is not abortable) |
 | `x` | Stop the selected node — it asks first (`y` sends, `n` or `esc` cancel) — shown only for a node that is running, and only while it has no action in flight |
 | `q` or `Ctrl+C` | Leave |
 
 The board keeps its own cadence: local machines are read every two seconds,
-and a [`kind: cloud`](../fleet-file.md#cloud-environments) environment every 60 — one
+and a [`kind: cloud`](../fleet-file.md#cloud-nodes) node every 60 — one
 status call a minute, because its status is a signed control-plane call, not a
 local socket, and a cold instance changes state on the scale of minutes. `r`
 is due for every node whatever those deadlines say.
@@ -232,10 +232,10 @@ refresh. A stop in flight is not abortable: it targets an engine already
 running rather than a cold wake with no deadline of its own, and `a` drives
 nothing while one is in progress.
 
-`keep` is a cloud-environment action: a local daemon has no idle sweep, so
+`keep` is a cloud-node action: a local daemon has no idle sweep, so
 there is no deadline to set, and the key does not show for one. Pressing it
 opens a prompt at the foot of the view, pre-filled with `4h`, asking how long
-the environment should be retained. The prompt is the confirmation — there is
+the node should be retained. The prompt is the confirmation — there is
 no second one — so the operator sees the duration it will set before choosing
 to send it: a keep overwrites the deadline and ends nothing, where a stop
 ends something and so asks. Type the duration and press `enter` to send it;
@@ -449,8 +449,8 @@ or a matching subdirectory added, or `fleet start` fails for that node. A
 
 ## Deploying cloud nodes
 
-`fleet deploy` creates the AWS environment for one or more `kind: cloud`
-nodes — the step that otherwise has to happen outside the fleet file
+`fleet deploy` creates one or more `kind: cloud` nodes on the control
+plane — the step that otherwise has to happen outside the fleet file
 entirely, one `spinloop cloud deploy --node <name>` at a time, run from the
 directory holding each node's Spinloop:
 
@@ -464,10 +464,10 @@ Each node deploys from its own resolved [Spinloop
 source](../fleet-file.md#a-nodes-spinloop-source), reusing the exact derivation,
 consent, and plane-side deploy `spinloop cloud deploy` performs for the same
 file — the two can
-never disagree about what a given Spinloop deploys — and the environment each
-node creates is named after the node itself. A `kind: daemon` node
+never disagree about what a given Spinloop deploys — and the cloud node
+each creates is named after the node itself. A `kind: daemon` node
 named explicitly fails the command, explaining that `deploy` provisions cloud
-environments and that node is not one; `--all` only ever selects `kind:
+nodes and that node is not one; `--all` only ever selects `kind:
 cloud` nodes, so a daemon node is never swept in by it. As with
 `start`/`stop`, no node and no `--all` lists the fleet's `kind: cloud` nodes
 and deploys nothing, `--all` plus node names is refused as ambiguous, and
@@ -476,8 +476,8 @@ reported against it alone.
 
 ```sh
 spinloop fleet deploy --all --dry-run     # print every plan, deploy nothing
-spinloop fleet deploy qwen --overwrite    # redeploy over an environment the
-                                          # plane already holds
+spinloop fleet deploy qwen --overwrite    # redeploy over a cloud node
+                                          # the plane already holds
 ```
 
 `--dry-run`, `--overwrite`, `--reseed`, `--allowed-cidr`, `--region`, and
@@ -497,11 +497,11 @@ deploy`](cloud.md), applied per node.
 | `-f`, `--follow` | `logs` only: keep printing new output until interrupted |
 | `--limit` | `logs` only: lines of backlog per node (default 200) |
 | `-n`, `--dry-run` | `deploy` only: print the plan for each targeted node without deploying |
-| `--overwrite` | `deploy` only: proceed against an environment the plane already holds, or one that is running |
+| `--overwrite` | `deploy` only: proceed against a cloud node the plane already holds, or one that is running |
 | `--reseed` | `deploy` only: re-fetch the weights even if already in S3 |
-| `--allowed-cidr` | `deploy` only: who may reach each environment's instance |
+| `--allowed-cidr` | `deploy` only: who may reach each cloud node's instance |
 | `--region` | `deploy` only: AWS region of the control plane |
-| `--spinloop-version` | `deploy` only: spinloop release each environment installs at boot |
+| `--spinloop-version` | `deploy` only: spinloop release each cloud node installs at boot |
 
 ## See also
 

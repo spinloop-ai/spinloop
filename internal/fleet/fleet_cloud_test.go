@@ -29,8 +29,8 @@ func TestFanOutLoadsARemoteNodeFromTheFile(t *testing.T) {
 	}
 }
 
-// A node for an environment the plane does not hold cannot be built, so the
-// fan-out reports it as a config error — naming the environment and the plane it
+// A node for a cloud node the plane does not hold cannot be built, so the
+// fan-out reports it as a config error — naming the node and the plane it
 // was looked for on — rather than blanking the view or surfacing a 401.
 func TestFanOutCloudsANUnregisteredEnvAsAConfigError(t *testing.T) {
 	stubPlaneEmpty(t)
@@ -56,11 +56,11 @@ func TestFanOutCloudsANUnregisteredEnvAsAConfigError(t *testing.T) {
 }
 
 // A fleet file is safe to commit because it names nodes and holds no address,
-// so the same file drives an environment whoever deployed it: the plane's
-// record of another deployer's environment builds the same node here.
-func TestFanOutDrivesAnotherDeployersEnvironment(t *testing.T) {
-	stubPlaneEnvs(t, controlAnswers(`{"state":"running","healthy":true}`, http.StatusOK),
-		[]cloud.Environment{{Name: "prod", DeployedBy: "colleague", State: "running"}})
+// so the same file drives a cloud node whoever deployed it: the plane's
+// record of another deployer's node builds the same node here.
+func TestFanOutDrivesAnotherDeployersCloudNode(t *testing.T) {
+	stubPlaneNodes(t, controlAnswers(`{"state":"running","healthy":true}`, http.StatusOK),
+		[]cloud.Node{{Name: "prod", DeployedBy: "colleague", State: "running"}})
 
 	path := writeFleet(t, "nodes:\n  - name: prod\n    kind: cloud\n", "")
 	cfg, err := Load(path)
@@ -75,7 +75,7 @@ func TestFanOutDrivesAnotherDeployersEnvironment(t *testing.T) {
 
 // A plane that cannot be read is one bad row, not a blanked view: the daemon
 // node in the same file is still observed, and the cloud row says the plane's
-// own problem rather than that the environment is gone.
+// own problem rather than that the node is gone.
 func TestFanOutReportsAnUnreadablePlaneAsOneRow(t *testing.T) {
 	stubPlaneUnresolvable(t)
 
@@ -92,12 +92,12 @@ func TestFanOutReportsAnUnreadablePlaneAsOneRow(t *testing.T) {
 	if r[1].Outcome != OutcomeConfigError {
 		t.Errorf("cloud outcome = %q, want a config error", r[1].Outcome)
 	}
-	if strings.Contains(r[1].Detail(), "no environment") {
+	if strings.Contains(r[1].Detail(), "no cloud node") {
 		t.Errorf("detail %q reports an empty plane rather than an unreadable one", r[1].Detail())
 	}
 }
 
-// A fleet file that mixes a local daemon node and a cloud environment is
+// A fleet file that mixes a local daemon node and a cloud node is
 // observed through the one fan-out, in file order, as the same kind of row.
 func TestFanOutOverAMixedFile(t *testing.T) {
 	stubPlane(t, controlAnswers(`{"state":"running","healthy":true}`, http.StatusOK), "prod")
@@ -110,7 +110,7 @@ func TestFanOutOverAMixedFile(t *testing.T) {
 	if len(r) != 2 {
 		t.Fatalf("got %d results, want 2", len(r))
 	}
-	// File order: the daemon node comes first, the cloud environment after.
+	// File order: the daemon node comes first, the cloud node after.
 	if r[0].Name != "box" || r[1].Name != "prod" {
 		t.Fatalf("order = %q, %q; want box then prod", r[0].Name, r[1].Name)
 	}

@@ -229,7 +229,7 @@ func TestFormat_NoParallelOmitsLine(t *testing.T) {
 	}
 }
 
-// REMOTE was removed from the grammar: the environment is named with
+// REMOTE was removed from the grammar: the cloud node is named with
 // `remote deploy --node <name>` at deploy time and `--node <name>` at the
 // commands that act on it, so a REMOTE line is rejected with a message that
 // names the replacement.

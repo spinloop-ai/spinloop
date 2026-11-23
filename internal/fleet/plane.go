@@ -19,7 +19,7 @@ import (
 // Two facts are needed per command: the plane's endpoints, which internal/cloud
 // resolves once per process from the stack's outputs, and the plane's inventory
 // — its own record of what is deployed — which is what settles whether a name
-// is an environment at all. The inventory is read once per fleet rather than
+// is a cloud node at all. The inventory is read once per fleet rather than
 // once per node, and kept in memory only, with an expiry: a one-shot command
 // reads it once, and a long-lived gateway or dashboard re-reads it often enough
 // that a colleague's new deployment becomes routable in seconds rather than
@@ -38,7 +38,7 @@ func (c *Config) planeResolve(ctx context.Context) (cloud.ControlPlane, error) {
 	return cloud.ResolvePlane(ctx, cloud.PlaneRequest{GetName: os.Getenv})
 }
 
-// planeConfig returns the resolved endpoints for one environment: the plane's,
+// planeConfig returns the resolved endpoints for one cloud node: the plane's,
 // with the node's name as the identifier every control call carries.
 func (c *Config) planeConfig(ctx context.Context, name string) (cloud.Config, error) {
 	plane, err := c.planeResolve(ctx)
@@ -46,11 +46,11 @@ func (c *Config) planeConfig(ctx context.Context, name string) (cloud.Config, er
 		return cloud.Config{}, err
 	}
 	cfg := plane.Config
-	cfg.Environment = name
+	cfg.Node = name
 	return cfg, nil
 }
 
-// environments reads the plane's inventory, once per TTL. A plane that cannot be
+// planeNodes reads the plane's inventory, once per TTL. A plane that cannot be
 // reached is an error the caller reports — never an empty list, which would read
 // as an empty fleet.
 //
@@ -59,7 +59,7 @@ func (c *Config) planeConfig(ctx context.Context, name string) (cloud.Config, er
 // one inventory request for the whole fleet rather than one per node. A fleet
 // with no cache — one assembled by hand rather than loaded or targeted — asks
 // each time, which is correct and merely slower.
-func (c *Config) environments(ctx context.Context) ([]cloud.Environment, error) {
+func (c *Config) planeNodes(ctx context.Context) ([]cloud.Node, error) {
 	cache := c.plane
 	if cache == nil {
 		plane, err := c.planeResolve(ctx)
@@ -71,7 +71,7 @@ func (c *Config) environments(ctx context.Context) ([]cloud.Environment, error) 
 	cache.mu.Lock()
 	defer cache.mu.Unlock()
 	if !cache.at.IsZero() && time.Since(cache.at) < planeInventoryTTL {
-		return cache.envs, cache.err
+		return cache.nodes, cache.err
 	}
 	plane, err := c.planeResolve(ctx)
 	if err != nil {
@@ -80,56 +80,56 @@ func (c *Config) environments(ctx context.Context) ([]cloud.Environment, error) 
 		// because resolution is memoised downstream and costs nothing to retry.
 		return nil, err
 	}
-	envs, err := cloud.Inventory(ctx, plane.Config)
+	nodes, err := cloud.Inventory(ctx, plane.Config)
 	// The read is recorded either way, so a plane that is down is asked again
 	// after the TTL rather than once per node, and an empty plane is not
 	// re-read per node either.
-	cache.at, cache.envs, cache.err = time.Now(), envs, err
+	cache.at, cache.nodes, cache.err = time.Now(), nodes, err
 	if err != nil {
 		return nil, err
 	}
-	return envs, nil
+	return nodes, nil
 }
 
-// environment returns the plane's record of one environment, and whether the
+// planeNode returns the plane's record of one cloud node, and whether the
 // plane holds it at all. Existence is settled by that record rather than
-// inferred from a control call that failed for some other reason: an
-// environment the plane does not carry is not an environment, whatever a machine
+// inferred from a control call that failed for some other reason: a
+// node the plane does not carry is not a node, whatever a machine
 // remembers about it.
-func (c *Config) environment(ctx context.Context, name string) (cloud.Environment, bool, error) {
-	envs, err := c.environments(ctx)
+func (c *Config) planeNode(ctx context.Context, name string) (cloud.Node, bool, error) {
+	nodes, err := c.planeNodes(ctx)
 	if err != nil {
-		return cloud.Environment{}, false, err
+		return cloud.Node{}, false, err
 	}
-	i := slices.IndexFunc(envs, func(e cloud.Environment) bool { return e.Name == name })
+	i := slices.IndexFunc(nodes, func(e cloud.Node) bool { return e.Name == name })
 	if i < 0 {
-		return cloud.Environment{}, false, nil
+		return cloud.Node{}, false, nil
 	}
-	return envs[i], true, nil
+	return nodes[i], true, nil
 }
 
-// requireEnvironment fails unless the plane holds the named environment, naming
+// requireCloudNode fails unless the plane holds the named cloud node, naming
 // the plane it was looked for on and the command that would create it. A plane
 // that could not be read reports its own problem, so a broken credential or a
 // missing stack is never misread as an empty account.
-func (c *Config) requireEnvironment(ctx context.Context, name string) error {
-	_, found, err := c.environment(ctx, name)
+func (c *Config) requireCloudNode(ctx context.Context, name string) error {
+	_, found, err := c.planeNode(ctx, name)
 	if err != nil {
 		return err
 	}
 	if found {
 		return nil
 	}
-	return &cloud.NotDeployed{Environment: name, Region: c.planeRegion(ctx)}
+	return &cloud.NotDeployed{Node: name, Region: c.planeRegion(ctx)}
 }
 
-// notDeployedError phrases a cloud node whose environment the plane does not
+// notDeployedError phrases a cloud node the plane does not
 // hold, for a fan-out that renders it as one row. It says where the name was
 // looked for, because on a shared plane the answer to "where did my node go?" is
 // usually "a different account or region", and a bare name would not say so.
 func (c *Config) notDeployedError(name, region string) error {
 	return fmt.Errorf(
-		"no environment %q is deployed on %s — `spinloop cloud deploy --node %s` creates one, "+
+		"no cloud node %q is deployed on %s — `spinloop cloud deploy --node %s` creates one, "+
 			"and `spinloop cloud ls` lists what that plane holds",
 		name, PlanePhrase(region), name)
 }
@@ -154,23 +154,23 @@ func PlanePhrase(region string) string {
 	return fmt.Sprintf("the control plane in %s", region)
 }
 
-// knownEnvironmentNames lists what the plane holds, for a failure that should
+// knownNodeNames lists what the plane holds, for a failure that should
 // offer the operator something to type. It never fails: an unreadable plane
 // simply has nothing to offer, and the caller already has its own error.
-func (c *Config) knownEnvironmentNames(ctx context.Context) []string {
-	envs, err := c.environments(ctx)
+func (c *Config) knownNodeNames(ctx context.Context) []string {
+	nodes, err := c.planeNodes(ctx)
 	if err != nil {
 		return nil
 	}
-	names := make([]string, 0, len(envs))
-	for _, e := range envs {
+	names := make([]string, 0, len(nodes))
+	for _, e := range nodes {
 		names = append(names, e.Name)
 	}
 	slices.Sort(names)
 	return names
 }
 
-// environmentList words a list of names for the inside of a failure.
-func environmentList(names []string) string {
+// nodeNameList words a list of names for the inside of a failure.
+func nodeNameList(names []string) string {
 	return strings.Join(names, ", ")
 }

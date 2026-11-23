@@ -88,7 +88,7 @@ spinloop code -- agent-args   # -- stops the parsing: everything after is the ag
 ```
 
 Where the model is served is a launch concern, learned one of three ways: a
-Spinloop you apply, `--node` for a [cloud environment](cloud.md) on the
+Spinloop you apply, `--node` for a [cloud node](cloud.md) on the
 control plane,
 or a [fleet file](fleet.md) that routes the launch to a node that serves — or
 is woken to serve — the wanted model.

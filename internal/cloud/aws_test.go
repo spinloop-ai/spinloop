@@ -13,9 +13,9 @@ func TestControlPlaneFromOutputs_MapsEveryStackOutput(t *testing.T) {
 	// The keys are the outputs the control-plane stack (remote/lib/llm-stack.ts)
 	// publishes for the config. If the template gains a new control-URL output,
 	// the mapping in controlPlaneFromOutputs must take it on: an output landed
-	// here but not mapped is dropped from every registered environment's
+	// here but not mapped is dropped from every registered node's
 	// cloud.json without error — update_url was exactly that, which left
-	// `spinloop cloud keep` unusable on freshly registered environments.
+	// `spinloop cloud keep` unusable on freshly registered nodes.
 	outputs := map[string]string{
 		"StartUrl":               "https://start.example.aws/",
 		"StopUrl":                "https://stop.example.aws/",

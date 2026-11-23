@@ -12,7 +12,7 @@ import (
 )
 
 // scheduleFixture serves the schedule Lambda's reply and registers a default
-// environment whose schedule URL points at it. It returns what the last
+// cloud node whose schedule URL points at it. It returns what the last
 // request carried.
 type scheduleRequest struct {
 	method string
@@ -198,11 +198,11 @@ func TestCloudSchedule_OlderControlPlaneNamesTheFix(t *testing.T) {
 	}
 }
 
-func TestCloudSchedule_NeedsAnEnvironment(t *testing.T) {
+func TestCloudSchedule_NeedsACloudNode(t *testing.T) {
 	isolateConfig(t)
 	err := cmdCloudSchedule([]string{"show"})
 	if err == nil || !strings.Contains(err.Error(), "--node") {
-		t.Errorf("expected the no-environment error, got %v", err)
+		t.Errorf("expected the no-cloud-node error, got %v", err)
 	}
 }
 
@@ -216,11 +216,11 @@ func TestCloudSchedule_ClearAndShowReportControlPlaneFailures(t *testing.T) {
 	}
 }
 
-func TestCloudSchedule_SetFailsWithoutAnEnvironmentBeforeSendingAnything(t *testing.T) {
+func TestCloudSchedule_SetFailsWithoutACloudNodeBeforeSendingAnything(t *testing.T) {
 	isolateConfig(t)
 	err := cmdCloudSchedule([]string{"set", "--start", "0 8 * * *"})
-	if err == nil || !strings.Contains(err.Error(), "no environment named") {
-		t.Errorf("expected the no-environment error, got %v", err)
+	if err == nil || !strings.Contains(err.Error(), "no cloud node named") {
+		t.Errorf("expected the no-cloud-node error, got %v", err)
 	}
 }
 

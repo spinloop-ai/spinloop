@@ -456,7 +456,7 @@ export class LlmStack extends cdk.Stack {
 
     // Scheduler group for user-defined start/stop schedules (the schedule
     // Lambda below fills it in). Created here rather than beside the schedule
-    // Lambda because the stop Lambda's undeploy must clear an environment's
+    // Lambda because the stop Lambda's undeploy must clear a node's
     // schedules too, so both take the group's name from the same construct.
     const scheduleGroup = new scheduler.CfnScheduleGroup(this, 'ScheduleGroup');
     const scheduleArnPattern = `arn:${cdk.Aws.PARTITION}:scheduler:${cdk.Aws.REGION}:${cdk.Aws.ACCOUNT_ID}:schedule/${scheduleGroup.ref}/*`;
@@ -480,7 +480,7 @@ export class LlmStack extends cdk.Stack {
         // The sweep's seed pass, layer three of the termination guarantee.
         MAX_SEED_MINUTES: String(cfg.maxSeedMinutes),
         SEED_STALL_MINUTES: String(cfg.seedStallMinutes),
-        // Undeploy clears the environment's schedules from this group.
+        // Undeploy clears the node's schedules from this group.
         SCHEDULE_GROUP: scheduleGroup.ref,
       },
     });
@@ -505,7 +505,7 @@ export class LlmStack extends cdk.Stack {
     // The seed pass: reap stalled or over-age seeds and record why.
     stopFn.addToRolePolicy(seedTerminateStatement());
     seedLogStatements().forEach((s) => stopFn.addToRolePolicy(s));
-    // Undeploy: find the environment's EIP and security group by env tag
+    // Undeploy: find the node's EIP and security group by env tag
     // before releasing and deleting them (Describe calls have no resource-
     // level scoping). Terminate keeps its existing tag-scoped grant.
     stopFn.addToRolePolicy(
@@ -526,8 +526,8 @@ export class LlmStack extends cdk.Stack {
         ],
       }),
     );
-    // Undeploy deletes exactly the three parameter kinds that name an
-    // environment — it cannot remove another path or a stray parameter.
+    // Undeploy deletes exactly the three parameter kinds that name a
+    // node — it cannot remove another path or a stray parameter.
     stopFn.addToRolePolicy(
       new iam.PolicyStatement({
         actions: ['ssm:DeleteParameter'],
@@ -538,14 +538,14 @@ export class LlmStack extends cdk.Stack {
         ],
       }),
     );
-    // The environment's own API-key secret, under the shared cloud-vm-llm scope.
+    // The node's own API-key secret, under the shared cloud-vm-llm scope.
     stopFn.addToRolePolicy(
       new iam.PolicyStatement({
         actions: ['secretsmanager:DeleteSecret'],
         resources: [envSecretArn],
       }),
     );
-    // Clear the environment's schedules from the group — deletion only. The
+    // Clear the node's schedules from the group — deletion only. The
     // stop Lambda cannot mint schedules; that stays the schedule Lambda's.
     stopFn.addToRolePolicy(
       new iam.PolicyStatement({
@@ -682,7 +682,7 @@ export class LlmStack extends cdk.Stack {
         resources: [envSecretArn],
       }),
     );
-    // Inventory (GET without ?env=): enumerate the plane's environments by
+    // Inventory (GET without ?env=): enumerate the plane's nodes by
     // listing the deploy-config parameters under its own path, and read the
     // env tag off Elastic IPs and security groups. DescribeInstances rides
     // the describe grant above; Describe calls have no resource-level scoping.

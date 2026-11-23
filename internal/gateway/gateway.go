@@ -335,15 +335,15 @@ func (h *Handler) wakeableModels(ctx context.Context) map[string]string {
 }
 
 // cloudConfigFor resolves what a kind: cloud node would be started with:
-// the environment's stored deploy config, read from its stats reply. The
+// the node's stored deploy config, read from its stats reply. The
 // status reply a fan-out already holds is no good for this — the control
-// plane only relays deploy facts on the status reply while the environment
-// is running (see remote-node's "A running environment's status..."
-// requirement), so a stopped environment's status names nothing served even
+// plane only relays deploy facts on the status reply while the node
+// is running (see the status-relay requirement in remote-node's spec), so
+// a stopped node's status names nothing served even
 // though it is deployed. The stats reply carries the runner and model id
 // unconditionally, since the stats Lambda reads the deploy config directly
 // rather than relaying it alongside instance state; an undeployed
-// environment's stats read fails outright (no config to read), which is
+// node's stats read fails outright (no config to read), which is
 // what "nothing deployed" looks like here. It carries the served name
 // alongside the model id too, the same field the deploy config's ALIAS
 // sets, so a stopped cloud node's wakeable name matches what it reported

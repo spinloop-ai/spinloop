@@ -118,9 +118,9 @@ func TestLoadUnknownKindNamesIt(t *testing.T) {
 	}
 }
 
-// A kind-cloud node's name is the registered environment it drives; it needs
+// A kind-cloud node's name is the cloud node it drives; it needs
 // no host, and nothing else to name it with.
-func TestLoadCloudKindNamedByEnvironment(t *testing.T) {
+func TestLoadCloudKindNamedByCloudNode(t *testing.T) {
 	path := writeFleet(t, `
 nodes:
   - name: prod
@@ -139,7 +139,7 @@ nodes:
 	}
 }
 
-// A kind-cloud node may name the instance type its environment launches as;
+// A kind-cloud node may name the instance type its node launches as;
 // the field parses onto the node so `fleet deploy` can read it.
 func TestLoadCloudKindInstanceType(t *testing.T) {
 	path := writeFleet(t, `

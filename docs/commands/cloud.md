@@ -7,8 +7,8 @@ while you're using it.
 ```sh
 spinloop cloud bootstrap  # once per account: deploy the control plane
 spinloop cloud auth       # store or report the credential this machine signs with
-spinloop cloud bake       # bake the runner AMI(s) an environment runs from
-spinloop cloud deploy     # create an endpoint (environment) and tell it what to serve
+spinloop cloud bake       # bake the runner AMI(s) a node runs from
+spinloop cloud deploy     # create an endpoint (node) and tell it what to serve
 spinloop cloud start      # boot it; with --print-env, prints the exports your agent needs
 spinloop status --node <name>     # is it up? is it healthy?
 spinloop logs --node <name>       # what did it say? (readable after it's gone)
@@ -17,7 +17,7 @@ spinloop cloud restart    # fresh engine, same address: stop it and wake it agai
 spinloop cloud keep 4h    # prevent the idle sweep from stopping it for 4 hours
 spinloop cloud schedule   # start and stop it on cron schedules (set, show, clear)
 spinloop cloud stop       # terminate it now, rather than waiting for the idle timer
-spinloop cloud undeploy   # take the environment apart: address, key, schedules, config
+spinloop cloud undeploy   # take the node apart: address, key, schedules, config
 ```
 
 The endpoint is the one
@@ -45,7 +45,7 @@ spinloop cloud bootstrap --package-manager npm  # use npm instead of pnpm
 Before deploying, bootstrap prints a plan — the target account and region, the
 control-plane resources, the cost, and the exact commands — and asks you to confirm
 (`--yes` skips the prompt). It creates **no** Elastic IP or instance and **no**
-environment; those come from `spinloop cloud deploy`. Re-running is safe: it
+node; those come from `spinloop cloud deploy`. Re-running is safe: it
 updates the control-plane stack and doesn't touch any live instance. It needs Node 22, a
 Node package manager, AWS credentials, and enough GPU vCPU quota for a later
 launch.
@@ -98,7 +98,8 @@ spinloop cloud stop --node qwen3.6-27b   # done for good: terminate it
 
 Every command that acts on an endpoint — `start`, `status`, `metrics`, `logs`,
 `pause`, `restart`, `keep`, `schedule`, `stop` — selects it with the same `--node <name>`
-flag; with no flag they use the `default` environment. `start` prints its
+flag; there is no fallback name — a command with no `--node` fails, listing
+what the plane has. `start` prints its
 progress on stderr, and the export lines for `eval` only with `--print-env`, so
 a plain `start` leaves stdout empty for other uses.
 
@@ -129,25 +130,25 @@ stack — the `SPINLOOP_CLOUD_*` variables are the whole configuration: start
 and stop stated is a plane resolved with no AWS call at all. See [environment
 variables](../env-vars.md).
 
-Name the environment with the `--node` flag:
+Name the node with the `--node` flag:
 
 ```sh
 spinloop status --node qwen3.6-27b-prod
 ```
 
-The flag names an **environment on that plane**. The plane — not your
+The flag names a **node on that plane**. The plane — not your
 disk — is the record of what is deployed: every machine holding credentials
-for it sees the same environments, including what a colleague deployed, each
+for it sees the same nodes, including what a colleague deployed, each
 listed with who deployed it and when. The Spinloop carries none of the URLs
-at all. `spinloop cloud deploy` creates the environment there; there is
+at all. `spinloop cloud deploy` creates the node there; there is
 nothing to register per machine and no file to write by hand. A name is a
-plain identifier — `--node ./cloud.json` fails, saying an environment name
+plain identifier — `--node ./cloud.json` fails, saying a node name
 has no path.
 
-**`--node` is required.** There is no environment a command falls back to: half
+**`--node` is required.** There is no node a command falls back to: half
 of these subcommands start, stop or terminate a cloud instance, and an instance
 nobody named is not one to act on. A command given no `--node` fails naming the
-flag and listing the environments the plane holds, so the next thing to type
+flag and listing the nodes the plane holds, so the next thing to type
 is in the error. There is no `default` to fall back to — an assumed name on a
 shared plane could act on somebody else's deployment. `default` is an
 ordinary name if you want to deploy one.
@@ -156,28 +157,28 @@ A command may also be given a Spinloop path (or a [registered
 alias](alias.md), or a URL): its `ENV` lines and the `.env` beside it are read
 before the command signs its AWS calls, so credentials, region and
 `SPINLOOP_CLOUD_*` overrides can travel with the Spinloop. The Spinloop does
-not select the environment — that is the flag's job alone.
+not select the node — that is the flag's job alone.
 
 `spinloop cloud env --node <name>` fetches a running endpoint's credentials
 (`export OPENAI_BASE_URL`/`export OPENAI_API_KEY`, safe to `eval`) without
-booting it. It also reports what is deployed to the environment — runner,
+booting it. It also reports what is deployed to the node — runner,
 served model, context size — whenever something is: this is what lets
 [`spinloop harness open --node <name>`](harness.md#launching-with-no-spinloop-at-all)
-configure the harness from a deployed environment with no Spinloop at all. It
+configure the harness from a deployed node with no Spinloop at all. It
 appears once the control plane has been redeployed with `spinloop cloud
 bootstrap`; an older control plane simply omits it, and `spinloop harness open
 --node` with no Spinloop fails naming that as the fix.
 
-## Listing environments
+## Listing nodes
 
 ```sh
 spinloop cloud ls
 ```
 
-reads the plane's own record: every environment deployed on it, with who
+reads the plane's own record: every node deployed on it, with who
 deployed it and when, what it serves, its address and its state. The list is
 the same on every machine with credentials for the plane. Where a
-per-environment read failed, the entry is still listed with its gaps marked
+per-node read failed, the entry is still listed with its gaps marked
 and the failures reported beside them. A plane that cannot be reached fails
 naming the account, region and stack it looked in — never a confidently
 empty list.
@@ -242,7 +243,7 @@ add the user, then store.
 
 `bootstrap` and `bake` never consult the stored credential: they provision the
 control plane itself and run on the administrator's ambient credentials. The
-fleet's operations on cloud environments sign through the same resolution, so
+fleet's operations on cloud nodes sign through the same resolution, so
 a stored key covers them too.
 
 ## Checking on an endpoint
@@ -313,7 +314,7 @@ spinloop cloud keep 4h                          # retain for 4 hours from now
 spinloop cloud start --keep 2h                  # start and retain for 2 hours
 ```
 
-`keep` sets the `Retain-Until` tag on the environment's instance, preventing
+`keep` sets the `Retain-Until` tag on the node's instance, preventing
 the idle sweep from stopping or terminating it before the deadline. It is a
 minimum runtime — once the deadline passes, normal idle checking resumes. A
 manual `pause` or `stop` still takes effect: the tag guards against accidental
@@ -343,7 +344,7 @@ A schedule is a five-field cron expression (minute, hour, day of month, month,
 day of week) with an action, `start` or `stop`. `set` takes one or more
 `--start` and `--stop` flags and a single `--timezone` (an IANA name such as
 `Europe/London`, default `UTC`) that applies to all of them. It replaces the
-environment's whole list, so what you pass is exactly what runs afterwards.
+node's whole list, so what you pass is exactly what runs afterwards.
 Expressions are checked before anything changes: a bad one is refused, naming
 it, and the earlier schedules carry on. Day of month and day of week cannot
 both be set in one expression, and names such as `MON` are not accepted;
@@ -405,7 +406,7 @@ Instances ship two logs to CloudWatch: the inference engine's own output, and
 the boot log covering everything that runs before the engine starts (the
 weights download, credential setup). `logs` reads them from CloudWatch with
 your AWS credentials, not from the instance — so **the logs outlive the
-instance**. An environment that is stopped, or whose instance terminated hours
+instance**. A node that is stopped, or whose instance terminated hours
 ago, still has readable logs, which is exactly when `status` and `metrics` have
 nothing left to tell you.
 
@@ -441,14 +442,14 @@ recovered — only what's shipped from then on.
 
 ## Creating an endpoint: `deploy`
 
-`spinloop cloud deploy` creates an **environment** on the bootstrapped control
+`spinloop cloud deploy` creates a **node** on the bootstrapped control
 plane and tells it what to serve. It reads the Spinloop, its preset and its
 PARAM lines — `PROVIDER` picks the engine, so the file that runs a model
 locally under
 [`spinloop serve`](serve.md) deploys the same model remotely — and `--node <name>`
-names the environment it creates on the plane. The flag is required: a deploy
+names the node it creates on the plane. The flag is required: a deploy
 without it fails, naming the flag and a name to use. The Spinloop says what the
-environment serves; the name is a shared choice on the plane, so it stays out of the file:
+node serves; the name is a shared choice on the plane, so it stays out of the file:
 
 ```dockerfile
 PROVIDER llamacpp        # the engine to run: llamacpp or vllm
@@ -462,7 +463,7 @@ spinloop cloud deploy --node qwen3.6-27b
 ```
 
 Deploy discovers the control plane from the bootstrap stack's outputs, then
-provisions the environment's own Elastic IP, API key, ingress rule and state,
+provisions the node's own Elastic IP, API key, ingress rule and state,
 and records it on the plane — with your name and the deploy time — where
 every machine with credentials can see it.
 Everything the endpoint sets itself — host, port, where the weights live, the
@@ -474,27 +475,27 @@ Values referencing environment variables — `$FOO`, `${FOO}`, `${FOO:-fallback}
 resolved text; a malformed reference fails the deploy naming the offending
 keyword, PARAM key or preset line, and nothing is sent.
 
-Who may reach the instance is **per environment**: `--allowed-cidr` sets it,
-defaulting to your public IP as a `/32` on first deploy. Deploying over an
-environment the plane already holds, or whose instance is live, requires
+Who may reach the instance is **per node**: `--allowed-cidr` sets it,
+defaulting to your public IP as a `/32` on first deploy. Deploying over a
+node the plane already holds, or whose instance is live, requires
 `--overwrite` **and** a stated `--allowed-cidr`: a redeploy never silently
-clobbers a running instance, and never silently widens a shared environment's
+clobbers a running instance, and never silently widens a shared node's
 ingress. Re-stating a name the plane shows as somebody else's is exactly the
 moment to look at the address.
 
-The environment's instances install spinloop — the daemon that hosts the
+The node's instances install spinloop — the daemon that hosts the
 engine — at boot, and `--spinloop-version` pins the release a fresh boot
 installs. Without it a boot installs the latest published release; with a
 pin (`1.26.1`; a leading `v` is fine) it installs exactly that. The pin is
-environment state, not engine state: it takes effect at the next boot, so a
+node state, not engine state: it takes effect at the next boot, so a
 running instance keeps the daemon it was deployed with.
 
-`--instance-type` names the EC2 instance type the environment's instances
+`--instance-type` names the EC2 instance type the node's instances
 launch as (a family and size separated by a dot, e.g. `g6e.2xlarge`). Like the
-pin, it is recorded on the environment at deploy time and applies from its next
+pin, it is recorded on the node at deploy time and applies from its next
 **fresh** launch: a re-wake of a stopped instance keeps the type it launched
 with, so a changed value takes effect only once the instance is terminated and
-launched again. Without it the environment launches as the control plane's
+launched again. Without it the node launches as the control plane's
 default type.
 
 Deploying doesn't start anything. If the shared bucket doesn't have those
@@ -503,12 +504,12 @@ says so; wait for that before your first `start`, or the model won't be there.
 
 Switching model, quantisation, or engine is an edit to those two files and one
 `deploy` — no redeployment of the infrastructure. A second Spinloop deployed
-under a different `--node` name gets its own environment, side by side.
+under a different `--node` name gets its own node, side by side.
 
 ```sh
 spinloop cloud deploy --node qwen3.6-27b --dry-run        # see what would be sent
 spinloop cloud deploy --node other-env path/to/Spinloop   # deploy a different file
-spinloop cloud deploy --node qwen3.6-27b --overwrite      # redeploy over the existing environment
+spinloop cloud deploy --node qwen3.6-27b --overwrite      # redeploy over the existing node
 spinloop cloud deploy --node qwen3.6-27b --reseed         # re-fetch weights already in S3
 ```
 
@@ -518,20 +519,20 @@ or a seed you want to run again. It starts the same ~20-minute seed instance a
 first deploy does, and re-downloads the weights, so it is opt-in rather than
 something to reach for by habit.
 
-By default deploy stores the engine key the environment was first deployed
-with — one generated per environment, held in its secret. To choose or change
+By default deploy stores the engine key the node was first deployed
+with — one generated per node, held in its secret. To choose or change
 it, `--api-key-env VAR` resolves `VAR` from your environment (or the `.env`
 beside the Spinloop) and sends the value: the deploy creates or **rotates** the
-environment's key, so the old value stops working — and the reply says which
+node's key, so the old value stops working — and the reply says which
 happened, never the value itself.
 
-Deploying several environments this way means running `cloud deploy` once
+Deploying several nodes this way means running `cloud deploy` once
 per Spinloop file. [`spinloop fleet deploy`](fleet.md#deploying-cloud-nodes)
 does the same derivation, consent, and plane-side deploy (`--api-key-env`
 included) for every `kind: cloud` node a fleet file names — or a chosen few
 — in one command, each from its own resolved Spinloop source.
 
-## Removing an environment: `undeploy`
+## Removing a node: `undeploy`
 
 ```sh
 spinloop cloud undeploy --node qwen3.6-27b --dry-run   # what would go, nothing destroyed
@@ -539,24 +540,24 @@ spinloop cloud undeploy --node qwen3.6-27b             # asks, then destroys
 spinloop cloud undeploy --node qwen3.6-27b --yes       # for the script that must not ask
 ```
 
-`stop` terminates an instance and leaves the environment deployed — the name,
+`stop` terminates an instance and leaves the node deployed — the name,
 its address, its key and its schedules all stay, ready to re-wake.
-`undeploy` takes the environment apart entirely: the instance, its Elastic
+`undeploy` takes the node apart entirely: the instance, its Elastic
 IP, the security group, the API-key secret, the schedules and the stored
 deploy config. Nothing else on the plane is touched, and the name is free to
-deploy again as a fresh environment afterwards.
+deploy again as a fresh node afterwards.
 
 Because the plane is shared, `undeploy` acts on exactly one explicitly named
-environment and asks for explicit consent: `--node` is required (an
-environment the plane does not hold is refused before anything is asked or
+node and asks for explicit consent: `--node` is required (a
+node the plane does not hold is refused before anything is asked or
 destroyed), and destruction needs `--yes` or an answer at the prompt —
-naming who deployed the environment first, since it may not be yours.
+naming who deployed the node first, since it may not be yours.
 
 ## Flags
 
 | Flag | Meaning |
 | ---- | ------- |
-| `--node`, `-n` | The environment on the control plane the command acts on, by name (required everywhere, including `deploy`; `deploy` names it with `--node` only — `-n` is `--dry-run` there) |
+| `--node`, `-n` | A cloud node on the control plane the command acts on, by name (required everywhere, including `deploy`; `deploy` names it with `--node` only — `-n` is `--dry-run` there) |
 | `--print-env` | `start` only: print the export lines (`OPENAI_BASE_URL`/`OPENAI_API_KEY`) to stdout for `eval` |
 | `--timeout` | How long `start` or `restart` waits for the endpoint (default 15m) |
 | `-F`, `--force` | `restart` only: skip the graceful engine stop and take the instance down directly |
@@ -564,7 +565,7 @@ naming who deployed the environment first, since it may not be yours.
 | `-n`, `--dry-run` | `deploy` only: print what would be sent, without sending it |
 | `--reseed` | `deploy` only: re-fetch the weights even if they are already in S3 |
 | `--spinloop-version` | `deploy` only: the spinloop release fresh boots install (default: the latest published release) |
-| `--instance-type` | `deploy` only: the EC2 instance type the environment's instances launch as (e.g. `g6e.xlarge`); recorded on the environment, applied on its next fresh launch (default: the control plane's default type) |
+| `--instance-type` | `deploy` only: the EC2 instance type the node's instances launch as (e.g. `g6e.xlarge`); recorded on the node, applied on its next fresh launch (default: the control plane's default type) |
 | `--api-key-env` | `deploy` only: name the environment variable holding the engine key to create or rotate; with no flag the stored key is kept |
 | `--yes` | `undeploy` (and `bootstrap`) only: confirm the destruction without being asked |
 | `--dry-run` | `deploy` and `undeploy`: report what would happen — the plan, or the resources that would be released — without doing it |
@@ -576,13 +577,13 @@ naming who deployed the environment first, since it may not be yours.
 ## Notes
 
 - `bootstrap`, `bake`, and `auth` take no Spinloop: the control plane and the
-  AMIs are shared by every environment, and the stored credential belongs to
+  AMIs are shared by every node, and the stored credential belongs to
   the machine, not a project.
 - `deploy` always needs a Spinloop — it's the thing being deployed — and a
-  required `--node <name>` for the environment it creates. The others take an
+  required `--node <name>` for the node it creates. The others take an
   optional Spinloop path, a [registered alias](alias.md), or a URL, read only
-  for its `ENV` lines and `.env` — never to select the environment. Which
-  environment a command acts on is its `--node` flag alone.
+  for its `ENV` lines and `.env` — never to select the node. Which
+  node a command acts on is its `--node` flag alone.
 - `undeploy` reads no Spinloop: it destroys, and it is the one command that
   takes no positional argument of any kind.
 - The plane's deploy endpoint is optional: a plane bootstrapped before the

@@ -1,18 +1,18 @@
-# A fleet of cloud environments
+# A fleet of cloud nodes
 
 `spinloop fleet` observes [`spinloop cloud`](../../docs/commands/cloud.md)
-environments the same way it observes machines running `spinloop daemon`: each
-environment becomes a node. There are no bearer tokens here — the control plane
-signs each call with your AWS credentials — and the file names environments,
+nodes the same way it observes machines running `spinloop daemon`: each
+becomes a fleet node. There are no bearer tokens here — the control plane
+signs each call with your AWS credentials — and the file names nodes,
 never an account, so it is safe to keep under version control.
 
 ## How to run
 
-### 1. Have some environments
+### 1. Have some cloud nodes
 
-An environment is created on the control plane when you deploy it: `spinloop
+A cloud node is created on the control plane when you deploy it: `spinloop
 cloud deploy --node <name>`, run in a directory whose `Spinloop` describes
-what the environment serves, deploys the environment there and records it on
+what the node serves, deploys the node there and records it on
 the plane — the same record every machine with credentials for the plane
 lists, so there is nothing to register per machine.
 Deploying needs the shared control plane once before it — see [`spinloop
@@ -22,7 +22,7 @@ cloud`](../../docs/commands/cloud.md). List what you already have:
 spinloop cloud ls
 ```
 
-Or create both of this fleet's environments straight from the file:
+Or create both of this fleet's nodes straight from the file:
 
 ```sh
 spinloop fleet deploy --all --dry-run   # see the plan for qwen and llama first
@@ -35,11 +35,11 @@ its own Spinloop file.
 
 ### 2. Name them as a fleet
 
-[fleet.yaml](fleet.yaml) lists the environments — the node's name is the environment:
+[fleet.yaml](fleet.yaml) lists the nodes — each name is a node on the plane:
 
 ```yaml
 nodes:
-  - name: qwen        # the environment on the plane, and what you type at `fleet start qwen`
+  - name: qwen        # the node on the plane, and what you type at `fleet start qwen`
     kind: cloud       # resolved from qwen/Spinloop — see fleet.yaml
 
   - name: llama
@@ -61,13 +61,13 @@ the full resolution order.
 From any machine your AWS credentials reach:
 
 ```sh
-spinloop status        # one row per environment
+spinloop status        # one row per node
 spinloop metrics -w    # a live dashboard
-spinloop fleet start qwen    # wake a sleeping environment from zero
+spinloop fleet start qwen    # wake a sleeping node from zero
 spinloop fleet stop qwen     # scale it back down
 ```
 
-An environment that has not been deployed yet shows as `config-error` on its
+A node that has not been deployed yet shows as `config-error` on its
 row, and one that is down shows as `unreachable` — either way, the rest of the
 fleet still renders.
 
@@ -75,4 +75,4 @@ fleet still renders.
 
 - [`spinloop fleet`](../../docs/commands/fleet.md) — the commands over these nodes
 - [The fleet file](../../docs/fleet-file.md) — the file's format, node kinds, and routing
-- [`spinloop cloud`](../../docs/commands/cloud.md) — the environments these nodes drive
+- [`spinloop cloud`](../../docs/commands/cloud.md) — the cloud nodes behind this fleet

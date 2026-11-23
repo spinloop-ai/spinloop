@@ -49,11 +49,11 @@ func TestRunnerForAcceptsExactlyTheRunnersWithLogGroups(t *testing.T) {
 }
 
 // spinloop logs --node defaults to the engine source and an hour window, and
-// threads --source/--since/--limit/--instance through to the environment's
+// threads --source/--since/--limit/--instance through to the cloud node's
 // log store query.
 func TestTopLevelLogsDefaultsToTheEngineSourceAndAnHourWindow(t *testing.T) {
 	isolateConfig(t)
-	registerEnv(t, "prod", cloud.Config{
+	registerNode(t, "prod", cloud.Config{
 		StartURL: "https://start.lambda-url.eu-west-1.on.aws/",
 		StopURL:  "https://stop.lambda-url.eu-west-1.on.aws/",
 		Region:   "eu-west-1",
@@ -81,7 +81,7 @@ func TestTopLevelLogsDefaultsToTheEngineSourceAndAnHourWindow(t *testing.T) {
 
 func TestTopLevelLogsPassesTheFlagsThrough(t *testing.T) {
 	isolateConfig(t)
-	registerEnv(t, "prod", cloud.Config{
+	registerNode(t, "prod", cloud.Config{
 		StartURL: "https://start.lambda-url.eu-west-1.on.aws/",
 		StopURL:  "https://stop.lambda-url.eu-west-1.on.aws/",
 		Region:   "eu-west-1",

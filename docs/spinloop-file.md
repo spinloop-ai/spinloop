@@ -77,16 +77,16 @@ scale-to-zero GPU endpoint — one that runs only while you're using it. The
 Spinloop says what the endpoint serves:
 
 ```dockerfile
-# Spinloop — what the environment serves
+# Spinloop — what the node serves
 PROVIDER llamacpp        # the engine to run there, as it would run here
 ALIAS    qwen3.6-27b
 CONTEXT  131072
 PRESET   ./preset.ini    # or PARAM lines in this file instead
 ```
 
-The Spinloop says *what*; it no longer says *where*. Where is an
-**environment** — a deployed endpoint on the control plane — and the
-environment is named with a `--node <name>` flag on the commands that act on
+The Spinloop says *what*; it no longer says *where*. Where is a
+**cloud node** — a deployed endpoint on the control plane — and the
+node is named with a `--node <name>` flag on the commands that act on
 it:
 
 ```sh
@@ -96,7 +96,7 @@ spinloop harness open --node qwen3.6-27b-prod    # work
 spinloop cloud stop --node qwen3.6-27b-prod     # done
 ```
 
-Each `--node <name>` names an environment on the control plane your
+Each `--node <name>` names a cloud node on the control plane your
 credentials resolve. The plane is the record of what is deployed, so
 deployment state is shared by everyone who can reach it rather than kept in
 a file per machine, and the Spinloop itself stays clean enough to commit. A
@@ -111,22 +111,22 @@ which records it on the plane, and
 [`spinloop harness apply`](commands/harness.md#spinloop-harness-apply) reads
 it from the plane's record. Write a `BASEURL` only to override that.
 
-Applying with `--node` also names the harness provider after the environment
+Applying with `--node` also names the harness provider after the node
 rather than the engine: the example above is configured under `qwen3.6-27b-prod`,
 with the model reading as `qwen3.6-27b-prod/qwen3.6-27b`. `PROVIDER` still
-supplies the engine's settings; only the name changes, so several environments
+supplies the engine's settings; only the name changes, so several cloud nodes
 built from the same engine each keep their own entry instead of overwriting one.
-The provider's display name is qualified by the environment too — `llama.cpp
-(qwen3.6-27b-prod)` rather than a bare `llama.cpp` — so a cloud environment reads
+The provider's display name is qualified by the node too — `llama.cpp
+(qwen3.6-27b-prod)` rather than a bare `llama.cpp` — so a cloud node reads
 distinctly from a local engine of the same kind in a harness model picker.
 
 A launch's `--node` means whichever target is in force: beside a fleet (the
 `--fleet` flag, or the `./fleet.yaml` in force when the Spinloop is not named)
 it pins the selection to that fleet's node of the name; with no fleet, it is
-an environment on the control plane.
+a cloud node on the control plane.
 
 `spinloop harness open --node qwen3.6-27b-prod` also works with **no Spinloop at
-all**: the environment already knows what it is serving, so the harness
+all**: the node already knows what it is serving, so the harness
 configures itself from that — the same result as the Spinloop above, without
 needing a copy of it on the machine doing the launching. See
 [`spinloop harness open`](commands/harness.md#launching-with-no-spinloop-at-all).
@@ -175,7 +175,7 @@ harness`](commands/fleet.md#launching-the-harness) needs no Spinloop at all
 when the fleet file names one: with none given, it configures a generic
 OpenAI-compatible provider at the gateway's address itself, its model list
 populated from the gateway's own listing, and no `MODEL`/`ALIAS` to pick.
-That provider reads the way a cloud environment's does — labelled by the
+That provider reads the way a cloud node's does — labelled by the
 gateway's own `name`, or its address when the section names none — the same
 "llama.cpp (dev-2)" pattern described above.
 
@@ -293,7 +293,7 @@ Rules:
   the replacement — `spinloop cloud deploy --node <name>` at deploy time and
   `--node <name>` on `apply`, `unapply`, `harness`, and the `cloud`
   subcommands. Where a `REMOTE` line pointed at a path or a URL, deploy the
-  environment with `spinloop cloud deploy --node <name>` instead, and name it
+  node with `spinloop cloud deploy --node <name>` instead, and name it
   from the flags.
 - Keywords are **case-insensitive** — `provider`, `Provider`, and `PROVIDER` are
   all accepted — but **UPPERCASE is canonical** and is what `spinloop harness export`

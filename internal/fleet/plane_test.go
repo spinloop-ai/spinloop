@@ -16,31 +16,31 @@ import (
 
 // A fleet's cloud nodes live on a control plane resolved from the caller's
 // credentials and region, and the plane's own inventory is what says whether a
-// name is an environment at all. There is nothing on disk to seed for a test
+// name is a cloud node at all. There is nothing on disk to seed for a test
 // any more — that is the whole change — so these helpers stand a plane in the
 // same way a machine without permission to read a stack states one outright:
 // the endpoints by environment variable, and one test server answering them.
 
-// stubPlane stands the control plane in for a test: it holds the environments
-// named, and every environment-named control read is answered by handler (nil
+// stubPlane stands the control plane in for a test: it holds the cloud nodes
+// named, and every node-named control read is answered by handler (nil
 // for one that says the instance is running). It returns the URL the plane's
 // endpoints resolve to, so a test can assert against the same server.
 //
 // The one request the plane is asked for itself — the stats read that names no
-// environment, which is the inventory — is answered here rather than by
+// node, which is the inventory — is answered here rather than by
 // handler, so the two never need separate servers.
 func stubPlane(t *testing.T, handler http.Handler, names ...string) string {
 	t.Helper()
-	envs := make([]cloud.Environment, 0, len(names))
+	nodes := make([]cloud.Node, 0, len(names))
 	for _, n := range names {
-		envs = append(envs, cloud.Environment{Name: n, State: "running"})
+		nodes = append(nodes, cloud.Node{Name: n, State: "running"})
 	}
-	return stubPlaneEnvs(t, handler, envs)
+	return stubPlaneNodes(t, handler, nodes)
 }
 
-// stubPlaneEnvs is stubPlane for a test that cares what the plane says about an
-// environment beyond that it holds the name — who deployed it, what it serves.
-func stubPlaneEnvs(t *testing.T, handler http.Handler, envs []cloud.Environment) string {
+// stubPlaneNodes is stubPlane for a test that cares what the plane says about an
+// node beyond that it holds the name — who deployed it, what it serves.
+func stubPlaneNodes(t *testing.T, handler http.Handler, nodes []cloud.Node) string {
 	t.Helper()
 	if handler == nil {
 		handler = controlAnswers(`{"state":"running","healthy":true}`, http.StatusOK)
@@ -49,7 +49,7 @@ func stubPlaneEnvs(t *testing.T, handler http.Handler, envs []cloud.Environment)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if r.URL.Query().Get("env") == "" {
-			json.NewEncoder(w).Encode(map[string]any{"environments": envs})
+			json.NewEncoder(w).Encode(map[string]any{"nodes": nodes})
 			return
 		}
 		handler.ServeHTTP(w, r)
@@ -64,7 +64,7 @@ func stubPlaneEnvs(t *testing.T, handler http.Handler, envs []cloud.Environment)
 // stubPlaneCounting is stubPlane for a test that wants to know how many times
 // the plane was asked for its inventory — the env-less stats read — which is
 // how a test tells one read per fleet from one per node.
-func stubPlaneCounting(t *testing.T, envs []cloud.Environment, reads *int) string {
+func stubPlaneCounting(t *testing.T, nodes []cloud.Node, reads *int) string {
 	t.Helper()
 	stubAWSCreds(t)
 	mux := http.NewServeMux()
@@ -72,7 +72,7 @@ func stubPlaneCounting(t *testing.T, envs []cloud.Environment, reads *int) strin
 		w.Header().Set("Content-Type", "application/json")
 		if r.URL.Query().Get("env") == "" {
 			*reads++
-			json.NewEncoder(w).Encode(map[string]any{"environments": envs})
+			json.NewEncoder(w).Encode(map[string]any{"nodes": nodes})
 			return
 		}
 		w.Write([]byte(`{"state":"running","healthy":true}`))
@@ -84,8 +84,8 @@ func stubPlaneCounting(t *testing.T, envs []cloud.Environment, reads *int) strin
 }
 
 // stubPlaneEndpoints states a plane's endpoints outright, which resolves it
-// without a stack read, and remembers which environments it holds.
-func stubPlaneEndpoints(t *testing.T, url string, envs ...cloud.Environment) {
+// without a stack read, and remembers which nodes it holds.
+func stubPlaneEndpoints(t *testing.T, url string, nodes ...cloud.Node) {
 	t.Helper()
 	stubAWSCreds(t)
 	// Every endpoint the plane has, stated outright: a server standing in for a
@@ -99,8 +99,8 @@ func stubPlaneEndpoints(t *testing.T, url string, envs ...cloud.Environment) {
 		t.Setenv(key, url)
 	}
 	t.Setenv("SPINLOOP_CLOUD_REGION", "us-east-1")
-	if envs != nil {
-		servePlaneInventory(t, envs)
+	if nodes != nil {
+		servePlaneInventory(t, nodes)
 	}
 	// A complete set of endpoints resolves without a stack read, so the memo
 	// cannot carry another test's plane into this one; clearing it both ways is
@@ -111,25 +111,25 @@ func stubPlaneEndpoints(t *testing.T, url string, envs ...cloud.Environment) {
 
 // stubPlaneAt points the resolved plane at a control server the test already
 // built, and answers its inventory from a server of the stub's own holding the
-// environments named. It is for a test whose control replies are stateful — a
+// nodes named. It is for a test whose control replies are stateful — a
 // wake fake that starts an instance — where one server answering everything
 // would swallow the env-less inventory read.
 func stubPlaneAt(t *testing.T, controlURL string, names ...string) {
 	t.Helper()
-	envs := make([]cloud.Environment, 0, len(names))
+	nodes := make([]cloud.Node, 0, len(names))
 	for _, n := range names {
-		envs = append(envs, cloud.Environment{Name: n, State: "stopped"})
+		nodes = append(nodes, cloud.Node{Name: n, State: "stopped"})
 	}
-	stubPlaneEndpoints(t, controlURL, envs...)
+	stubPlaneEndpoints(t, controlURL, nodes...)
 }
 
 // servePlaneInventory points the plane's stats endpoint at a small proxy that
 // answers the env-less read — the inventory — itself and forwards every
-// environment-named read on to the plane's real stats endpoint. Both live at one
+// node-named read on to the plane's real stats endpoint. Both live at one
 // URL on a real plane, separated only by whether the request names an
-// environment, so a stub that replaced the URL outright would swallow the node's
+// node, so a stub that replaced the URL outright would swallow the node's
 // own stats reads.
-func servePlaneInventory(t *testing.T, envs []cloud.Environment) {
+func servePlaneInventory(t *testing.T, nodes []cloud.Node) {
 	t.Helper()
 	target, err := url.Parse(os.Getenv("SPINLOOP_CLOUD_STATS_URL"))
 	if err != nil {
@@ -139,7 +139,7 @@ func servePlaneInventory(t *testing.T, envs []cloud.Environment) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if r.URL.Query().Get("env") == "" {
-			json.NewEncoder(w).Encode(map[string]any{"environments": envs})
+			json.NewEncoder(w).Encode(map[string]any{"nodes": nodes})
 			return
 		}
 		forward.ServeHTTP(w, r)
@@ -151,7 +151,7 @@ func servePlaneInventory(t *testing.T, envs []cloud.Environment) {
 // stubPlaneEmpty is a plane that resolves and holds nothing at all: the shape a
 // name that was never deployed meets.
 func stubPlaneEmpty(t *testing.T) string {
-	return stubPlaneEnvs(t, nil, []cloud.Environment{})
+	return stubPlaneNodes(t, nil, []cloud.Node{})
 }
 
 // stubPlaneRefused is a plane that resolves but cannot answer for itself — the

@@ -421,8 +421,8 @@ func fleetCmd() *cobra.Command {
 default; --fleet names another). Observation is fleet-wide (status, metrics,
 logs, and dashboard — the live tiled view); start and stop take one or more
 node names, or --all for the whole fleet, and with neither they list the
-fleet and touch nothing; deploy provisions kind: cloud nodes' AWS
-environments the same way. A node that fails is a rendered row, never an
+fleet and touch nothing; deploy provisions kind: cloud nodes on the
+control plane the same way. A node that fails is a rendered row, never an
 error — only a problem with the fleet file itself fails a command.`,
 		Args:          groupArgs,
 		SilenceErrors: true,
@@ -445,7 +445,7 @@ func cloudCmd() *cobra.Command {
 		Use:   "cloud",
 		Short: "control the cloud GPU inference instance",
 		Long: `runs the model on a cloud GPU that exists only while you use it, from
-the same Spinloop. Environments live on the control plane — deployed once,
+the same Spinloop. Cloud nodes live on the control plane — deployed once,
 named with --node <name> by anyone holding credentials for it — and each
 subcommand's --help says what that step does.`,
 		Args:          groupArgs,

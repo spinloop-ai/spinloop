@@ -17,7 +17,7 @@ import (
 // well-known stack there, and the endpoints its outputs name. It is resolved,
 // never configured — nothing on disk names a plane, so two people holding
 // credentials for the same account and region resolve the same plane and drive
-// the same environments, and what a command acts on is a name on that plane.
+// the same cloud nodes, and what a command acts on is a name on that plane.
 //
 // The resolution is remembered for the process and nowhere else. It is derived
 // state, and the difference matters exactly here: a stale authoritative file
@@ -97,7 +97,7 @@ func init() {
 //
 // Where no plane resolves, the failure names what was looked for and where —
 // the stack, the account, the region — and the fix, rather than reporting that
-// some environment is missing. A plane that cannot be reached is never silently
+// some plane is missing. A plane that cannot be reached is never silently
 // reported as an empty one.
 func ResolvePlane(ctx context.Context, req PlaneRequest) (ControlPlane, error) {
 	getenv := req.getenv()
@@ -251,7 +251,7 @@ func ResolveRegion(ctx context.Context, explicit string, getenv func(string) str
 // The rest (deploy, seed, env, stats, update, schedules) are optional in the
 // same way a stack from before those Lambdas existed is optional: the command
 // that needs one names the variable to set, and a Spinloop that only ever
-// starts and stops an environment states no more than it uses.
+// starts and stops a node states no more than it uses.
 var requiredEndpointVars = []string{
 	"SPINLOOP_CLOUD_START_URL",
 	"SPINLOOP_CLOUD_STOP_URL",
@@ -302,25 +302,25 @@ func overlayEndpoints(cfg Config, getenv func(string) string) Config {
 	return cfg
 }
 
-// ResolveEnvironment resolves the environment named by name on the plane req
+// ResolveNode resolves the cloud node named by name on the plane req
 // resolves to: the plane's endpoints, its region, and the name as the
 // identifier the shared lifecycle Lambdas act on.
 //
-// This is the only way an environment is resolved. Nothing on disk is consulted,
-// no name resolves by a different rule from any other, and an environment the
+// This is the only way a cloud node is resolved. Nothing on disk is consulted,
+// no name resolves by a different rule from any other, and a node the
 // plane does not hold is settled by the plane's inventory rather than by a call
 // that happened to fail.
-func ResolveEnvironment(ctx context.Context, name string, req PlaneRequest) (Config, error) {
-	if !IsEnvName(name) {
+func ResolveNode(ctx context.Context, name string, req PlaneRequest) (Config, error) {
+	if !IsNodeName(name) {
 		return Config{}, fmt.Errorf(
-			"%q is not an environment name: an environment name is a plain identifier, with no path", name)
+			"%q is not a node name: a node name is a plain identifier, with no path", name)
 	}
 	plane, err := ResolvePlane(ctx, req)
 	if err != nil {
 		return Config{}, err
 	}
 	cfg := plane.Config
-	cfg.Environment = name
+	cfg.Node = name
 	return cfg, nil
 }
 
@@ -351,7 +351,7 @@ func refreshPlane(ctx context.Context, cfg Config, getenv func(string) string) (
 		// something else — permission, a stopped instance, the caller's input.
 		return cfg, false
 	}
-	plane.Config.Environment = cfg.Environment
+	plane.Config.Node = cfg.Node
 	return plane.Config, true
 }
 

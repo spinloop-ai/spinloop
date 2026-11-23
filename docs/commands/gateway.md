@@ -84,7 +84,7 @@ not serve is refused with a `404` naming the ones it does.
 The list is what a request can reach, so it is bounded by what the gateway can
 start: a running node contributes only what it reports — a running engine is
 never displaced to make room. A deployed-but-stopped `kind: cloud`
-environment contributes the model id its own stats reply reports — read
+node contributes the model id its own stats reply reports — read
 directly from its stored deploy config, the way `spinloop metrics --node <name>`
 already reads it, since its status reply carries no such facts while
 stopped — since the gateway can wake it the same way it wakes a
@@ -143,7 +143,7 @@ one whose stored config already matches is tried first:
 - A **deployed-but-stopped `kind: cloud`** node is booted as it is: its own
   stored deploy config — set by `spinloop cloud deploy`, not by this wake —
   decides what it serves, and the gateway pushes nothing new. An
-  **undeployed** environment is never a candidate: it has nothing to serve
+  **undeployed** cloud node is never a candidate: it has nothing to serve
   yet, and choosing what to deploy is `spinloop cloud deploy`'s call, not a
   request's.
 
@@ -154,7 +154,7 @@ same model wake at most one engine: the gateway coalesces two requests
 racing to wake the same node into a single start, so a request that arrives
 mid-wake joins the one already under way rather than starting a second
 engine of its own — a daemon node's control API would refuse the second
-start anyway, but a cloud environment's control plane does not, so this is
+start anyway, but a cloud node's control plane does not, so this is
 what keeps a burst of requests from booting (and billing for) more than one
 instance.
 

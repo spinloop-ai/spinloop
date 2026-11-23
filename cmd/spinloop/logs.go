@@ -1,5 +1,5 @@
 // `spinloop logs`: what every engine in the target has said. The target is
-// whatever names one — an environment on the control plane, a fleet file, or
+// whatever names one — a cloud node on the control plane, a fleet file, or
 // file in the working directory. Reading and following live in fleet_logs.go;
 // this is the command.
 
@@ -31,17 +31,17 @@ func logsCmd() *cobra.Command {
 		Use:   "logs",
 		Short: "read the engines' output",
 		Long: `reads what each engine in the target has said, through whatever the node
-answers with — a daemon's log file, or a cloud environment's log store.
+answers with — a daemon's log file, or a cloud node's log store.
 Naming a node reads only that one. Nodes are read concurrently.
 
-The target is an environment on the control plane (--node), a fleet file
+The target is a cloud node on the control plane (--node), a fleet file
 (--fleet), or
 the fleet.yaml in the working directory. --fleet has no -f here: that is
 --follow's short form, and a flag cannot carry two meanings on one command
 line.
 
 --source, --since and --instance narrow a log that can be queried. Only a
-cloud environment's can — a daemon's log is one file on one machine, where
+cloud node's can — a daemon's log is one file on one machine, where
 none of the three narrows anything — so a node that cannot be narrowed is
 read as it would be without them.`,
 		Args:          cobra.MaximumNArgs(1),

@@ -9,7 +9,7 @@ import "github.com/spinloop-ai/spinloop/internal/config"
 // rules are resolved in one place; it fails when the directory cannot be
 // determined (see config.Dir).
 //
-// No fact about the cloud belongs here. Which environments exist, which plane
+// No fact about the cloud belongs here. Which nodes exist, which plane
 // they are on and what address any of them answers on are the cloud's own
 // record, read from the plane; a file naming any of them would be a cache that
 // only the machine which wrote it can trust. In particular there is no

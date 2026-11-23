@@ -142,7 +142,7 @@ export async function handler(event: LambdaFunctionURLEvent): Promise<LambdaFunc
       await ensureEnvSecurityGroup(env, VPC_ID, PORT, allowedCidr);
     } else if (!(await findEnvSecurityGroup(env))) {
       return jsonResponse(400, {
-        error: `environment ${JSON.stringify(env)} has no security group yet — provide allowedCidr`,
+        error: `node ${JSON.stringify(env)} has no security group yet — provide allowedCidr`,
       });
     }
     // A supplied key is a rotation (created or replaced, per the secret's
@@ -152,7 +152,7 @@ export async function handler(event: LambdaFunctionURLEvent): Promise<LambdaFunc
   } catch (err) {
     console.log(JSON.stringify({ action: 'deploy', environment: env, error: errorName(err) }));
     return jsonResponse(502, {
-      error: `creating environment ${JSON.stringify(env)}: ${(err as Error).message}`,
+      error: `creating node ${JSON.stringify(env)}: ${(err as Error).message}`,
     });
   }
 

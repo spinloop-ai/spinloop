@@ -134,7 +134,7 @@ func TestKeepDurationRendersRelatively(t *testing.T) {
 	}
 }
 
-// A stopped environment can still be kept: the deadline is the control plane's,
+// A stopped node can still be kept: the deadline is the control plane's,
 // not the engine's, so the keep survives the non-running short-circuit in both
 // formats.
 func TestCloudMetricsStoppedKeptStillShowsKeep(t *testing.T) {
@@ -189,7 +189,7 @@ func TestCloudMetricsOmitsKeepWhenAbsent(t *testing.T) {
 
 // The deadline rides the node's stats, so `fleet metrics` draws the keep after
 // the active figure whatever the node's state. A faked daemon carrying the field
-// stands in for a kept cloud environment on the same render path.
+// stands in for a kept cloud node on the same render path.
 func TestFleetMetricsShowsKeep(t *testing.T) {
 	deadline := keepNow(t, 2*time.Hour)
 	fleetNodeWithMetrics(t, map[string]any{

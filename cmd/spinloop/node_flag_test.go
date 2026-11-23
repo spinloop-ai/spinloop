@@ -70,10 +70,10 @@ func TestCodeNodePinsFleetNode(t *testing.T) {
 	}
 }
 
-// --node with no fleet in force names a registered environment: the bare
-// launch (no Spinloop) is configured from what that environment reports
+// --node with no fleet in force names a cloud node on the plane: the bare
+// launch (no Spinloop) is configured from what that node reports
 // deployed — the job `--env` did.
-func TestCodeNodeWithoutFleetIsAnEnvironment(t *testing.T) {
+func TestCodeNodeWithoutFleetIsACloudNode(t *testing.T) {
 	home := isolateConfig(t)
 	stubAWSEnv(t)
 	t.Setenv("OPENAI_API_KEY", "")
@@ -82,9 +82,9 @@ func TestCodeNodeWithoutFleetIsAnEnvironment(t *testing.T) {
 
 	server := deployedEnvServer(t)
 	defer server.Close()
-	registerEnv(t, "dev-3", cloud.Config{
+	registerNode(t, "dev-3", cloud.Config{
 		StartURL: server.URL, StopURL: server.URL, EnvURL: server.URL,
-		BaseURL: "http://198.51.100.1:8000/v1", Region: "eu-west-1", Environment: "dev-3",
+		BaseURL: "http://198.51.100.1:8000/v1", Region: "eu-west-1", Node: "dev-3",
 	})
 
 	argsFile := filepath.Join(t.TempDir(), "args")
@@ -101,14 +101,14 @@ func TestCodeNodeWithoutFleetIsAnEnvironment(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !strings.Contains(string(data), "KEY=") || !strings.Contains(string(data), "BASE=") {
-		t.Errorf("the agent should carry the environment's fetched endpoint, got:\n%s", data)
+		t.Errorf("the agent should carry the cloud node's fetched endpoint, got:\n%s", data)
 	}
 	config, err := os.ReadFile(filepath.Join(home, ".config", "opencode", "opencode.json"))
 	if err != nil {
 		t.Fatalf("the harness config was not written: %v", err)
 	}
 	if !strings.Contains(string(config), "dev-3") {
-		t.Errorf("the provider should be keyed by the environment, got:\n%s", config)
+		t.Errorf("the provider should be keyed by the cloud node, got:\n%s", config)
 	}
 }
 
@@ -154,7 +154,7 @@ func TestCodeNodePinWithDiscoveredFleetReachesNode(t *testing.T) {
 }
 
 // The renamed flag's shape on the launch: --node/-n registered, --env gone,
-// and the fleet's nodes completing it beside the registered environments.
+// and the fleet's nodes completing it beside the cloud nodes the plane holds.
 func TestCodeNodeFlagAndCompletion(t *testing.T) {
 	isolateConfig(t)
 	codeFleetDir(t, "nodes:\n  - name: gpu-a\n    host: 127.0.0.1\n    port: 1\n", "")

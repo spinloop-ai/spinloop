@@ -17,7 +17,7 @@ spinloop cloud bake        # bake the engine AMIs; waits (~20-40 min)
 ```
 
 `bootstrap` prints a plan — account, region, resources, cost — and confirms
-before deploying. It creates no instance and no environment; those come from
+before deploying. It creates no instance and no node; those come from
 `deploy`. `bake` builds one AMI per engine (driver plus engine, no model) and
 waits until they are available, so `deploy` can go when it returns. Re-bake
 only when an engine version or the driver changes.
@@ -29,7 +29,7 @@ log-ins.
 
 ## Deploy a model
 
-The Spinloop says what the environment serves; `--node` names the environment —
+The Spinloop says what the node serves; `--node` names the node —
 a shared choice on the plane, and one that stays out of the file:
 
 ```sh
@@ -38,14 +38,14 @@ spinloop cloud deploy --node qwen3.6-27b
 
 Deploy reads the Spinloop and its preset — `PROVIDER` picks the engine, so the
 file that runs a model locally under [`spinloop serve`](local-serving.md)
-deploys the same model remotely — provisions the environment (Elastic IP, API
+deploys the same model remotely — provisions the node (Elastic IP, API
 key, ingress) and records it, with your name and the deploy time, on the
 control plane. The plane is the record of what is deployed: every machine with
-credentials for it lists the same environments, and a name taken there is
-taken for everyone. A redeploy over an environment the plane already holds, or
+credentials for it lists the same nodes, and a name taken there is
+taken for everyone. A redeploy over a node the plane already holds, or
 one that is running, needs `--overwrite` and a stated `--allowed-cidr` — it
 never silently clobbers a running instance, and never silently widens a
-colleague's ingress. A fresh environment defaults to letting only your own IP
+colleague's ingress. A fresh node defaults to letting only your own IP
 through (`--allowed-cidr` changes that).
 
 ## The usual flow
@@ -58,7 +58,7 @@ spinloop harness apply --node qwen3.6-27b       # point your agent at it
 spinloop harness open --node qwen3.6-27b        # work
 spinloop cloud pause --node qwen3.6-27b        # done for now: stopped, re-wakeable
 spinloop cloud stop --node qwen3.6-27b         # done for good: terminated
-spinloop cloud undeploy --node qwen3.6-27b     # and take the environment apart:
+spinloop cloud undeploy --node qwen3.6-27b     # and take the node apart:
                                                # address, key, schedules, deploy
                                                # config — consent required
 ```
@@ -66,7 +66,7 @@ spinloop cloud undeploy --node qwen3.6-27b     # and take the environment apart:
 Every command that acts on an endpoint selects it with `--node <name>` — the
 flag is **required**, because half of these subcommands start, stop, or
 terminate a cloud instance, and an instance nobody named is not one to act on.
-A command given no `--node` fails naming the flag and listing the environments
+A command given no `--node` fails naming the flag and listing the nodes
 the plane holds — there is no `default` to fall back to, because an assumed
 name on a shared plane could act on somebody else's instance. `start` prints progress on stderr, and the export lines
 for `eval` only with `--print-env`, so a plain `start` leaves stdout empty.
@@ -92,7 +92,7 @@ It's up and warm by the time you sit down, and paused when you leave. See
 
 ## From another machine
 
-An environment lives on the plane, not on the machine that deployed it: any
+A node lives on the plane, not on the machine that deployed it: any
 two machines with credentials for the plane work the same endpoint. Deploy
 from one, then on the other — with **no Spinloop at all**:
 
@@ -100,13 +100,13 @@ from one, then on the other — with **no Spinloop at all**:
 spinloop harness open --node qwen3.6-27b
 ```
 
-The environment's runner becomes the provider, its served model the model, its
+The node's runner becomes the provider, its served model the model, its
 context size the window — read live, so a later redeploy is picked up
 automatically rather than re-copied by anyone.
 
 ## Where next
 
 - [`spinloop cloud`](../commands/cloud.md) — every subcommand, in full
-- [Run a fleet](fleet.md) — cloud environments as fleet nodes, alongside daemons
+- [Run a fleet](fleet.md) — cloud nodes as fleet nodes, alongside daemons
 - [Deploying your own control plane](https://github.com/spinloop-ai/spinloop/tree/main/remote)
   — the AWS project behind the command, for the curious

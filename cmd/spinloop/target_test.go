@@ -11,16 +11,16 @@ import (
 	"github.com/spinloop-ai/spinloop/internal/fleet"
 )
 
-// registerTargetEnv stands a plane in holding one environment, so a --node
-// target has something to resolve.
-func registerTargetEnv(t *testing.T, name string) {
+// registerTargetCloudNode stands a plane in holding one cloud node, so a
+// --node target has something to resolve.
+func registerTargetCloudNode(t *testing.T, name string) {
 	t.Helper()
 	t.Setenv("SPINLOOP_CONFIG_DIR", t.TempDir())
-	registerEnv(t, name, cloud.Config{
-		StartURL:    "https://s.example/start",
-		StopURL:     "https://s.example/stop",
-		Region:      "us-east-1",
-		Environment: name,
+	registerNode(t, name, cloud.Config{
+		StartURL: "https://s.example/start",
+		StopURL:  "https://s.example/stop",
+		Region:   "us-east-1",
+		Node:     name,
 	})
 }
 
@@ -29,8 +29,8 @@ const oneNodeFleetBody = "nodes:\n  - name: box\n    host: box.local\n"
 
 // The three ways a target is named, and the one way it fails to resolve.
 func TestResolveFleetTarget(t *testing.T) {
-	t.Run("a named environment", func(t *testing.T) {
-		registerTargetEnv(t, "prod")
+	t.Run("a named cloud node", func(t *testing.T) {
+		registerTargetCloudNode(t, "prod")
 		t.Chdir(t.TempDir())
 		cfg, err := resolveFleetTarget(context.Background(), fleetTarget{nodeName: "prod"})
 		if err != nil {
@@ -84,10 +84,10 @@ func TestResolveFleetTarget(t *testing.T) {
 
 // --fleet names the fleet and --node the node within it: the pair resolves
 // to the named file, and a name the file lacks fails naming it and its
-// nodes — even when a registered environment answers the name, because the
+// nodes — even when a cloud node on the plane answers the name, because the
 // explicitly named file is the stated fleet and nothing else answers for it.
 func TestResolveFleetTargetNamedFleetNarrows(t *testing.T) {
-	registerTargetEnv(t, "prod")
+	registerTargetCloudNode(t, "prod")
 	dir := t.TempDir()
 	path := filepath.Join(dir, "cluster.yaml")
 	if err := os.WriteFile(path, []byte(
@@ -116,10 +116,10 @@ func TestResolveFleetTargetNamedFleetNarrows(t *testing.T) {
 }
 
 // A fleet.yaml merely sitting in the working directory is not a conflict with
-// --node: only a flag states a target, so the environment wins and the file is
+// --node: only a flag states a target, so the cloud node wins and the file is
 // not read (design D4).
-func TestResolveFleetTargetIgnoresTheDirectoryFileWithEnv(t *testing.T) {
-	registerTargetEnv(t, "prod")
+func TestResolveFleetTargetIgnoresTheDirectoryFileWithNodeTarget(t *testing.T) {
+	registerTargetCloudNode(t, "prod")
 	writeFleetFile(t, oneNodeFleetBody)
 
 	cfg, err := resolveFleetTarget(context.Background(), fleetTarget{nodeName: "prod"})
@@ -134,7 +134,7 @@ func TestResolveFleetTargetIgnoresTheDirectoryFileWithEnv(t *testing.T) {
 // A name the plane does not hold fails before anything is contacted, naming the
 // plane it was looked for on and the command that would create it. A plane that
 // cannot be read is reported as that, never as a name that is missing.
-func TestResolveFleetTargetAnEnvironmentThePlaneDoesNotHold(t *testing.T) {
+func TestResolveFleetTargetACloudNodeThePlaneDoesNotHold(t *testing.T) {
 	stubPlaneEmpty(t)
 	t.Chdir(t.TempDir())
 	_, err := resolveFleetTarget(context.Background(), fleetTarget{nodeName: "nope"})
@@ -158,21 +158,21 @@ func TestResolveFleetTargetAnUnreadablePlane(t *testing.T) {
 	if err == nil {
 		t.Fatal("want an error")
 	}
-	if strings.Contains(err.Error(), "no environment") {
+	if strings.Contains(err.Error(), "no cloud node") {
 		t.Errorf("error %q reports an empty plane rather than an unreadable one", err)
 	}
 }
 
 // A fleet of one has no path, so what reports the target names the
-// environment instead of printing an empty string.
+// cloud node instead of printing an empty string.
 func TestDescribeTarget(t *testing.T) {
-	registerTargetEnv(t, "prod")
-	fromEnv, err := fleet.ForEnvironment(context.Background(), "prod")
+	registerTargetCloudNode(t, "prod")
+	fromNode, err := fleet.ForCloudNode(context.Background(), "prod")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := describeTarget(fromEnv); got != "environment prod" {
-		t.Errorf("describeTarget = %q, want %q", got, "environment prod")
+	if got := describeTarget(fromNode); got != "cloud node prod" {
+		t.Errorf("describeTarget = %q, want %q", got, "cloud node prod")
 	}
 
 	dir := t.TempDir()
@@ -192,8 +192,8 @@ func TestDescribeTarget(t *testing.T) {
 // Every fleet command that takes a target completes --node from the fleet in
 // force on the line — the
 // working directory's file here and an explicit --fleet value below — and
-// from the environments the resolved plane holds.
-func TestFleetCommandsCompleteEnv(t *testing.T) {
+// from the cloud nodes the resolved plane holds.
+func TestFleetCommandsCompleteNodes(t *testing.T) {
 	// One plane holding both, as a real one would.
 	stubPlane(t, nil, "prod", "staging")
 	dir := t.TempDir()
@@ -240,19 +240,19 @@ func TestFleetCommandsCompleteEnv(t *testing.T) {
 	})
 }
 
-// The whole claim of a fleet of one: the same environment named by --node and
+// The whole claim of a fleet of one: the same cloud node named by --node and
 // named by a one-node fleet file produces the same output, so what a command
 // prints does not depend on how its target was named.
-func TestFleetStatusEnvMatchesAOneNodeFile(t *testing.T) {
+func TestFleetStatusCloudNodeMatchesAOneNodeFile(t *testing.T) {
 	stubAWSEnv(t)
 	up := stateServer(t)
 	t.Setenv("SPINLOOP_CONFIG_DIR", t.TempDir())
-	registerEnv(t, "prod", cloud.Config{
-		StartURL:    up.URL,
-		StopURL:     up.URL,
-		StatsURL:    up.URL,
-		Region:      "us-east-1",
-		Environment: "prod",
+	registerNode(t, "prod", cloud.Config{
+		StartURL: up.URL,
+		StopURL:  up.URL,
+		StatsURL: up.URL,
+		Region:   "us-east-1",
+		Node:     "prod",
 	})
 
 	// Named by a fleet file holding exactly that node.
@@ -265,17 +265,17 @@ func TestFleetStatusEnvMatchesAOneNodeFile(t *testing.T) {
 
 	// Named by the flag, from a directory holding no fleet file at all.
 	t.Chdir(t.TempDir())
-	fromEnv := captureStdout(t, func() {
+	fromNode := captureStdout(t, func() {
 		if err := cmdStatus([]string{"--node", "prod"}); err != nil {
 			t.Errorf("fleet status --node returned %v", err)
 		}
 	})
 
-	if fromFile != fromEnv {
-		t.Errorf("output differs by how the target was named:\nfile:\n%s\nenv:\n%s", fromFile, fromEnv)
+	if fromFile != fromNode {
+		t.Errorf("output differs by how the target was named:\nfile:\n%s\nnode:\n%s", fromFile, fromNode)
 	}
-	if !strings.Contains(fromEnv, "prod") {
-		t.Errorf("the environment is not named in the output:\n%s", fromEnv)
+	if !strings.Contains(fromNode, "prod") {
+		t.Errorf("the cloud node is not named in the output:\n%s", fromNode)
 	}
 }
 
@@ -285,12 +285,12 @@ func TestFleetStatusEnvNeedsNoFleetFile(t *testing.T) {
 	stubAWSEnv(t)
 	up := stateServer(t)
 	t.Setenv("SPINLOOP_CONFIG_DIR", t.TempDir())
-	registerEnv(t, "prod", cloud.Config{
-		StartURL:    up.URL,
-		StopURL:     up.URL,
-		StatsURL:    up.URL,
-		Region:      "us-east-1",
-		Environment: "prod",
+	registerNode(t, "prod", cloud.Config{
+		StartURL: up.URL,
+		StopURL:  up.URL,
+		StatsURL: up.URL,
+		Region:   "us-east-1",
+		Node:     "prod",
 	})
 	t.Chdir(t.TempDir())
 
@@ -300,20 +300,20 @@ func TestFleetStatusEnvNeedsNoFleetFile(t *testing.T) {
 		}
 	})
 	if !strings.Contains(out, "prod") {
-		t.Errorf("no row for the environment:\n%s", out)
+		t.Errorf("no row for the cloud node:\n%s", out)
 	}
 }
 
 // The pair through the real command line: --fleet beside --node narrows the
 // read to that node; a name the named file lacks fails naming it, rather
-// than falling through to an environment of that name on the plane.
+// than falling through to a cloud node of that name on the plane.
 func TestFleetStatusFleetAndNodePair(t *testing.T) {
 	t.Setenv("SPINLOOP_CONFIG_DIR", t.TempDir())
-	registerEnv(t, "prod", cloud.Config{
-		StartURL:    "https://s.example/start",
-		StopURL:     "https://s.example/stop",
-		Region:      "us-east-1",
-		Environment: "prod",
+	registerNode(t, "prod", cloud.Config{
+		StartURL: "https://s.example/start",
+		StopURL:  "https://s.example/stop",
+		Region:   "us-east-1",
+		Node:     "prod",
 	})
 	writeFleetFile(t, "nodes:\n  - name: box\n    host: 127.0.0.1\n    port: 1\n")
 
@@ -338,14 +338,14 @@ func TestFleetStatusFleetAndNodePair(t *testing.T) {
 }
 
 // With no fleet in force and no file to check, --node resolves as the
-// environment; an unregistered name is refused. (Both branches of the
+// cloud node; an unregistered name is refused. (Both branches of the
 // discovery check, minus the file.)
 func TestResolveTargetNoFileResolvesRegistry(t *testing.T) {
-	registerTargetEnv(t, "prod")
+	registerTargetCloudNode(t, "prod")
 	t.Chdir(t.TempDir())
 	cfg, err := resolveFleetTarget(context.Background(), fleetTarget{nodeName: "prod"})
 	if err != nil {
-		t.Fatalf("a registered environment with no fleet in force: %v", err)
+		t.Fatalf("a plane-held cloud node with no fleet in force: %v", err)
 	}
 	if len(cfg.Nodes) != 1 || cfg.Nodes[0].Name != "prod" {
 		t.Errorf("want the one prod node, got %+v", cfg.Nodes)
@@ -356,7 +356,7 @@ func TestResolveTargetNoFileResolvesRegistry(t *testing.T) {
 }
 
 // Beside a discovered fleet the flag's node narrows the fan-out to it alone;
-// a name the fleet holds resolves as the environment; a name nothing answers
+// a name the fleet holds resolves as the cloud node; a name nothing answers
 // fails naming both places it looked.
 func TestResolveTargetNarrowsDiscoveredFleet(t *testing.T) {
 	dir := t.TempDir()
@@ -373,13 +373,13 @@ func TestResolveTargetNarrowsDiscoveredFleet(t *testing.T) {
 		t.Errorf("want only gpu-a, got %+v", narrowed.Nodes)
 	}
 
-	registerTargetEnv(t, "prod")
+	registerTargetCloudNode(t, "prod")
 	cfg, err = resolveFleetTarget(context.Background(), fleetTarget{nodeName: "prod"})
 	if err != nil {
 		t.Fatalf("a registry name beside a fleet without it: %v", err)
 	}
 	if len(cfg.Nodes) != 1 || cfg.Nodes[0].Name != "prod" {
-		t.Errorf("want the prod environment's node, got %+v", cfg.Nodes)
+		t.Errorf("want the prod node, got %+v", cfg.Nodes)
 	}
 
 	_, err = resolveFleetTarget(context.Background(), fleetTarget{nodeName: "ghost"})
