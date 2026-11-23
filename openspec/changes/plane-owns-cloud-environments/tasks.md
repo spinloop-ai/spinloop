@@ -64,6 +64,6 @@ behaviour.
 - [x] 8.1 Run `go test ./... -cover` and confirm total coverage is at least 80% and every suite passes
 - [x] 8.2 Run `pnpm test` and `pnpm run synth` checks in `remote/` and confirm the stack snapshot changes only where groups 1–2 added resources
 - [x] 8.3 Run `gofmt -l .`, `go vet ./...` and `scripts/check-no-cloud-identifiers.sh` and confirm all three report nothing
-- [ ] 8.4 Run the `examples/fleet-docker` fleet integration path CI runs per PR and confirm it still passes, since it exercises mixed-node fan-out and the gateway
+- [x] 8.4 Run the `examples/fleet-docker` fleet integration path CI runs per PR and confirm it still passes, since it exercises mixed-node fan-out and the gateway
 - [ ] 8.5 Verify end to end against a real plane: `cloud bootstrap`-less machine → `cloud ls` lists the plane, `--node` resolves an environment deployed elsewhere, `cloud undeploy --dry-run` lists its resources, and confirm nothing new appears under `~/.config/spinloop/`
 - [ ] 8.6 At archive time, reword the `A registered environment is a fleet of one` requirement header in `openspec/specs/fleet-config/spec.md` to drop the word "registered", and confirm `openspec validate --specs` passes
