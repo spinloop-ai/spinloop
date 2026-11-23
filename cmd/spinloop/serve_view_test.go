@@ -710,3 +710,40 @@ func TestReportEngineLogTailMissingLogSaysSo(t *testing.T) {
 		t.Errorf("a missing log must be said plainly, naming the path:\n%s", got)
 	}
 }
+
+// An engine log that cannot be read is said as such, naming the path — not
+// silence, and not the tail header promising lines that cannot come.
+func TestReportEngineLogTailUnreadableLogSaysSo(t *testing.T) {
+	dir := t.TempDir()
+	blocker := filepath.Join(dir, "not-a-directory")
+	if err := os.WriteFile(blocker, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var out strings.Builder
+	reportEngineLogTail(&out, filepath.Join(blocker, "engine.log"))
+	got := out.String()
+	if !strings.Contains(got, "could not be read") {
+		t.Errorf("an unreadable log must be said plainly:\n%s", got)
+	}
+	if strings.Contains(got, "last of the engine log") || strings.Contains(got, "holds nothing") {
+		t.Errorf("the failure note must not claim a tail or emptiness:\n%s", got)
+	}
+}
+
+// A log whose last line was never terminated still ends the report on a whole
+// line, so the console prompt starts clean.
+func TestReportEngineLogTailTerminatesTheLastLine(t *testing.T) {
+	logPath := filepath.Join(t.TempDir(), "engine.log")
+	if err := os.WriteFile(logPath, []byte("error: the engine died mid-word"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var out strings.Builder
+	reportEngineLogTail(&out, logPath)
+	got := out.String()
+	if !strings.HasSuffix(got, "\n") {
+		t.Errorf("the report must end on a whole line:\n%q", got)
+	}
+	if !strings.Contains(got, "error: the engine died mid-word") {
+		t.Errorf("the unterminated line must still be written:\n%s", got)
+	}
+}

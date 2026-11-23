@@ -4,11 +4,13 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -663,8 +665,9 @@ func TestCmdServe_ViewCrashWritesEngineLogTail(t *testing.T) {
 			go func() { done <- cmdServe([]string{spinloopPath}) }()
 			select {
 			case err := <-done:
-				if err == nil {
-					t.Fatal("serve must report the engine's failure status")
+				var exitErr *exec.ExitError
+				if !errors.As(err, &exitErr) || exitErr.ExitCode() != 3 {
+					t.Fatalf("serve must exit with the engine's status 3, got %v", err)
 				}
 			case <-time.After(20 * time.Second):
 				t.Fatal("serve did not exit after the engine did")
