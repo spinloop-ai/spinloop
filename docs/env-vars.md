@@ -8,7 +8,7 @@ from the environment or a `.env` beside the Spinloop — never written into an
 
 | Variable | Used by | Meaning |
 | --- | --- | --- |
-| `SPINLOOP_CONFIG_DIR` | everything | spinloop's config directory, used **verbatim** (no `spinloop` segment appended). Overrides `XDG_CONFIG_HOME` and `~/.config`. Everything spinloop owns lives here: `config.json` (default-harness preference + alias registry), `cloud.json`, the `clouds/<name>/` environment registry, the `keystore/` file credential store, the daemon state dir, and the CDK source cache. Set it when there is no usable `$HOME` — e.g. a systemd service. See [config resolution](#config-directory-resolution). |
+| `SPINLOOP_CONFIG_DIR` | everything | spinloop's config directory, used **verbatim** (no `spinloop` segment appended). Overrides `XDG_CONFIG_HOME` and `~/.config`. Everything spinloop owns lives here: `config.json` (default-harness preference + alias registry), the stored control-plane credential, the `keystore/` file credential store, the daemon state dir, and the CDK source cache. Nothing about the cloud's environments lives here — those are the control plane's own record. Set it when there is no usable `$HOME` — e.g. a systemd service. See [config resolution](#config-directory-resolution). |
 | `SPINLOOP_HARNESS` | all harness commands | Which harness to configure/launch (`opencode`, `pi` or `lucinate`). Precedence: `--harness`/`-H` flag > `SPINLOOP_HARNESS` > stored preference > `opencode`. |
 | `SPINLOOP_ALIAS` | every command that takes a Spinloop path | A name registered with [`spinloop alias`](commands/alias.md), used when the command is given no path. Precedence: the path or alias argument > `SPINLOOP_ALIAS` > `./Spinloop`. It holds a registry name, never a path, and a same-named file in the working directory does not shadow it. It decides *which* Spinloop is the default, not *whether* one is applied — a bare `spinloop harness open` still applies nothing, and `spinloop alias` ignores it. |
 | `SPINLOOP_PROVIDERS` | `spinloop provider list`, `spinloop harness add`, `spinloop harness apply`, … | Path to a `providers.yaml` that overrides the built-in catalogue. Precedence: `--providers` flag > `SPINLOOP_PROVIDERS` > embedded. |
@@ -34,10 +34,11 @@ from the environment or a `.env` beside the Spinloop — never written into an
 | `SPINLOOP_CLOUD_REGION` | Override the AWS region (else `AWS_REGION`, else the region in the Function URL host). |
 | `SPINLOOP_CLOUD_PACKAGE_MANAGER` | Pin the package manager (`pnpm`/`npm`) `spinloop cloud bootstrap` and `bake` use. |
 
-These let the cloud commands run without a `cloud.json` on disk — the config
-can come entirely from the environment. `--node <name>` is still required, and
-on this path the name you give *is* the environment identifier the control
-plane acts on, since there is no file to take one from:
+These state the plane outright. Each overrides one endpoint of the plane your
+credentials resolve; a complete-enough set (start and stop suffice) *is* a
+plane, resolved with no stack read at all — which is how CI drives a plane
+without permission to describe one. `--node <name>` is still required, and the
+name you give *is* the environment identifier the control plane acts on:
 
 ```sh
 SPINLOOP_CLOUD_START_URL=... SPINLOOP_CLOUD_STOP_URL=... SPINLOOP_CLOUD_REGION=... \

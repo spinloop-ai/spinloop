@@ -6,7 +6,7 @@ daemon's log file or a cloud environment's log store.
 ```sh
 spinloop logs                         # every node in this directory's fleet.yaml
 spinloop logs studio                  # just that node
-spinloop logs --node prod              # one registered environment, no file needed
+spinloop logs --node prod              # one cloud environment, no file needed
 spinloop logs -f                      # follow
 spinloop logs --node prod --source boot --since 30m
 ```
@@ -21,7 +21,7 @@ that node's own log.
 
 | | target |
 | --- | --- |
-| `--node <name>` (`-n`) | that node of the fleet in force; with no fleet named, a registered environment when none holds the name |
+| `--node <name>` (`-n`) | that node of the fleet in force; with no fleet named, an environment on the control plane when none holds the name |
 | `--fleet <path>` | that fleet file |
 | neither | the `fleet.yaml` in the working directory |
 

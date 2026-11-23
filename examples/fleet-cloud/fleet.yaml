@@ -4,11 +4,11 @@
 #   spinloop metrics -w    # a live dashboard
 #   spinloop fleet deploy --all  # create both environments from this file
 #
-# Each node's `name` is the registered environment it drives — one per
+# Each node's `name` is the environment it drives on the plane — one per
 # `spinloop cloud deploy`, or per `spinloop fleet deploy` — and what you type
 # at `fleet start <node>`. `kind: cloud` marks it as a cloud environment
 # rather than a host. No bearer tokens here: the control plane signs each
-# call, and the environment's URLs live in its cloud.json, not in this file.
+# call, and the environment's endpoints resolve from the plane, not this file.
 # So, like every fleet file, this one names environments, never an account.
 #
 # `fleet deploy` needs to know what each environment serves — the same thing

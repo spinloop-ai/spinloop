@@ -18,7 +18,8 @@ spinloop fleet deploy --all      # create every kind: cloud node's AWS environme
 
 [`spinloop status`](status.md) and [`spinloop dashboard`](dashboard.md) are
 top-level commands, not part of this group: they read whatever target you name
-— a fleet file, or a single registered environment — so there is one command
+— a fleet file, or a single environment on the control plane — so there is
+one command
 for "what is running", however it is configured.
 
 A fleet is also where [`spinloop harness open`](harness.md#launching-against-your-fleet)
@@ -31,7 +32,7 @@ Every `spinloop fleet` command takes its target one of three ways:
 
 | | target |
 | --- | --- |
-| `--node <name>` (`-n`, except on `deploy`) | a node of the fleet in force, narrowing the command to it — or, with no fleet named, one registered environment as a fleet of one |
+| `--node <name>` (`-n`, except on `deploy`) | a node of the fleet in force, narrowing the command to it — or, with no fleet named, one control-plane environment as a fleet of one |
 | `--fleet <path>` (`-f`, except on `logs`) | that fleet file |
 | neither | the `fleet.yaml` in the working directory |
 
@@ -39,18 +40,18 @@ Every `spinloop fleet` command takes its target one of three ways:
 fleet — the file you name, or the working directory's — `--node` narrows the
 command to that node alone. A name the *named* file lacks fails naming the
 file and its nodes; only beside a *discovered* `fleet.yaml` does a name the
-file lacks fall back to a registered environment of that name, because a file
+file lacks fall back to a control-plane environment of that name, because a file
 that merely sits in the working directory states no intent.
 
 ```sh
 spinloop fleet start -f cluster.yaml -n gpu-box   # that file's gpu-box alone
 spinloop status -n gpu-box                        # the same, in the directory holding cluster.yaml…
-spinloop status -n qwen                           # …or the registered environment, if no local fleet holds the name
+spinloop status -n qwen                           # …or the cloud environment, if no local fleet holds the name
 ```
 
 ### One environment, no fleet file
 
-A registered environment and a one-node fleet file naming it describe the same
+A control-plane environment and a one-node fleet file naming it describe the same
 thing, so `--node` lets you skip writing the file:
 
 ```sh
@@ -460,8 +461,9 @@ spinloop fleet deploy --all          # every kind: cloud node in the file
 ```
 
 Each node deploys from its own resolved [Spinloop
-source](../fleet-file.md#a-nodes-spinloop-source), reusing the exact derivation, consent, and
-registration `spinloop cloud deploy` uses for the same file — the two can
+source](../fleet-file.md#a-nodes-spinloop-source), reusing the exact derivation,
+consent, and plane-side deploy `spinloop cloud deploy` performs for the same
+file — the two can
 never disagree about what a given Spinloop deploys — and the environment each
 node creates is named after the node itself. A `kind: daemon` node
 named explicitly fails the command, explaining that `deploy` provisions cloud
@@ -474,7 +476,8 @@ reported against it alone.
 
 ```sh
 spinloop fleet deploy --all --dry-run     # print every plan, deploy nothing
-spinloop fleet deploy qwen --overwrite    # redeploy over a registered environment
+spinloop fleet deploy qwen --overwrite    # redeploy over an environment the
+                                          # plane already holds
 ```
 
 `--dry-run`, `--overwrite`, `--reseed`, `--allowed-cidr`, `--region`, and
@@ -494,7 +497,7 @@ deploy`](cloud.md), applied per node.
 | `-f`, `--follow` | `logs` only: keep printing new output until interrupted |
 | `--limit` | `logs` only: lines of backlog per node (default 200) |
 | `-n`, `--dry-run` | `deploy` only: print the plan for each targeted node without deploying |
-| `--overwrite` | `deploy` only: proceed against an already-registered or live environment |
+| `--overwrite` | `deploy` only: proceed against an environment the plane already holds, or one that is running |
 | `--reseed` | `deploy` only: re-fetch the weights even if already in S3 |
 | `--allowed-cidr` | `deploy` only: who may reach each environment's instance |
 | `--region` | `deploy` only: AWS region of the control plane |

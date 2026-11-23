@@ -6,7 +6,7 @@ request counters, and what the node it runs on is.
 ```sh
 spinloop metrics                      # the fleet.yaml in this directory
 spinloop metrics --fleet ./cluster.yaml
-spinloop metrics --node prod           # one registered environment, no file needed
+spinloop metrics --node prod           # one cloud environment, no file needed
 spinloop metrics -w                   # redraw in place every 60 seconds
 spinloop metrics --cost               # add what each priceable node has spent
 ```
@@ -17,14 +17,14 @@ The three ways every command that reads engines takes one:
 
 | | target |
 | --- | --- |
-| `--node <name>` (`-n`) | that node of the fleet in force; with no fleet named, a registered environment when none holds the name |
+| `--node <name>` (`-n`) | that node of the fleet in force; with no fleet named, an environment on the control plane when none holds the name |
 | `--fleet <path>` (`-f`) | that fleet file |
 | neither | the `fleet.yaml` in the working directory |
 
 `--fleet` names the fleet and `--node` the node within it, so the pair
 narrows the read to that node alone — and a name the named file lacks fails
 naming it and its nodes. Beside a *discovered* `fleet.yaml`, a name the file
-lacks falls back to a registered environment of that name. With none of the
+lacks falls back to a control-plane environment of that name. With none of the
 three resolvable the command fails naming all of them.
 
 ## Formats

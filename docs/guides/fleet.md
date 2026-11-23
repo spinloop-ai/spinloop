@@ -41,8 +41,9 @@ nodes:
     kind: cloud
 ```
 
-A `kind: cloud` node is a registered [cloud environment](cloud.md): its
-`name` is the registered one, no `host` is needed, and it is reached through
+A `kind: cloud` node is a [cloud environment](cloud.md) on the control plane:
+its `name` is the environment's name there, no `host` is needed, and it is
+reached through
 its control plane. The file is found the way a `Spinloop` is — `./fleet.yaml`
 in the working directory, or `--fleet <path>`.
 

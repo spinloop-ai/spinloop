@@ -17,6 +17,7 @@ spinloop cloud restart    # fresh engine, same address: stop it and wake it agai
 spinloop cloud keep 4h    # prevent the idle sweep from stopping it for 4 hours
 spinloop cloud schedule   # start and stop it on cron schedules (set, show, clear)
 spinloop cloud stop       # terminate it now, rather than waiting for the idle timer
+spinloop cloud undeploy   # take the environment apart: address, key, schedules, config
 ```
 
 The endpoint is the one
@@ -108,24 +109,25 @@ minutes and hours of GPU time.
 
 ## Pointing at your endpoint
 
-`spinloop cloud` needs the endpoint's control URLs, which its deployment prints.
-Put them in a JSON file:
+`spinloop cloud` resolves its control plane from your own credentials and
+region: the well-known stack there names the Lambda Function URLs it drives.
+There is nothing on disk to configure and nothing to distribute — the same
+plane resolves on every machine holding credentials for it. The region comes
+from `--region`, then `SPINLOOP_CLOUD_REGION`, then your credential's own
+region; nothing is assumed past that, because on a shared plane an assumed
+region could mean acting on somebody else's instances.
 
-```json
-{
-  "start_url": "https://....lambda-url.us-east-1.on.aws/",
-  "stop_url": "https://....lambda-url.us-east-1.on.aws/",
-  "deploy_url": "https://....lambda-url.us-east-1.on.aws/",
-  "region": "us-east-1",
-  "base_url": "http://198.51.100.7:8000/v1"
-}
-```
+The endpoint's own address — where the model answers — is recorded on the
+plane when it is deployed. `cloud` doesn't need you to keep it: `start` and
+`status` report the address themselves, and
+[`spinloop harness apply`](harness.md#spinloop-harness-apply) takes it from
+the plane's record, so a Spinloop for a cloud endpoint can leave out
+`BASEURL`. A `BASEURL` in the Spinloop wins if you set one.
 
-`base_url` is the endpoint's own address, and it's optional — `cloud` doesn't
-need it, since `start` and `status` report the address themselves. It's there
-for [`spinloop harness apply`](harness.md#spinloop-harness-apply): a Spinloop for a cloud endpoint can leave out
-`BASEURL` and let apply take the address from here, so the address stays with
-the deployment that owns it. A `BASEURL` in the Spinloop wins if you set one.
+To state a plane's URLs outright — CI, or a machine that must not read a
+stack — the `SPINLOOP_CLOUD_*` variables are the whole configuration: start
+and stop stated is a plane resolved with no AWS call at all. See [environment
+variables](../env-vars.md).
 
 Name the environment with the `--node` flag:
 
@@ -133,20 +135,22 @@ Name the environment with the `--node` flag:
 spinloop status --node qwen3.6-27b-prod
 ```
 
-The flag selects a **named environment** from the
-per-user registry at `~/.config/spinloop/clouds/<name>/cloud.json`. This keeps
-deployment state per-user and per-machine: two projects name two environments
-without clobbering, and the Spinloop carries none of the URLs at all.
-`spinloop cloud deploy` registers an environment for you; you can also
-create one by hand. A name is a plain identifier — `--node ./cloud.json` fails,
-saying an environment name has no path.
+The flag names an **environment on that plane**. The plane — not your
+disk — is the record of what is deployed: every machine holding credentials
+for it sees the same environments, including what a colleague deployed, each
+listed with who deployed it and when. The Spinloop carries none of the URLs
+at all. `spinloop cloud deploy` creates the environment there; there is
+nothing to register per machine and no file to write by hand. A name is a
+plain identifier — `--node ./cloud.json` fails, saying an environment name
+has no path.
 
 **`--node` is required.** There is no environment a command falls back to: half
 of these subcommands start, stop or terminate a cloud instance, and an instance
 nobody named is not one to act on. A command given no `--node` fails naming the
-flag and listing the environments you have registered, so the next thing to
-type is in the error. `default` is an ordinary name — call an environment that
-if you like, and pass `--node default` to use it.
+flag and listing the environments the plane holds, so the next thing to type
+is in the error. There is no `default` to fall back to — an assumed name on a
+shared plane could act on somebody else's deployment. `default` is an
+ordinary name if you want to deploy one.
 
 A command may also be given a Spinloop path (or a [registered
 alias](alias.md), or a URL): its `ENV` lines and the `.env` beside it are read
@@ -170,8 +174,13 @@ bootstrap`; an older control plane simply omits it, and `spinloop harness open
 spinloop cloud ls
 ```
 
-lists each registered environment with its base URL and region, marking any
-whose `cloud.json` is missing or unreadable. It contacts no endpoint.
+reads the plane's own record: every environment deployed on it, with who
+deployed it and when, what it serves, its address and its state. The list is
+the same on every machine with credentials for the plane. Where a
+per-environment read failed, the entry is still listed with its gaps marked
+and the failures reported beside them. A plane that cannot be reached fails
+naming the account, region and stack it looked in — never a confidently
+empty list.
 
 Requests are signed with an AWS credential resolved per region — explicit
 environment credentials or a named profile first, then the stored
@@ -355,8 +364,8 @@ saving: `0 8 * * *` in `Europe/London` is 08:00 local all year.
   times. An action with no schedule has no line.
 
 It requires a control plane with the schedule Lambda: a deployment that predates
-it fails with a message to re-run `spinloop cloud bootstrap`. The URL is the
-`schedule_url` in the environment's `cloud.json`, or
+it fails with a message to re-run `spinloop cloud bootstrap`. The URL is one
+of the plane's endpoints, stated by a bootstrap from then on, or
 `SPINLOOP_CLOUD_SCHEDULE_URL`.
 
 ## Restarting the engine
@@ -437,10 +446,9 @@ plane and tells it what to serve. It reads the Spinloop, its preset and its
 PARAM lines — `PROVIDER` picks the engine, so the file that runs a model
 locally under
 [`spinloop serve`](serve.md) deploys the same model remotely — and `--node <name>`
-names the environment it creates and registers. The flag is required: a deploy
+names the environment it creates on the plane. The flag is required: a deploy
 without it fails, naming the flag and a name to use. The Spinloop says what the
-environment serves; the name is a machine-local choice, so it stays out of the
-file:
+environment serves; the name is a shared choice on the plane, so it stays out of the file:
 
 ```dockerfile
 PROVIDER llamacpp        # the engine to run: llamacpp or vllm
@@ -455,7 +463,8 @@ spinloop cloud deploy --node qwen3.6-27b
 
 Deploy discovers the control plane from the bootstrap stack's outputs, then
 provisions the environment's own Elastic IP, API key, ingress rule and state,
-registers it under `~/.config/spinloop/clouds/<env>/`, and stores what to serve.
+and records it on the plane — with your name and the deploy time — where
+every machine with credentials can see it.
 Everything the endpoint sets itself — host, port, where the weights live, the
 API key, the context size, the alias — is dropped from the preset and the
 PARAMs alike, so one file works both locally and remotely without edits.
@@ -466,10 +475,12 @@ resolved text; a malformed reference fails the deploy naming the offending
 keyword, PARAM key or preset line, and nothing is sent.
 
 Who may reach the instance is **per environment**: `--allowed-cidr` sets it,
-defaulting to your public IP as a `/32` on first deploy; later deploys leave
-ingress alone unless you pass it again. Deploying over an environment that is
-already registered, or whose instance is live, requires `--overwrite` — a
-redeploy never silently clobbers a running instance.
+defaulting to your public IP as a `/32` on first deploy. Deploying over an
+environment the plane already holds, or whose instance is live, requires
+`--overwrite` **and** a stated `--allowed-cidr`: a redeploy never silently
+clobbers a running instance, and never silently widens a shared environment's
+ingress. Re-stating a name the plane shows as somebody else's is exactly the
+moment to look at the address.
 
 The environment's instances install spinloop — the daemon that hosts the
 engine — at boot, and `--spinloop-version` pins the release a fresh boot
@@ -516,15 +527,36 @@ happened, never the value itself.
 
 Deploying several environments this way means running `cloud deploy` once
 per Spinloop file. [`spinloop fleet deploy`](fleet.md#deploying-cloud-nodes)
-does the same derivation, consent, and registration (`--api-key-env`
+does the same derivation, consent, and plane-side deploy (`--api-key-env`
 included) for every `kind: cloud` node a fleet file names — or a chosen few
 — in one command, each from its own resolved Spinloop source.
+
+## Removing an environment: `undeploy`
+
+```sh
+spinloop cloud undeploy --node qwen3.6-27b --dry-run   # what would go, nothing destroyed
+spinloop cloud undeploy --node qwen3.6-27b             # asks, then destroys
+spinloop cloud undeploy --node qwen3.6-27b --yes       # for the script that must not ask
+```
+
+`stop` terminates an instance and leaves the environment deployed — the name,
+its address, its key and its schedules all stay, ready to re-wake.
+`undeploy` takes the environment apart entirely: the instance, its Elastic
+IP, the security group, the API-key secret, the schedules and the stored
+deploy config. Nothing else on the plane is touched, and the name is free to
+deploy again as a fresh environment afterwards.
+
+Because the plane is shared, `undeploy` acts on exactly one explicitly named
+environment and asks for explicit consent: `--node` is required (an
+environment the plane does not hold is refused before anything is asked or
+destroyed), and destruction needs `--yes` or an answer at the prompt —
+naming who deployed the environment first, since it may not be yours.
 
 ## Flags
 
 | Flag | Meaning |
 | ---- | ------- |
-| `--node`, `-n` | The environment the command acts on, by registered name (required by `deploy`; default `default`; `deploy` names it with `--node` only — `-n` is `--dry-run` there) |
+| `--node`, `-n` | The environment on the control plane the command acts on, by name (required everywhere, including `deploy`; `deploy` names it with `--node` only — `-n` is `--dry-run` there) |
 | `--print-env` | `start` only: print the export lines (`OPENAI_BASE_URL`/`OPENAI_API_KEY`) to stdout for `eval` |
 | `--timeout` | How long `start` or `restart` waits for the endpoint (default 15m) |
 | `-F`, `--force` | `restart` only: skip the graceful engine stop and take the instance down directly |
@@ -534,6 +566,8 @@ included) for every `kind: cloud` node a fleet file names — or a chosen few
 | `--spinloop-version` | `deploy` only: the spinloop release fresh boots install (default: the latest published release) |
 | `--instance-type` | `deploy` only: the EC2 instance type the environment's instances launch as (e.g. `g6e.xlarge`); recorded on the environment, applied on its next fresh launch (default: the control plane's default type) |
 | `--api-key-env` | `deploy` only: name the environment variable holding the engine key to create or rotate; with no flag the stored key is kept |
+| `--yes` | `undeploy` (and `bootstrap`) only: confirm the destruction without being asked |
+| `--dry-run` | `deploy` and `undeploy`: report what would happen — the plan, or the resources that would be released — without doing it |
 
 `bootstrap` and `bake` have their own too (`--ref`, `--dir`, `--region`,
 `--package-manager`, and `--no-wait` on bake) — see their sections above.
@@ -548,10 +582,11 @@ included) for every `kind: cloud` node a fleet file names — or a chosen few
   required `--node <name>` for the environment it creates. The others take an
   optional Spinloop path, a [registered alias](alias.md), or a URL, read only
   for its `ENV` lines and `.env` — never to select the environment. Which
-  environment a command acts on is its `--node` flag, defaulting to the
-  `default` environment.
-- `deploy_url` is optional: a config written before `deploy` existed still
-  works for `start`, `stop`, and `status`.
+  environment a command acts on is its `--node` flag alone.
+- `undeploy` reads no Spinloop: it destroys, and it is the one command that
+  takes no positional argument of any kind.
+- The plane's deploy endpoint is optional: a plane bootstrapped before the
+  deploy Lambda existed still answers `start`, `stop`, and `status`.
 - Only a self-hosted engine can be deployed (`llamacpp` or `vllm`). A hosted
   provider has nothing to deploy. `mtplx` is a self-hosted engine too, but it is
   Apple-Silicon-only and has no machine image, so it is not a cloud runner — it

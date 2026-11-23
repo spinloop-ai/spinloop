@@ -89,16 +89,16 @@ the model, and its context size (when set) becomes the context window — the
 same result a Spinloop stating the matching `PROVIDER`/`ALIAS`/`CONTEXT` with
 `--node dev-3` would produce, without writing one. This is what makes the
 two-machine flow work: deploy from one machine
-(`spinloop cloud deploy <spinloop> --node dev-3`), then on any machine that
-can reach the same environment — one that has its `cloud.json` in the
-registry, however it got there — run `spinloop harness open --node dev-3` with no
-Spinloop and get the same configuration, live, so a later redeploy is picked
-up automatically rather than requiring anyone to re-copy anything.
+(`spinloop cloud deploy <spinloop> --node dev-3`), then on any machine with
+credentials for the same control plane run `spinloop harness open
+--node dev-3` with no Spinloop and get the same configuration, live, so a
+later redeploy is picked up automatically rather than requiring anyone to
+re-copy anything.
 
 Applying a Spinloop alongside `--node` (a leading alias/path, or `-O`) is
 unaffected: the Spinloop's own `PROVIDER`, `ALIAS`, `MODEL` and `CONTEXT` win,
-exactly as a hand-written `BASEURL` already wins over the environment's
-registered address.
+exactly as a hand-written `BASEURL` already wins over the address the
+plane records for the environment.
 
 A bare `--node` against an environment with nothing deployed — or a control
 plane too old to report what is deployed — fails before launching, naming the
@@ -112,7 +112,7 @@ control plane.
 | ---- | ------- |
 | `-H`, `--harness` | Which harness to launch (or set `SPINLOOP_HARNESS`) |
 | `-O`, `--spinloop` | Apply this Spinloop before launching (bare: `./Spinloop`) |
-| `-n`, `--node` | The node the agent talks to: with a fleet in force, pins the launch to that fleet node; with none, the registered [environment](cloud.md) to launch against — and with no Spinloop applied, configures the harness from what is deployed there |
+| `-n`, `--node` | The node the agent talks to: with a fleet in force, pins the launch to that fleet node; with none, the [environment](cloud.md) on the control plane to launch against — and with no Spinloop applied, configures the harness from what is deployed there |
 | `--providers` | Path to a custom catalogue, for the applied Spinloop |
 | `-f`, `--fleet` | Route through this fleet file (default: `./fleet.yaml`, when the Spinloop is not named) |
 | `--node` | Pin the launch to one fleet node |
@@ -322,7 +322,7 @@ opencode. After applying, just launch your agent — or do both at once with
 
 | Flag | Meaning |
 | ---- | ------- |
-| `-n`, `--node` | The registered [environment](cloud.md) the Spinloop points at: names the harness provider and, with no `BASEURL`, supplies the endpoint's address |
+| `-n`, `--node` | The [environment](cloud.md) on the control plane the Spinloop points at: names the harness provider and, with no `BASEURL`, supplies the endpoint's address |
 | `-o`, `--output` | Max output tokens — overrides the Spinloop's `OUTPUT` |
 | `-H`, `--harness` | Which harness to configure (or set `SPINLOOP_HARNESS`) |
 | `--providers` | Path to a custom catalogue (a Spinloop never names one) |
@@ -336,12 +336,12 @@ Notes:
   [Fetching a Spinloop from a URL](../spinloop-file.md#fetching-a-spinloop-from-a-url).
 - A Spinloop's `PRESET` line is for [`spinloop serve`](serve.md); `apply`
   ignores it — never fetched, even when it's a URL.
-- With `--node <name>`, the Spinloop points at a registered
+- With `--node <name>`, the Spinloop points at a control-plane
   [environment](cloud.md): the harness provider is keyed on the environment
   name (so several environments built from the same engine keep their own
   entries), and a Spinloop with no `BASEURL` takes the endpoint's address from
-  the environment's `cloud.json` `base_url`, which its deployment writes. A
-  `BASEURL` in the Spinloop wins over it. An unregistered name fails, naming
+  the address the plane records for it, which its deployment wrote. A
+  `BASEURL` in the Spinloop wins over it. A name the plane does not hold fails, naming
   the `spinloop cloud deploy --node <name>` that would create it. Without
   `--node`, apply reads no cloud config at all.
 

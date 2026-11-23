@@ -40,11 +40,13 @@ title bar names the state beside the log's follow state.
 The three ways every command that acts on a fleet takes one — `--node <name>`,
 `--fleet <path>`, or the working directory's `fleet.yaml`. Beside a fleet,
 `--node` narrows the board to that node alone; a name a *discovered* fleet
-lacks opens a registered environment as a board of one panel, which needs no
+lacks opens a control-plane environment as a board of one panel, which
+needs no
 fleet file at all.
 
 A problem with the target itself — a missing or unparseable fleet file, an
-environment that is not registered — fails before the view opens. A problem
+environment that the plane does not hold — fails before the view opens.
+A problem
 with any *node* does not: an unreachable node is a tile showing why, and a
 node whose token reference cannot be resolved holds its reason for the life of
 the view.

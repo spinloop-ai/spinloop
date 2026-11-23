@@ -10,10 +10,11 @@ never an account, so it is safe to keep under version control.
 
 ### 1. Have some environments
 
-An environment is created and registered when you deploy into it: `spinloop
-cloud deploy --node <name>`, run in a directory whose `Spinloop` describes what
-the environment serves, writes that environment's control URLs to
-`~/.config/spinloop/clouds/<name>/cloud.json`.
+An environment is created on the control plane when you deploy it: `spinloop
+cloud deploy --node <name>`, run in a directory whose `Spinloop` describes
+what the environment serves, deploys the environment there and records it on
+the plane — the same record every machine with credentials for the plane
+lists, so there is nothing to register per machine.
 Deploying needs the shared control plane once before it — see [`spinloop
 cloud`](../../docs/commands/cloud.md). List what you already have:
 
@@ -38,7 +39,7 @@ its own Spinloop file.
 
 ```yaml
 nodes:
-  - name: qwen        # the registered environment, and what you type at `fleet start qwen`
+  - name: qwen        # the environment on the plane, and what you type at `fleet start qwen`
     kind: cloud       # resolved from qwen/Spinloop — see fleet.yaml
 
   - name: llama

@@ -643,6 +643,9 @@ spinloop cloud schedule set --node dev-2 --start "0 8 * * 1-5" --stop "0 18 * * 
                           # start it at 08:00 and pause it at 18:00, Monday to Friday
 spinloop cloud stop --node dev-2                # terminate now instead of waiting
                           # for the idle timer
+spinloop cloud undeploy --node dev-2            # take the environment apart entirely:
+                          # instance, address, key, schedules, deploy
+                          # config (--dry-run says what would go)
 ```
 
 Instances ship their engine and boot output to CloudWatch, so `spinloop cloud
@@ -650,24 +653,23 @@ logs` still works once the instance has terminated — including for a start tha
 failed before the engine came up (`--source boot`). See
 [docs/commands/cloud.md](docs/commands/cloud.md#reading-the-logs).
 
-Configuration lives in a `cloud.json` per **environment**, named with the
-`--node` flag on every command above (`--node dev-2` selects the file at
-`clouds/dev-2/cloud.json` under spinloop's config directory,
-`${SPINLOOP_CONFIG_DIR:-${XDG_CONFIG_HOME:-~/.config}/spinloop}`); with no
-`--node`, the `default` environment is used. The Spinloop itself says only what
-the environment serves — the name is a machine-local choice, so it stays out of
-the file. `spinloop cloud deploy --node dev-2` writes the file for you when it
-registers the environment; deploying [`remote/`](remote/) yourself prints the
-same values:
+Environments live on the **control plane**, not on your disk: which ones exist,
+what each serves and where it answers are the plane's own record, so every
+machine holding credentials for the plane sees the same list — including what
+a colleague deployed — with nothing to register per machine. A `cloud` command
+acts on exactly the one environment `--node` names; there is no `default` to
+fall back to, because on a shared plane an assumed name could act on someone
+else's instance. The plane itself resolves from your credentials and region —
+the well-known stack there — and `spinloop cloud ls` reads its inventory. The
+Spinloop says only what the environment serves; the environment name stays
+out of the file.
 
-```json
-{"start_url": "https://...lambda-url...on.aws/", "stop_url": "https://...", "region": "eu-west-1", "base_url": "http://198.51.100.7:8000/v1"}
-```
-
-`base_url` is the endpoint's own address. You never have to quote it back —
-`start` and `status` print it, and `spinloop harness apply --node dev-2` can leave
-`BASEURL` out of the Spinloop and still point your agent at the endpoint. A
-`BASEURL` in the Spinloop wins if you do set one.
+The endpoints are Lambda Function URLs on the bootstrapped plane. You never
+have to quote them: the resolved plane supplies them, and `spinloop cloud ls`
+and `status` print the endpoint's own address, so
+`spinloop harness apply --node dev-2` can leave `BASEURL` out of the Spinloop
+and still point your agent at the endpoint. A `BASEURL` in the Spinloop wins
+if you do set one.
 
 Deployed something and just want to point an agent at it from another
 machine? `spinloop harness open --node dev-2` on its own — no Spinloop at all —
@@ -675,7 +677,7 @@ configures the harness straight from what is deployed there:
 
 ```sh
 spinloop cloud deploy path/to/Spinloop --node dev-2   # from wherever you deployed it
-spinloop harness open --node dev-2 --prompt "..."     # from anywhere with dev-2 registered
+spinloop harness open --node dev-2 --prompt "..."     # from anywhere with credentials for the plane
 ```
 
 Every URL and the region can be overridden with the matching

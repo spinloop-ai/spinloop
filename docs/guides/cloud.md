@@ -30,7 +30,7 @@ log-ins.
 ## Deploy a model
 
 The Spinloop says what the environment serves; `--node` names the environment —
-a machine-local choice that stays out of the file:
+a shared choice on the plane, and one that stays out of the file:
 
 ```sh
 spinloop cloud deploy --node qwen3.6-27b
@@ -39,10 +39,14 @@ spinloop cloud deploy --node qwen3.6-27b
 Deploy reads the Spinloop and its preset — `PROVIDER` picks the engine, so the
 file that runs a model locally under [`spinloop serve`](local-serving.md)
 deploys the same model remotely — provisions the environment (Elastic IP, API
-key, ingress), registers it under `~/.config/spinloop/clouds/<env>/`, and
-stores what to serve. A redeploy over a registered or live environment needs
-`--overwrite`; it never silently clobbers a running instance. By default only
-your own IP may reach the instance (`--allowed-cidr` changes that).
+key, ingress) and records it, with your name and the deploy time, on the
+control plane. The plane is the record of what is deployed: every machine with
+credentials for it lists the same environments, and a name taken there is
+taken for everyone. A redeploy over an environment the plane already holds, or
+one that is running, needs `--overwrite` and a stated `--allowed-cidr` — it
+never silently clobbers a running instance, and never silently widens a
+colleague's ingress. A fresh environment defaults to letting only your own IP
+through (`--allowed-cidr` changes that).
 
 ## The usual flow
 
@@ -54,13 +58,17 @@ spinloop harness apply --node qwen3.6-27b       # point your agent at it
 spinloop harness open --node qwen3.6-27b        # work
 spinloop cloud pause --node qwen3.6-27b        # done for now: stopped, re-wakeable
 spinloop cloud stop --node qwen3.6-27b         # done for good: terminated
+spinloop cloud undeploy --node qwen3.6-27b     # and take the environment apart:
+                                               # address, key, schedules, deploy
+                                               # config — consent required
 ```
 
 Every command that acts on an endpoint selects it with `--node <name>` — the
 flag is **required**, because half of these subcommands start, stop, or
 terminate a cloud instance, and an instance nobody named is not one to act on.
 A command given no `--node` fails naming the flag and listing the environments
-you have registered. `start` prints progress on stderr, and the export lines
+the plane holds — there is no `default` to fall back to, because an assumed
+name on a shared plane could act on somebody else's instance. `start` prints progress on stderr, and the export lines
 for `eval` only with `--print-env`, so a plain `start` leaves stdout empty.
 
 Useful along the way:
@@ -84,9 +92,9 @@ It's up and warm by the time you sit down, and paused when you leave. See
 
 ## From another machine
 
-The environment is registered per user and per machine, so two machines that
-share one (each with its `cloud.json` in the registry) can work the same
-endpoint. Deploy from one, then on the other — with **no Spinloop at all**:
+An environment lives on the plane, not on the machine that deployed it: any
+two machines with credentials for the plane work the same endpoint. Deploy
+from one, then on the other — with **no Spinloop at all**:
 
 ```sh
 spinloop harness open --node qwen3.6-27b

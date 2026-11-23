@@ -215,13 +215,14 @@ spinloop cloud deploy --node qwen3.8-27b    # from this directory
 spinloop cloud deploy --node qwen3.8-27b --dry-run   # see what would be sent first
 ```
 
-The `--node` name is the environment `spinloop cloud` creates and registers.
+The `--node` name is the environment `spinloop cloud` creates on the control
+plane — shared by every machine with credentials for it.
 
 `deploy` reads `PROVIDER`, `ALIAS`, `CONTEXT` and `PRESET` from the Spinloop — the
 same values [`spinloop serve`](../../../docs/commands/serve.md) uses locally —
 provisions the environment's Elastic IP, API key, ingress rule (defaulting to
-your own public IP) and state, and registers it at
-`~/.config/spinloop/clouds/qwen3.8-27b/cloud.json`. If the shared bucket
+your own public IP) and state, and records the environment on the control
+plane. If the shared bucket
 doesn't have these weights cached yet, deploy fetches them in the background
 (15–20 minutes) — wait for that before your first `start`.
 

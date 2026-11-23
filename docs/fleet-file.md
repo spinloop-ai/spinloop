@@ -27,7 +27,7 @@ nodes:
       port: 18080
       path: /v1
 
-  - name: qwen             # for a kind: cloud node, the registered environment's name
+  - name: qwen             # for a kind: cloud node, the environment's name on the plane
     kind: cloud
     instance-type: g6e.2xlarge          # optional; the EC2 type its environment launches as
 
@@ -60,7 +60,7 @@ and how to create one.
 
 | Field            | Required?            | Meaning                                                                                                                        |
 | ---------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `name`           | yes                  | Unique in the file; what you type at `fleet start <node>`. For a `kind: cloud` node, the registered environment it drives    |
+| `name`           | yes                  | Unique in the file; what you type at `fleet start <node>`. For a `kind: cloud` node, the environment on the control plane it drives    |
 | `host`           | for `kind: daemon`   | Where the daemon answers — a LAN name, a tailscale name, or an address                                                          |
 | `port`           | no                   | The daemon's control API port; 4242 when omitted                                                                                 |
 | `kind`           | no                   | `daemon` (default) or `cloud`; see [Cloud environments](#cloud-environments)                                                  |
@@ -112,23 +112,24 @@ declare an `engine` block, which is you taking responsibility for reachability.
 
 `kind` (defaulted to `daemon`) says how the fleet reaches a node. A node can
 also be an [`spinloop cloud`](commands/cloud.md) environment rather than a
-machine: its `name` is the registered environment it drives — no `host` needed
+machine: its `name` is the environment it drives on the plane — no `host` needed
 — and it is reached through its control plane, which signs each call with your
 AWS credentials, so it needs no bearer token:
 
 ```yaml
 nodes:
-  - name: qwen          # the registered environment, and what you type at `fleet start <node>`
+  - name: qwen          # the environment on the plane, and what you type at `fleet start <node>`
     kind: cloud
 ```
 
-The environment's control URLs live in its `cloud.json` (under
-`~/.config/spinloop/clouds/<name>/`), written by `spinloop cloud deploy` — or
-by [`spinloop fleet deploy`](commands/fleet.md#deploying-cloud-nodes), which
-creates it from the fleet file itself — and never stored in the fleet file. So a
-daemon and an environment sit side by side as the same kind of row, and an
-environment that has not been deployed yet shows as `config-error` on its row
-rather than blanking the fleet. See
+The environment's control endpoints are resolved from the caller's own
+credentials and region — never stored in the fleet file, and never on any one
+machine — so the committed file is the same file for everyone with
+credentials for the plane. `spinloop cloud deploy` deploys an environment
+there, as does [`spinloop fleet deploy`](commands/fleet.md#deploying-cloud-nodes)
+straight from the fleet file. So a daemon and an environment sit side by side
+as the same kind of row, and a node whose environment is not deployed yet
+shows as `config-error` on its row rather than blanking the fleet. See
 [`examples/fleet-cloud`](https://github.com/spinloop-ai/spinloop/blob/main/examples/fleet-cloud/README.md) and
 [`examples/fleet-mixed`](https://github.com/spinloop-ai/spinloop/blob/main/examples/fleet-mixed/README.md).
 
@@ -403,9 +404,9 @@ the reason named:
 - a node with no `name`, or two nodes with the same name;
 - a `kind: daemon` node with no `host`;
 - an unknown `kind` — only `daemon` and `cloud` are supported;
-- a `kind: cloud` node whose `name` is not shaped like a registered
-  environment name (no `/`, no trailing `.json`) — the name is the key of the
-  environment it drives;
+- a `kind: cloud` node whose `name` is not shaped like an environment
+  name (no `/`, no trailing `.json`) — the name is the key of the
+  environment it drives on the plane;
 - an `instance-type` that is not shaped like an EC2 instance type (a family and
   size separated by a dot, e.g. `g6e.xlarge`), and `instance-type` on a
   `kind: daemon` node at all;
