@@ -24,6 +24,8 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+
+	"github.com/spinloop-ai/spinloop/internal/envref"
 )
 
 // globalSections are the section names treated as shared defaults rather than a
@@ -31,7 +33,8 @@ import (
 var globalSections = map[string]bool{"*": true, "global": true}
 
 // Param is a single `key = value` entry from a preset, with the key as written
-// (dashes stripped, as INI keys are) and the value verbatim.
+// (dashes stripped, as INI keys are) and the value with its environment
+// references resolved during Parse.
 type Param struct {
 	Key   string
 	Value string
@@ -53,6 +56,9 @@ type Preset struct {
 
 // Parse reads an INI preset file. It is deliberately small: `[section]` headers,
 // `key = value` entries (`:` is accepted in place of `=`), and `#`/`;` comments.
+// Entry values resolve environment references (see internal/envref); keys do
+// not. Since parsing resolves, callers parse only when they consume — which
+// is exactly the rule the local-serving capability sets for remote presets.
 func Parse(data []byte) (Preset, error) {
 	var p Preset
 	cur := -1 // index into p.Sections; -1 means the global section
@@ -85,6 +91,14 @@ func Parse(data []byte) (Preset, error) {
 		key, value, ok := splitKeyValue(text)
 		if !ok {
 			return Preset{}, fmt.Errorf("line %d: expected `key = value`, got %q", line, text)
+		}
+		// Values resolve environment references ($FOO, ${FOO}, ${FOO:-bar})
+		// as the preset is read; keys are flag names and stay literal. A
+		// malformed reference fails here, naming the line, rather than
+		// reaching the engine as raw text.
+		value, err := envref.Expand(value)
+		if err != nil {
+			return Preset{}, fmt.Errorf("line %d: %w", line, err)
 		}
 		param := Param{Key: key, Value: value}
 		if cur < 0 {

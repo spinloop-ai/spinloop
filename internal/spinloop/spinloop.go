@@ -31,7 +31,9 @@
 // jinja = 1`, `PARAM hf = org/model:QUANT` — the inline alternative to a
 // preset file for the same options. Like ENV it may repeat; what a PARAM does
 // to the served engine's command is the concern of the command that consumes
-// it (`serve`, `cloud deploy`), never of this parser.
+// it (`serve`, `cloud deploy`), never of this parser. Its value may carry
+// environment references — `$FOO`, `${FOO}`, `${FOO:-bar}` — and resolving
+// them is the consuming command's concern too: the parser keeps the raw text.
 //
 // Keywords are matched case-insensitively, but UPPERCASE is canonical (it is
 // what `spinloop export` emits). Blank lines, full-line `#` comments, and
@@ -94,6 +96,9 @@ type EnvVar struct {
 // Param is one PARAM instruction: a single engine flag, in the engine's own
 // vocabulary (e.g. `jinja`, `ctx-size`, `hf`), with its value. The value may
 // be empty — the PARAM written `key =` or bare `key` — naming a bare flag.
+// The value is the file's raw text: environment references are resolved by
+// the command that consumes the PARAM, never by parsing, so `show` and
+// `export` re-render the reference rather than a resolved value.
 type Param struct {
 	Key   string
 	Value string

@@ -979,8 +979,14 @@ func deployConfig(sel spinloop.Selection, spinloopPath string, target deployTarg
 	// The Spinloop's own PARAMs are the layer between the preset and its typed
 	// instructions: they supply the model, the context window, and the slot
 	// count the preset's keys do, and ride into ServeArgs with the preset's
-	// own layers, with the same owned-flag dropping.
-	paramLayer = selectionParams(sel)
+	// own layers, with the same owned-flag dropping. Their values are resolved
+	// here — before the model, window and slot count are read from them — so
+	// the deployment carries resolved text and nothing raw reaches the
+	// instance.
+	paramLayer, err = selectionParams(sel)
+	if err != nil {
+		return dc, err
+	}
 
 	// The model falls back in the Spinloop's own order: MODEL, then a PARAM
 	// naming the model for a runner that takes it as a flag, then the preset's

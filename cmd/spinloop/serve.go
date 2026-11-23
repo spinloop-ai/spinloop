@@ -20,6 +20,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spinloop-ai/spinloop/internal/contextsize"
 	"github.com/spinloop-ai/spinloop/internal/daemon"
+	"github.com/spinloop-ai/spinloop/internal/envref"
 	"github.com/spinloop-ai/spinloop/internal/preset"
 	"github.com/spinloop-ai/spinloop/internal/spinloop"
 	"github.com/spinloop-ai/spinloop/internal/spinloopsrc"
@@ -336,7 +337,10 @@ func buildServeArgv(w io.Writer, engine serveEngine, sel spinloop.Selection, spi
 	if err != nil {
 		return nil, err
 	}
-	selParams := selectionParams(sel)
+	selParams, err := selectionParams(sel)
+	if err != nil {
+		return nil, err
+	}
 
 	if sel.Preset != "" {
 		presetPath, err := resolvePresetPath(sel.Preset, spinloopPath)
@@ -386,13 +390,22 @@ func buildServeArgv(w io.Writer, engine serveEngine, sel spinloop.Selection, spi
 }
 
 // selectionParams converts the Spinloop's PARAM instructions into the preset
-// layer they render as, in file order.
-func selectionParams(sel spinloop.Selection) []preset.Param {
+// layer they render as, in file order, resolving environment references in
+// their values ($FOO, ${FOO}, ${FOO:-bar} — see internal/envref). Keys are
+// flag names and stay literal. This is the one choke point every PARAM
+// consumer passes through (serve's buildServeArgv and cloud's deployConfig),
+// so resolution happens exactly where a value is about to reach an engine and
+// a failure can name the PARAM it came from.
+func selectionParams(sel spinloop.Selection) ([]preset.Param, error) {
 	var params []preset.Param
 	for _, p := range sel.Params {
-		params = append(params, preset.Param{Key: p.Key, Value: p.Value})
+		value, err := envref.Expand(p.Value)
+		if err != nil {
+			return nil, fmt.Errorf("PARAM %s: %w", p.Key, err)
+		}
+		params = append(params, preset.Param{Key: p.Key, Value: value})
 	}
-	return params
+	return params, nil
 }
 
 // paramModel returns the model a PARAM layer names for this engine, if any:
