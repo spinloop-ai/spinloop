@@ -61,7 +61,7 @@ can be neither served nor applied to a harness.
 
 - Go client: `cmd/spinloop/serve.go` (the engine table's `unsloth` entry
   and its serve params, binary lookup), `cmd/spinloop/cloud.go`
-  (`modelSourceFlags`/preset key helpers gain the `unsloth` case),
+  (`modelSourceFlags` gains the `unsloth` case),
   `internal/preset/preset.go` (the `Unsloth` dialect: short aliases and bare
   flags), `internal/catalog/providers.yaml` (the `unsloth` entry).
 - Non-goals: fleet wake and cloud deploy for `unsloth` (no machine image;

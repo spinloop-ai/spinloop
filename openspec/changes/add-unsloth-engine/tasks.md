@@ -9,7 +9,7 @@
 - [x] 2.2 Add `resolveUnslothBinary` (override, `PATH`, `$HOME/.unsloth/studio/unsloth_studio/bin/unsloth`)
 - [x] 2.3 Add `unslothServeParams` (MODEL → `--model`, CONTEXT → `--context-length`, PARALLEL → `--parallel` unscaled, BASEURL → `--host`/`--port`, no ALIAS flag)
 - [x] 2.4 Add the `unsloth` entry to `engines` (subcommand `run`, `needsModel`, `modelFlags`, defaults `--api-only`/`--disable-tools`, install hint, default base URL `http://127.0.0.1:8888`, loopback default bind, no key-file flag, no metrics)
-- [x] 2.5 Add the `unsloth` case to `modelSourceFlags`, `modelPresetKey`, `contextPresetKey` and `parallelPresetKey` so the shared helpers read Unsloth's vocabulary
+- [x] 2.5 Add the `unsloth` case to `modelSourceFlags`, so a PARAM naming the model stands in for MODEL (the deploy-config preset-key helpers stay unchanged: wake and cloud deploy refuse `unsloth`)
 
 ## 3. Catalogue
 

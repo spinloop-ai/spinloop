@@ -812,8 +812,6 @@ func parallelPresetKey(runner string) string {
 		return "max-concurrent-requests"
 	case "mtplx":
 		return "max-active-requests"
-	case "unsloth":
-		return "parallel"
 	default:
 		return ""
 	}
@@ -824,7 +822,7 @@ func parallelPresetKey(runner string) string {
 // it. A runner with no preset model key yields "", which reads as "not set".
 func modelPresetKey(runner string) string {
 	switch runner {
-	case "mtplx", "unsloth":
+	case "mtplx":
 		return "model"
 	case "llamacpp", "vllm":
 		return "hf"
@@ -855,8 +853,6 @@ func contextPresetKey(runner string) string {
 	switch runner {
 	case "mtplx":
 		return "context-window"
-	case "unsloth":
-		return "context-length"
 	case "llamacpp", "vllm":
 		return "ctx-size"
 	default:
