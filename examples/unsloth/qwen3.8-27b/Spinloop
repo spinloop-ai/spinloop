@@ -1,0 +1,8 @@
+# Qwen3.8-27B served locally by Unsloth Studio (`unsloth run`).
+PROVIDER unsloth
+MODEL    unsloth/Qwen3.8-27B-GGUF:UD-Q4_K_XL   # --model; the :VARIANT picks the GGUF quant
+ALIAS    qwen3.8-27b                           # the name opencode asks for; Studio has no flag for it
+CONTEXT  64k                                   # --context-length; Studio may cap it to fit GPU memory
+PARALLEL 2                                     # --parallel; the context is shared, never scaled
+BASEURL  http://127.0.0.1:8899/v1              # --host/--port; 8888 is the desktop app's port
+# `spinloop cloud` cannot deploy this: there is no Unsloth machine image

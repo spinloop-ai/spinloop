@@ -229,9 +229,10 @@ Rules:
   budget it divides across its `--parallel` slots, a `llamacpp` Spinloop with
   both `CONTEXT` and `PARALLEL` set gets a `--ctx-size` scaled by the slot
   count so each slot still gets what `CONTEXT` promised (`CONTEXT 128k` +
-   `PARALLEL 2` → `--ctx-size 256000 --parallel 2`). `vllm`, `mtplx`, and `omlx`
-   have no such coupling — `PARALLEL` becomes `--max-num-seqs`/
-   `--max-active-requests`/`--max-concurrent-requests` respectively, and
+   `PARALLEL 2` → `--ctx-size 256000 --parallel 2`). `vllm`, `mtplx`, `omlx`,
+   and `unsloth` have no such coupling — `PARALLEL` becomes `--max-num-seqs`/
+   `--max-active-requests`/`--max-concurrent-requests`/`--parallel`
+   respectively, and
    `CONTEXT` is never scaled by it. See
    [`spinloop serve`](commands/serve.md#parallelism) for the full per-engine
    mapping.
@@ -270,7 +271,8 @@ Rules:
   [`spinloop cloud deploy`](commands/cloud.md); `apply` ignores it, as it does
   `PRESET`.
 - A PARAM may also name the model. For an engine whose model is a flag —
-  llama.cpp's `hf`/`model`/`hf-file`, MTPLX's `model` — a PARAM with such a key
+  llama.cpp's `hf`/`model`/`hf-file`, MTPLX's `model`, Unsloth's
+  `model`/`hf`/`hf-repo` — a PARAM with such a key
   stands in for `MODEL`, and `serve` and `spinloop cloud deploy` read it the way
   they read a preset's model reference, so a Spinloop with no preset file
   still deploys what it serves. vLLM takes its model positionally, so a PARAM

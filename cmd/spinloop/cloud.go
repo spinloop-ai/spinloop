@@ -812,6 +812,8 @@ func parallelPresetKey(runner string) string {
 		return "max-concurrent-requests"
 	case "mtplx":
 		return "max-active-requests"
+	case "unsloth":
+		return "parallel"
 	default:
 		return ""
 	}
@@ -822,7 +824,7 @@ func parallelPresetKey(runner string) string {
 // it. A runner with no preset model key yields "", which reads as "not set".
 func modelPresetKey(runner string) string {
 	switch runner {
-	case "mtplx":
+	case "mtplx", "unsloth":
 		return "model"
 	case "llamacpp", "vllm":
 		return "hf"
@@ -833,14 +835,14 @@ func modelPresetKey(runner string) string {
 
 // modelSourceFlags names the canonical flag keys under which a PARAM (or a
 // preset, through the same keys) may name a runner's model — llamacpp's
-// hf-repo/model/hf-file, mtplx's model. A runner that takes its model
+// hf-repo/model/hf-file, mtplx's and unsloth's model. A runner that takes its model
 // positionally has none, so a PARAM cannot stand in for a MODEL there and the
 // error that names the ways a model may be given does not name one either.
 func modelSourceFlags(runner string) []string {
 	switch runner {
 	case "llamacpp":
 		return []string{"hf-repo", "model", "hf-file"}
-	case "mtplx":
+	case "mtplx", "unsloth":
 		return []string{"model"}
 	default:
 		return nil
@@ -853,6 +855,8 @@ func contextPresetKey(runner string) string {
 	switch runner {
 	case "mtplx":
 		return "context-window"
+	case "unsloth":
+		return "context-length"
 	case "llamacpp", "vllm":
 		return "ctx-size"
 	default:

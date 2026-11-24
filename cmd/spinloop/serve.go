@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -38,6 +39,10 @@ var omlxBinary = ""
 // vllmBinary is the vLLM executable that `serve` launches. A package var so
 // tests can point it at a stub instead of a real install.
 var vllmBinary = "vllm"
+
+// unslothBinary is the Unsloth Studio executable that `serve` launches. Empty
+// means "look it up"; tests set it to a stub, exactly as they do for omlxBinary.
+var unslothBinary = ""
 
 // mtlxBinary is the MTPLX executable that `serve` launches. A package var so
 // tests can point it at a stub instead of a real install.
@@ -67,6 +72,30 @@ func resolveOMLXBinary() string {
 		return p
 	}
 	return omlxBundleBinary
+}
+
+// unslothInstallRel is where the Unsloth Studio installer puts its CLI,
+// relative to the home directory. The installer also links it from
+// ~/.local/bin, which is not on every PATH, so a user who has only ever run
+// the installer still has this.
+const unslothInstallRel = ".unsloth/studio/unsloth_studio/bin/unsloth"
+
+// resolveUnslothBinary finds the Unsloth CLI: an explicit override wins, then
+// the PATH, then the installer's own location. The install path is returned
+// unchecked when nothing else matches, so a missing install surfaces as
+// serve's usual not-found hint naming a concrete path.
+func resolveUnslothBinary() string {
+	if unslothBinary != "" {
+		return unslothBinary
+	}
+	if p, err := exec.LookPath("unsloth"); err == nil {
+		return p
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "unsloth"
+	}
+	return filepath.Join(home, unslothInstallRel)
 }
 
 // serveEngine is a local inference server `spinloop serve` can launch: which
@@ -114,6 +143,11 @@ type serveEngine struct {
 	// positional yields arguments placed directly after the subcommand —
 	// vLLM takes its model positionally rather than behind a flag.
 	positional func(sel spinloop.Selection) []string
+	// defaults are flags the engine is always launched with, merged as the
+	// lowest layer — under the preset, the PARAMs and the Spinloop's own
+	// instructions — so any of those can set one to a falsy value and drop
+	// it. Nil for every engine but unsloth.
+	defaults []preset.Param
 }
 
 // engines is the set of local inference servers `serve` can launch, keyed by
@@ -153,6 +187,28 @@ var engines = map[string]serveEngine{
 		// metrics switch to append and no dialect for the scraper.
 		apiKeyFileFlag:      "--api-key-file",
 		defaultBaseURL:      "http://127.0.0.1:8000",
+		defaultBindLoopback: true,
+	},
+	"unsloth": {
+		binary:      resolveUnslothBinary,
+		subcommand:  []string{"run"},
+		dialect:     preset.Unsloth,
+		params:      unslothServeParams,
+		needsModel:  true,
+		modelFlags:  modelSourceFlags("unsloth"),
+		installHint: "install Unsloth Studio (https://unsloth.ai) or check the path",
+		// A headless API server with no server-side web search or code
+		// execution: the same two switches Unsloth's own `unsloth start` sets
+		// for a coding agent.
+		defaults: []preset.Param{
+			{Key: "api-only", Value: ""},
+			{Key: "disable-tools", Value: ""},
+		},
+		// Studio passes /metrics through to llama-server only for the owner's
+		// key, which the daemon does not hold, and it mints its own API key
+		// with no option to read one from a file — so no metrics and no
+		// gating.
+		defaultBaseURL:      "http://127.0.0.1:8888",
 		defaultBindLoopback: true,
 	},
 	"vllm": {
@@ -361,6 +417,9 @@ func buildServeArgv(w io.Writer, engine serveEngine, sel spinloop.Selection, spi
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", presetPath, err)
 		}
+		// The engine's defaults sit under the preset's own globals, so a
+		// preset can switch one off.
+		pre.Global = append(append([]preset.Param{}, engine.defaults...), pre.Global...)
 		argv := pre.CommandIn(engine.dialect, engine.binary(), subcommandFor(engine, sel), sec, selParams, params)
 		fmt.Fprintf(w, "Using preset %s (model %s)\n\n", presetPath, sec.Name)
 		return argv, nil
@@ -440,12 +499,13 @@ func subcommandFor(engine serveEngine, sel spinloop.Selection) []string {
 
 // assembleEngineArgv is the one place that turns an engine and its params into a
 // command: the binary, its subcommand, the params rendered in the engine's
-// dialect, then any trailing args the caller appends (a deploy config's serveArgs).
+// dialect over the engine's defaults, then any trailing args the caller appends
+// (a deploy config's serveArgs).
 // The preset-less `serve` path and the daemon's deploy-config path both draw from
 // here, and the preset path uses subcommandFor for its subcommand.
 func assembleEngineArgv(engine serveEngine, subcommand []string, params []preset.Param, trailing []string) []string {
 	argv := append([]string{engine.binary()}, subcommand...)
-	argv = append(argv, engine.dialect.Flags(params)...)
+	argv = append(argv, engine.dialect.Flags(engine.defaults, params)...)
 	argv = append(argv, trailing...)
 	return argv
 }
@@ -575,6 +635,42 @@ func mtplxServeParams(sel spinloop.Selection) ([]preset.Param, error) {
 			return nil, err
 		}
 		params = append(params, preset.Param{Key: "max-active-requests", Value: strconv.Itoa(n)})
+	}
+	bind, err := bindAddressParams(sel)
+	if err != nil {
+		return nil, err
+	}
+	return append(params, bind...), nil
+}
+
+// unslothServeParams turns the Unsloth Studio settings a Spinloop states into
+// preset params: MODEL names the weights — an HF repo, optionally
+// org/repo:VARIANT, or a local path, all taken verbatim by --model — and
+// CONTEXT, PARALLEL, and BASEURL fill in the context length, the decode slots,
+// and the bind address. ALIAS maps to nothing: Studio has no served-name flag,
+// and answers a chat request with the loaded model whatever name it carries.
+//
+// PARALLEL maps to --parallel. Studio's slots share one KV cache sized to the
+// full context (llama.cpp's --kv-unified), so one request can use all of it
+// and --context-length is not scaled the way llama.cpp's --ctx-size is.
+func unslothServeParams(sel spinloop.Selection) ([]preset.Param, error) {
+	var params []preset.Param
+	if sel.Model != "" {
+		params = append(params, preset.Param{Key: "model", Value: sel.Model})
+	}
+	if sel.Context != "" {
+		n, err := contextsize.Parse(sel.Context)
+		if err != nil {
+			return nil, err
+		}
+		params = append(params, preset.Param{Key: "context-length", Value: strconv.Itoa(n)})
+	}
+	if sel.Parallel != "" {
+		n, err := parseParallel(sel.Parallel)
+		if err != nil {
+			return nil, err
+		}
+		params = append(params, preset.Param{Key: "parallel", Value: strconv.Itoa(n)})
 	}
 	bind, err := bindAddressParams(sel)
 	if err != nil {

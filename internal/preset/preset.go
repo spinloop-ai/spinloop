@@ -210,6 +210,32 @@ var OMLX = Dialect{}
 // applied and keys pass through as written.
 var MTPLX = Dialect{}
 
+// Unsloth is the dialect `unsloth run` (Unsloth Studio) speaks. Its flags are
+// long form, but several have a second spelling — `-hf`/`--hf-repo` for
+// `--model`, `--max-seq-length` for `--context-length`, `-np`/`--n-parallel`
+// for `--parallel` — so those are aliased to one canonical name, and its on/off
+// switches are marked boolean so a falsy value drops them.
+var Unsloth = Dialect{
+	Aliases: map[string]string{
+		"hf": "model", "hf-repo": "model",
+		"max-seq-length": "context-length",
+		"np":             "parallel", "n-parallel": "parallel",
+		"h": "host", "p": "port",
+		"q": "silent", "v": "verbose", "y": "yes",
+	},
+	Boolean: map[string]bool{
+		"api-only": true, "disable-tools": true, "enable-tools": true,
+		"silent": true, "verbose": true, "yes": true,
+		"load-in-4bit": true, "no-load-in-4bit": true,
+		"tensor-parallel": true, "no-tensor-parallel": true,
+		"cloudflare": true, "no-cloudflare": true,
+		"secure": true, "no-secure": true,
+		"enable-tool-call-healing": true, "disable-tool-call-healing": true,
+		"enable-tool-call-nudging": true, "disable-tool-call-nudging": true,
+		"disable-dns-pinning": true,
+	},
+}
+
 // Merge folds ordered layers of params into one layer. Later layers override
 // earlier ones by canonical flag name, in place, so the first layer fixes the
 // order: pass globals, then the section, then any overrides.

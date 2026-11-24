@@ -432,9 +432,9 @@ func TestCmdServe_ParallelOverridesPresetValue(t *testing.T) {
 }
 
 // TestCmdServe_InvalidParallel checks a non-positive or non-numeric PARALLEL
-// fails rather than being passed to the engine, for all four engines.
+// fails rather than being passed to the engine, for all five engines.
 func TestCmdServe_InvalidParallel(t *testing.T) {
-	for _, provider := range []string{"llamacpp", "vllm", "omlx", "mtplx"} {
+	for _, provider := range []string{"llamacpp", "vllm", "omlx", "mtplx", "unsloth"} {
 		for _, bad := range []string{"0", "-1", "abc"} {
 			t.Run(provider+"/"+bad, func(t *testing.T) {
 				dir := t.TempDir()

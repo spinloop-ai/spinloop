@@ -15,6 +15,7 @@ else to keep in step.
 | `omlx` | [oMLX](https://omlx.ai) on Apple Silicon |
 | `vllm` | `vllm` on your `PATH` |
 | `mtplx` | [MTPLX](https://mtplx.com) on Apple Silicon |
+| `unsloth` | [Unsloth Studio](https://unsloth.ai) — its `unsloth` CLI |
 
 Any other provider in the catalogue names an endpoint somebody else runs, and
 `serve` refuses it.

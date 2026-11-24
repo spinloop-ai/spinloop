@@ -92,6 +92,7 @@ GPU:
 | `omlx` | [oMLX](https://omlx.ai) on Apple Silicon |
 | `vllm` | `vllm serve` (the model as its positional argument) |
 | `mtplx` | [`mtplx serve`](https://mtplx.com) on Apple Silicon |
+| `unsloth` | [`unsloth run`](#unsloth-studio) (Unsloth Studio) |
 
 Any other provider is an error: `serve` launches a self-hosted engine, and the
 rest of the catalogue names endpoints somebody else runs.
@@ -130,8 +131,8 @@ flag altogether; an empty value on any other flag renders it bare too
 place, the Spinloop's own instructions win, then a PARAM, then the preset —
 `PARAM ctx-size = 65536` loses to `CONTEXT 131072`.
 
-A PARAM may also name the model: for llama.cpp (`hf`/`model`/`hf-file`) and
-MTPLX (`model`), a PARAM with such a key stands in for `MODEL`, read the way a
+A PARAM may also name the model: for llama.cpp (`hf`/`model`/`hf-file`),
+MTPLX (`model`) and Unsloth (`model`/`hf`/`hf-repo`), a PARAM with such a key stands in for `MODEL`, read the way a
 preset's model reference is read — so a Spinloop with no preset file at all
 still serves (and deploys) its model. vLLM takes its model positionally, so a
 PARAM cannot stand in for `MODEL` there, and `serve` says exactly that.
@@ -153,6 +154,7 @@ engine serves it. `PARALLEL` sets the number of concurrent request slots, and
 | `vllm`     | `--max-num-seqs n` | Unscaled: `--max-model-len` is unaffected |
 | `omlx`     | `--max-concurrent-requests n` | No context flag either way |
 | `mtplx`    | `--max-active-requests n` | Unscaled: `--context-window` is unaffected |
+| `unsloth`  | `--parallel n` | Unscaled: `--context-length` is unaffected |
 
 The `llamacpp` scaling exists because llama.cpp's own `--ctx-size` is a total
 KV-cache budget it divides across `--parallel` slots — so without help, asking
@@ -166,7 +168,10 @@ KV-cache pool across concurrent requests via continuous batching rather than
 dividing a fixed budget per slot, so their own context settings
 (`--max-model-len`, `--context-window`) are already a per-request ceiling —
 `PARALLEL` only caps how many requests run at once. `omlx` has no context flag
-at all, so there is nothing to compensate there either.
+at all, so there is nothing to compensate there either. `unsloth` runs
+llama.cpp underneath, but with one KV cache shared by every slot
+(`--kv-unified`), so a single request can use the whole `--context-length`
+and it is not scaled either.
 
 If `PARALLEL` is left out entirely, it changes nothing — no `--parallel`-family
 flag is added, and `CONTEXT` maps to the engine's context flag exactly as it
@@ -358,6 +363,81 @@ key file the daemon writes instead. Because the `mtplx` provider is
 
 `serve` looks for `mtplx` on your `PATH`. Install it from
 [mtplx.com](https://mtplx.com) if it is not there.
+
+## Unsloth Studio
+
+[Unsloth Studio](https://unsloth.ai) installs an `unsloth` command whose
+`unsloth run` loads one model and serves it over an OpenAI-compatible API,
+using Studio's own llama.cpp build with Unsloth's GPU fitting and speculative
+decoding defaults. A `MODEL` is required:
+
+```dockerfile
+PROVIDER unsloth
+MODEL    unsloth/Qwen3.8-27B-GGUF:UD-Q4_K_XL   # an HF repo (optionally :VARIANT), or a local path
+ALIAS    qwen3.8-27b                           # the name the harness asks for (see below)
+CONTEXT  64k                                   # unsloth run --context-length
+PARALLEL 2                                     # unsloth run --parallel
+BASEURL  http://127.0.0.1:8899/v1              # unsloth run --host/--port
+```
+
+That Spinloop runs:
+
+```sh
+unsloth run --api-only --disable-tools --model unsloth/Qwen3.8-27B-GGUF:UD-Q4_K_XL \
+  --context-length 64000 --parallel 2 --host 127.0.0.1 --port 8899
+```
+
+- `MODEL` becomes `--model`, taken verbatim: an HF repo, `org/repo:VARIANT`
+  for a GGUF quant, or a local path. Studio downloads a repo it does not have.
+- `ALIAS` adds nothing to the command. Studio has no flag for a served name:
+  it lists the model under its repo id and answers a chat request with the
+  loaded model whatever name the request carries. So the harness can still
+  ask for `qwen3.8-27b`. Don't pick an `ALIAS` that is the repo id of a
+  *different* model you have downloaded, because Studio may try to switch to it.
+- `CONTEXT` becomes `--context-length`, never scaled by `PARALLEL` (see
+  [Parallelism](#parallelism)). By default Studio may cap the context further
+  to fit your GPU memory; the banner it prints shows the length in use.
+- `--api-only` (no web UI) and `--disable-tools` (no server-side web search
+  or code execution) are always passed, the same switches Unsloth's own
+  `unsloth start` uses for a coding agent. Set either to a false value in a
+  `PARAM` or `PRESET` to drop it, e.g. `PARAM disable-tools = false`.
+- Studio forwards flags it does not know to its llama-server, so llama.cpp
+  keys such as `jinja` or `n-gpu-layers` can go in a `PARAM` or `PRESET` too.
+
+Set a `BASEURL` with its own port. Studio's default is `8888`, which is also
+where the Unsloth desktop app listens. If the port is taken, `unsloth run`
+moves to the next free port without failing, and the harness keeps calling
+the old one.
+
+### The API key
+
+Studio requires an API key on `/v1` by default. It creates the key itself
+and prints it in its startup banner (`Authorization: Bearer sk-unsloth-…`).
+There is no option to give it one. So:
+
+- export that key as `UNSLOTH_API_KEY` before `spinloop harness apply`; the
+  harness config holds a reference to the variable, never the key itself, or
+- turn on keyless access in Studio's settings, and leave `UNSLOTH_API_KEY`
+  unset.
+
+The key is reused across runs (it is cached under `~/.unsloth/studio/auth`),
+so you only copy it once. Because Studio cannot read a key from a file,
+`spinloop daemon` cannot gate an `unsloth` engine with a key of its own, and a
+start that asks it to is refused.
+
+### Not supported yet
+
+- No metrics: Studio serves llama-server's `/metrics` only to its owner key,
+  so the serve view and the daemon have no token counters for it.
+- No readiness check: Studio's health endpoint answers before the model has
+  loaded, so the daemon reports no readiness for `unsloth`.
+- No fleet wake or cloud deploy.
+
+### Finding the binary
+
+`serve` looks for `unsloth` on your `PATH`, then at
+`~/.unsloth/studio/unsloth_studio/bin/unsloth`, where the Studio installer
+puts it.
 
 ## The control API (`--api`) and `spinloop daemon`
 

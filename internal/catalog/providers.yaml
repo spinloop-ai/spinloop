@@ -161,6 +161,24 @@ providers:
       api: openai-completions
     lucinate: {}
 
+  unsloth:
+    description: Unsloth Studio server (OpenAI-compatible API)
+    name: Unsloth Studio
+    npm: "@ai-sdk/openai-compatible"
+    # Studio gates /v1 with a key it mints itself (`unsloth run` prints it as
+    # it starts). UNSLOTH_API_KEY is the variable Unsloth's own client tooling
+    # reads. It is optional because Studio's keyless-access setting removes
+    # the gate, and no key is injected when the var is unset.
+    apiKeyEnv: UNSLOTH_API_KEY
+    apiKeyOptional: true
+    options:
+      baseURL: http://localhost:8888/v1
+    optionsFromEnv:
+      baseURL: UNSLOTH_BASE_URL
+    pi:
+      api: openai-completions
+    lucinate: {}
+
   vllm:
     description: vLLM server (OpenAI-compatible API)
     name: vLLM
