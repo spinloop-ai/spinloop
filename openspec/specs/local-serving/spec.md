@@ -49,7 +49,11 @@ argument, the served name as `--served-model-name`, and the context window as
 `--max-model-len`; `mtplx` SHALL run `mtplx serve`, with the model as
 `--model`, the served name as `--model-id`, the context window as
 `--context-window`, and a `--download` flag so the engine fetches a model it
-does not have itself. There SHALL be no default: a `PROVIDER` that is not a
+does not have itself; `unsloth` SHALL run `unsloth run` (Unsloth Studio), with
+the model as `--model` and the context window as `--context-length`, and SHALL
+pass `--api-only` and `--disable-tools` unless a preset or PARAM sets either to
+a false value. Unsloth has no flag for a served name, so `ALIAS` SHALL add
+nothing to its command. There SHALL be no default: a `PROVIDER` that is not a
 self-hosted engine SHALL fail, naming the providers that can be served, rather
 than launching an engine the Spinloop did not ask for.
 
@@ -82,6 +86,25 @@ on their `PATH` can still serve.
 - **THEN** the printed command carries `--model-id qwen` and
   `--context-window 128000`
 
+#### Scenario: Unsloth is servable
+
+- **WHEN** the Spinloop says `PROVIDER unsloth` with
+  `MODEL unsloth/Qwen3.8-27B-GGUF:UD-Q4_K_XL`
+- **THEN** the printed command runs `unsloth run` with that reference,
+  unaltered, as `--model`, and includes `--api-only` and `--disable-tools`
+
+#### Scenario: Unsloth context and served name
+
+- **WHEN** the Spinloop says `PROVIDER unsloth` with `ALIAS qwen` and
+  `CONTEXT 128k`
+- **THEN** the printed command carries `--context-length 128000` and no flag
+  naming `qwen`
+
+#### Scenario: Unsloth server-side tools switched back on
+
+- **WHEN** the Spinloop says `PROVIDER unsloth` and `PARAM disable-tools = false`
+- **THEN** the printed command carries no `--disable-tools`
+
 #### Scenario: A provider that is not a local engine
 
 - **WHEN** the Spinloop names a hosted provider such as `ollama` or `openrouter`
@@ -92,6 +115,12 @@ on their `PATH` can still serve.
 - **WHEN** the oMLX CLI is not on the `PATH` but is present in its macOS app
   bundle
 - **THEN** `serve` uses the bundled executable
+
+#### Scenario: Unsloth installed by the Studio installer only
+
+- **WHEN** `unsloth` is not on the `PATH` but is present at
+  `~/.unsloth/studio/unsloth_studio/bin/unsloth`
+- **THEN** `serve` uses that executable
 
 ### Requirement: Preset-less serving
 
@@ -255,9 +284,13 @@ request slots, translated per engine so that `CONTEXT`'s meaning holds:
   `CONTEXT`) SHALL NOT be scaled by `PARALLEL`. MTPLX's scheduling mode — how
   admitted requests execute, serially or in parallel — SHALL remain a preset
   concern: a Spinloop's `PARALLEL` SHALL NOT select it.
+- For `unsloth`, `PARALLEL n` SHALL be rendered as `--parallel n`. Unsloth's
+  decode slots share one KV cache sized to the full context, so a single
+  request can use all of it: `--context-length` (from `CONTEXT`) SHALL NOT be
+  scaled by `PARALLEL`.
 
 A Spinloop stating no `PARALLEL` SHALL produce a command identical to one from
-before this capability existed, for all four engines. A `PARALLEL` value
+before this capability existed, for all five engines. A `PARALLEL` value
 SHALL be validated as a positive integer at the point it is used (`serve`, a
 daemon-pushed config, or `cloud deploy`); a value that is not SHALL fail
 naming the invalid value rather than being passed to the engine.
@@ -267,7 +300,8 @@ own `ctx-size` rather than by the Spinloop, `PARALLEL` SHALL NOT rescale it —
 only a Spinloop-stated `CONTEXT` participates in the `llamacpp` multiply. A
 `PARALLEL` value SHALL still override a preset's own or a `PARAM`'s own
 `np`/`parallel` (llama.cpp), `max-num-seqs` (vLLM),
-`max-concurrent-requests` (oMLX), or `max-active-requests` (MTPLX) value by the
+`max-concurrent-requests` (oMLX), `max-active-requests` (MTPLX), or
+`np`/`n-parallel`/`parallel` (Unsloth) value by the
 same override-by-canonical-name rule `CONTEXT` already uses against a preset's
 `ctx-size`.
 
@@ -317,16 +351,23 @@ same override-by-canonical-name rule `CONTEXT` already uses against a preset's
 - **THEN** the printed command includes `--max-active-requests 4` and
   `--context-window 128000`, with neither value derived from the other
 
+#### Scenario: Unsloth concurrency does not touch context
+
+- **WHEN** a Spinloop states `PROVIDER unsloth`, `CONTEXT 128k`, and
+  `PARALLEL 4`
+- **THEN** the printed command includes `--parallel 4` and
+  `--context-length 128000`, with neither value derived from the other
+
 #### Scenario: No PARALLEL means no change
 
-- **WHEN** a Spinloop states no `PARALLEL`, for any of the four engines
+- **WHEN** a Spinloop states no `PARALLEL`, for any of the five engines
 - **THEN** the printed command is identical to what it would have been before
   this capability existed
 
 #### Scenario: Invalid parallel count
 
 - **WHEN** a Spinloop states `PARALLEL 0`, a negative number, or a non-numeric
-  value, for any of the four engines
+  value, for any of the five engines
 - **THEN** the command fails naming the invalid value rather than passing it
   to the engine
 
@@ -739,7 +780,8 @@ the raw reference. A value with no references SHALL render exactly as before.
 
 ### Requirement: A PARAM can name the model
 
-For an engine that takes its model as a flag — `llamacpp` and `mtplx` — a PARAM
+For an engine that takes its model as a flag — `llamacpp`, `mtplx`, and
+`unsloth` — a PARAM
 naming the model SHALL satisfy serve's model requirement in place of a `MODEL`,
 the way a preset's model reference does, and the model SHALL be passed to the
 engine as that flag, unaltered. `vllm` takes its model positionally and SHALL
@@ -753,9 +795,16 @@ still require a `MODEL`; a PARAM cannot stand in for it.
 - **THEN** the command carries the repository reference as the model flag, and
   serve does not fail for want of a model
 
+#### Scenario: A PARAM names the model for Unsloth
+
+- **WHEN** the Spinloop says `PROVIDER unsloth` and
+  `PARAM hf = unsloth/Qwen3.8-27B-GGUF:UD-Q4_K_XL`, with no `MODEL` and no
+  `PRESET`
+- **THEN** the command carries the repository reference as `--model`, and
+  serve does not fail for want of a model
+
 #### Scenario: vLLM still needs a MODEL
 
 - **WHEN** the Spinloop says `PROVIDER vllm` with PARAMs but no `MODEL`
 - **THEN** the command fails explaining serve needs a MODEL, which vLLM takes
   positionally
-

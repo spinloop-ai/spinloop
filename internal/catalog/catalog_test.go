@@ -716,6 +716,84 @@ func TestMtplxProviderKeyHandling(t *testing.T) {
 	}
 }
 
+func TestUnslothProviderKeyHandling(t *testing.T) {
+	cat, _ := Load()
+	p, ok := cat.Providers["unsloth"]
+	if !ok {
+		t.Fatal("catalogue has no unsloth provider")
+	}
+	if !p.APIKeyOptional {
+		t.Fatal("unsloth key should be optional")
+	}
+
+	withKey := func(name string) string {
+		if name == "UNSLOTH_API_KEY" {
+			return "sk-unsloth-secret"
+		}
+		return ""
+	}
+
+	// opencode, keyless local: no apiKey option, and Studio's default port.
+	block, _, err := BuildProviderBlock("unsloth", p, "qwen", "", noEnv)
+	if err != nil {
+		t.Fatalf("BuildProviderBlock: %v", err)
+	}
+	opts := block["options"].(map[string]any)
+	if _, ok := opts["apiKey"]; ok {
+		t.Error("a keyless local unsloth server should get no apiKey option")
+	}
+	if opts["baseURL"] != "http://localhost:8888/v1" {
+		t.Errorf("baseURL = %v, want Studio's default", opts["baseURL"])
+	}
+
+	// opencode, key set: a reference to UNSLOTH_API_KEY, never the secret.
+	block, _, err = BuildProviderBlock("unsloth", p, "qwen", "", withKey)
+	if err != nil {
+		t.Fatalf("BuildProviderBlock: %v", err)
+	}
+	opts = block["options"].(map[string]any)
+	if opts["apiKey"] != "{env:UNSLOTH_API_KEY}" {
+		t.Errorf("apiKey = %v, want the UNSLOTH_API_KEY reference", opts["apiKey"])
+	}
+
+	// opencode, remote endpoint: the reference even with the key unset.
+	remote := func(name string) string {
+		if name == "UNSLOTH_BASE_URL" {
+			return "http://studio.lan:8888/v1"
+		}
+		return ""
+	}
+	block, _, err = BuildProviderBlock("unsloth", p, "qwen", "", remote)
+	if err != nil {
+		t.Fatalf("BuildProviderBlock: %v", err)
+	}
+	opts = block["options"].(map[string]any)
+	if opts["baseURL"] != "http://studio.lan:8888/v1" || opts["apiKey"] != "{env:UNSLOTH_API_KEY}" {
+		t.Errorf("remote options = %v, want the overridden URL and the key reference", opts)
+	}
+
+	// Pi: the placeholder when keyless, the $VAR reference when set.
+	prov, _, err := BuildPiProvider("unsloth", p, "qwen", "", noEnv)
+	if err != nil {
+		t.Fatalf("BuildPiProvider: %v", err)
+	}
+	if prov.APIKey != piPlaceholderAPIKey {
+		t.Errorf("Pi apiKey (keyless) = %q, want the placeholder", prov.APIKey)
+	}
+	prov, _, err = BuildPiProvider("unsloth", p, "qwen", "", withKey)
+	if err != nil {
+		t.Fatalf("BuildPiProvider: %v", err)
+	}
+	if prov.APIKey != "$UNSLOTH_API_KEY" {
+		t.Errorf("Pi apiKey (set) = %q, want the $VAR reference", prov.APIKey)
+	}
+
+	// lucinate: accepted.
+	if _, _, err := BuildLucinateConnection("unsloth", p, "qwen", "", noEnv); err != nil {
+		t.Fatalf("BuildLucinateConnection: %v", err)
+	}
+}
+
 func TestIsLocalEndpoint(t *testing.T) {
 	for _, u := range []string{
 		"", "http://localhost:8080/v1", "http://127.0.0.1:8080/v1",

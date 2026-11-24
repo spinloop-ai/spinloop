@@ -30,10 +30,14 @@ You applied a selection and the agent still runs something else.
 - **The engine is not installed.** `serve` runs the engine; it does not ship
   one. `llama-server` must be on your `PATH` (`brew install llama.cpp`);
   oMLX is found on the `PATH` or at
-  `/Applications/oMLX.app/Contents/MacOS/omlx-cli`; `mtplx` on the `PATH`.
+  `/Applications/oMLX.app/Contents/MacOS/omlx-cli`; `mtplx` on the `PATH`;
+  `unsloth` on the `PATH` or at `~/.unsloth/studio/unsloth_studio/bin/unsloth`.
 - **The port is taken.** The engine binds the `BASEURL` address (or the
   engine's own default). Change `BASEURL` in the Spinloop, or stop whatever
-  holds the port.
+  holds the port. Unsloth Studio is the exception: it does not fail on a busy
+  port but moves to the next free one, so the harness calls the wrong port.
+  Its default `8888` is also the Unsloth desktop app's port, so give an
+  `unsloth` Spinloop a `BASEURL` with a port of its own.
 - **The engine rejects a parameter.** An unknown `PARAM` key or a value the
   engine refuses kills it at startup, and the reason is in the engine's own
   words, not spinloop's. Under the serve view those lines are captured to
@@ -52,8 +56,8 @@ llama.cpp's `--ctx-size` is a *total* KV-cache budget it divides across
 renders `--ctx-size 256000 --parallel 2`, so each request still gets 128k. A
 `PRESET`'s own `ctx-size`, left unstated by the Spinloop, is **not**
 retroactively scaled — the preset is trusted to account for its own slots.
-vLLM and MTPLX share one pool across requests, so their context is never
-scaled; see [`spinloop serve`](commands/serve.md#parallelism).
+vLLM, MTPLX and Unsloth Studio share one pool across requests, so their
+context is never scaled; see [`spinloop serve`](commands/serve.md#parallelism).
 
 ## A key is missing or not picked up
 

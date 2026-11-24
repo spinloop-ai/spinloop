@@ -294,7 +294,7 @@ components:
         runner:
           type: string
           description: The engine being served, when known.
-          examples: [llamacpp, omlx, vllm, mtplx]
+          examples: [llamacpp, omlx, vllm, mtplx, unsloth]
         model:
           type: string
           description: What it is serving, when known.

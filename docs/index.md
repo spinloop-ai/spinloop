@@ -16,7 +16,7 @@ Four words carry the whole tool:
   works for any of them. See [`spinloop harness`](commands/harness.md).
 - **Provider** — what `spinloop` can configure, from a built-in
   catalogue: OpenRouter, AWS Bedrock, Ollama, llama.cpp, vLLM, oMLX and MTPLX
-  (both Apple Silicon), or any OpenAI-compatible endpoint. See
+  (both Apple Silicon), Unsloth Studio, or any OpenAI-compatible endpoint. See
   [`spinloop provider list`](commands/provider.md).
 - **Spinloop file** — a small, declarative file (like a `Dockerfile`, but for
   your agent's model) that captures one selection so you can commit it and

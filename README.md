@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <em>llama.cpp, vLLM, MTPLX or oMLX &middot; deploy local, LAN or cloud &middot; connect opencode, Pi, Lucinate, OpenClaw, Hermes etc.</em>
+  <em>llama.cpp, vLLM, MTPLX, oMLX or Unsloth &middot; deploy local, LAN or cloud &middot; connect opencode, Pi, Lucinate, OpenClaw, Hermes etc.</em>
 </p>
 
 ---
@@ -42,7 +42,7 @@ CONTEXT  32768
 spinloop serve              # runs llama-server with that model
 ```
 
-llama.cpp, vLLM, MTPLX and oMLX all run from those same few lines — change
+llama.cpp, vLLM, MTPLX, oMLX and Unsloth Studio all run from those same few lines — change
 `PROVIDER` and the same file serves the model on a different engine.
 → [Serving a local model](#serving-a-local-model)
 
@@ -137,6 +137,7 @@ their models.
 | oMLX | `omlx` | Local oMLX server on Apple Silicon |
 | vLLM | `vllm` | Local or self-hosted vLLM server |
 | MTPLX | `mtplx` | Local MTPLX server on Apple Silicon |
+| Unsloth Studio | `unsloth` | Local Unsloth Studio server (`unsloth run`) |
 | OpenAI-compatible | `openai-compatible` | Any endpoint that speaks the OpenAI API — set the base URL and key |
 
 Need one that isn't listed? You can add it yourself — see
@@ -160,7 +161,7 @@ model refs and quirks, and none of it is written down where you need it.
 it configures the agent for you:
 
 - **One command, any model.** Pick from a built-in catalogue — OpenRouter,
-  Bedrock, Ollama, llama.cpp, vLLM, oMLX, MTPLX, or any OpenAI-compatible
+  Bedrock, Ollama, llama.cpp, vLLM, oMLX, MTPLX, Unsloth Studio, or any OpenAI-compatible
   endpoint. No
   URLs to look up, and `spinloop provider list --models` fetches the model ids straight from
   the provider.
@@ -451,7 +452,8 @@ the bash and zsh completions for you.
 Running a model locally? `spinloop serve` reads a `Spinloop` and launches the
 inference server its `PROVIDER` names — `llamacpp` runs `llama-server`, `omlx`
 runs [oMLX](https://omlx.ai) and `mtplx` runs [MTPLX](https://mtplx.com), the
-two Apple-Silicon engines — so the same file that points opencode at a model can
+two Apple-Silicon engines, and `unsloth` runs [Unsloth Studio](https://unsloth.ai)'s
+`unsloth run` — so the same file that points opencode at a model can
 start it too. The simple case needs no preset:
 
 ```dockerfile
@@ -698,7 +700,8 @@ Each provider declares which environment variable holds its key (`spinloop
 list` shows them). Values are looked up in your shell environment first, then a
 `.env` beside the `Spinloop`, so an exported variable always wins and the `.env`
 only fills a gap. Local providers like Ollama, llama.cpp, oMLX and MTPLX need
-no key;
+no key (Unsloth Studio is the exception: it makes its own key, which you
+export as `UNSLOTH_API_KEY`);
 Bedrock authenticates through your AWS credentials.
 
 `spinloop harness open` carries that same local environment to the agent it launches:
@@ -718,7 +721,8 @@ SPINLOOP_BASE_URL=https://gateway/v1 spinloop harness add -p openai-compatible -
 
 The flag wins over the env var, and either wins over the catalogue's defaults
 and the per-provider variables (`OLLAMA_BASE_URL`, `LLAMACPP_BASE_URL`,
-`OMLX_BASE_URL`, `VLLM_BASE_URL`, `MTPLX_BASE_URL`, `OPENAI_BASE_URL`).
+`OMLX_BASE_URL`, `VLLM_BASE_URL`, `MTPLX_BASE_URL`, `UNSLOTH_BASE_URL`,
+`OPENAI_BASE_URL`).
 
 ## Guides
 
@@ -732,6 +736,7 @@ with a ready-to-apply `Spinloop`:
 - [Qwen3.6-35B-A3B on oMLX (Apple Silicon)](examples/omlx/qwen3.6/README.md)
 - [Gemma-4-E2B on oMLX (Apple Silicon)](examples/omlx/gemma-4-e2b/README.md)
 - [Qwen3.8-27B on MTPLX (Apple Silicon)](examples/mtplx/qwen3.8-27b/README.md)
+- [Qwen3.8-27B on Unsloth Studio](examples/unsloth/qwen3.8-27b/README.md)
 - [Fetching a Spinloop from a URL](examples/remote-spinloop/README.md)
 - [Environment references in Spinloop values](examples/env-refs/README.md)
 

@@ -13,7 +13,7 @@ works for any of them.
 
 **Which models can I point it at?** Anything a catalogue provider serves:
 OpenRouter, AWS Bedrock, Google Vertex, Ollama, llama.cpp, vLLM, oMLX, MTPLX,
-or any OpenAI-compatible endpoint you run yourself
+Unsloth Studio, or any OpenAI-compatible endpoint you run yourself
 (`-p openai-compatible --base-url …`). `spinloop provider list` shows the
 full catalogue, the key each provider needs, and which harnesses support it.
 

@@ -302,6 +302,36 @@ func TestDialectOMLXHasNoBareBooleans(t *testing.T) {
 	}
 }
 
+// TestDialectUnslothCanonicalises checks Studio's second spellings collapse
+// onto one flag, so a later layer overrides an earlier one however each is
+// written.
+func TestDialectUnslothCanonicalises(t *testing.T) {
+	got := strings.Join(Unsloth.Flags(
+		[]Param{{Key: "hf", Value: "org/a"}, {Key: "max-seq-length", Value: "4096"}, {Key: "np", Value: "4"}, {Key: "H", Value: "0.0.0.0"}},
+		[]Param{{Key: "model", Value: "org/b"}, {Key: "context-length", Value: "8192"}, {Key: "n-parallel", Value: "2"}, {Key: "host", Value: "127.0.0.1"}},
+	), " ")
+	want := "--model org/b --context-length 8192 --parallel 2 --host 127.0.0.1"
+	if got != want {
+		t.Errorf("Unsloth.Flags =\n  %s\nwant\n  %s", got, want)
+	}
+}
+
+// TestDialectUnslothBooleans checks Studio's switches render bare when truthy
+// and are dropped when falsy, while llama.cpp keys forwarded through Studio
+// keep their values.
+func TestDialectUnslothBooleans(t *testing.T) {
+	got := strings.Join(Unsloth.Flags([]Param{
+		{Key: "api-only", Value: "1"},
+		{Key: "disable-tools", Value: "false"},
+		{Key: "enable-tools", Value: ""},
+		{Key: "jinja", Value: "1"},
+	}), " ")
+	want := "--api-only --enable-tools --jinja 1"
+	if got != want {
+		t.Errorf("Unsloth.Flags = %q, want %q", got, want)
+	}
+}
+
 // TestPackageFlagsStillLlamaCpp guards the callers that predate dialects: the
 // package-level helpers, and cloud.go's CanonicalKey, must keep rendering
 // llama.cpp.

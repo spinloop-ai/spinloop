@@ -833,14 +833,14 @@ func modelPresetKey(runner string) string {
 
 // modelSourceFlags names the canonical flag keys under which a PARAM (or a
 // preset, through the same keys) may name a runner's model — llamacpp's
-// hf-repo/model/hf-file, mtplx's model. A runner that takes its model
+// hf-repo/model/hf-file, mtplx's and unsloth's model. A runner that takes its model
 // positionally has none, so a PARAM cannot stand in for a MODEL there and the
 // error that names the ways a model may be given does not name one either.
 func modelSourceFlags(runner string) []string {
 	switch runner {
 	case "llamacpp":
 		return []string{"hf-repo", "model", "hf-file"}
-	case "mtplx":
+	case "mtplx", "unsloth":
 		return []string{"model"}
 	default:
 		return nil
