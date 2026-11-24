@@ -229,9 +229,11 @@ Keys map straight to flags — `ctx-size = 262144` becomes `--ctx-size 262144`,
 `hf` becomes `--hf-repo`, and boolean toggles like `mmap = 1` become a bare
 `--mmap`. A value may pull an environment variable in — `$FOO`, `${FOO}`, or
 `${FOO:-fallback}` (the fallback stands when the variable is unset or empty),
-with `$$` for a literal `$` — resolved when the preset is read to build the
-command, so a shared preset can carry machine-specific paths and tags; a
-malformed reference fails the command, naming the preset line. Which section
+with `$$` for a literal `$` — as any Spinloop value may (see
+[environment references](../spinloop-file.md#environment-references)); in a
+preset it is resolved when the preset is read to build the command, so a
+shared preset can carry machine-specific paths and tags; a malformed
+reference fails the command, naming the preset line. Which section
 runs:
 
 - `ALIAS` names the section.

@@ -1,13 +1,13 @@
-# A Spinloop whose engine-flag values reference environment variables, so one
-# committed file works on every machine. `$FOO`, `${FOO}` and `${FOO:-default}`
-# work in PARAM values and in preset entry values, resolved when
-# `spinloop serve` or `spinloop cloud deploy` builds its command — parsing and
-# exporting keep the raw text. See README.md.
+# A Spinloop whose values reference environment variables, so one committed
+# file works on every machine. `$FOO`, `${FOO}` and `${FOO:-default}` work in
+# every value — typed instructions, PARAM values and preset entry values —
+# resolved when a command consumes them (`serve`, `cloud deploy`, `apply`) —
+# parsing and exporting keep the raw text. See README.md.
 PROVIDER llamacpp
 ALIAS    qwen3.8-27b
-CONTEXT  32768            # match the server's --ctx-size
+CONTEXT  ${CTX:-32768}    # match the server's --ctx-size, or set CTX per box
 PRESET   ./preset.ini     # values resolve as the preset is read; keys don't
 PARAM    ngl = ${NGL:-99} # offload every layer unless NGL says otherwise
 # ENV QUANT=UD-Q5_K_XL    # uncomment: deploy and a node wake apply the Spinloop's
                           # own ENV lines before they build, so an ENV line can
-                          # supply what a PARAM or preset reference expands to
+                          # supply what any reference expands to

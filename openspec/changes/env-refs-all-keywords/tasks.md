@@ -42,11 +42,11 @@
 
 ## 3. Docs and full-suite verification
 
-- [ ] 3.1 Update the Spinloop file-format docs (under `docs/`) to state the
+- [x] 3.1 Update the Spinloop file-format docs (under `docs/`) to state the
       substitution applies to every value (with the `$$` escape and the
       key/keyword exclusion); a docs reader sees the rule once, not per
       keyword.
-- [ ] 3.2 Run `go test ./... -cover` and `go vet ./...`: the whole suite is
+- [x] 3.2 Run `go test ./... -cover` and `go vet ./...`: the whole suite is
       green and coverage stays >= 80%.
-- [ ] 3.3 `gofmt -w ./cmd ./internal`; verify `gofmt -l ./cmd ./internal`
+- [x] 3.3 `gofmt -w ./cmd ./internal`; verify `gofmt -l ./cmd ./internal`
       prints nothing.

@@ -460,9 +460,10 @@ Everything the endpoint sets itself — host, port, where the weights live, the
 API key, the context size, the alias — is dropped from the preset and the
 PARAMs alike, so one file works both locally and remotely without edits.
 Values referencing environment variables — `$FOO`, `${FOO}`, `${FOO:-fallback}`
-— are resolved here, after the Spinloop's own `ENV` lines and `.env` have been
-applied, so the stored deployment holds resolved text; a malformed reference
-fails the deploy naming the preset line or PARAM key, and nothing is sent.
+— resolve here, whatever instruction carries them, after the Spinloop's own
+`ENV` lines and `.env` have been applied, so the stored deployment holds
+resolved text; a malformed reference fails the deploy naming the offending
+keyword, PARAM key or preset line, and nothing is sent.
 
 Who may reach the instance is **per environment**: `--allowed-cidr` sets it,
 defaulting to your public IP as a `/32` on first deploy; later deploys leave
