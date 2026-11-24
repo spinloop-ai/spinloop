@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/spinloop-ai/spinloop/internal/config"
+	"github.com/spinloop-ai/spinloop/internal/fleet"
 	"github.com/spinloop-ai/spinloop/internal/spinloop"
 )
 
@@ -160,5 +162,229 @@ func TestParseFormat_EnvRefsStayRaw(t *testing.T) {
 	out := spinloop.Format(sel)
 	if !strings.Contains(out, "PARAM    hf = org/model:$HF_TAG") {
 		t.Errorf("rendered Spinloop should keep the raw text, got:\n%s", out)
+	}
+}
+
+// Every scalar keyword resolves wherever a command consumes it: serve picks
+// the engine by the resolved PROVIDER and builds its command from the
+// resolved MODEL and CONTEXT; a malformed MODEL fails the command naming the
+// keyword, and a preset path arrives from a variable.
+func TestCmdServe_ScalarEnvRefs(t *testing.T) {
+	t.Setenv("SERVE_ENGINE", "llamacpp")
+	t.Setenv("HF_TAG", "Q4_K_M")
+	t.Setenv("SERVE_CTX", "") // empty takes the default
+	dir := t.TempDir()
+	path := filepath.Join(dir, "Spinloop")
+	mustWrite(t, path, "PROVIDER ${SERVE_ENGINE:-vllm}\nMODEL org/model:$HF_TAG\nCONTEXT ${SERVE_CTX:-32k}\n")
+
+	out := captureStdout(t, func() {
+		if err := cmdServe([]string{"--dry-run", path}); err != nil {
+			t.Fatalf("serve --dry-run: %v", err)
+		}
+	})
+	for _, want := range []string{"org/model:Q4_K_M", "--ctx-size 32000"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("printed command is missing %q:\n%s", want, out)
+		}
+	}
+	for _, raw := range []string{"$HF_TAG", "${SERVE_ENGINE", "${SERVE_CTX"} {
+		if strings.Contains(out, raw) {
+			t.Errorf("printed command leaks the raw reference %q:\n%s", raw, out)
+		}
+	}
+
+	mustWrite(t, filepath.Join(dir, "Spinloop-bad"), "PROVIDER llamacpp\nMODEL org/model:${HF_TAG\n")
+	if err := cmdServe([]string{"--dry-run", filepath.Join(dir, "Spinloop-bad")}); err == nil ||
+		!strings.Contains(err.Error(), "MODEL") {
+		t.Errorf("a malformed MODEL reference should fail naming MODEL, got %v", err)
+	}
+}
+
+// A PRESET path may arrive from a variable: it resolves before its path is
+// resolved against the Spinloop's source, and the narration names the
+// resolved file.
+func TestCmdServe_PresetPathFromVariable(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "preset.ini"), "[qwen]\nhf = org/m\nngl = 99\n")
+	t.Setenv("SERVE_PRESET_DIR", dir)
+	path := filepath.Join(dir, "Spinloop")
+	mustWrite(t, path, "PROVIDER llamacpp\nALIAS qwen\nPRESET ${SERVE_PRESET_DIR}/preset.ini\n")
+
+	out := captureStdout(t, func() {
+		if err := cmdServe([]string{"--dry-run", path}); err != nil {
+			t.Fatalf("serve --dry-run: %v", err)
+		}
+	})
+	if !strings.Contains(out, "Using preset "+filepath.Join(dir, "preset.ini")) {
+		t.Errorf("the narration should name the resolved preset path, got:\n%s", out)
+	}
+}
+
+// The deploy derivation reads resolved scalars: a MODEL's repo:quant falls
+// out of the resolved text, and a PRESET path from a variable loads the file
+// it names — the chain deriveDeployTarget runs after the environment layers.
+func TestDeployConfigFor_ScalarEnvRefs(t *testing.T) {
+	t.Setenv("HF_TAG", "Q8_0")
+	sel, path, err := readSpinloop("test", writeDeploySpinloop(t,
+		"PROVIDER llamacpp\nALIAS qwen\nCONTEXT 32k\nMODEL org/model:$HF_TAG\n", ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sel, err = resolveSelection(sel)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dc, err := deployConfigFor(sel, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dc.ModelID != "org/model" || dc.Quant != "Q8_0" {
+		t.Errorf("model = %q:%q, want the resolved org/model:Q8_0", dc.ModelID, dc.Quant)
+	}
+
+	dir := filepath.Dir(path)
+	mustWrite(t, filepath.Join(dir, "preset.ini"), "[qwen]\nhf = other/model:Q4\n")
+	t.Setenv("DEPLOY_PRESET_DIR", dir)
+	sel, path, err = readSpinloop("test", writeDeploySpinloop(t,
+		"PROVIDER llamacpp\nALIAS qwen\nCONTEXT 32k\nPRESET ${DEPLOY_PRESET_DIR}/preset.ini\n", ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sel, err = resolveSelection(sel); err != nil {
+		t.Fatal(err)
+	}
+	if dc, err = deployConfigFor(sel, path); err != nil {
+		t.Fatal(err)
+	}
+	if dc.ModelID != "other/model" {
+		t.Errorf("model = %q, want the preset's resolved other/model", dc.ModelID)
+	}
+}
+
+// A BASEURL resolves on the way into the harness config, and unapply removes
+// the block apply wrote because it resolves the same way; the Spinloop file
+// itself still carries the raw text.
+func TestCmdApply_Unapply_ResolvesEnvRefs(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	t.Setenv("APPLY_TEST_TAG", "v1")
+	t.Setenv("APPLY_TEST_HOST", "gpu.internal")
+
+	spinloopFile := filepath.Join(dir, "Spinloop")
+	mustWrite(t, spinloopFile,
+		"PROVIDER llamacpp\nMODEL org/model:${APPLY_TEST_TAG}\nBASEURL http://${APPLY_TEST_HOST:-localhost}:8080/v1\n")
+	captureStdout(t, func() {
+		if err := cmdApply([]string{spinloopFile}); err != nil {
+			t.Fatalf("cmdApply: %v", err)
+		}
+	})
+
+	cfgPath := filepath.Join(dir, "opencode", "opencode.json")
+	m := readConfigMap(t, cfgPath)
+	llamacpp := m["provider"].(map[string]any)["llamacpp"].(map[string]any)
+	if got := llamacpp["options"].(map[string]any)["baseURL"]; got != "http://gpu.internal:8080/v1" {
+		t.Errorf("baseURL = %v, want the resolved URL", got)
+	}
+	models := llamacpp["models"].(map[string]any)
+	if _, ok := models["org/model:v1"]; !ok {
+		t.Fatalf("the model should be keyed by the resolved org/model:v1, got %v", models)
+	}
+	if raw, err := os.ReadFile(spinloopFile); err != nil || !strings.Contains(string(raw), "$") {
+		t.Errorf("the Spinloop file must keep its raw text, got %q, %v", raw, err)
+	}
+
+	captureStdout(t, func() {
+		if err := cmdUnapply([]string{spinloopFile}); err != nil {
+			t.Fatalf("cmdUnapply: %v", err)
+		}
+	})
+	m = readConfigMap(t, cfgPath)
+	if p, ok := m["provider"].(map[string]any)["llamacpp"]; ok {
+		if models, ok := p.(map[string]any)["models"].(map[string]any); ok && len(models) > 0 {
+			t.Errorf("unapply should have removed the resolved model, left %v", models)
+		}
+	}
+}
+
+// A registration name comes from the resolved ALIAS: the entry lives on this
+// machine, where this machine's environment decides what the file means.
+func TestCmdAlias_RegistersResolvedName(t *testing.T) {
+	isolateConfig(t)
+	dir := t.TempDir()
+	path := filepath.Join(dir, "Spinloop")
+	mustWrite(t, path, "PROVIDER llamacpp\nMODEL org/m\nALIAS ${ALIAS_TEST_NICK:-unnamed}\n")
+	t.Setenv("ALIAS_TEST_NICK", "qwen")
+
+	captureStdout(t, func() {
+		if err := cmdAlias([]string{path}); err != nil {
+			t.Fatalf("cmdAlias: %v", err)
+		}
+	})
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, ok := cfg.Alias("qwen")
+	if !ok {
+		t.Fatalf("the alias should be registered under the resolved name, got %v", cfg.AliasNames())
+	}
+	if target != path {
+		t.Errorf("alias target = %q, want %q", target, path)
+	}
+}
+
+// Routing runs on the resolved selection (a launch resolves before it
+// routes), so the selector wakes the node that can serve the model the file
+// actually names.
+func TestRouteResolvesTheModelItRoutesBy(t *testing.T) {
+	t.Setenv("ROUTE_TEST_MODEL", "qwen3-27b")
+	node := newRoutableNode(t, "qwen3-27b", true, 300)
+	dir := t.TempDir()
+	fleetPath := fleetFileIn(t, dir, "nodes:\n"+node.entry("gpu-box"))
+	spinloopDir := t.TempDir()
+	mustWrite(t, filepath.Join(spinloopDir, "Spinloop"), "PROVIDER llamacpp\nMODEL $ROUTE_TEST_MODEL\n")
+
+	sel, path, err := readSpinloop("test", spinloopDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sel, err = resolveSelection(sel); err != nil {
+		t.Fatal(err)
+	}
+	captureStderr(t, func() {
+		c, err := routeThroughFleet(sel, path, routeOptions{fleetPath: fleetPath})
+		if err != nil {
+			t.Fatalf("routing failed: %v", err)
+		}
+		if c == nil || c.Node.Name != "gpu-box" {
+			t.Errorf("routing by the resolved model should choose gpu-box, got %+v", c)
+		}
+	})
+}
+
+// The config a gateway wakes a node with is derived from the node's own
+// Spinloop with its references resolved, so a node file parameterised by the
+// machine loads the model it actually names.
+func TestNodeDeployConfig_ResolvesEnvRefs(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "fleet.yaml"),
+		"nodes:\n  - name: gpu-box\n    host: 127.0.0.1\n    port: 18080\n    file: Spinloop\n")
+	mustWrite(t, filepath.Join(dir, "Spinloop"), "PROVIDER llamacpp\nMODEL org/model:$GATEWAY_TEST_TAG\n")
+	t.Setenv("GATEWAY_TEST_TAG", "Q4_K_M")
+
+	cfg, err := fleet.Resolve(filepath.Join(dir, "fleet.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry, ok := cfg.Node("gpu-box")
+	if !ok {
+		t.Fatal("gpu-box missing from the fleet")
+	}
+	dc, err := nodeDeployConfig(cfg, entry)
+	if err != nil {
+		t.Fatalf("nodeDeployConfig: %v", err)
+	}
+	if dc.ModelID != "org/model" || dc.Quant != "Q4_K_M" {
+		t.Errorf("model = %q:%q, want the resolved org/model:Q4_K_M", dc.ModelID, dc.Quant)
 	}
 }

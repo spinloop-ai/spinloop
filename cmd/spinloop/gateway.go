@@ -129,6 +129,31 @@ func gatewayListenAddr(listen string, listenExplicit, loopback bool) (string, er
 	return listen, nil
 }
 
+// nodeDeployConfig is what one fleet node runs, derived from its own Spinloop
+// source (a `file`, a registered alias, or a subdirectory beside the fleet
+// file): read, its environment layered first, then its value references
+// resolved against that environment. It is the chain `spinloop fleet start`
+// runs per node, shared with the gateway's wake so a node woken for a request
+// loads exactly what its own file says, on the machine that file's references
+// speak for.
+func nodeDeployConfig(cfg *fleet.Config, entry fleet.NodeConfig) (inference.DeployConfig, error) {
+	arg, _, err := resolveNodeSpinloop(entry, cfg.Dir)
+	if err != nil {
+		return inference.DeployConfig{}, err
+	}
+	sel, path, err := readSpinloop("the Spinloop of node "+entry.Name, arg)
+	if err != nil {
+		return inference.DeployConfig{}, err
+	}
+	if err := applySpinloopEnv(sel, path); err != nil {
+		return inference.DeployConfig{}, err
+	}
+	if sel, err = resolveSelection(sel); err != nil {
+		return inference.DeployConfig{}, err
+	}
+	return deployConfigForNode(sel, path)
+}
+
 // newGatewayServer resolves the fleet file and the gateway's token, checks the
 // file's token references the way a startup must, opens the listener, and
 // prints the address a fleet file's gateway section names. Everything that can
@@ -167,18 +192,7 @@ func newGatewayServer(fleetPath, listen, apiToken, apiTokenFile string, maxReque
 	// node runs the way `spinloop fleet start` does: the node's own source,
 	// never a config invented for the request.
 	cfgFor := func(entry fleet.NodeConfig) (inference.DeployConfig, error) {
-		arg, _, err := resolveNodeSpinloop(entry, cfg.Dir)
-		if err != nil {
-			return inference.DeployConfig{}, err
-		}
-		sel, path, err := readSpinloop("the Spinloop of node "+entry.Name, arg)
-		if err != nil {
-			return inference.DeployConfig{}, err
-		}
-		if err := applySpinloopEnv(sel, path); err != nil {
-			return inference.DeployConfig{}, err
-		}
-		return deployConfigForNode(sel, path)
+		return nodeDeployConfig(cfg, entry)
 	}
 
 	h := gateway.New(cfg, token, gateway.Options{ConfigFor: cfgFor, Log: logger, MaxRequestBytes: maxRequestBytes})

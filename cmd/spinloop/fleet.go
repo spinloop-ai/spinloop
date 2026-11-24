@@ -397,6 +397,9 @@ func fleetStartCall(cfg *fleet.Config) fleet.Call {
 		if err := applySpinloopEnv(sel, spinloopPath); err != nil {
 			return fleet.Result(n.Name(), err, daemon.StatusResponse{})
 		}
+		if sel, err = resolveSelection(sel); err != nil {
+			return fleet.Result(n.Name(), err, daemon.StatusResponse{})
+		}
 		dc, err := deployConfigForNode(sel, spinloopPath)
 		if err != nil {
 			return fleet.Result(n.Name(), err, daemon.StatusResponse{})
@@ -830,6 +833,11 @@ func runFleetRoute(path, node, prefer string, args []string) error {
 	}
 	sel, resolvedPath, err := readSpinloop("spinloop fleet route <spinloop>", spinloopPath)
 	if err != nil {
+		return err
+	}
+	// Resolve before routing: the selector matches the node that can serve the
+	// model the file names once its references are expanded.
+	if sel, err = resolveSelection(sel); err != nil {
 		return err
 	}
 
