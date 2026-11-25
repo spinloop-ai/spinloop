@@ -648,3 +648,41 @@ func TestModelKey(t *testing.T) {
 		t.Errorf("with alias: modelKey = %q, want my-model", got)
 	}
 }
+
+// A stored key is referenced by its file in the opencode config, and the note
+// names that file rather than the variable.
+func TestOpencodeApplyNamesTheStoredKeyFile(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	auth := filepath.Join(home, ".unsloth", "studio", "auth")
+	if err := os.MkdirAll(auth, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	keyPath := filepath.Join(auth, ".cli_api_key_cli_0123abcd")
+	if err := os.WriteFile(keyPath, []byte("sk-unsloth-stored\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cat, err := catalog.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, _ := Lookup("opencode")
+	sel := spinloop.Selection{Provider: "unsloth", Alias: "inkling-2-mini", BaseURL: "http://127.0.0.1:8084/v1"}
+	sum, err := h.Apply(cat.Providers["unsloth"], sel, 0, 0, true, func(string) string { return "" })
+	if err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	want := "API key read from " + keyPath + " when opencode runs."
+	if !strings.Contains(strings.Join(sum.Notes, "\n"), want) {
+		t.Errorf("notes = %q, want %q", sum.Notes, want)
+	}
+	config, err := os.ReadFile(sum.ConfigPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(config), catalog.FileRef(keyPath)) || strings.Contains(string(config), "sk-unsloth-stored") {
+		t.Errorf("config should reference the key file and not hold the key:\n%s", config)
+	}
+}

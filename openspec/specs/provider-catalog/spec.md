@@ -119,11 +119,25 @@ instruction, the process environment, or the `.env` beside the Spinloop), and
 the provider's endpoint is local, the key SHALL be read from the file the
 pattern matches, with surrounding whitespace removed; when several files
 match, the most recently modified one SHALL be used. A key read this way SHALL
-count as set: it is referenced in harness configs exactly as a set variable
-is, and supplied to a launched harness under the key variable's name. The key
-file SHALL NOT be read for a remote endpoint, and its contents SHALL NOT be
-written to any harness config. No matching file, or an empty one, SHALL mean
-the key is unset.
+count as set, and SHALL be supplied to a launched harness under the key
+variable's name. In the opencode config, the provider's key SHALL reference
+the matched file by its path, in opencode's file-reference form, so that any
+opencode process that loads the config reads the key itself, whatever its own
+environment. The other harnesses SHALL reference the key variable, as they do
+for a set variable. The key file SHALL NOT be read for a remote endpoint, and
+its contents SHALL NOT be written to any harness config. No matching file, or
+an empty one, SHALL mean the key is unset.
+
+Whether a launch looks up a stored key SHALL depend on the provider the
+launched harness will use, not on whether the launch applies a Spinloop. That
+provider SHALL be the applied Spinloop's when the launch applies one; otherwise
+the provider of the harness's default model; and, for a harness whose config
+names no default model, every provider its config holds. A provider whose id is
+not in the catalogue SHALL get no stored key. The endpoint checked for being
+local SHALL be the one the apply writes for an applied Spinloop; otherwise the
+base URL the harness's config holds for the provider, or the catalogue's
+endpoint when the config holds none. The provider of a launch through a cloud
+endpoint or a fleet SHALL take its key from that endpoint, as before.
 
 A provider MAY declare `optionsRequired`: a list of option keys that MUST resolve
 to a non-empty value (whether from static options or from an environment-variable
@@ -155,15 +169,58 @@ a caller-supplied value (such as a GCP project) that has no usable default.
 - **WHEN** a provider that declares `apiKeyFile` is applied against a local
   endpoint, its key variable is set nowhere, and a file matching the pattern
   holds a key
-- **THEN** the harness config references the key variable as it would for a
-  set variable, and a harness launched by spinloop has the variable set to the
-  file's contents with surrounding whitespace removed
+- **THEN** the opencode config references the matched file by its path, the
+  Pi config references the key variable, and a harness launched by spinloop
+  has the variable set to the file's contents with surrounding whitespace
+  removed
+
+#### Scenario: opencode reads the key file whatever its environment
+
+- **WHEN** the opencode config has been applied with a key file reference, and
+  opencode is started without the key variable in its environment, as a
+  background service started earlier may be
+- **THEN** opencode reads the key from the file and its requests are
+  authenticated
+
+#### Scenario: A key variable set at apply time is referenced, not the file
+
+- **WHEN** the key variable is set when the opencode config is applied
+- **THEN** the config references the key variable, and the key file is not
+  named in it
 
 #### Scenario: A set key variable takes precedence over the key file
 
 - **WHEN** the key variable is set in an `ENV` instruction, the process
   environment, or the `.env` beside the Spinloop, and a key file also matches
 - **THEN** the variable's value is used and the file is not read
+
+#### Scenario: A launch with no Spinloop uses the default model's stored key
+
+- **WHEN** a harness is launched without applying a Spinloop, its default
+  model's provider declares `apiKeyFile`, the harness's config holds a local
+  base URL for that provider, the provider's key variable is set nowhere, and
+  a stored key exists
+- **THEN** the launched harness has the key variable set to the stored key
+
+#### Scenario: A launch with no Spinloop skips a provider configured remotely
+
+- **WHEN** the harness's config holds that provider at a base URL that is not
+  local
+- **THEN** the launched harness does not get the stored key
+
+#### Scenario: A harness with no default model gets each configured provider's key
+
+- **WHEN** a harness whose config names no default model is launched without
+  applying a Spinloop, and its config holds a provider that declares
+  `apiKeyFile` at a local base URL
+- **THEN** the launched harness gets that provider's stored key
+
+#### Scenario: A provider the harness will not use gets no stored key
+
+- **WHEN** a provider declares `apiKeyFile`, but the launch applies a
+  Spinloop for a different provider, or the harness's default model belongs to
+  a different provider
+- **THEN** the launched harness does not get that provider's stored key
 
 #### Scenario: The newest matching key file is used
 
@@ -331,14 +388,16 @@ Studio's key SHALL then be found without the user exporting it.
 
 - **WHEN** a selection names `unsloth` with a local base URL,
   `UNSLOTH_API_KEY` is set nowhere, and Studio has stored a key
-- **THEN** the harness config references `UNSLOTH_API_KEY`, and a harness
-  launched by spinloop has `UNSLOTH_API_KEY` set to the stored key
+- **THEN** the opencode config references Studio's key file by its path, the
+  Pi config references `UNSLOTH_API_KEY`, and a harness launched by spinloop
+  has `UNSLOTH_API_KEY` set to the stored key
 
 #### Scenario: The Studio key is referenced, never written
 
 - **WHEN** `UNSLOTH_API_KEY` is set, or the key comes from Studio's stored key
-- **THEN** the API key is written as a reference to `UNSLOTH_API_KEY` that the
-  harness resolves at run time, never as the resolved secret
+- **THEN** the API key is written as a reference that the harness resolves at
+  run time (to `UNSLOTH_API_KEY`, or for opencode with the variable unset, to
+  Studio's key file), never as the resolved secret
 
 #### Scenario: A remote Studio keeps the key reference
 

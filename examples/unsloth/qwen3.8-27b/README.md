@@ -61,14 +61,16 @@ export:
 spinloop code examples/unsloth/qwen3.8-27b/Spinloop
 ```
 
-The harness config stores a reference to `UNSLOTH_API_KEY`, never the key
-itself, and `spinloop code` starts the agent with the variable set. To run
-opencode yourself instead, export the key from the banner first:
+The opencode config references Studio's key file by its path, never the key
+itself. opencode reads the file, so you can also apply once and run opencode
+yourself:
 
 ```sh
-export UNSLOTH_API_KEY=sk-unsloth-…   # from the banner
 spinloop harness apply examples/unsloth/qwen3.8-27b/Spinloop
+opencode
 ```
+
+For Pi, the config references `UNSLOTH_API_KEY`, which `spinloop code` sets.
 
 You can also turn on keyless access in Studio's settings.
 

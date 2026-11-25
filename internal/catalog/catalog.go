@@ -210,7 +210,13 @@ func BuildProviderBlock(id string, p *Provider, modelOverride, baseURLOverride s
 	}
 	if p.APIKeyEnv != "" {
 		baseURL, _ := options["baseURL"].(string)
-		key := p.KeyResolver(resolve, baseURL)(p.APIKeyEnv)
+		key := resolve(p.APIKeyEnv)
+		// With the variable unset, a local server's stored key counts as set.
+		// keyFile names the file it came from, which opencode reads itself.
+		var keyFile string
+		if key == "" && IsLocalEndpoint(baseURL) {
+			keyFile, key = p.storedKeyFile()
+		}
 		switch {
 		case key == "" && p.APIKeyRequired:
 			return nil, "", fmt.Errorf("%s is not set; add it to your .env or environment", p.APIKeyEnv)
@@ -219,6 +225,12 @@ func BuildProviderBlock(id string, p *Provider, modelOverride, baseURLOverride s
 		case key == "" && p.APIKeyOptional && IsLocalEndpoint(baseURL):
 			// A local server that needs no key: leave the option out entirely
 			// rather than point it at a variable nobody will set.
+		case keyFile != "":
+			// opencode substitutes {file:path} when it reads the config, so the
+			// key is read by whichever opencode process loads it — including a
+			// background service started without the variable — and only the
+			// path, not the secret, is written.
+			options["apiKey"] = FileRef(keyFile)
 		default:
 			// opencode substitutes {env:VAR} when it reads the config, so the
 			// secret is never written to disk. The variable has to be set when
@@ -420,6 +432,13 @@ func BuildLucinateConnection(id string, p *Provider, modelOverride, baseURLOverr
 
 	conn.Model = modelOverride
 	return conn, modelOverride, nil
+}
+
+// FileRef renders a file reference in the form opencode substitutes with the
+// file's contents when it reads its config, so a key kept in a file is read by
+// opencode itself and never copied into the config.
+func FileRef(path string) string {
+	return "{file:" + path + "}"
 }
 
 // EnvRef renders an environment-variable reference in the form opencode

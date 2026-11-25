@@ -8,18 +8,32 @@ import (
 )
 
 // StoredKey returns the key held in the file APIKeyFile names, or "" when the
-// provider declares no key file, nothing matches, or the match is empty. The
-// pattern's env refs (such as $HOME) are expanded before it is globbed; when
-// several files match, the most recently modified readable one is used.
-// Surrounding whitespace, including the trailing newline a server writes, is
-// removed.
+// provider declares no key file, nothing matches, or the match is empty. See
+// StoredKeyPath for which file is read. Surrounding whitespace, including the
+// trailing newline a server writes, is removed.
 func (p *Provider) StoredKey() string {
+	_, key := p.storedKeyFile()
+	return key
+}
+
+// StoredKeyPath returns the path of the file StoredKey reads: the most recently
+// modified regular file matching APIKeyFile, after its env refs (such as
+// $HOME) are expanded. It is "" whenever StoredKey is "", so a path is only
+// returned for a file that holds a key.
+func (p *Provider) StoredKeyPath() string {
+	path, _ := p.storedKeyFile()
+	return path
+}
+
+// storedKeyFile returns the newest file matching APIKeyFile and its trimmed
+// contents, or two empty strings when there is no such file or it is empty.
+func (p *Provider) storedKeyFile() (path, key string) {
 	if p == nil || p.APIKeyFile == "" {
-		return ""
+		return "", ""
 	}
 	matches, err := filepath.Glob(os.ExpandEnv(p.APIKeyFile))
 	if err != nil {
-		return ""
+		return "", ""
 	}
 	var newest string
 	var newestMod time.Time
@@ -33,13 +47,17 @@ func (p *Provider) StoredKey() string {
 		}
 	}
 	if newest == "" {
-		return ""
+		return "", ""
 	}
 	data, err := os.ReadFile(newest)
 	if err != nil {
-		return ""
+		return "", ""
 	}
-	return strings.TrimSpace(string(data))
+	key = strings.TrimSpace(string(data))
+	if key == "" {
+		return "", ""
+	}
+	return newest, key
 }
 
 // KeyResolver returns resolve extended with the provider's stored key: a

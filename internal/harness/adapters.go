@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/spinloop-ai/spinloop/internal/catalog"
 	"github.com/spinloop-ai/spinloop/internal/contextsize"
@@ -94,9 +95,15 @@ func (opencodeHarness) Apply(p *catalog.Provider, sel spinloop.Selection, contex
 		baseURL, _ := opts["baseURL"].(string)
 		if warning := missingKeyWarning(p, baseURL, resolve); warning != "" {
 			notes = append(notes, warning)
-		} else if _, ok := opts["apiKey"]; ok {
+		} else if ref, ok := opts["apiKey"].(string); ok {
+			// A stored key is referenced by its file (catalog.FileRef), which
+			// opencode reads itself; anything else is the key variable.
+			source := p.APIKeyEnv
+			if path, isFile := strings.CutPrefix(ref, "{file:"); isFile {
+				source = strings.TrimSuffix(path, "}")
+			}
 			notes = append(notes, fmt.Sprintf(
-				"API key read from %s when opencode runs.", p.APIKeyEnv))
+				"API key read from %s when opencode runs.", source))
 		}
 		if b, ok := opts["baseURL"]; ok {
 			notes = append(notes, fmt.Sprintf("Base URL: %v", b))
