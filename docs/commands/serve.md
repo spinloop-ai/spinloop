@@ -424,6 +424,11 @@ stored key itself. `spinloop harness apply` writes a reference to
 `UNSLOTH_API_KEY` into the harness config, never the key, and `spinloop code`
 starts the agent with `UNSLOTH_API_KEY` set. Nothing needs exporting.
 
+This also works for a bare `spinloop code`, with no Spinloop. The provider is
+then taken from the harness's default model (for opencode, `unsloth/…`), and
+the endpoint from the harness's config. A harness with no default model, such
+as Pi, is checked for every provider in its config.
+
 - A harness you start yourself, outside `spinloop code`, still needs
   `UNSLOTH_API_KEY` exported, because the config only references it.
 - A Studio on another machine (a non-local `BASEURL` or `UNSLOTH_BASE_URL`)
