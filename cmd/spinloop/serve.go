@@ -331,6 +331,12 @@ func runServe(args []string, dryRun, apiOn bool, apiAddr, logLevel string) error
 	if err != nil {
 		return err
 	}
+	// Resolve before the engine is chosen: PROVIDER decides the engine, and the
+	// rest of the scalars (MODEL, CONTEXT, PRESET path…) feed the command it
+	// builds. ENV/PARAM resolution stays at its own later choke points.
+	if sel, err = resolveSelection(sel); err != nil {
+		return err
+	}
 	engine, err := engineFor(sel.Provider)
 	if err != nil {
 		return err

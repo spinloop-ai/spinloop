@@ -75,7 +75,10 @@ inside a Spinloop names the *model* — it is the key your agent shows, and
 `llama-server --alias` under [`serve`](serve.md). A registered **alias** names
 the *Spinloop file* to `spinloop`. Registration defaults the second to the first
 because you have usually already written a good name; `--name`/`-n` separates
-them, and is required when a Spinloop states no `ALIAS` at all.
+them, and is required when a Spinloop states no `ALIAS` at all. Where the
+instruction's value carries an environment reference, the registration takes
+the resolved name — the entry lives on this machine, where this machine's
+environment is what the reference speaks for.
 
 ## Notes
 

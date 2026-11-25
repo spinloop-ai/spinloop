@@ -1,7 +1,8 @@
 // Package envref resolves environment references in a value: `$NAME`,
 // `${NAME}` and `${NAME:-default}`, with `$$` for a literal `$`. It is the
-// one grammar shared by every place a value is read — Spinloop PARAM lines
-// and preset entry values — so the two spell the same language.
+// one grammar shared by every place a Spinloop value is read — every
+// instruction's value, PARAM lines, and preset entry values — so they all
+// spell the same language.
 //
 // The grammar follows the shell and Docker Compose conventions:
 //

@@ -25,15 +25,21 @@
 // ENV sets an environment variable for the local `spinloop` process — one of
 // two keywords that may appear more than once. It carries a single KEY=VALUE
 // token and is used by the cloud commands (which read it before signing AWS
-// calls); it is local-only and never reaches a deployed instance.
+// calls); it is local-only and never reaches a deployed instance. The key is
+// a name and stays literal; the value may carry environment references,
+// resolved by the command that layers the file's environment, at the moment
+// the variable is set.
 //
 // PARAM names one engine flag, in the engine's own vocabulary — `PARAM
 // jinja = 1`, `PARAM hf = org/model:QUANT` — the inline alternative to a
 // preset file for the same options. Like ENV it may repeat; what a PARAM does
 // to the served engine's command is the concern of the command that consumes
-// it (`serve`, `cloud deploy`), never of this parser. Its value may carry
-// environment references — `$FOO`, `${FOO}`, `${FOO:-bar}` — and resolving
-// them is the consuming command's concern too: the parser keeps the raw text.
+// it (`serve`, `cloud deploy`), never of this parser.
+//
+// Any instruction's value may carry environment references — `$FOO`,
+// `${FOO}`, `${FOO:-bar}` — and resolving them is the consuming command's
+// concern, never this parser's: the parser keeps the raw text so `show` and
+// `export` re-render the reference rather than a resolved value.
 //
 // Keywords are matched case-insensitively, but UPPERCASE is canonical (it is
 // what `spinloop export` emits). Blank lines, full-line `#` comments, and
@@ -87,7 +93,9 @@ type Selection struct {
 }
 
 // EnvVar is one ENV instruction: an environment variable to set for the local
-// spinloop process.
+// spinloop process. The Key is a name and is never resolved; the Value is the
+// file's raw text, resolved by the command that layers the Spinloop's
+// environment at the moment it sets the variable.
 type EnvVar struct {
 	Key   string
 	Value string
@@ -98,7 +106,8 @@ type EnvVar struct {
 // be empty — the PARAM written `key =` or bare `key` — naming a bare flag.
 // The value is the file's raw text: environment references are resolved by
 // the command that consumes the PARAM, never by parsing, so `show` and
-// `export` re-render the reference rather than a resolved value.
+// `export` re-render the reference rather than a resolved value. The key is a
+// flag name and is never resolved.
 type Param struct {
 	Key   string
 	Value string

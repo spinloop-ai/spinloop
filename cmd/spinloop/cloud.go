@@ -19,6 +19,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spinloop-ai/spinloop/internal/cloud"
 	"github.com/spinloop-ai/spinloop/internal/contextsize"
+	"github.com/spinloop-ai/spinloop/internal/envref"
 	"github.com/spinloop-ai/spinloop/internal/fleet"
 	"github.com/spinloop-ai/spinloop/internal/inference"
 	"github.com/spinloop-ai/spinloop/internal/opencode"
@@ -60,6 +61,12 @@ func cmdCloud(args []string) error {
 //     the environment wins, so a deliberately exported credential is not shadowed;
 //  2. the Spinloop's ENV instructions override both.
 //
+// An ENV value may itself carry environment references ($FOO, ${FOO},
+// ${FOO:-bar} — see internal/envref), which resolve here, at the moment the
+// value is set, against the environment the earlier pass left; its key is a
+// name and reaches os.Setenv exactly as written. A malformed reference fails
+// the command naming the ENV key.
+//
 // ENV (and .env) apply only to this local process; they are never sent to the
 // deployed instance — deployConfigFor builds the deploy payload from Spinloop
 // fields alone. spinloopPath is the Spinloop's own path; its directory is where
@@ -82,7 +89,11 @@ func applySpinloopEnv(sel spinloop.Selection, spinloopPath string) error {
 		}
 	}
 	for _, e := range sel.Env {
-		if err := os.Setenv(e.Key, e.Value); err != nil {
+		value, err := envref.Expand(e.Value)
+		if err != nil {
+			return fmt.Errorf("ENV %s: %w", e.Key, err)
+		}
+		if err := os.Setenv(e.Key, value); err != nil {
 			return err
 		}
 	}
@@ -1238,6 +1249,12 @@ func deriveDeployTarget(usage, spinloopArg, env string) (sel spinloop.Selection,
 	// region, and the SPINLOOP_CLOUD_* overrides all see it. ENV stays local — it
 	// never enters dc, so nothing here reaches the deployed instance.
 	if err = applySpinloopEnv(sel, spinloopPath); err != nil {
+		return
+	}
+	// Resolve after the environment layers, so the file's own ENV feeds the
+	// values the deploy config derives from; PARAMs resolve inside
+	// deployConfigFor's own choke point on the same environment.
+	if sel, err = resolveSelection(sel); err != nil {
 		return
 	}
 	dc, err = deployConfigFor(sel, spinloopPath)

@@ -84,6 +84,9 @@ func runCloudSeedStart(args []string, force bool, revision, region string) error
 	if err := applySpinloopEnv(sel, filepath.Dir(spinloopPath)); err != nil {
 		return err
 	}
+	if sel, err = resolveSelection(sel); err != nil {
+		return err
+	}
 	dc, err := deployConfigFor(sel, spinloopPath)
 	if err != nil {
 		return err

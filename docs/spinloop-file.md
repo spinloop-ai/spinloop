@@ -244,11 +244,12 @@ Rules:
   resolves against the Spinloop's own directory, or against its URL when the
   Spinloop itself was fetched from one; `PRESET` may also be an absolute URL of
   its own, fetched only when `serve` (or `spinloop cloud deploy`) builds the
-  launch command — never merely because the Spinloop was read. The file is read
-  in the flag vocabulary of the engine `PROVIDER` names, so a preset written
-  for llama.cpp is not portable to oMLX and vice versa. Its entry values
-  resolve environment references the same way a `PARAM` value does, so a
-  shared preset can carry a machine-specific path or tag; its keys do not,
+  launch command — never merely because the Spinloop was read. The path itself
+  may carry environment references, resolved before that lookup. The file is
+  read in the flag vocabulary of the engine `PROVIDER` names, so a preset
+  written for llama.cpp is not portable to oMLX and vice versa. Its entry
+  values resolve environment references the same way any other value does, so
+  a shared preset can carry a machine-specific path or tag; its keys do not,
   being flag names.
 - `PARAM` sets engine flags the Spinloop's typed instructions don't cover. It
   is repeatable — one `key = value` per line — in the same flag vocabulary a
@@ -259,12 +260,9 @@ Rules:
   value (`PARAM jinja =`). Where a PARAM and a preset set the same flag, the
   PARAM stands over the preset; where the Spinloop states an instruction of its
   own, the instruction stands over the PARAM — `PARAM ctx-size = 65536` loses
-  to `CONTEXT 131072`. A value may pull an environment variable in —
-  `$FOO`, `${FOO}`, or `${FOO:-fallback}` (the fallback stands when the
-  variable is unset or empty), with `$$` for a literal `$` — resolved when
-  `serve` or `deploy` builds the command, not when the file is read, so
-  `export` and `show` keep the raw text. A malformed reference fails naming
-  the PARAM key. There is a runnable walkthrough in
+  to `CONTEXT 131072`. A value may carry an environment reference (see
+  [Environment references](#environment-references) below); a malformed one
+  fails naming the PARAM key. There is a runnable walkthrough in
   [`examples/env-refs/`](https://github.com/spinloop-ai/spinloop/tree/main/examples/env-refs).
   Used only by
   [`spinloop serve`](commands/serve.md) and
@@ -287,7 +285,9 @@ Rules:
   your shell, then the `.env` — the same rule everywhere spinloop resolves local
   variables. `ENV` applies only on the machine running `spinloop`; it is never sent
   to a deployed instance, and on the harness path it shapes only the launched
-  agent, never spinloop's own environment.
+  agent, never spinloop's own environment. The value half of `KEY=VALUE` may
+  carry environment references, resolved at the moment the variable is set;
+  the key is a name and stays literal.
 - The `REMOTE` keyword was removed: a `REMOTE` line fails, naming the line and
   the replacement — `spinloop cloud deploy --node <name>` at deploy time and
   `--node <name>` on `apply`, `unapply`, `harness`, and the `cloud`
@@ -299,6 +299,44 @@ Rules:
   writes.
 - **Comments** start with `#`, either on their own line or at the end of a line.
   Blank lines are ignored.
+
+## Environment references
+
+The value of **every** instruction may pull an environment variable in —
+`$FOO`, `${FOO}`, or `${FOO:-fallback}` (the fallback stands when the
+variable is unset or empty), with `$$` for a literal `$`. A `$` that begins
+none of these forms stays exactly as written, so values may freely contain
+`$5` or `100%$`; an empty default, `${FOO:-}`, is fine.
+
+```
+PROVIDER llamacpp
+MODEL    org/model:${HF_TAG:-Q4_K_M}     # a quantisation per machine
+BASEURL  http://${HOST:-localhost}:8080/v1
+CONTEXT  ${CTX:-32k}
+PRESET   ${PRESETS_DIR}/team.ini
+```
+
+References resolve when a command **consumes** a value — when `serve` builds
+its command, when `apply` writes the harness config, when a `cloud deploy` or
+a node wake derives its deploy-config — never when the file is read, so
+`export` and `show` keep rendering the raw text and re-rendering a file can
+never write a resolved value anywhere. The text that resolves is what every
+later reading then interprets: a `CONTEXT ${CTX:-32k}` is size-parsed as
+`32k`, a `PROVIDER` is looked up as the engine it names, a `PRESET` path is
+fetched from where it points.
+
+The values resolve against the environment the command holds at that moment.
+On the paths that first layer the Spinloop's own `ENV` lines and `.env` onto
+it — `cloud deploy`, a fleet start or wake, the gateway, a supervised serve —
+any value may reference what the file's own `ENV` contributes.
+
+Names are never resolved: instruction keywords, `PARAM` keys, preset entry
+keys and `ENV` keys are literal text. A malformed reference — an
+unterminated `${`, an invalid name like `${1FOO}`, or a form this grammar
+does not speak such as `${FOO:+x}` — fails the consuming command, naming the
+keyword, the PARAM key, or the preset line it came from, rather than passing
+raw text to an engine. There is a runnable walkthrough in
+[`examples/env-refs/`](https://github.com/spinloop-ai/spinloop/tree/main/examples/env-refs).
 
 To see the available providers, run `spinloop provider list`. To find a `MODEL` id for one,
 run `spinloop provider list --models <provider>`, which asks the provider's own endpoint

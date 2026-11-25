@@ -517,6 +517,9 @@ environment's registered cloud.json.`,
 			if err != nil {
 				return err
 			}
+			if sel, err = resolveSelection(sel); err != nil {
+				return err
+			}
 			sel.Providers = providers
 			// A command-line --output/-o overrides the Spinloop's OUTPUT instruction.
 			if output != "" {
@@ -565,6 +568,11 @@ applied the Spinloop against, or there is nothing to remove.`,
 			}
 			sel, spinloopPath, err := readSpinloop("spinloop harness unapply <file>", path)
 			if err != nil {
+				return err
+			}
+			// Resolve the same way apply did, so unapply looks up the provider
+			// block apply wrote — keyed on the resolved values.
+			if sel, err = resolveSelection(sel); err != nil {
 				return err
 			}
 			sel.Providers = providers
@@ -653,6 +661,12 @@ func runAlias(args []string, name string, force, list bool) error {
 	// not parse is a mistake worth catching now, not days later under `serve`.
 	sel, path, err := readSpinloop("spinloop alias [path]", arg)
 	if err != nil {
+		return err
+	}
+	// The registration name comes from the resolved ALIAS: the entry lives on
+	// this machine, where this machine's environment is the one that decides
+	// what the file's references stand for.
+	if sel, err = resolveSelection(sel); err != nil {
 		return err
 	}
 	if name == "" {
@@ -1305,6 +1319,11 @@ func applyBeforeLaunch(f spinloopPathFlag, providers string, h harness.Harness, 
 	}
 	sel, path, err := readSpinloop("spinloop harness --spinloop=<file>", f.path)
 	if err != nil {
+		return spinloop.Selection{}, "", nil, nil, err
+	}
+	// Resolve before routing: the fleet selector wakes the node that can serve
+	// the model the file actually names once its references are expanded.
+	if sel, err = resolveSelection(sel); err != nil {
 		return spinloop.Selection{}, "", nil, nil, err
 	}
 	sel, envDir, cloudResp, choice, err := applyRoutedSpinloop(sel, path, providers, h, route, false)
