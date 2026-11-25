@@ -32,23 +32,56 @@ func TestInventory_ReadsThePlanesRecord(t *testing.T) {
 	defer server.Close()
 
 	cfg := Config{StatsURL: server.URL, Node: "ignored", Region: "eu-west-1"}
-	nodes, err := Inventory(context.Background(), cfg)
+	inv, err := ReadInventory(context.Background(), cfg)
 	if err != nil {
 		t.Fatalf("inventory: %v", err)
 	}
 	if calledWithEnv {
 		t.Error("the inventory must be asked without naming a node")
 	}
-	if len(nodes) != 1 {
-		t.Fatalf("nodes = %v", nodes)
+	if len(inv.Nodes) != 1 {
+		t.Fatalf("nodes = %v", inv.Nodes)
 	}
-	e := nodes[0]
+	e := inv.Nodes[0]
 	if e.Name != "dev" || e.DeployedBy != "pete" || e.Served() != "qwen" ||
 		e.BaseURL != "http://198.51.100.9:8000/v1" || e.State != "running" {
 		t.Errorf("node parsed wrong: %+v", e)
 	}
 	if !strings.Contains(e.Since(), "2026-11-01") {
 		t.Errorf("Since() = %q, want the deploy date in it", e.Since())
+	}
+	if inv.Complete() || len(inv.Errors) != 1 {
+		t.Errorf("the plane's own read failures must travel with the answer: %+v", inv.Errors)
+	}
+	if inv.Uncertain() == nil {
+		t.Error("an answer carrying errors cannot settle what is deployed")
+	}
+	if _, found := inv.Lookup("dev"); !found {
+		t.Error("Lookup should find the node the plane did read")
+	}
+}
+
+// An answer that admits its own gaps must say so: absence from a short list
+// is not the plane's "no such node", and callers deciding existence (or a
+// deploy deciding a name is free) have to be able to tell the two apart.
+func TestInventory_IncompleteAnswerIsUncertain(t *testing.T) {
+	stubAWSEnv(t)
+	server := httptest.NewServer(planeReply(`{"nodes":[],"errors":["list failed: AccessDeniedException"]}`))
+	defer server.Close()
+
+	inv, err := ReadInventory(context.Background(), Config{StatsURL: server.URL, Region: "eu-west-1"})
+	if err != nil {
+		t.Fatalf("inventory: %v", err)
+	}
+	if _, found := inv.Lookup("dev"); found {
+		t.Fatal("the plane listed no dev")
+	}
+	if inv.Complete() {
+		t.Fatal("the plane reported an error")
+	}
+	err = inv.Uncertain()
+	if err == nil || !strings.Contains(err.Error(), "incomplete") || !strings.Contains(err.Error(), "AccessDeniedException") {
+		t.Errorf("Uncertain = %v, want it to name the plane's own failure", err)
 	}
 }
 
@@ -60,7 +93,7 @@ func TestInventory_PlaneWithoutTheField(t *testing.T) {
 	server := httptest.NewServer(planeReply(`{"state":"stopped","version":"1.2.0"}`))
 	defer server.Close()
 
-	_, err := Inventory(context.Background(), Config{StatsURL: server.URL, Region: "eu-west-1"})
+	_, err := ReadInventory(context.Background(), Config{StatsURL: server.URL, Region: "eu-west-1"})
 	if err == nil || !strings.Contains(err.Error(), "does not report its nodes") {
 		t.Errorf("a pre-inventory plane should say so, got %v", err)
 	}
@@ -76,16 +109,16 @@ func TestInventory_EmptyPlaneIsEmptyAnswer(t *testing.T) {
 	server := httptest.NewServer(planeReply(`{"nodes":[]}`))
 	defer server.Close()
 
-	nodes, err := Inventory(context.Background(), Config{StatsURL: server.URL, Region: "eu-west-1"})
-	if err != nil || len(nodes) != 0 {
-		t.Errorf("nodes = %v, err = %v; want an empty answer", nodes, err)
+	inv, err := ReadInventory(context.Background(), Config{StatsURL: server.URL, Region: "eu-west-1"})
+	if err != nil || len(inv.Nodes) != 0 || !inv.Complete() {
+		t.Errorf("inv = %+v, err = %v; want a complete empty answer", inv, err)
 	}
 }
 
 // A plane with no stats endpoint to read cannot be listed, and the failure
 // names the variable that supplies one.
 func TestInventory_NoStatsEndpointNamesTheFix(t *testing.T) {
-	_, err := Inventory(context.Background(), Config{Region: "eu-west-1"})
+	_, err := ReadInventory(context.Background(), Config{Region: "eu-west-1"})
 	if err == nil || !strings.Contains(err.Error(), "SPINLOOP_CLOUD_STATS_URL") {
 		t.Errorf("err = %v, want it to name the stats variable", err)
 	}
@@ -97,7 +130,7 @@ func TestInventory_UnreadableReply(t *testing.T) {
 	server := httptest.NewServer(planeReply("{not json"))
 	defer server.Close()
 
-	_, err := Inventory(context.Background(), Config{StatsURL: server.URL, Region: "eu-west-1"})
+	_, err := ReadInventory(context.Background(), Config{StatsURL: server.URL, Region: "eu-west-1"})
 	if err == nil || !strings.Contains(err.Error(), "parsing") {
 		t.Errorf("err = %v, want a parsing failure", err)
 	}
@@ -224,5 +257,24 @@ func TestInventoryEntryFields(t *testing.T) {
 	}
 	if (Node{DeployedAt: "not a time"}).Since() != "not a time" {
 		t.Error("an unparsable deploy time should be shown as reported")
+	}
+}
+
+// A plane deployed before undeploy existed answers action=undeploy the way it
+// answers any unknown action: by terminating. Its echo names no node under the
+// new key and lists nothing released — the verb must refuse that as "this
+// plane cannot undeploy" rather than report a completed teardown (and, worst
+// of all, a successful dry run over a destroy).
+func TestUndeploy_OldPlaneTerminateEchoIsRefused(t *testing.T) {
+	stubAWSEnv(t)
+	server := httptest.NewServer(planeReply(`{"state":"terminating","environment":"dev"}`))
+	defer server.Close()
+
+	for _, dry := range []bool{false, true} {
+		_, err := Undeploy(context.Background(), Config{StopURL: server.URL, Node: "dev", Region: "eu-west-1"}, dry)
+		if err == nil || !strings.Contains(err.Error(), "does not understand undeploy") ||
+			!strings.Contains(err.Error(), "spinloop cloud bootstrap") {
+			t.Errorf("dryRun=%v: err = %v, want the old-plane refusal naming the repair", dry, err)
+		}
 	}
 }

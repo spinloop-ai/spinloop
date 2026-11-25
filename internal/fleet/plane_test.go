@@ -3,6 +3,7 @@ package fleet
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/http/httputil"
@@ -202,3 +203,20 @@ func controlAnswers(body string, code int) http.Handler {
 // testCtx is the context a test resolves a plane with: these commands are
 // one-shot here, so there is nothing to cancel.
 func testCtx() context.Context { return context.Background() }
+
+// stubPlaneHalfRead is a plane that answers the inventory while admitting it
+// could not read part of it — the answer from which absence proves nothing.
+func stubPlaneHalfRead(t *testing.T) string {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Query().Get("env") == "" {
+			io.WriteString(w, `{"nodes":[],"errors":["list failed: AccessDeniedException"]}`)
+			return
+		}
+		io.WriteString(w, `{"state":"running","healthy":true}`)
+	}))
+	t.Cleanup(srv.Close)
+	stubPlaneEndpoints(t, srv.URL)
+	return srv.URL
+}

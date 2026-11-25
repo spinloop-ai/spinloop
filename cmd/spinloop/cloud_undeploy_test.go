@@ -171,3 +171,25 @@ func TestCloudUndeploy_ReportsAnEmptyReleasePlainly(t *testing.T) {
 		t.Errorf("an empty release should be said plainly:\n%s", out)
 	}
 }
+
+// An inventory the plane itself reported as incomplete cannot certify that a
+// name is absent — the absent name may be exactly what the plane could not
+// read — and this verb destroys, so it must refuse rather than guess, without
+// ever reaching the destroy request.
+func TestCloudUndeploy_IncompleteInventoryIsNotAbsence(t *testing.T) {
+	isolateConfig(t)
+	rec := &undeployRecorder{}
+	stubPlane(t, rec.handler(), "other")
+	planeInventoryErrors = []string{"list failed: AccessDeniedException"}
+	t.Cleanup(func() { planeInventoryErrors = nil })
+
+	err := cmdCloudUndeploy([]string{"--node", "dev", "--yes"})
+	if err == nil ||
+		!strings.Contains(err.Error(), "cannot check whether cloud node") ||
+		!strings.Contains(err.Error(), "incomplete") {
+		t.Fatalf("err = %v, want a refusal to conclude absence from a half-read inventory", err)
+	}
+	if calls, _ := rec.undeployCalls(); calls != 0 {
+		t.Errorf("a refused undeploy must never reach the plane: %d calls", calls)
+	}
+}

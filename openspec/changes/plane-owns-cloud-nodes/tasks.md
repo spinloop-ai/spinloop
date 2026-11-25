@@ -67,3 +67,32 @@ behaviour.
 - [x] 8.4 Run the `examples/fleet-docker` fleet integration path CI runs per PR and confirm it still passes, since it exercises mixed-node fan-out and the gateway
 - [ ] 8.5 Verify end to end against a real plane: `cloud bootstrap`-less machine → `cloud ls` lists the plane, `--node` resolves a node deployed elsewhere, `cloud undeploy --dry-run` lists its resources, and confirm nothing new appears under `~/.config/spinloop/`
 - [ ] 8.6 At archive time, reword the surviving "environment" scenario titles inside the synced `openspec/specs/` requirements (kept verbatim so the delta's MODIFIED blocks match) to the node wording, and confirm `openspec validate --specs` passes
+
+## 9. Review follow-ups (PR review)
+
+- [x] 9.1 Grant the stop role `secretsmanager:DescribeSecret` on the node's
+  secret ARN — the undeploy asks before deleting, and a denied Describe aborts
+  the teardown after the instance is gone — and extend the stack test's grant
+  list
+- [x] 9.2 Carry the inventory's own read failures through the client
+  (`Inventory.Errors`) and refuse to read absence from an incomplete answer at
+  every existence gate (fleet rows, gateway wake, undeploy, deploy guard),
+  while `cloud ls` reports the gaps beside the list it did get
+- [x] 9.3 Move the revalidate-once repair onto the shared transport so stats,
+  inventory and schedule reads heal a moved plane like control calls do, with
+  a test that a long-lived process's stats read recovers after a re-bootstrap
+- [x] 9.4 Refuse `Undeploy` against a plane predating the verb — a 200 echo
+  with neither `node` nor `released` is the old terminate, and a dry run must
+  not report success over a destroy
+- [x] 9.5 Correct the copy that outlived the behaviour: the `cloud.go` header
+  comment claiming a `default` node, and the `--region` help advertising the
+  removed `us-east-1` fallback
+- [x] 9.6 Correct the CHANGELOG breaking note that read as if `ENV` lines
+  stopped being applied; what died is the registry lookup
+- [ ] 9.7 Make `cloud.IsNodeName` refuse names the plane's grammar refuses,
+  and stop the fleet's plane cache from recording a context-cancelled read as
+  that plane's answer
+- [ ] 9.8 Clear the review's P2 items: completion's version-skew warning off
+  stderr, the duplicated undeploy name fallback, the SSM parameter grant's
+  missing `/`, parallel per-node inventory reads on the plane, `apply --node`
+  refusing an address-less node, and `-n` on `cloud deploy` meaning `--node`

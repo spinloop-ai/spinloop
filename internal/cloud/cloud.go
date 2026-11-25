@@ -471,47 +471,36 @@ func Env(ctx context.Context, cfg Config) (*Response, error) {
 // query parameter on every call — the Lambdas are shared across nodes and
 // require it; the parameter name itself is legacy.
 func call(ctx context.Context, cfg Config, method, rawURL string, body []byte) (*Response, error) {
-	out, err := callOnce(ctx, cfg, method, rawURL, body)
-	if retried, ok := revalidate(ctx, cfg, method, rawURL, body, out, err); ok {
-		return retried, nil
-	}
-	return out, err
+	return callOnce(ctx, cfg, method, rawURL, body)
 }
 
-// revalidate retries one control call against the plane as it is now, when the
-// failure says the plane is not where this process thinks it is — a host that
-// cannot be reached, or a credential rejected because the plane it belonged to
-// has been re-bootstrapped. A long-lived process (a dashboard, the gateway)
-// then heals at its first failed call instead of staying wrong until it is
-// restarted; a call that failed for any ordinary reason is not retried.
-//
-// ok is false when nothing was retried, and the caller reports what it got.
-func revalidate(
+// sendPlane is send with the plane's one repair built in: when the attempt
+// failed the way a moved or re-bootstrapped plane fails — the host cannot be
+// reached, or the authorizer rejects the credential because it belonged to
+// the plane that used to be — the plane is resolved once more and the request
+// is sent once against the answer. Every verb that reaches the plane goes
+// through here, so the repair is the rule rather than per-verb luck: a
+// long-lived process (a dashboard, the gateway) heals at its first failed
+// call instead of staying wrong until it is restarted. Any ordinary failure
+// is returned as it came.
+func sendPlane(
 	ctx context.Context, cfg Config, method, rawURL string, body []byte,
-	out *Response, callErr error,
-) (*Response, bool) {
-	stale := stalePlane(callErr)
-	if !stale && out != nil {
-		// A Function URL authorizer rejects an expired credential with a 403
-		// reply rather than a transport failure, and says so in its body.
-		stale = out.StatusCode == http.StatusForbidden && expiredCredsMarker(out.summary())
-	}
+) (int, []byte, error) {
+	status, respBody, err := send(ctx, cfg, method, rawURL, body)
+	stale := stalePlane(err) ||
+		(err == nil && status == http.StatusForbidden && expiredCredsMarker(string(respBody)))
 	if !stale {
-		return nil, false
+		return status, respBody, err
 	}
 	next, changed := refreshPlane(ctx, cfg, os.Getenv)
 	if !changed {
-		return nil, false
+		return status, respBody, err
 	}
 	called, ok := swapEndpoint(cfg, next, rawURL)
 	if !ok {
-		return nil, false
+		return status, respBody, err
 	}
-	retried, err := callOnce(ctx, next, method, called, body)
-	if err != nil {
-		return nil, false
-	}
-	return retried, true
+	return send(ctx, next, method, called, body)
 }
 
 // summary is everything a reply carries about why it failed, for the one
@@ -539,7 +528,7 @@ func callOnce(ctx context.Context, cfg Config, method, rawURL string, body []byt
 		u.RawQuery = q.Encode()
 		rawURL = u.String()
 	}
-	status, respBody, err := send(ctx, cfg, method, rawURL, body)
+	status, respBody, err := sendPlane(ctx, cfg, method, rawURL, body)
 	if err != nil {
 		return nil, err
 	}
@@ -821,32 +810,18 @@ func callStats(ctx context.Context, cfg Config) (*StatsResponse, error) {
 		u.RawQuery = q.Encode()
 		rawURL = u.String()
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	status, respBody, err := sendPlane(ctx, cfg, http.MethodGet, rawURL, nil)
 	if err != nil {
 		return nil, err
 	}
-	body := []byte{}
-	if err := sign(ctx, req, cfg.Region, body); err != nil {
-		return nil, err
-	}
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if err != nil {
-		return nil, err
-	}
-	checkControlPlaneVersion(resp.Header)
-	out := &StatsResponse{StatusCode: resp.StatusCode}
+	out := &StatsResponse{StatusCode: status}
 	if err := json.Unmarshal(respBody, out); err != nil {
 		hint := ""
-		if resp.StatusCode == http.StatusForbidden {
+		if status == http.StatusForbidden {
 			hint = forbiddenHint(cfg.Region, string(respBody))
 		}
 		return nil, fmt.Errorf("stats returned HTTP %d%s: %s",
-			resp.StatusCode, hint, truncate(string(respBody), 200))
+			status, hint, truncate(string(respBody), 200))
 	}
 	return out, nil
 }

@@ -516,7 +516,7 @@ derivation, consent, and registration behaviour as "spinloop cloud deploy".`,
 	fs.BoolVar(&overwrite, "overwrite", false, "proceed against a node the plane already holds, or one that is running")
 	fs.BoolVar(&reseed, "reseed", false, "re-fetch the weights even if they are already in S3 (starts a ~20-minute seed)")
 	fs.StringVar(&allowedCidr, "allowed-cidr", "", "who may reach each node's instance (default: your public IP as a /32, on first deploy)")
-	fs.StringVar(&region, "region", "", "AWS region of the control plane (default: AWS_REGION or us-east-1)")
+	fs.StringVar(&region, "region", "", "AWS region of the control plane (default: SPINLOOP_CLOUD_REGION, then the region your AWS credentials configure)")
 	fs.StringVar(&spinloopVersion, "spinloop-version", "", "spinloop release each node's instances install at boot (default: latest)")
 	fs.StringVar(&apiKeyEnv, "api-key-env", "", "name the environment variable holding the engine key to create or rotate, applied to every targeted node; with no flag each node keeps its stored key")
 	c.ValidArgsFunction = noPositionals

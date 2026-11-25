@@ -252,3 +252,32 @@ func TestCloudList(t *testing.T) {
 		}
 	})
 }
+
+// A plane that could not fully read its own record must say so beside the
+// list rather than let a short list pass as the whole plane: the gaps go to
+// stderr, the list itself stays clean on stdout.
+func TestCloudList_ReportsItsOwnGaps(t *testing.T) {
+	isolateConfig(t)
+	stubPlane(t, nil, "dev")
+	planeInventoryErrors = []string{"dev: elastic IP AccessDeniedException"}
+	t.Cleanup(func() { planeInventoryErrors = nil })
+
+	var errOut string
+	out := captureStdout(t, func() {
+		errOut = captureStderr(t, func() {
+			if err := cmdCloudList(nil); err != nil {
+				t.Fatalf("cloud ls: %v", err)
+			}
+		})
+	})
+	if !strings.Contains(out, "dev") {
+		t.Errorf("the node the plane did read should still be listed:\n%s", out)
+	}
+	if !strings.Contains(errOut, "could not fully read its record") ||
+		!strings.Contains(errOut, "AccessDeniedException") {
+		t.Errorf("the plane's own failures should be said beside the list:\n%s", errOut)
+	}
+	if strings.Contains(out, "could not fully read") {
+		t.Errorf("stdout must stay the clean list:\n%s", out)
+	}
+}

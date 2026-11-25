@@ -540,8 +540,8 @@ func stubDeploySeams(t *testing.T, serverURL, statusState string, holds ...cloud
 			Region: "us-east-1",
 		}}, nil
 	}
-	cloudInventoryFn = func(context.Context, cloud.Config) ([]cloud.Node, error) {
-		return holds, nil
+	cloudInventoryFn = func(context.Context, cloud.Config) (*cloud.Inventory, error) {
+		return &cloud.Inventory{Nodes: holds}, nil
 	}
 	cloudStatusFn = func(context.Context, cloud.Config) (*cloud.Response, error) {
 		return &cloud.Response{StatusCode: 200, State: statusState}, nil
@@ -1483,5 +1483,28 @@ func TestDeployConfigFor_NoCompanionsWhenNoneNamed(t *testing.T) {
 		"PROVIDER llamacpp\nALIAS qwen3.6-27b\nCONTEXT 131072\nPRESET ./preset.ini\n", qwenPreset)
 	if len(dc.Companions) != 0 {
 		t.Errorf("companions = %v, want none", dc.Companions)
+	}
+}
+
+// The overwrite guard asks the plane whether the name is taken. A half-read
+// inventory cannot certify a name free — deploying over a colleague's node on
+// the strength of a gap is exactly the clobber the guard exists to refuse —
+// so a deploy against such a plane stops rather than creating.
+func TestCmdDeploy_IncompleteInventoryCannotCertifyAFreeNode(t *testing.T) {
+	isolateConfig(t)
+	stubAWSEnv(t)
+	stubDeploySeams(t, "https://unused", "undeployed")
+	cloudInventoryFn = func(context.Context, cloud.Config) (*cloud.Inventory, error) {
+		return &cloud.Inventory{Errors: []string{"list failed: AccessDeniedException"}}, nil
+	}
+	writeDeploySpinloopCwd(t)
+	err := cmdCloudDeploy([]string{"--node", "testenv"})
+	if err == nil ||
+		!strings.Contains(err.Error(), "cannot check whether cloud node") ||
+		!strings.Contains(err.Error(), "already exists") {
+		t.Fatalf("err = %v, want a refusal to treat an incomplete inventory as a free name", err)
+	}
+	if !strings.Contains(err.Error(), "AccessDeniedException") {
+		t.Errorf("the refusal should carry the plane's own failure: %v", err)
 	}
 }

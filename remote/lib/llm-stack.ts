@@ -539,9 +539,12 @@ export class LlmStack extends cdk.Stack {
       }),
     );
     // The node's own API-key secret, under the shared cloud-vm-llm scope.
+    // Delete alone is not enough: the undeploy asks the secret whether it
+    // exists before deleting it, and a denied Describe would abort the
+    // teardown after the instance is already gone.
     stopFn.addToRolePolicy(
       new iam.PolicyStatement({
-        actions: ['secretsmanager:DeleteSecret'],
+        actions: ['secretsmanager:DescribeSecret', 'secretsmanager:DeleteSecret'],
         resources: [envSecretArn],
       }),
     );

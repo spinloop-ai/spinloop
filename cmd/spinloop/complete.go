@@ -227,12 +227,12 @@ func planeNodeNames() []string {
 	if err != nil {
 		return nil
 	}
-	envs, err := cloud.Inventory(ctx, plane.Config)
+	inv, err := cloud.ReadInventory(ctx, plane.Config)
 	if err != nil {
 		return nil
 	}
-	names := make([]string, 0, len(envs))
-	for _, e := range envs {
+	names := make([]string, 0, len(inv.Nodes))
+	for _, e := range inv.Nodes {
 		names = append(names, e.Name)
 	}
 	slices.Sort(names)

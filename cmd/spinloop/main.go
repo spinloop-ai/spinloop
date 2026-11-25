@@ -37,7 +37,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -230,19 +229,15 @@ func applySelection(sel spinloop.Selection, h harness.Harness, spinloopPath, nod
 		if err != nil {
 			return err
 		}
-		envs, err := cloud.Inventory(ctx, plane.Config)
+		inv, err := cloud.ReadInventory(ctx, plane.Config)
 		if err != nil {
 			return err
 		}
-		holding := false
-		var record cloud.Node
-		for _, e := range envs {
-			if e.Name == nodeName {
-				holding, record = true, e
-				break
-			}
-		}
+		record, holding := inv.Lookup(nodeName)
 		if !holding {
+			if uncertain := inv.Uncertain(); uncertain != nil {
+				return uncertain
+			}
 			return &cloud.NotDeployed{Node: nodeName, Region: plane.Config.Region}
 		}
 		cfg, err := cloud.ResolveNode(ctx, nodeName, cloud.PlaneRequest{GetName: viperGetenv()})
@@ -1664,11 +1659,14 @@ func fetchCloudEnv(ctx context.Context, sel spinloop.Selection, nodeName string,
 	// The plane is the record of what is deployed, so it is the plane that says
 	// whether this name is a cloud node at all — a clean failure here, rather
 	// than one control call that happens to fail.
-	envs, err := cloud.Inventory(ctx, plane.Config)
+	inv, err := cloud.ReadInventory(ctx, plane.Config)
 	if err != nil {
 		return nil, err
 	}
-	if !slices.ContainsFunc(envs, func(e cloud.Node) bool { return e.Name == nodeName }) {
+	if _, found := inv.Lookup(nodeName); !found {
+		if uncertain := inv.Uncertain(); uncertain != nil {
+			return nil, uncertain
+		}
 		return nil, &cloud.NotDeployed{Node: nodeName, Region: plane.Config.Region}
 	}
 	// The call crosses the network, and a cold control plane is not instant.

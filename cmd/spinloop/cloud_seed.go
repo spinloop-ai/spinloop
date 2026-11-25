@@ -69,7 +69,7 @@ func cloudSeedStartCmd() *cobra.Command {
 	fs := c.Flags()
 	fs.BoolVar(&force, "force", false, "seed weights that are already stored, replacing them")
 	fs.StringVar(&revision, "revision", "", "commit or branch to fetch (default: the repository's default branch)")
-	fs.StringVar(&region, "region", "", "AWS region of the control plane (default: AWS_REGION or us-east-1)")
+	fs.StringVar(&region, "region", "", "AWS region of the control plane (default: SPINLOOP_CLOUD_REGION, then the region your AWS credentials configure)")
 	return c
 }
 
@@ -139,7 +139,7 @@ func cloudSeedStatusCmd() *cobra.Command {
 			return runCloudSeedStatus(args, region)
 		},
 	}
-	c.Flags().StringVar(&region, "region", "", "AWS region of the control plane (default: AWS_REGION or us-east-1)")
+	c.Flags().StringVar(&region, "region", "", "AWS region of the control plane (default: SPINLOOP_CLOUD_REGION, then the region your AWS credentials configure)")
 	return c
 }
 
@@ -211,7 +211,7 @@ func cloudSeedListCmd() *cobra.Command {
 			return runCloudSeedList(region)
 		},
 	}
-	c.Flags().StringVar(&region, "region", "", "AWS region of the control plane (default: AWS_REGION or us-east-1)")
+	c.Flags().StringVar(&region, "region", "", "AWS region of the control plane (default: SPINLOOP_CLOUD_REGION, then the region your AWS credentials configure)")
 	return c
 }
 
@@ -252,7 +252,7 @@ func cloudSeedStopCmd() *cobra.Command {
 			return runCloudSeedStop(args, region)
 		},
 	}
-	c.Flags().StringVar(&region, "region", "", "AWS region of the control plane (default: AWS_REGION or us-east-1)")
+	c.Flags().StringVar(&region, "region", "", "AWS region of the control plane (default: SPINLOOP_CLOUD_REGION, then the region your AWS credentials configure)")
 	return c
 }
 

@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
+	"strings"
 	"time"
 )
 
@@ -72,8 +74,10 @@ func (e Node) Since() string {
 // cfg selects the plane; its Node field is deliberately ignored, since
 // an inventory is not about one node. Where the plane holds nothing the
 // answer is empty rather than an error, and where a per-node read failed
-// the answer carries what could be read, with the failures reported beside them.
-func Inventory(ctx context.Context, cfg Config) ([]Node, error) {
+// the answer carries what could be read, with the failures reported beside
+// them — in the Errors field, which callers deciding existence must heed:
+// an answer with errors is not a complete enumeration.
+func ReadInventory(ctx context.Context, cfg Config) (*Inventory, error) {
 	if cfg.StatsURL == "" {
 		return nil, fmt.Errorf(
 			"the control plane reports no stats endpoint to list nodes from — " +
@@ -81,7 +85,7 @@ func Inventory(ctx context.Context, cfg Config) ([]Node, error) {
 	}
 	plane := cfg
 	plane.Node = ""
-	status, body, err := send(ctx, plane, http.MethodGet, cfg.StatsURL, nil)
+	status, body, err := sendPlane(ctx, plane, http.MethodGet, cfg.StatsURL, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -102,7 +106,43 @@ func Inventory(ctx context.Context, cfg Config) ([]Node, error) {
 			"the control plane in %s does not report its nodes — re-bootstrap it with `spinloop cloud bootstrap`",
 			cfg.Region)
 	}
-	return reply.Nodes, nil
+	return &Inventory{Nodes: reply.Nodes, Errors: reply.Errors}, nil
+}
+
+// Inventory is the plane's answer to an enumeration read: the nodes it
+// listed, and the plane's own explanations where part of the read failed.
+// The errors are not Go errors — the read succeeded — but a name absent
+// from an answer that carries them proves nothing: the node may simply be
+// part of what the plane could not read.
+type Inventory struct {
+	Nodes  []Node
+	Errors []string
+}
+
+// Complete reports whether the plane read everything it enumerated.
+func (inv *Inventory) Complete() bool { return len(inv.Errors) == 0 }
+
+// Lookup finds one node's record. A false `found` means "not deployed"
+// only when the answer is Complete; callers that conclude absence — to
+// refuse a wake, to allow a name, to destroy nothing in peace — check
+// Uncertain first.
+func (inv *Inventory) Lookup(name string) (Node, bool) {
+	i := slices.IndexFunc(inv.Nodes, func(e Node) bool { return e.Name == name })
+	if i < 0 {
+		return Node{}, false
+	}
+	return inv.Nodes[i], true
+}
+
+// Uncertain words why an incomplete answer cannot settle existence, for the
+// caller that refuses to conclude "not deployed" from a short list. It is
+// nil when the answer was complete.
+func (inv *Inventory) Uncertain() error {
+	if inv.Complete() {
+		return nil
+	}
+	return fmt.Errorf("the plane's inventory is incomplete (%s) — it cannot say what is deployed; fix the reported reads and try again",
+		truncate(strings.Join(inv.Errors, "; "), 200))
 }
 
 // inventoryRefused turns a rejected inventory into an error that names the
@@ -201,9 +241,25 @@ func Undeploy(ctx context.Context, cfg Config, dryRun bool) (*UndeployResult, er
 		return nil, fmt.Errorf("undeploy returned HTTP %d%s: %s",
 			out.StatusCode, hint, truncate(out.summary(), 200))
 	}
+	// A plane deployed before undeploy existed treats any action that is not
+	// "pause" as a plain terminate: it echoes the name under the old key and
+	// reports nothing released. Accepting that as success would report a
+	// completed teardown when the plane has just terminated the instance —
+	// and a --dry-run would claim to have destroyed nothing right after the
+	// plane destroyed the node. A reply with neither `node` nor `released`
+	// is that old plane: refuse, and name the repair. Callers (as
+	// `cloud undeploy` does) also check the plane speaks the verb before
+	// asking it to act; this keeps that promise inside the verb rather than
+	// at the mercy of whichever caller comes first.
+	if out.Undeployed == "" && out.Released == nil {
+		return nil, fmt.Errorf(
+			"the control plane in %s does not understand undeploy — re-bootstrap it with `spinloop cloud bootstrap`",
+			cfg.Region)
+	}
 	// The reply names the node under the new key; a plane that predates the
-	// rename still answers with the old one, and the config we sent always
-	// names the node anyway, so a missing key never loses the name.
+	// rename but does speak undeploy still answers with the old one, and the
+	// config we sent always names the node anyway, so a missing key never
+	// loses the name.
 	name := out.Undeployed
 	if name == "" {
 		name = out.Node
@@ -211,9 +267,5 @@ func Undeploy(ctx context.Context, cfg Config, dryRun bool) (*UndeployResult, er
 	if name == "" {
 		name = cfg.Node
 	}
-	res := &UndeployResult{Node: name, Released: out.Released, DryRun: dryRun}
-	if res.Node == "" {
-		res.Node = cfg.Node
-	}
-	return res, nil
+	return &UndeployResult{Node: name, Released: out.Released, DryRun: dryRun}, nil
 }

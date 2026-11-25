@@ -38,9 +38,9 @@ import (
 // idle), status reports instance state and endpoint health, keep sets the
 // retention deadline to prevent the sweep from terminating the instance
 // early, and deploy sets what the instance will serve from the Spinloop itself.
-// Each subcommand acts on one cloud node on the plane — the --node flag names
-// it, and without the flag the `default` node is used; see
-// resolveCloudConfig. Each also takes an optional Spinloop path, read for
+// Each subcommand acts on one cloud node on the plane — the --node flag
+// names it, and there is no fallback name to assume; see resolveCloudConfig.
+// Each also takes an optional Spinloop path, read for
 // its ENV instructions and adjacent .env only. The group itself does nothing
 // — see groupFallback for what a bare or mistyped invocation gets.
 
@@ -148,19 +148,24 @@ func resolveCloudConfig(ctx context.Context, nodeName, spinloopArg string) (clou
 func errNoNode(ctx context.Context) error {
 	var b strings.Builder
 	b.WriteString("no cloud node named: pass --node <name>")
-	nodes, err := cloud.Inventory(ctx, cloudConfigForPlane(ctx))
+	inv, err := cloud.ReadInventory(ctx, cloudConfigForPlane(ctx))
 	if err != nil {
 		// The flag is still the fix; the plane's problem is worth saying, but it
 		// must not swallow the instruction.
 		b.WriteString(" (`spinloop cloud ls` lists what the plane holds)")
 		return errors.New(b.String())
 	}
-	if len(nodes) == 0 {
+	if !inv.Complete() {
+		// A half-read inventory must not pass as the full list of names.
+		b.WriteString(" (`spinloop cloud ls` lists what the plane could read)")
+		return errors.New(b.String())
+	}
+	if len(inv.Nodes) == 0 {
 		b.WriteString(" (none deployed yet — `spinloop cloud deploy --node <name>` creates one)")
 		return errors.New(b.String())
 	}
-	names := make([]string, 0, len(nodes))
-	for _, e := range nodes {
+	names := make([]string, 0, len(inv.Nodes))
+	for _, e := range inv.Nodes {
 		names = append(names, e.Name)
 	}
 	slices.Sort(names)
@@ -472,11 +477,21 @@ func cloudListCmd() *cobra.Command {
 // runCloudList is the body of `spinloop cloud ls`.
 func runCloudList(ctx context.Context) error {
 	cfg := cloudConfigForPlane(ctx)
-	nodes, err := cloud.Inventory(ctx, cfg)
+	inv, err := cloud.ReadInventory(ctx, cfg)
 	if err != nil {
 		return err
 	}
-	if len(nodes) == 0 {
+	// Where the plane could not read part of its own record, say so beside
+	// the list: a node missing from a half-read inventory is not a node
+	// missing from the plane, and the listing must not let it read that way.
+	if !inv.Complete() {
+		defer func() {
+			for _, e := range inv.Errors {
+				fmt.Fprintf(os.Stderr, "The plane could not fully read its record: %s\n", e)
+			}
+		}()
+	}
+	if len(inv.Nodes) == 0 {
 		fmt.Printf("No nodes are deployed on %s. `spinloop cloud deploy --node <name>` deploys one.\n",
 			fleet.PlanePhrase(cfg.Region))
 		return nil
@@ -484,7 +499,7 @@ func runCloudList(ctx context.Context) error {
 	// The deployer is a column because the plane is shared: on a plane with
 	// several people's names on it, "who put this here, and when" is the first
 	// thing anyone asks about a node they did not deploy.
-	for _, e := range nodes {
+	for _, e := range inv.Nodes {
 		fields := []string{e.Name}
 		owner := e.DeployedBy
 		if owner == "" {
@@ -504,6 +519,9 @@ func runCloudList(ctx context.Context) error {
 			address = "(no address)"
 		}
 		fields = append(fields, address, e.State)
+		if e.Partial {
+			fields = append(fields, "(partial read)")
+		}
 		fmt.Println(strings.Join(fields, "\t"))
 	}
 	return nil
@@ -801,15 +819,21 @@ func confirmNodeName(name string) bool {
 // no local memory decides it, and a plane that cannot answer is an error, not
 // an empty list.
 func planeHoldsNode(ctx context.Context, cfg cloud.Config, name string) (cloud.Node, bool, error) {
-	nodes, err := cloud.Inventory(ctx, cfg)
+	inv, err := cloud.ReadInventory(ctx, cfg)
 	if err != nil {
 		return cloud.Node{}, false, err
 	}
-	i := slices.IndexFunc(nodes, func(e cloud.Node) bool { return e.Name == name })
-	if i < 0 {
-		return cloud.Node{}, false, nil
+	record, found := inv.Lookup(name)
+	if !found {
+		// A name missing from an inventory the plane itself reported as
+		// incomplete proves nothing, and this answer gates a destroy:
+		// refuse rather than conclude "not deployed" from a short list.
+		if uncertain := inv.Uncertain(); uncertain != nil {
+			return cloud.Node{}, false, fmt.Errorf(
+				"cannot check whether cloud node %q is deployed: %w", name, uncertain)
+		}
 	}
-	return nodes[i], true, nil
+	return record, found, nil
 }
 
 // releasedPhrase words what an undeploy released. An empty list is said as
@@ -1303,7 +1327,7 @@ var (
 	// a deploy needs — where it is, and what it already holds — so a test can
 	// stand a plane in for both without a network.
 	deployResolvePlaneFn = cloud.ResolvePlane
-	cloudInventoryFn     = cloud.Inventory
+	cloudInventoryFn     = cloud.ReadInventory
 	cloudDeployFn        = cloud.Deploy
 	cloudStatusFn        = cloud.Status
 	detectPublicCIDRFn   = detectPublicCIDR
@@ -1350,7 +1374,7 @@ from its next fresh launch.`,
 	fs.BoolVar(&overwrite, "overwrite", false, "proceed against a node the plane already holds, or one that is running")
 	fs.BoolVar(&reseed, "reseed", false, "re-fetch the weights even if they are already in S3 (starts a ~20-minute seed)")
 	fs.StringVar(&allowedCidr, "allowed-cidr", "", "who may reach this node's instance (default: your public IP as a /32, on first deploy)")
-	fs.StringVar(&region, "region", "", "AWS region of the control plane (default: AWS_REGION or us-east-1)")
+	fs.StringVar(&region, "region", "", "AWS region of the control plane (default: SPINLOOP_CLOUD_REGION, then the region your AWS credentials configure)")
 	fs.StringVar(&spinloopVersion, "spinloop-version", "", "spinloop release the node's instances install at boot (default: latest)")
 	fs.StringVar(&instanceType, "instance-type", "", "EC2 instance type the node's instances launch as (e.g. g6e.xlarge; default: the control plane's default type)")
 	fs.StringVar(&apiKeyEnv, "api-key-env", "", "the environment variable holding the API key to store for this node (a variable name, never the key itself)")
@@ -1591,25 +1615,26 @@ func runDeploy(ctx context.Context, spinloopPath, nodeName string, dc inference.
 	// fires for a colleague's node seen from a machine that has never
 	// heard of it — and names who put it there, which is what makes a name
 	// shared between people explainable.
-	planeNodes, err := cloudInventoryFn(ctx, plane.Config)
+	inventory, err := cloudInventoryFn(ctx, plane.Config)
 	if err != nil {
 		return deployOutcome{}, err
 	}
-	deployment := -1
-	for i, e := range planeNodes {
-		if e.Name == nodeName {
-			deployment = i
-			break
-		}
+	existing, deploymentFound := inventory.Lookup(nodeName)
+	if !deploymentFound && !inventory.Complete() {
+		// An incomplete inventory cannot certify a name free; deploying over
+		// an unread colleague's node on the strength of a gap is exactly
+		// the clobber this guard exists to refuse.
+		return deployOutcome{}, fmt.Errorf("cannot check whether cloud node %q already exists: %w",
+			nodeName, inventory.Uncertain())
 	}
 	live := false
 	if status, err := cloudStatusFn(ctx, cfg); err == nil {
 		live = status.State == "running" || status.State == "pending" || status.State == "starting"
 	}
-	if (deployment >= 0 || live) && !opts.overwrite {
+	if (deploymentFound || live) && !opts.overwrite {
 		what := ""
-		if deployment >= 0 {
-			what = " (" + deployerPhrase(planeNodes[deployment]) + ")"
+		if deploymentFound {
+			what = " (" + deployerPhrase(existing) + ")"
 		}
 		if live {
 			what += ", and it has a live instance"
@@ -1624,7 +1649,7 @@ func runDeploy(ctx context.Context, spinloopPath, nodeName string, dc inference.
 	// and leaves the node's ingress exactly as it stands.
 	allowedCidr := opts.allowedCidr
 	if allowedCidr == "" {
-		if deployment >= 0 || live {
+		if deploymentFound || live {
 			return deployOutcome{}, fmt.Errorf(
 				"cloud node %q already has its own allowed ingress: pass --allowed-cidr to set it "+
 					"(e.g. --allowed-cidr 203.0.113.7/32) — nothing is changed without it", nodeName)

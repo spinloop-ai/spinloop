@@ -121,7 +121,11 @@ func servePlaneInventory(t *testing.T, nodes []cloud.Node) {
 	forward := httputil.NewSingleHostReverseProxy(target)
 	inventory := func(w http.ResponseWriter) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"nodes": nodes})
+		answer := map[string]any{"nodes": nodes}
+		if planeInventoryErrors != nil {
+			answer["errors"] = planeInventoryErrors
+		}
+		json.NewEncoder(w).Encode(answer)
 	}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("env") == "" {
@@ -139,6 +143,11 @@ func servePlaneInventory(t *testing.T, nodes []cloud.Node) {
 // that moves the stats endpoint afterwards re-installs the inventory proxy over
 // the new address instead of losing the inventory with it.
 var planeInventory []cloud.Node
+
+// planeInventoryErrors makes the standing-in plane report its own read
+// failures beside the list — the incomplete record that callers must refuse
+// to read as absence. Tests set it and clear it with t.Cleanup.
+var planeInventoryErrors []string
 
 // planeStatsAt points the plane's stats endpoint at a test server — which
 // answers both the node's own stats read and, through the proxy, the env-less

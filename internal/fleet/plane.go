@@ -59,19 +59,19 @@ func (c *Config) planeConfig(ctx context.Context, name string) (cloud.Config, er
 // one inventory request for the whole fleet rather than one per node. A fleet
 // with no cache — one assembled by hand rather than loaded or targeted — asks
 // each time, which is correct and merely slower.
-func (c *Config) planeNodes(ctx context.Context) ([]cloud.Node, error) {
+func (c *Config) planeNodes(ctx context.Context) (*cloud.Inventory, error) {
 	cache := c.plane
 	if cache == nil {
 		plane, err := c.planeResolve(ctx)
 		if err != nil {
 			return nil, err
 		}
-		return cloud.Inventory(ctx, plane.Config)
+		return cloud.ReadInventory(ctx, plane.Config)
 	}
 	cache.mu.Lock()
 	defer cache.mu.Unlock()
 	if !cache.at.IsZero() && time.Since(cache.at) < planeInventoryTTL {
-		return cache.nodes, cache.err
+		return cache.inv, cache.err
 	}
 	plane, err := c.planeResolve(ctx)
 	if err != nil {
@@ -80,15 +80,15 @@ func (c *Config) planeNodes(ctx context.Context) ([]cloud.Node, error) {
 		// because resolution is memoised downstream and costs nothing to retry.
 		return nil, err
 	}
-	nodes, err := cloud.Inventory(ctx, plane.Config)
+	inv, err := cloud.ReadInventory(ctx, plane.Config)
 	// The read is recorded either way, so a plane that is down is asked again
 	// after the TTL rather than once per node, and an empty plane is not
 	// re-read per node either.
-	cache.at, cache.nodes, cache.err = time.Now(), nodes, err
+	cache.at, cache.inv, cache.err = time.Now(), inv, err
 	if err != nil {
 		return nil, err
 	}
-	return nodes, nil
+	return inv, nil
 }
 
 // planeNode returns the plane's record of one cloud node, and whether the
@@ -97,15 +97,21 @@ func (c *Config) planeNodes(ctx context.Context) ([]cloud.Node, error) {
 // node the plane does not carry is not a node, whatever a machine
 // remembers about it.
 func (c *Config) planeNode(ctx context.Context, name string) (cloud.Node, bool, error) {
-	nodes, err := c.planeNodes(ctx)
+	inv, err := c.planeNodes(ctx)
 	if err != nil {
 		return cloud.Node{}, false, err
 	}
-	i := slices.IndexFunc(nodes, func(e cloud.Node) bool { return e.Name == name })
-	if i < 0 {
+	node, found := inv.Lookup(name)
+	if !found {
+		// Absent from an answer that admits its own gaps proves nothing:
+		// the node may be exactly the part the plane could not read. Say
+		// so rather than reporting "not deployed" from a short list.
+		if uncertain := inv.Uncertain(); uncertain != nil {
+			return cloud.Node{}, false, uncertain
+		}
 		return cloud.Node{}, false, nil
 	}
-	return nodes[i], true, nil
+	return node, true, nil
 }
 
 // requireCloudNode fails unless the plane holds the named cloud node, naming
@@ -158,12 +164,12 @@ func PlanePhrase(region string) string {
 // offer the operator something to type. It never fails: an unreadable plane
 // simply has nothing to offer, and the caller already has its own error.
 func (c *Config) knownNodeNames(ctx context.Context) []string {
-	nodes, err := c.planeNodes(ctx)
+	inv, err := c.planeNodes(ctx)
 	if err != nil {
 		return nil
 	}
-	names := make([]string, 0, len(nodes))
-	for _, e := range nodes {
+	names := make([]string, 0, len(inv.Nodes))
+	for _, e := range inv.Nodes {
 		names = append(names, e.Name)
 	}
 	slices.Sort(names)

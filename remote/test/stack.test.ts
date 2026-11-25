@@ -499,6 +499,7 @@ describe('LlmStack (control plane)', () => {
       'ec2:DeleteSecurityGroup',
       'ec2:DescribeAddresses',
       'ec2:DescribeSecurityGroups',
+      'secretsmanager:DescribeSecret',
       'secretsmanager:DeleteSecret',
       'scheduler:DeleteSchedule',
       'scheduler:ListSchedules',

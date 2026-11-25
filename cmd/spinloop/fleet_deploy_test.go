@@ -82,8 +82,8 @@ func stubFleetDeploySeams(t *testing.T, server *httptest.Server, holds ...cloud.
 	deployResolvePlaneFn = func(context.Context, cloud.PlaneRequest) (cloud.ControlPlane, error) {
 		return plane, nil
 	}
-	cloudInventoryFn = func(context.Context, cloud.Config) ([]cloud.Node, error) {
-		return holds, nil
+	cloudInventoryFn = func(context.Context, cloud.Config) (*cloud.Inventory, error) {
+		return &cloud.Inventory{Nodes: holds}, nil
 	}
 	cloudStatusFn = func(context.Context, cloud.Config) (*cloud.Response, error) {
 		return &cloud.Response{StatusCode: 200, State: "undeployed"}, nil

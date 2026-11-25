@@ -19,7 +19,12 @@ node can list them without any further permission.
 
 A node on the plane SHALL be identifiable from that answer alone: a name
 the inventory does not carry is a node that does not exist on that
-plane, whatever any machine remembers about it.
+plane, whatever any machine remembers about it. Where the plane could not
+read part of its own record it SHALL report those failures beside the nodes it
+did read, and such a partial answer SHALL NOT settle that a name is absent:
+the unread part may be exactly the node asked for. A caller deciding
+existence from an incomplete answer SHALL treat it as an error, not as a
+listing.
 
 #### Scenario: Every deployed node is listed
 
@@ -43,6 +48,13 @@ plane, whatever any machine remembers about it.
 - **WHEN** a caller whose credential grants only the usual control-call
   permission requests the inventory
 - **THEN** it is answered, and no additional AWS permission is needed
+
+#### Scenario: A half-read inventory cannot say "not deployed"
+
+- **WHEN** the inventory answers with nodes and with its own read failures,
+  and a name is asked about that the answer does not carry
+- **THEN** the caller reports that the plane's record is incomplete, naming
+  the failures, rather than concluding the node does not exist
 
 ### Requirement: A deploy records who deployed it and when
 
@@ -74,7 +86,10 @@ taken can be explained by who took it and what they deployed.
 owner, what each serves, address, and state — rather than what this machine
 remembers. Where the plane holds no nodes it SHALL say so plainly rather
 than printing nothing. Where the plane cannot be resolved or reached it SHALL
-fail naming where it looked, and SHALL NOT print a partial or remembered list.
+fail naming where it looked, and SHALL NOT print a remembered list in its
+place. Where the plane answers but admits it could not read part of its
+record, the listing SHALL still print the nodes it was given and say the
+failures beside it, so a short list is never mistaken for the whole plane.
 
 #### Scenario: Listing shows each node with its owner
 
@@ -95,6 +110,13 @@ fail naming where it looked, and SHALL NOT print a partial or remembered list.
   no control-plane stack
 - **THEN** the command fails naming the stack, account and region it looked in,
   rather than reporting no nodes
+
+#### Scenario: A plane with gaps says so beside the list
+
+- **WHEN** `spinloop cloud ls` runs and the plane answers with the nodes it
+  could read plus its own read failures
+- **THEN** the nodes are listed, and the failures are reported beside them
+  rather than swallowed
 
 ### Requirement: A node is taken apart on request
 
@@ -159,3 +181,11 @@ while releasing nothing.
 - **WHEN** `spinloop cloud undeploy --dry-run` names an existing node
 - **THEN** it lists the resources it would release and contacts no resource for
   deletion
+
+#### Scenario: A plane that predates undeploy is refused
+
+- **WHEN** an undeploy is asked of a plane deployed before the verb existed,
+  which would answer by terminating the instance
+- **THEN** the command reports that the plane does not understand undeploy and
+  names re-bootstrapping as the repair, rather than reporting a completed
+  teardown

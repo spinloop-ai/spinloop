@@ -525,3 +525,63 @@ func TestRevalidate_DoesNotRetryAnOrdinaryFailure(t *testing.T) {
 		t.Fatal("a 409 should be reported")
 	}
 }
+
+// The repair belongs to the transport, not to one verb: the stats read behind
+// a dashboard's every tick and the inventory behind a fleet's node rows went
+// around it while it lived in call, so a long-lived process kept knocking on
+// the dead Function URL forever. Both must heal at the first failed call too.
+func TestRevalidate_CoversStatsAndInventory(t *testing.T) {
+	resetPlane(t)
+	stubPlaneChain(t, "eu-west-1")
+	stubPlaneAccount(t, "0")
+
+	live := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("env") == "" {
+			fmt.Fprint(w, `{"nodes":[{"node":"prod","state":"running"}]}`)
+			return
+		}
+		fmt.Fprint(w, `{"state":"running","instanceId":"i-abc123"}`)
+	}))
+	defer live.Close()
+
+	gone := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	goneURL := gone.URL
+	gone.Close()
+
+	planeFor := func(url string) ControlPlane {
+		return ControlPlane{Config: Config{
+			StartURL: url + "/start", StopURL: url + "/stop",
+			StatsURL: url + "/stats", Region: "eu-west-1",
+		}}
+	}
+	var reads int32
+	stubPlane(t, func(context.Context, aws.Config, string) (ControlPlane, error) {
+		if atomic.AddInt32(&reads, 1) == 1 {
+			return planeFor(goneURL), nil
+		}
+		return planeFor(live.URL), nil
+	})
+
+	stubAWSEnv(t)
+	cfg, err := ResolveNode(context.Background(), "prod", PlaneRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	stats, err := Stats(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("the stats read should heal at the failure, not stay wrong: %v", err)
+	}
+	if stats.State != "running" {
+		t.Errorf("state = %q", stats.State)
+	}
+
+	// The healed plane is remembered, so the inventory read that follows
+	// resolves the live endpoints and never repeats the dead one.
+	inv, err := ReadInventory(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("inventory after a healed stats read: %v", err)
+	}
+	if _, found := inv.Lookup("prod"); !found {
+		t.Errorf("the healed plane's inventory should list prod: %+v", inv)
+	}
+}

@@ -102,7 +102,8 @@ who deployed it, when, and what it serves, and SHALL require explicit override
 consent — an `--overwrite` flag, which `--yes` alone SHALL NOT satisfy — so a
 redeploy cannot silently clobber a colleague's running instance. When neither
 holds, deploy SHALL proceed without a warning and without requiring
-`--overwrite`.
+`--overwrite`. Where the plane's answer admits it could not read part of its
+record, deploy SHALL refuse rather than treat the gap as a free name.
 
 #### Scenario: An existing environment warns
 
@@ -127,3 +128,10 @@ holds, deploy SHALL proceed without a warning and without requiring
 - **WHEN** deploy targets a node deployed by someone else, from a
   machine that has never held any cloud configuration
 - **THEN** the guard still fires, because it asks the plane
+
+#### Scenario: A half-read inventory does not certify a free name
+
+- **WHEN** deploy asks the plane whether the name is taken and the answer
+  carries the plane's own read failures without the name
+- **THEN** deploy refuses, naming the plane's failure, rather than deploying
+  over what the gap may hide

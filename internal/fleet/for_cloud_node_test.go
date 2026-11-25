@@ -288,3 +288,21 @@ func TestCloudNodesReadThePlaneOncePerFleet(t *testing.T) {
 		t.Errorf("inventory reads = %d, want the one read the fleet shares", reads)
 	}
 }
+
+// A plane that admits its inventory is incomplete cannot settle that a name
+// is absent — the unread part may be exactly the node asked for — so the
+// fleet refuses rather than reporting "not deployed" from a short list.
+func TestForCloudNodeRefusesToGuessFromAnIncompleteInventory(t *testing.T) {
+	stubPlaneHalfRead(t)
+	_, err := ForCloudNode(context.Background(), "qwen")
+	if err == nil {
+		t.Fatal("want a refusal to conclude absence")
+	}
+	if !strings.Contains(err.Error(), "incomplete") || !strings.Contains(err.Error(), "AccessDeniedException") {
+		t.Errorf("error %q should name the plane's own read failure", err)
+	}
+	var missing *cloud.NotDeployed
+	if errors.As(err, &missing) {
+		t.Error("an uncertain read must not answer NotDeployed")
+	}
+}

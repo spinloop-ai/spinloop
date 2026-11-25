@@ -251,10 +251,10 @@ type Config struct {
 // are read from one goroutine each, all against a cold cache, and ten
 // concurrent reads of the same answer is ten calls where the fleet needs one.
 type planeInventory struct {
-	mu    sync.Mutex
-	at    time.Time
-	nodes []cloud.Node
-	err   error
+	mu  sync.Mutex
+	at  time.Time
+	inv *cloud.Inventory
+	err error
 }
 
 // NodeConfig is one machine as the fleet file describes it. The live node the

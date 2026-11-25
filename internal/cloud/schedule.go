@@ -72,7 +72,7 @@ func scheduleCall(ctx context.Context, cfg Config, method string, body []byte) (
 		q.Set("env", cfg.Node)
 		u.RawQuery = q.Encode()
 	}
-	status, respBody, err := send(ctx, cfg, method, u.String(), body)
+	status, respBody, err := sendPlane(ctx, cfg, method, u.String(), body)
 	if err != nil {
 		return nil, err
 	}

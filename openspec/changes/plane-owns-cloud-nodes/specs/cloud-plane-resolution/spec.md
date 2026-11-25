@@ -54,10 +54,13 @@ A process SHALL resolve a plane at most once for the calls it makes, holding the
 answer in memory only. A resolved plane SHALL NOT be written to disk, cached
 between runs, or given an expiry: it is a resolution, not a record.
 
-A control call rejected as unauthorised, or failing because its host cannot be
-reached, SHALL cause the plane to be resolved once more and the call retried
-once before the failure is reported — so a plane redeployed while a long-lived
-process was running heals at its first failed call rather than staying wrong.
+A request to the plane — control call, status read, or inventory read alike —
+rejected as unauthorised, or failing because its host cannot be reached, SHALL
+cause the plane to be resolved once more and the request retried once against
+the new answer before the failure is reported — so a plane redeployed while a
+long-lived process was running heals at its first failed request rather than
+staying wrong. The repair belongs to every request the process makes, not to
+one verb.
 
 #### Scenario: One resolution serves a whole fan-out
 

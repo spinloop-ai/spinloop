@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - feat(cloud): the control plane is the record of what is deployed: `cloud ls` reads its inventory, listing every node with who deployed it and when
 
 ### Changed
-- **breaking(fleet)**: cloud nodes — what were called environments — are no longer registered per machine. Nothing about them is read from or written to `~/.config/spinloop/clouds/` — that directory may be deleted. Which nodes exist comes from the control plane your credentials resolve, so a colleague's deployment is visible and drivable from any machine. `--node` is required everywhere, including `deploy`, and `spinloop cloud` no longer resolves a Spinloop-file `ENV` or the `default` node.
+- **breaking(fleet)**: cloud nodes — what were called environments — are no longer registered per machine. Nothing about them is read from or written to `~/.config/spinloop/clouds/` — that directory may be deleted. Which nodes exist comes from the control plane your credentials resolve, so a colleague's deployment is visible and drivable from any machine. `--node` is required everywhere, including `deploy`, and there is no `default` node to fall back to — a `Spinloop`'s `ENV` lines still set environment variables as before.
 - refactor(cloud): a redeploy over an existing node now requires `--allowed-cidr` beside `--overwrite`, so a shared node's ingress is never silently rewritten
 
 
