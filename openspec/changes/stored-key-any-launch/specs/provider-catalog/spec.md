@@ -29,11 +29,14 @@ instruction, the process environment, or the `.env` beside the Spinloop), and
 the provider's endpoint is local, the key SHALL be read from the file the
 pattern matches, with surrounding whitespace removed; when several files
 match, the most recently modified one SHALL be used. A key read this way SHALL
-count as set: it is referenced in harness configs exactly as a set variable
-is, and supplied to a launched harness under the key variable's name. The key
-file SHALL NOT be read for a remote endpoint, and its contents SHALL NOT be
-written to any harness config. No matching file, or an empty one, SHALL mean
-the key is unset.
+count as set, and SHALL be supplied to a launched harness under the key
+variable's name. In the opencode config, the provider's key SHALL reference
+the matched file by its path, in opencode's file-reference form, so that any
+opencode process that loads the config reads the key itself, whatever its own
+environment. The other harnesses SHALL reference the key variable, as they do
+for a set variable. The key file SHALL NOT be read for a remote endpoint, and
+its contents SHALL NOT be written to any harness config. No matching file, or
+an empty one, SHALL mean the key is unset.
 
 Whether a launch looks up a stored key SHALL depend on the provider the
 launched harness will use, not on whether the launch applies a Spinloop. That
@@ -76,9 +79,24 @@ a caller-supplied value (such as a GCP project) that has no usable default.
 - **WHEN** a provider that declares `apiKeyFile` is applied against a local
   endpoint, its key variable is set nowhere, and a file matching the pattern
   holds a key
-- **THEN** the harness config references the key variable as it would for a
-  set variable, and a harness launched by spinloop has the variable set to the
-  file's contents with surrounding whitespace removed
+- **THEN** the opencode config references the matched file by its path, the
+  Pi config references the key variable, and a harness launched by spinloop
+  has the variable set to the file's contents with surrounding whitespace
+  removed
+
+#### Scenario: opencode reads the key file whatever its environment
+
+- **WHEN** the opencode config has been applied with a key file reference, and
+  opencode is started without the key variable in its environment, as a
+  background service started earlier may be
+- **THEN** opencode reads the key from the file and its requests are
+  authenticated
+
+#### Scenario: A key variable set at apply time is referenced, not the file
+
+- **WHEN** the key variable is set when the opencode config is applied
+- **THEN** the config references the key variable, and the key file is not
+  named in it
 
 #### Scenario: A set key variable takes precedence over the key file
 
@@ -157,3 +175,48 @@ a caller-supplied value (such as a GCP project) that has no usable default.
 - **WHEN** a provider that does not declare the `lucinate` marker is applied
   under the lucinate harness
 - **THEN** the command fails reporting the provider unsupported by lucinate
+
+### Requirement: Unsloth Studio local provider
+
+The catalogue SHALL include an `unsloth` provider describing a local
+[Unsloth Studio](https://unsloth.ai) server: an OpenAI-compatible endpoint
+defaulting to `http://localhost:8888/v1`, overridable per-provider with
+`UNSLOTH_BASE_URL`, and Pi-capable through the `openai-completions` API.
+
+Its key SHALL be read from `UNSLOTH_API_KEY` and SHALL be optional: a local
+endpoint with the key unset yields no `apiKey` option for opencode and the
+keyless placeholder for Pi.
+
+Studio generates its key itself and stores it for reuse, so the provider SHALL
+declare as its key file the file `unsloth run` stores its key in under the
+default key name (`$HOME/.unsloth/studio/auth/.cli_api_key_cli_*`). A local
+Studio's key SHALL then be found without the user exporting it.
+
+#### Scenario: Local server with keyless access needs no key
+
+- **WHEN** a selection names `unsloth` with the default localhost base URL,
+  `UNSLOTH_API_KEY` unset, and no stored Studio key
+- **THEN** the opencode provider block carries no `apiKey` option, and the Pi
+  entry carries the keyless placeholder so its models stay selectable
+
+#### Scenario: Studio's stored key is used for a local server
+
+- **WHEN** a selection names `unsloth` with a local base URL,
+  `UNSLOTH_API_KEY` is set nowhere, and Studio has stored a key
+- **THEN** the opencode config references Studio's key file by its path, the
+  Pi config references `UNSLOTH_API_KEY`, and a harness launched by spinloop
+  has `UNSLOTH_API_KEY` set to the stored key
+
+#### Scenario: The Studio key is referenced, never written
+
+- **WHEN** `UNSLOTH_API_KEY` is set, or the key comes from Studio's stored key
+- **THEN** the API key is written as a reference that the harness resolves at
+  run time (to `UNSLOTH_API_KEY`, or for opencode with the variable unset, to
+  Studio's key file), never as the resolved secret
+
+#### Scenario: A remote Studio keeps the key reference
+
+- **WHEN** the base URL is overridden with `UNSLOTH_BASE_URL` to a non-local
+  host
+- **THEN** the API key is written as an environment reference, never as the
+  resolved secret, and Studio's locally stored key is not used

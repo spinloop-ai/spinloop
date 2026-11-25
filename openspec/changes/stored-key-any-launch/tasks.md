@@ -16,3 +16,10 @@
 ## 3. Docs
 
 - [x] 3.1 Update the Unsloth key section of `docs/commands/serve.md` and the troubleshooting key entry
+
+## 4. opencode file reference
+
+- [ ] 4.1 Add `(*Provider).StoredKeyPath()` and have `StoredKey` read through it
+- [ ] 4.2 In `BuildProviderBlock`, write `{file:<path>}` when the variable is unset, the endpoint is local and a stored key exists
+- [ ] 4.3 Tests: opencode gets the file reference; a set variable keeps the env reference; a remote endpoint, an empty or missing file keep the current behaviour; Pi is unchanged
+- [ ] 4.4 Docs: the Unsloth key section and the troubleshooting entry (one service restart after switching)

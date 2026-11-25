@@ -56,7 +56,32 @@ URL variable. This is the same function the applied path uses.
 `harnessEnv` and `lucinateLaunchKey`. Only the helper and its call change, so
 both consumers get the key with no further edits.
 
+**opencode references the key file.** opencode substitutes `{file:<path>}`
+as well as `{env:VAR}` in its config, including in a provider's `apiKey`. A
+prototype against Unsloth Studio with `UNSLOTH_API_KEY` unset showed:
+
+- a standalone run with `{file:<Studio key file>}` authenticates, and opencode
+  strips the trailing newline Studio writes;
+- the same run with `{env:UNSLOTH_API_KEY}` fails with "Not authenticated";
+- a long-lived `opencode serve` started with no key in its environment, on the
+  `{file:}` config, authenticates requests from a separate client;
+- a running server does not reload its config, so switching from `{env:}` to
+  `{file:}` takes effect after one restart.
+
+`BuildProviderBlock` resolves the key variable as before. When the variable is
+empty, the provider declares `apiKeyFile`, and the endpoint is local, it writes
+`{file:<path>}`, using the path of the newest matching file
+(`(*Provider).StoredKeyPath`), provided that file holds a key. The path is
+absolute after `$HOME` is expanded, so the config does not depend on how
+opencode expands `~`. The key prefix check applies to the file's contents as
+it does to a variable. Pi and lucinate keep their current references: neither
+supports file references, and lucinate already receives its key at launch.
+
 ## Risks / Trade-offs
+
+- The file path is fixed when the config is applied. If Studio stores its key
+  under a new name, the config points at a file that no longer exists until
+  the Spinloop is applied again.
 
 - opencode's default model id is assumed to be `<provider>/<model>`. If it is
   not, no provider is found, and the launch behaves as v1.51.0 does.

@@ -23,6 +23,14 @@ no `UNSLOTH_API_KEY`, and every request returns 401 "Not authenticated".
   applied Spinloop, otherwise the base URL in the harness's config, otherwise
   the catalogue's endpoint.
 - The cloud path is unchanged.
+- In the opencode config, a stored key is referenced by its file path
+  (`{file:<path>}`) instead of `{env:VAR}`, when the variable is unset at apply
+  time. opencode's background service resolves `{env:…}` from its own
+  environment, which is set when the service starts. So a service started
+  before the key was available keeps failing with "Not authenticated", even
+  after `spinloop code` passes the key on. A file reference is read by
+  whichever opencode process loads the config. After one restart to load the
+  new config, the service no longer depends on how it was started.
 
 ## Capabilities
 
@@ -33,12 +41,15 @@ no `UNSLOTH_API_KEY`, and every request returns 401 "Not authenticated".
 ### Modified Capabilities
 
 - `provider-catalog`: the "Embedded provider definitions" requirement states
-  which provider a launch looks up a stored key for, and the endpoint it
-  checks.
+  which provider a launch looks up a stored key for, the endpoint it checks,
+  and that opencode references a stored key by its file. The "Unsloth Studio
+  local provider" scenarios change to match.
 
 ## Impact
 
 - `cmd/spinloop/commands.go`: the launch's key lookup.
+- `internal/catalog`: the opencode provider block writes `{file:<path>}`
+  for a stored key.
 - Docs: the Unsloth key section in `docs/commands/serve.md` and the
   troubleshooting key entry.
 - PR 286 (cloud nodes on the control plane) is expected to land first and
