@@ -420,17 +420,27 @@ There is no option to give it one. Studio stores the key in
 
 When `UNSLOTH_API_KEY` is set nowhere (not in an `ENV` line, your shell, or
 the `.env` beside the Spinloop) and the endpoint is local, spinloop reads the
-stored key itself. `spinloop harness apply` writes a reference to
-`UNSLOTH_API_KEY` into the harness config, never the key, and `spinloop code`
-starts the agent with `UNSLOTH_API_KEY` set. Nothing needs exporting.
+stored key itself, and nothing needs exporting:
+
+- **opencode:** `spinloop harness apply` writes a reference to Studio's key
+  file into the config (`"apiKey": "{file:/Users/you/.unsloth/studio/auth/…}"`),
+  never the key. opencode reads the file itself, so a plain `opencode` and
+  opencode's background service both authenticate, however they were started.
+- **Pi and lucinate:** the config references `UNSLOTH_API_KEY`, and
+  `spinloop code` starts the agent with it set.
+
+If `UNSLOTH_API_KEY` is set when you apply, the opencode config references the
+variable instead of the file.
 
 This also works for a bare `spinloop code`, with no Spinloop. The provider is
 then taken from the harness's default model (for opencode, `unsloth/…`), and
 the endpoint from the harness's config. A harness with no default model, such
 as Pi, is checked for every provider in its config.
 
-- A harness you start yourself, outside `spinloop code`, still needs
-  `UNSLOTH_API_KEY` exported, because the config only references it.
+- Pi or lucinate started yourself, outside `spinloop code`, still needs
+  `UNSLOTH_API_KEY` exported, because their config only references it.
+- The opencode config holds the key file's path from when it was applied. If
+  Studio ever stores its key under a new file name, apply the Spinloop again.
 - A Studio on another machine (a non-local `BASEURL` or `UNSLOTH_BASE_URL`)
   never gets the local stored key. Export that Studio's key instead.
 - If you turn on keyless access in Studio's settings, the key is ignored.
