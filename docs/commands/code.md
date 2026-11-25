@@ -10,6 +10,7 @@ spinloop code -O                         # apply ./Spinloop, then launch
 spinloop code qwen3.6-27b                # apply the aliased Spinloop, then launch
 spinloop code --node prod --prompt "hi"   # configure from prod's deployment, then launch
 spinloop code --fleet ./fleet.yaml       # route through a fleet, or its gateway
+spinloop code -w ~/projects/my-app       # launch the harness in another directory
 ```
 
 `code` is the only way to launch an agent against a fleet: `spinloop fleet
