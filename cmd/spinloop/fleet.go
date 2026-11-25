@@ -510,9 +510,9 @@ derivation, consent, and registration behaviour as "spinloop cloud deploy".`,
 	}
 	fs := c.Flags()
 	fs.StringVarP(&path, "fleet", "f", "", fleetFileUsage)
-	fs.StringVar(&nodeName, "node", "", nodeFlagTargetUsage)
+	fs.StringVarP(&nodeName, "node", "n", "", nodeFlagTargetUsage)
 	fs.BoolVar(&all, "all", false, "deploy every kind: cloud node in the fleet")
-	fs.BoolVarP(&dryRun, "dry-run", "n", false, "print the config that would be deployed, without sending it")
+	fs.BoolVar(&dryRun, "dry-run", false, "print the config that would be deployed, without sending it")
 	fs.BoolVar(&overwrite, "overwrite", false, "proceed against a node the plane already holds, or one that is running")
 	fs.BoolVar(&reseed, "reseed", false, "re-fetch the weights even if they are already in S3 (starts a ~20-minute seed)")
 	fs.StringVar(&allowedCidr, "allowed-cidr", "", "who may reach each node's instance (default: your public IP as a /32, on first deploy)")

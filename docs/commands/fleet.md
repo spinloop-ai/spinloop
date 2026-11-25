@@ -490,13 +490,13 @@ deploy`](cloud.md), applied per node.
 | ---- | ------- |
 | `-f`, `--fleet <path>` | The fleet file (default `./fleet.yaml`) — `logs` takes it long-form only, since `-f` is its follow flag |
 | `--all` | `start`/`stop`/`deploy`: act on every node (or every `kind: cloud` node, for `deploy`) instead of named ones |
-| `-n`, `--node <name>` | narrow the command to one node of the fleet — on `start`/`stop` it stands in for the node name, on `route` it reports that node rather than choosing one; `deploy` names it with `--node` only, since `-n` is `--dry-run` there |
+| `-n`, `--node <name>` | narrow the command to one node of the fleet — on `start`/`stop` it stands in for the node name, on `route` it reports that node rather than choosing one; including `deploy`, where it replaced `-n`'s old dry-run meaning |
 | `--prefer` | `route` only: rank by `idle` or `active`, overriding the file |
 | `--format` | `metrics`: `gauge` (default), `bar`, `table`, or `json`; `logs`: `text` (default) or `json` |
 | `-w`, `--watch` | `metrics` only: redraw on an interval until interrupted |
 | `-f`, `--follow` | `logs` only: keep printing new output until interrupted |
 | `--limit` | `logs` only: lines of backlog per node (default 200) |
-| `-n`, `--dry-run` | `deploy` only: print the plan for each targeted node without deploying |
+| `--dry-run` | `deploy` only: print the plan for each targeted node without deploying (`-n` belongs to `--node`) |
 | `--overwrite` | `deploy` only: proceed against a cloud node the plane already holds, or one that is running |
 | `--reseed` | `deploy` only: re-fetch the weights even if already in S3 |
 | `--allowed-cidr` | `deploy` only: who may reach each cloud node's instance |

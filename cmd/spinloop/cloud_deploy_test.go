@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/spf13/cobra"
 	"io"
 	"net"
 	"net/http"
@@ -1506,5 +1507,35 @@ func TestCmdDeploy_IncompleteInventoryCannotCertifyAFreeNode(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "AccessDeniedException") {
 		t.Errorf("the refusal should carry the plane's own failure: %v", err)
+	}
+}
+
+// On every cloud verb `-n` means `--node`; deploy follows the rule too, with
+// `--dry-run` keeping only its long form (the release already breaks node
+// naming everywhere — `-n` meaning dry-run on one verb only would be the
+// cruellest survivor).
+func TestCmdDeploy_ShortNodeIsTheNode(t *testing.T) {
+	isolateConfig(t)
+	stubAWSEnv(t)
+	stubDeploySeams(t, "https://unused", "undeployed")
+	writeDeploySpinloopCwd(t)
+
+	out := captureStdout(t, func() {
+		if err := cmdCloudDeploy([]string{"-n", "testenv", "--dry-run"}); err != nil {
+			t.Fatalf("deploy -n testenv --dry-run: %v", err)
+		}
+	})
+	if !strings.Contains(out, "testenv") {
+		t.Errorf("the dry run should print the node -n named, got:\n%s", out)
+	}
+	// And the flags themselves carry the rule: dry-run keeps no shorthand,
+	// node owns `-n` — on cloud deploy and fleet deploy alike.
+	for _, c := range []*cobra.Command{cloudDeployCmd(), fleetDeployCmd()} {
+		if s := c.Flags().Lookup("dry-run").Shorthand; s != "" {
+			t.Errorf("%s --dry-run still answers to -%s", c.Name(), s)
+		}
+		if s := c.Flags().Lookup("node").Shorthand; s != "n" {
+			t.Errorf("%s --node shorthand = %q, want n", c.Name(), s)
+		}
 	}
 }

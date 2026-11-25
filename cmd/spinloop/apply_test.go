@@ -731,3 +731,49 @@ func TestCmdUnapply_RemoveCloudNodeNamedProvider(t *testing.T) {
 		t.Errorf("unapply should have removed the dev-1 model, still have: %v", models)
 	}
 }
+
+// A node the plane holds but has no address for cannot be applied: a provider
+// block pointing nowhere is a broken harness config written in confidence. The
+// apply must refuse, name how the node gets an address, and write nothing.
+func TestCmdApply_NodeWithoutAnAddressIsRefused(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+
+	planeHolding(t, "dev-1", "")
+	spinloopDir := t.TempDir()
+	spinloopFile := filepath.Join(spinloopDir, "Spinloop")
+	mustWrite(t, spinloopFile, "PROVIDER llamacpp\nALIAS qwen\n")
+
+	err := cmdApply([]string{"--node", "dev-1", spinloopFile})
+	if err == nil ||
+		!strings.Contains(err.Error(), "no recorded address") ||
+		!strings.Contains(err.Error(), "spinloop cloud start --node dev-1") {
+		t.Fatalf("err = %v, want a refusal naming how the node gets an address", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "opencode", "opencode.json")); !os.IsNotExist(err) {
+		t.Error("a refused apply must write no harness config")
+	}
+}
+
+// A hand-written BASEURL is the user's own answer to the missing address, so
+// the apply still goes through even when the plane records none.
+func TestCmdApply_StatedBaseURLNeedsNoRecordedAddress(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+
+	planeHolding(t, "dev-1", "")
+	spinloopDir := t.TempDir()
+	spinloopFile := filepath.Join(spinloopDir, "Spinloop")
+	mustWrite(t, spinloopFile, "PROVIDER llamacpp\nALIAS qwen\nBASEURL http://127.0.0.1:9090/v1\n")
+
+	captureStdout(t, func() {
+		if err := cmdApply([]string{"--node", "dev-1", spinloopFile}); err != nil {
+			t.Fatalf("cmdApply: %v", err)
+		}
+	})
+	m := readConfigMap(t, filepath.Join(dir, "opencode", "opencode.json"))
+	dev1 := m["provider"].(map[string]any)["dev-1"].(map[string]any)
+	if got := dev1["options"].(map[string]any)["baseURL"]; got != "http://127.0.0.1:9090/v1" {
+		t.Errorf("baseURL = %v, want the Spinloop's own BASEURL", got)
+	}
+}

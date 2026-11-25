@@ -267,5 +267,11 @@ func Undeploy(ctx context.Context, cfg Config, dryRun bool) (*UndeployResult, er
 	if name == "" {
 		name = cfg.Node
 	}
-	return &UndeployResult{Node: name, Released: out.Released, DryRun: dryRun}, nil
+	// The reply's own dry-run flag is the truth about what the plane did;
+	// the request is the evidence only when the reply predates the flag.
+	reported := dryRun
+	if out.DryRun != nil {
+		reported = *out.DryRun
+	}
+	return &UndeployResult{Node: name, Released: out.Released, DryRun: reported}, nil
 }

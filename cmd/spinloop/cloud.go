@@ -1370,7 +1370,7 @@ from its next fresh launch.`,
 		},
 	}
 	fs := c.Flags()
-	fs.BoolVarP(&dryRun, "dry-run", "n", false, "print the config that would be deployed, without sending it")
+	fs.BoolVar(&dryRun, "dry-run", false, "print the config that would be deployed, without sending it")
 	fs.BoolVar(&overwrite, "overwrite", false, "proceed against a node the plane already holds, or one that is running")
 	fs.BoolVar(&reseed, "reseed", false, "re-fetch the weights even if they are already in S3 (starts a ~20-minute seed)")
 	fs.StringVar(&allowedCidr, "allowed-cidr", "", "who may reach this node's instance (default: your public IP as a /32, on first deploy)")
@@ -1378,7 +1378,7 @@ from its next fresh launch.`,
 	fs.StringVar(&spinloopVersion, "spinloop-version", "", "spinloop release the node's instances install at boot (default: latest)")
 	fs.StringVar(&instanceType, "instance-type", "", "EC2 instance type the node's instances launch as (e.g. g6e.xlarge; default: the control plane's default type)")
 	fs.StringVar(&apiKeyEnv, "api-key-env", "", "the environment variable holding the API key to store for this node (a variable name, never the key itself)")
-	fs.StringVar(&nodeName, "node", "", "the node deploy creates (required)")
+	fs.StringVarP(&nodeName, "node", "n", "", "the node deploy creates (required)")
 	compRegister(c, "node", compCloudNodes)
 	return c
 }
@@ -1446,7 +1446,7 @@ func deriveDeployTarget(usage, spinloopArg, nodeName string) (sel spinloop.Selec
 		return
 	}
 	if !cloud.IsNodeName(nodeName) {
-		err = fmt.Errorf("%q is not a node name: a node name is a plain identifier, with no path", nodeName)
+		err = cloud.NotNodeName(nodeName)
 		return
 	}
 	return

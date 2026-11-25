@@ -31,9 +31,10 @@ type PlaneRequest struct {
 	// SPINLOOP_CLOUD_REGION and the AWS region chain.
 	Region string
 	// GetName reads configuration variables, so a caller whose values come
-	// from somewhere richer than the process environment (Viper, with its
-	// AutomaticEnv and config file) resolves the plane the way it reads
-	// everything else. Nil means os.Getenv.
+	// from somewhere routed through Viper (whose AutomaticEnv binding, for
+	// spinloop's own variables, reads the process environment) resolves the
+	// plane the way it reads everything else. Nil means os.Getenv — the same
+	// answer, which is why library callers may leave it nil.
 	GetName func(string) string
 }
 
@@ -312,8 +313,7 @@ func overlayEndpoints(cfg Config, getenv func(string) string) Config {
 // that happened to fail.
 func ResolveNode(ctx context.Context, name string, req PlaneRequest) (Config, error) {
 	if !IsNodeName(name) {
-		return Config{}, fmt.Errorf(
-			"%q is not a node name: a node name is a plain identifier, with no path", name)
+		return Config{}, NotNodeName(name)
 	}
 	plane, err := ResolvePlane(ctx, req)
 	if err != nil {

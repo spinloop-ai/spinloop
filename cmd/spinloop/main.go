@@ -73,6 +73,10 @@ func main() {
 		if f, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0); err == nil {
 			os.Stderr = f
 		}
+		// The control-plane version warning writes to the stderr captured at
+		// package start, not the one just redirected, so it needs its own
+		// refusal: a TAB on a skewed plane must still print no stderr.
+		cloud.SilenceVersionWarnings()
 		if len(os.Args) == 2 {
 			os.Args = append(os.Args, "")
 		}
@@ -276,6 +280,15 @@ func applySelection(sel spinloop.Selection, h harness.Harness, spinloopPath, nod
 	if sel.BaseURL == "" && cloudCfg != nil && cloudCfg.BaseURL != "" {
 		fmt.Printf("Taking the base URL from the %s cloud node.\n", nodeName)
 		sel.BaseURL = cloudCfg.BaseURL
+	}
+	// A node the plane holds but has no address for cannot be applied: a
+	// provider block pointing nowhere is a broken harness config written in
+	// confidence. The address belongs to the live node, so say how it gets one.
+	if sel.BaseURL == "" && cloudCfg != nil {
+		return fmt.Errorf(
+			"cloud node %q has no recorded address on the control plane in %s, and this Spinloop states no BASEURL — "+
+				"`spinloop cloud start --node %s` gives the node an address; apply again once it has one",
+			nodeName, cloudCfg.Region, nodeName)
 	}
 
 	var contextSize, outputSize int
@@ -961,7 +974,7 @@ func exportLimit(sel spinloop.Selection, st harness.ProviderState, values map[st
 func removeSelection(sel spinloop.Selection, h harness.Harness, spinloopPath, nodeName string) error {
 	if nodeName != "" {
 		if !cloud.IsNodeName(nodeName) {
-			return fmt.Errorf("%q is not a node name: a node name is a plain identifier, with no path", nodeName)
+			return cloud.NotNodeName(nodeName)
 		}
 		sel.Provider = nodeName
 	}

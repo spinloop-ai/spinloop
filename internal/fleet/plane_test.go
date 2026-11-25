@@ -220,3 +220,23 @@ func stubPlaneHalfRead(t *testing.T) string {
 	stubPlaneEndpoints(t, srv.URL)
 	return srv.URL
 }
+
+// An abandoned read is not the plane's answer. A dashboard tick whose context
+// is cancelled mid-flight must not leave every node of the next tick inheriting
+// the cancellation for the whole TTL against a plane that was healthy.
+func TestPlaneCacheDoesNotRecordACancelledRead(t *testing.T) {
+	stubPlane(t, nil, "dev")
+	cfg := &Config{Nodes: []NodeConfig{{Name: "dev", Kind: KindCloud}}, plane: &planeInventory{}}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, _, err := cfg.planeNode(ctx, "dev"); err == nil {
+		t.Fatal("a cancelled read should fail")
+	}
+
+	// The next tick asks with a live context: the healthy plane must answer,
+	// not the previous tick's cancellation.
+	if _, found, err := cfg.planeNode(context.Background(), "dev"); err != nil || !found {
+		t.Errorf("after a cancelled read, a live read = found %v, err %v; want the plane's answer", found, err)
+	}
+}

@@ -557,7 +557,7 @@ naming who deployed the node first, since it may not be yours.
 
 | Flag | Meaning |
 | ---- | ------- |
-| `--node`, `-n` | A cloud node on the control plane the command acts on, by name (required everywhere, including `deploy`; `deploy` names it with `--node` only — `-n` is `--dry-run` there) |
+| `--node`, `-n` | A cloud node on the control plane the command acts on, by name (required everywhere, including `deploy`, where `-n` is its short form and `--dry-run` has none) |
 | `--print-env` | `start` only: print the export lines (`OPENAI_BASE_URL`/`OPENAI_API_KEY`) to stdout for `eval` |
 | `--timeout` | How long `start` or `restart` waits for the endpoint (default 15m) |
 | `-F`, `--force` | `restart` only: skip the graceful engine stop and take the instance down directly |

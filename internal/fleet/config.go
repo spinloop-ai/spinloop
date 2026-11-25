@@ -465,8 +465,7 @@ func Resolve(flagPath string) (*Config, error) {
 // occasion for.
 func ForCloudNode(ctx context.Context, name string) (*Config, error) {
 	if !cloud.IsNodeName(name) {
-		return nil, fmt.Errorf(
-			"%q is not a node name: a node name is a plain identifier, with no path", name)
+		return nil, cloud.NotNodeName(name)
 	}
 	cfg := &Config{Nodes: []NodeConfig{{Name: name, Kind: KindCloud}}, plane: &planeInventory{}}
 	if err := cfg.requireCloudNode(ctx, name); err != nil {
@@ -581,13 +580,12 @@ func (c *Config) validate() error {
 			}
 		case KindCloud:
 			// The node's name *is* the cloud node's name on the control plane,
-			// so it must be a plain identifier; a path-like name could never be
-			// one, and would send the fleet hunting for a node nobody names
-			// that way.
+			// so it must wear the plane's grammar; a name outside it could
+			// never be one, and would send the fleet hunting for a node
+			// nobody names that way.
 			if !cloud.IsNodeName(n.Name) {
 				return fmt.Errorf(
-					"node %q is kind %q: its name must be a cloud node name (no /, no .json)",
-					n.Name, KindCloud)
+					"node %q is kind %q: %w", n.Name, KindCloud, cloud.NotNodeName(n.Name))
 			}
 			if n.InstanceType != "" && !cloud.IsInstanceType(n.InstanceType) {
 				return fmt.Errorf(

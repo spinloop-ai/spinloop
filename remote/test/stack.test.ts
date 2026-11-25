@@ -540,12 +540,16 @@ describe('LlmStack (control plane)', () => {
     expect(actions).toContain('ec2:DescribeAddresses');
     expect(actions).toContain('ec2:DescribeSecurityGroups');
     expect(actions).toContain('ec2:DescribeInstances');
-    // The path listing covers the plane's own SSM prefix only, and the path
-    // read is read-only — inventory never writes state.
+    // The path listing covers the plane's own SSM prefix only — the grant
+    // ends in `/star`, so a sibling stack whose path merely starts with the
+    // same words stays outside it — and the path read is read-only: inventory
+    // never writes state.
     const byPath = statements.find((s) =>
       [s.Action].flat().includes('ssm:GetParametersByPath'),
     );
-    expect(JSON.stringify(byPath!.Resource)).toContain('parameter/cloud-vm-llm');
+    const byPathResource = JSON.stringify(byPath!.Resource);
+    expect(byPathResource).toContain('parameter/cloud-vm-llm/*');
+    expect(byPathResource).not.toContain('parameter/cloud-vm-llm*');
     expect([byPath!.Action].flat()).toEqual(['ssm:GetParametersByPath']);
   });
 

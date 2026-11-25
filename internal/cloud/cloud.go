@@ -148,7 +148,12 @@ type Response struct {
 	// already-deployed replies still say `environment` (Node above).
 	// Undeploy-reply-only, like Released.
 	Undeployed string `json:"node"`
-	Error      string `json:"error"`
+	// DryRun is the plane's own confirmation that the undeploy it just
+	// answered released nothing. A pointer because absence is meaningful: a
+	// reply without it predates the flag, and the request is then the only
+	// evidence. Undeploy-reply-only.
+	DryRun *bool  `json:"dryRun"`
+	Error  string `json:"error"`
 }
 
 // instanceTypePattern is the shape of an EC2 instance type: a lowercase family

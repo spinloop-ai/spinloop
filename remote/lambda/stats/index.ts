@@ -230,19 +230,29 @@ async function inventory(): Promise<LambdaFunctionURLResult> {
     errors.push(`node tags: ${errorName(err)}`);
   }
 
+  // The per-node reads are independent, and this Lambda answers a listing a
+  // fan-out waits on: ask every node at once rather than paying two-plus
+  // EC2 round-trips in series per node. The entries come back in name order
+  // regardless, and each node's own notes are appended beside its entry so
+  // the error list stays as deterministic as the serial version's was.
+  const namesSorted = [...names].sort();
+  const assembled = await Promise.all(
+    namesSorted.map((env) => inventoryEntry(env, storedConfigs.get(env))),
+  );
   const nodes: InventoryEntry[] = [];
-  for (const env of [...names].sort()) {
-    nodes.push(await inventoryEntry(env, storedConfigs.get(env), errors));
+  for (const { entry, notes } of assembled) {
+    nodes.push(entry);
+    errors.push(...notes);
   }
   return jsonResponse(200, { nodes, ...(errors.length > 0 ? { errors } : {}) });
 }
 
-/** Assemble one inventory entry. Never throws: a failed read marks the entry partial and notes the error instead. */
+/** Assemble one inventory entry. Never throws: a failed read marks the entry partial and is returned among the entry's own notes instead. */
 async function inventoryEntry(
   env: string,
   storedConfig: string | undefined,
-  errors: string[],
-): Promise<InventoryEntry> {
+): Promise<{ entry: InventoryEntry; notes: string[] }> {
+  const errors: string[] = [];
   let partial = false;
   let config: DeployConfig | null = null;
   try {
@@ -272,18 +282,21 @@ async function inventoryEntry(
     errors.push(`${env}: instance lookup ${errorName(err)}`);
   }
   return {
-    node: env,
-    deployedBy: config?.deployedBy ?? '',
-    deployedAt: config?.deployedAt ?? '',
-    runner: config?.runner ?? '',
-    modelId: config?.modelId ?? '',
-    servedName: config?.servedModelName ?? '',
-    baseUrl: publicIp ? baseUrlFor(publicIp, PORT) : '',
-    // No instance is the stopped plane-state; the inventory is about what the
-    // control plane holds, not what EC2 happens to be carrying right now.
-    state: instance?.state ?? 'stopped',
-    instanceType: instance?.instanceType ?? '',
-    instanceId: instance?.instanceId ?? '',
-    partial,
+    entry: {
+      node: env,
+      deployedBy: config?.deployedBy ?? '',
+      deployedAt: config?.deployedAt ?? '',
+      runner: config?.runner ?? '',
+      modelId: config?.modelId ?? '',
+      servedName: config?.servedModelName ?? '',
+      baseUrl: publicIp ? baseUrlFor(publicIp, PORT) : '',
+      // No instance is the stopped plane-state; the inventory is about what the
+      // control plane holds, not what EC2 happens to be carrying right now.
+      state: instance?.state ?? 'stopped',
+      instanceType: instance?.instanceType ?? '',
+      instanceId: instance?.instanceId ?? '',
+      partial,
+    },
+    notes: errors,
   };
 }

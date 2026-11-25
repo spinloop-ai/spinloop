@@ -3,7 +3,6 @@ package fleet
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
 	"time"
 
@@ -220,9 +219,7 @@ func (c *Config) NewNode(ctx context.Context, entry NodeConfig) (Node, error) {
 		// name that could never be one fails for that reason rather than as a
 		// name the plane happens not to hold.
 		if !cloud.IsNodeName(entry.Name) {
-			return nil, fmt.Errorf(
-				"%q is not a node name: a node name is a plain identifier, with no path",
-				entry.Name)
+			return nil, cloud.NotNodeName(entry.Name)
 		}
 		if _, found, err := c.planeNode(ctx, entry.Name); err != nil {
 			return nil, err

@@ -693,7 +693,7 @@ export class LlmStack extends cdk.Stack {
       new iam.PolicyStatement({
         actions: ['ssm:GetParametersByPath'],
         resources: [
-          `arn:${cdk.Aws.PARTITION}:ssm:${cdk.Aws.REGION}:${cdk.Aws.ACCOUNT_ID}:parameter/cloud-vm-llm*`,
+          `arn:${cdk.Aws.PARTITION}:ssm:${cdk.Aws.REGION}:${cdk.Aws.ACCOUNT_ID}:parameter/cloud-vm-llm/*`,
         ],
       }),
     );

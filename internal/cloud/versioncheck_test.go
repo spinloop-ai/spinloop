@@ -150,3 +150,20 @@ func TestControlPlaneCalls_NoHeaderNoWarning(t *testing.T) {
 		t.Errorf("expected no warning without the header, got %q", buf.String())
 	}
 }
+
+// Tab completion must stay silent whatever the state of the plane — and the
+// version warning writes to the stderr captured at package start, so
+// redirecting os.Stderr is not enough. The silencer must out-rank a skewed
+// plane reached through any call.
+func TestSilenceVersionWarnings_QuietsEveryCall(t *testing.T) {
+	origVersion, origWriter := cliVersion, versionWarnWriter
+	defer func() { cliVersion, versionWarnWriter = origVersion, origWriter }()
+	cliVersion, versionWarnWriter = "v1.0.0", &bytes.Buffer{}
+	versionWarnOnce = sync.Once{}
+
+	SilenceVersionWarnings()
+	checkControlPlaneVersion(headerWith("v9.9.9"))
+	if buf, ok := versionWarnWriter.(*bytes.Buffer); ok && buf.Len() != 0 {
+		t.Errorf("a silenced process wrote %q", buf.String())
+	}
+}

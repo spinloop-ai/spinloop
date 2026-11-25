@@ -278,3 +278,32 @@ func TestUndeploy_OldPlaneTerminateEchoIsRefused(t *testing.T) {
 		}
 	}
 }
+
+// The report of a dry run takes the plane's word for what the plane did:
+// the reply's own dryRun flag outranks the request, and only a reply that
+// predates the flag falls back to it.
+func TestUndeploy_DryRunFollowsTheReply(t *testing.T) {
+	stubAWSEnv(t)
+	t.Run("the reply's flag is the truth", func(t *testing.T) {
+		server := httptest.NewServer(planeReply(`{"node":"dev","released":["instance"],"dryRun":true}`))
+		defer server.Close()
+		res, err := Undeploy(context.Background(), Config{StopURL: server.URL, Node: "dev", Region: "eu-west-1"}, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !res.DryRun {
+			t.Error("the reply says nothing was released; the result must agree")
+		}
+	})
+	t.Run("a reply without the flag keeps the request", func(t *testing.T) {
+		server := httptest.NewServer(planeReply(`{"node":"dev","released":[]}`))
+		defer server.Close()
+		res, err := Undeploy(context.Background(), Config{StopURL: server.URL, Node: "dev", Region: "eu-west-1"}, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !res.DryRun {
+			t.Error("a plane that predates the flag must not turn a dry run into a release")
+		}
+	})
+}

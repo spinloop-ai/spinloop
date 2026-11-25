@@ -98,9 +98,9 @@ looked for on and how to create the node there.
 `--fleet` SHALL carry a `-f` short form on every `spinloop fleet` subcommand
 except `fleet logs`, where `-f` is the short form of `--follow`; on `fleet
 logs` the fleet file SHALL be named by the long form `--fleet` only. `--node`
-SHALL carry the `-n` short form everywhere it appears except `fleet deploy`
-and `cloud deploy`, where `-n` is the short form of `--dry-run`; on those two
-the node SHALL be named by the long form `--node` only.
+SHALL carry the `-n` short form everywhere it appears, including `fleet
+deploy` and `cloud deploy`, where `--dry-run` SHALL have no short form so
+that `-n` means one thing across the whole surface.
 
 #### Scenario: Default resolution
 

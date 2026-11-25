@@ -89,10 +89,10 @@ behaviour.
   removed `us-east-1` fallback
 - [x] 9.6 Correct the CHANGELOG breaking note that read as if `ENV` lines
   stopped being applied; what died is the registry lookup
-- [ ] 9.7 Make `cloud.IsNodeName` refuse names the plane's grammar refuses,
+- [x] 9.7 Make `cloud.IsNodeName` refuse names the plane's grammar refuses,
   and stop the fleet's plane cache from recording a context-cancelled read as
   that plane's answer
-- [ ] 9.8 Clear the review's P2 items: completion's version-skew warning off
+- [x] 9.8 Clear the review's P2 items: completion's version-skew warning off
   stderr, the duplicated undeploy name fallback, the SSM parameter grant's
   missing `/`, parallel per-node inventory reads on the plane, `apply --node`
   refusing an address-less node, and `-n` on `cloud deploy` meaning `--node`

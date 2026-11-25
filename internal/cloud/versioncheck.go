@@ -41,6 +41,15 @@ func versionsDiffer(cli, controlPlane string) bool {
 	return cli != controlPlane
 }
 
+// SilenceVersionWarnings stops the version-skew warning ever being written,
+// for processes that must never write to stderr however skewed the plane is.
+// Tab completion calls it before running: the invariant is that `__complete`
+// stays silent whatever the state of the config or catalogue, and the warning
+// writer holds the real stderr from before main redirected it.
+func SilenceVersionWarnings() {
+	versionWarnOnce.Do(func() {})
+}
+
 // checkControlPlaneVersion writes a warning to stderr, at most once per
 // process, when the response headers carry a control plane version that
 // differs from the CLI's. A response without the header (a control plane that

@@ -2,8 +2,8 @@ package fleet
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"os"
 	"slices"
 	"strings"
 	"time"
@@ -32,10 +32,13 @@ import (
 const planeInventoryTTL = 10 * time.Second
 
 // planeResolve resolves the plane behind this fleet's cloud nodes, from the
-// caller's credentials and region. Cheap: internal/cloud resolves it once per
+// caller's credentials and region. The nil GetName is the resolver's documented
+// default of the process environment; the CLI's own calls hand the resolver
+// its Viper-backed lookup, whose AutomaticEnv binding reads those same
+// variables. Cheap either way: internal/cloud resolves a plane once per
 // process and remembers it.
 func (c *Config) planeResolve(ctx context.Context) (cloud.ControlPlane, error) {
-	return cloud.ResolvePlane(ctx, cloud.PlaneRequest{GetName: os.Getenv})
+	return cloud.ResolvePlane(ctx, cloud.PlaneRequest{})
 }
 
 // planeConfig returns the resolved endpoints for one cloud node: the plane's,
@@ -81,6 +84,13 @@ func (c *Config) planeNodes(ctx context.Context) (*cloud.Inventory, error) {
 		return nil, err
 	}
 	inv, err := cloud.ReadInventory(ctx, plane.Config)
+	// A read the caller abandoned is not the plane's answer. Caching a
+	// cancellation would hand one interrupted dashboard tick's context error
+	// to every node of the next one for the whole TTL, against a plane that
+	// was in fact healthy; the next reader simply asks again.
+	if err != nil && (errors.Is(err, context.Canceled) || ctx.Err() != nil) {
+		return nil, err
+	}
 	// The read is recorded either way, so a plane that is down is asked again
 	// after the TTL rather than once per node, and an empty plane is not
 	// re-read per node either.
