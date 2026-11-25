@@ -19,6 +19,12 @@
 #                   apiKeyEnv resolves to nothing, the Pi harness writes its
 #                   keyless placeholder instead of an unresolvable $VAR
 #   apiKeyPrefix    sanity-check that the key starts with this
+#   apiKeyFile      path pattern ($HOME and glob wildcards allowed) of a file
+#                   where a local server stores the key it generated. Read
+#                   only when apiKeyEnv resolves to nothing and the endpoint
+#                   is local; the newest match is used. The key counts as set:
+#                   configs reference apiKeyEnv, and a launched harness gets
+#                   the key under that name
 #   options         static options merged into the provider block
 #   optionsFromEnv  option -> env var; injected into options when the var is set
 #   optionsRequired list of option keys that must resolve to a non-empty value

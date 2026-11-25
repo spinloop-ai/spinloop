@@ -68,6 +68,12 @@ context is never scaled; see [`spinloop serve`](commands/serve.md#parallelism).
   lookup comes up empty — set the one it names.
 - Local providers on localhost (Ollama, llama.cpp) need no key; Bedrock uses
   your AWS credentials.
+- A local Unsloth Studio's key is read from the copy Studio stores under
+  `~/.unsloth/studio/auth/` when `UNSLOTH_API_KEY` is unset. If opencode still
+  reports "Not authenticated", an opencode background service
+  (`opencode serve --service`) started before the key was available may still
+  be running. opencode resolves `{env:…}` from that service's environment, so
+  stop the service and launch again with `spinloop code`.
 
 ## The daemon refuses to start, or shows `crashed`
 

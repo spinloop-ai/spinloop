@@ -57,7 +57,7 @@ SPINLOOP_CLOUD_START_URL=... SPINLOOP_CLOUD_STOP_URL=... SPINLOOP_CLOUD_REGION=.
 | `HF_ENDPOINT` | The hub host `spinloop hf` reads repo metadata from. Default `https://huggingface.co`. |
 | `LLAMA_CACHE` | llama.cpp's cache `spinloop hf` also checks for a copy already on disk — a model `llama-server` downloaded lives here, not in the hub cache. Default the platform's user cache directory (`~/.cache/llama.cpp` on Linux, `~/Library/Caches/llama.cpp` on macOS). |
 | `OPENAI_API_KEY` | The key spinloop resolves for OpenAI-compatible, oMLX and MTPLX providers (from the environment or the adjacent `.env`). |
-| `UNSLOTH_API_KEY` | The key for the `unsloth` provider: the `sk-unsloth-…` key Unsloth Studio prints when `unsloth run` starts. Leave unset if keyless access is on in Studio. |
+| `UNSLOTH_API_KEY` | The key for the `unsloth` provider: the `sk-unsloth-…` key Unsloth Studio prints when `unsloth run` starts. For a local Studio it can stay unset: spinloop then reads the key Studio stores under `~/.unsloth/studio/auth/`. Set it for a Studio on another machine. |
 
 Each provider in the catalogue also names its own key variable (and sometimes a
 base-URL or region variable); `spinloop provider list` shows the provider details, and the

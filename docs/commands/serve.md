@@ -413,15 +413,24 @@ the old one.
 
 Studio requires an API key on `/v1` by default. It creates the key itself
 and prints it in its startup banner (`Authorization: Bearer sk-unsloth-…`).
-There is no option to give it one. So:
+There is no option to give it one. Studio stores the key in
+`~/.unsloth/studio/auth/` and reuses it on every run.
 
-- export that key as `UNSLOTH_API_KEY` before `spinloop harness apply`; the
-  harness config holds a reference to the variable, never the key itself, or
-- turn on keyless access in Studio's settings, and leave `UNSLOTH_API_KEY`
-  unset.
+When `UNSLOTH_API_KEY` is set nowhere (not in an `ENV` line, your shell, or
+the `.env` beside the Spinloop) and the endpoint is local, spinloop reads the
+stored key itself. `spinloop harness apply` writes a reference to
+`UNSLOTH_API_KEY` into the harness config, never the key, and `spinloop code`
+starts the agent with `UNSLOTH_API_KEY` set. Nothing needs exporting.
 
-The key is reused across runs (it is cached under `~/.unsloth/studio/auth`),
-so you only copy it once. Because Studio cannot read a key from a file,
+- A harness you start yourself, outside `spinloop code`, still needs
+  `UNSLOTH_API_KEY` exported, because the config only references it.
+- A Studio on another machine (a non-local `BASEURL` or `UNSLOTH_BASE_URL`)
+  never gets the local stored key. Export that Studio's key instead.
+- If you turn on keyless access in Studio's settings, the key is ignored.
+- Only the default key name is read. A Studio started with a different
+  `--api-key-name` needs its key exported.
+
+Because Studio cannot read a key from a file,
 `spinloop daemon` cannot gate an `unsloth` engine with a key of its own, and a
 start that asks it to is refused.
 

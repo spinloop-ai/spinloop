@@ -23,5 +23,5 @@
 
 ## 4. Docs
 
-- [ ] 4.1 Update the Unsloth Studio section of `docs/commands/serve.md` and the key entry in `docs/env-vars.md`
-- [ ] 4.2 Document `apiKeyFile` where the catalogue fields are described, and the opencode service caveat in troubleshooting
+- [x] 4.1 Update the Unsloth Studio section of `docs/commands/serve.md` and the key entry in `docs/env-vars.md`
+- [x] 4.2 Document `apiKeyFile` where the catalogue fields are described, and the opencode service caveat in troubleshooting

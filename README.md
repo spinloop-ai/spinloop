@@ -700,8 +700,8 @@ Each provider declares which environment variable holds its key (`spinloop
 list` shows them). Values are looked up in your shell environment first, then a
 `.env` beside the `Spinloop`, so an exported variable always wins and the `.env`
 only fills a gap. Local providers like Ollama, llama.cpp, oMLX and MTPLX need
-no key (Unsloth Studio is the exception: it makes its own key, which you
-export as `UNSLOTH_API_KEY`);
+no key (Unsloth Studio makes its own key, and spinloop reads the copy Studio
+stores locally, so a local Studio needs nothing exported either);
 Bedrock authenticates through your AWS credentials.
 
 `spinloop harness open` carries that same local environment to the agent it launches:
