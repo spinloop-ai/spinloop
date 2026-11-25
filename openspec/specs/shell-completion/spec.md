@@ -54,8 +54,9 @@ names (the hidden `__complete` excluded), each command's flags in both their
 long and short forms, its subcommands where it has them, and context-aware
 values — provider names from the resolved catalogue
 (honouring a `--providers` override already on the line), harness names,
-registered alias names where a Spinloop path is accepted, and the supported
-shells for `completion`. The catalogue no longer enumerates models, so
+registered alias names where a Spinloop path is accepted, directories (and
+only directories) for the launch commands' `--working-dir`/`-w`, and the
+supported shells for `completion`. The catalogue no longer enumerates models, so
 `--model`/`-m` has no static candidate source; it SHALL still consume its value
 so a following flag completes normally. For a command with subcommands, the
 first positional slot SHALL offer those subcommands and any later slot SHALL fall
@@ -122,3 +123,14 @@ command's arity SHALL offer nothing.
 - **WHEN** the user completes `spinloop harness config --set <TAB>`
 - **THEN** the registered harness names are offered, with no file paths
 
+#### Scenario: The working-directory flag completes directories
+
+- **WHEN** the user completes `spinloop code -w <TAB>`, or
+  `spinloop harness open --working-dir=<TAB>`
+- **THEN** directories are offered, and no files or alias names
+
+#### Scenario: The Spinloop slot completes after the working directory
+
+- **WHEN** the user completes `spinloop code -w ../project <TAB>`
+- **THEN** registered alias names and paths are offered, because the flag's
+  value is consumed and the Spinloop slot is still open

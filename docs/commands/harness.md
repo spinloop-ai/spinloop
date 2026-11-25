@@ -119,6 +119,25 @@ control plane.
 | `--prefer` | Rank fleet nodes by `idle` or `active` (overrides the fleet file) |
 | `--no-wake` | Fail rather than starting an engine on an idle fleet node |
 | `--wake-timeout` | How long to wait for a woken node's engine (default 5m) |
+| `-w`, `--working-dir` | Run the harness in this directory (default: the current directory) |
+
+### Choosing where the agent runs
+
+The harness runs in the directory you launch it from, and a coding agent works
+on the project it finds there. `--working-dir`/`-w` runs it somewhere else,
+without changing directory first:
+
+```sh
+spinloop harness open -w ~/projects/my-app            # the agent works on my-app
+spinloop code inkling-2-mini -w ../other -s ses_123   # apply an alias, launch in ../other, resume a session
+```
+
+A relative path is resolved against the current directory. A path that does
+not exist, or is not a directory, is reported before anything is applied, so
+the harness config is left as it was. The flag only moves the harness:
+spinloop still looks for `./Spinloop` (bare `-O`), `./fleet.yaml` and a
+Spinloop's `.env` where it always does. Tab completion offers directories for
+the flag's value.
 
 ### Launching against your fleet
 

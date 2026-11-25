@@ -189,6 +189,12 @@ func compFiles(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCom
 	return nil, cobra.ShellCompDirectiveDefault
 }
 
+// compDirs offers no static candidates and lets the shell fall back to
+// directories only.
+func compDirs(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+	return nil, cobra.ShellCompDirectiveFilterDirs
+}
+
 // compNoValues is the completion for a value flag with nothing to enumerate:
 // no candidates, no paths.
 func compNoValues(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
@@ -335,6 +341,8 @@ var launchValueFlags = map[string]bool{
 	"-n":             true,
 	"--prefer":       true,
 	"--wake-timeout": true,
+	"--working-dir":  true,
+	"-w":             true,
 }
 
 // launchSlot completes one word of an `open` command line. The command runs
@@ -351,6 +359,8 @@ func launchSlot(_ *cobra.Command, args []string, toComplete string) ([]string, c
 			return aliasNames(), cobra.ShellCompDirectiveDefault
 		case "--node", "-n":
 			return compNodeNames(args)
+		case "--working-dir", "-w":
+			return compDirs(nil, nil, "")
 		}
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
@@ -361,6 +371,11 @@ func launchSlot(_ *cobra.Command, args []string, toComplete string) ([]string, c
 	}
 	if len(args) > 0 {
 		last := args[len(args)-1]
+		// bash splits --flag=<partial> into --flag, "=", <partial>, so a lone
+		// "=" before the cursor means the flag word before it wants a value.
+		if last == "=" && len(args) > 1 {
+			last = args[len(args)-2]
+		}
 		if strings.HasPrefix(last, "-") && !strings.Contains(last, "=") {
 			// A detached flag right before the cursor is asking for its value.
 			switch last {
@@ -370,6 +385,8 @@ func launchSlot(_ *cobra.Command, args []string, toComplete string) ([]string, c
 				return nil, cobra.ShellCompDirectiveDefault
 			case "--node", "-n":
 				return compNodeNames(args)
+			case "--working-dir", "-w":
+				return compDirs(nil, nil, "")
 			case "--prefer", "--wake-timeout":
 				return nil, cobra.ShellCompDirectiveNoFileComp
 			}
