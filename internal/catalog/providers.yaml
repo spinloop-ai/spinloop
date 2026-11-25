@@ -171,6 +171,10 @@ providers:
     # the gate, and no key is injected when the var is unset.
     apiKeyEnv: UNSLOTH_API_KEY
     apiKeyOptional: true
+    # Where `unsloth run` stores the key for its default key name (`cli`) and
+    # reuses it across runs. Read for a local endpoint when UNSLOTH_API_KEY is
+    # set nowhere.
+    apiKeyFile: $HOME/.unsloth/studio/auth/.cli_api_key_cli_*
     options:
       baseURL: http://localhost:8888/v1
     optionsFromEnv:

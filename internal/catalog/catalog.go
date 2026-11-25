@@ -43,8 +43,13 @@ type Provider struct {
 	APIKeyRequired bool   `yaml:"apiKeyRequired"`
 	// APIKeyOptional marks a provider that also works unauthenticated (a local
 	// server). It only affects the Pi harness: see BuildPiProvider.
-	APIKeyOptional bool              `yaml:"apiKeyOptional"`
-	APIKeyPrefix   string            `yaml:"apiKeyPrefix"`
+	APIKeyOptional bool   `yaml:"apiKeyOptional"`
+	APIKeyPrefix   string `yaml:"apiKeyPrefix"`
+	// APIKeyFile is a path pattern (env refs and glob wildcards allowed) for
+	// a file in which a local server stores the key it generated. It is read
+	// only when APIKeyEnv resolves empty and the endpoint is local: see
+	// KeyResolver.
+	APIKeyFile     string            `yaml:"apiKeyFile"`
 	Options        map[string]any    `yaml:"options"`
 	OptionsFromEnv map[string]string `yaml:"optionsFromEnv"`
 	// OptionsRequired lists option keys that must resolve to a non-empty value
@@ -204,8 +209,8 @@ func BuildProviderBlock(id string, p *Provider, modelOverride, baseURLOverride s
 		return nil, "", err
 	}
 	if p.APIKeyEnv != "" {
-		key := resolve(p.APIKeyEnv)
 		baseURL, _ := options["baseURL"].(string)
+		key := p.KeyResolver(resolve, baseURL)(p.APIKeyEnv)
 		switch {
 		case key == "" && p.APIKeyRequired:
 			return nil, "", fmt.Errorf("%s is not set; add it to your .env or environment", p.APIKeyEnv)
@@ -344,7 +349,7 @@ func BuildPiProvider(id string, p *Provider, modelOverride, baseURLOverride stri
 	// written for a cloud endpoint could not be repaired by exporting the key
 	// afterwards — Pi would keep sending the placeholder.
 	switch {
-	case p.APIKeyEnv != "" && p.APIKeyOptional && resolve(p.APIKeyEnv) == "" && IsLocalEndpoint(prov.BaseURL):
+	case p.APIKeyEnv != "" && p.APIKeyOptional && p.KeyResolver(resolve, prov.BaseURL)(p.APIKeyEnv) == "" && IsLocalEndpoint(prov.BaseURL):
 		prov.APIKey = piPlaceholderAPIKey
 	case p.APIKeyEnv != "":
 		prov.APIKey = "$" + p.APIKeyEnv

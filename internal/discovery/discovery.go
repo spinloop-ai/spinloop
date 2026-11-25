@@ -109,7 +109,7 @@ func Models(p *catalog.Provider, baseURLOverride string, resolve func(string) st
 	}
 	mu.Unlock()
 
-	models, err := fetch(endpoint, p.APIKeyEnv, resolve)
+	models, err := fetch(endpoint, p.APIKeyEnv, p.KeyResolver(resolve, base))
 	if err != nil {
 		return nil, err
 	}

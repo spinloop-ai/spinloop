@@ -14,7 +14,9 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+	"github.com/spinloop-ai/spinloop/internal/catalog"
 	"github.com/spinloop-ai/spinloop/internal/cloud"
+	"github.com/spinloop-ai/spinloop/internal/discovery"
 	"github.com/spinloop-ai/spinloop/internal/fleet"
 	"github.com/spinloop-ai/spinloop/internal/harness"
 	"github.com/spinloop-ai/spinloop/internal/opencode"
@@ -238,6 +240,7 @@ func launchAgent(h harness.Harness, rest []string, providers, envDir string, clo
 	// key the agent is given comes from the same place the apply step
 	// reported.
 	resolveKey := cloudLaunchResolver(opencode.EnvResolver(envDir), cloudResp)
+	resolveKey = storedKeyResolver(resolveKey, providers, sel, worn, cloudResp, choice)
 
 	// Launch the harness, forwarding stdio and any trailing args.
 	bin := h.Command()
@@ -293,6 +296,26 @@ func launchAgent(h harness.Harness, rest []string, providers, envDir string, clo
 		return err
 	}
 	return nil
+}
+
+// storedKeyResolver extends resolve with the stored key of the worn
+// selection's provider (see catalog.Provider.KeyResolver), at the endpoint the
+// apply resolved for it. A launch with no worn Spinloop, or one through a
+// cloud endpoint or a fleet, gets its key from elsewhere, so resolve is
+// returned unchanged for it.
+func storedKeyResolver(resolve func(string) string, providers string, sel spinloop.Selection, worn bool, cloudResp *cloud.Response, choice *fleet.Choice) func(string) string {
+	if !worn || cloudResp != nil || choice != nil || sel.Provider == "" {
+		return resolve
+	}
+	cat, err := catalog.LoadFrom(catalog.ResolveCatalogPath(providers))
+	if err != nil {
+		return resolve
+	}
+	p := cat.Providers[sel.Provider]
+	if p == nil {
+		return resolve
+	}
+	return p.KeyResolver(resolve, discovery.ResolveBaseURL(p, sel.BaseURL, resolve))
 }
 
 // versionCmd prints the version, the same spelling the old dispatch gave
