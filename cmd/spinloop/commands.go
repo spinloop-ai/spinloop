@@ -235,7 +235,7 @@ for a custom one. Each subcommand's --help says what it does.`,
 // args forwarded, and the environment the apply step reported as the source of
 // every key the agent is given. Both launch commands end here, so the agent a
 // launch is given can only differ the way the apply that preceded it did.
-func launchAgent(h harness.Harness, rest []string, providers, envDir string, cloudResp *cloud.Response, sel spinloop.Selection, worn bool, choice *fleet.Choice) error {
+func launchAgent(h harness.Harness, rest []string, dir, providers, envDir string, cloudResp *cloud.Response, sel spinloop.Selection, worn bool, choice *fleet.Choice) error {
 	// The resolver the launch uses knows the cloud key too, so every
 	// key the agent is given comes from the same place the apply step
 	// reported.
@@ -245,6 +245,9 @@ func launchAgent(h harness.Harness, rest []string, providers, envDir string, clo
 	// Launch the harness, forwarding stdio and any trailing args.
 	bin := h.Command()
 	cmd := exec.Command(bin, rest...)
+	// dir is the --working-dir value, already checked to be a directory; empty
+	// leaves the harness in spinloop's own working directory.
+	cmd.Dir = dir
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

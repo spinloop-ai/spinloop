@@ -1,6 +1,10 @@
 package main
 
 import (
+	"fmt"
+	"os"
+	"path/filepath"
+
 	"github.com/spf13/cobra"
 
 	"github.com/spinloop-ai/spinloop/internal/cloud"
@@ -20,7 +24,7 @@ import (
 // spellings come from this single builder they share flags, Spinloop
 // application, and launch, and cannot drift from each other.
 func openLaunchCmd(use, short, long string) *cobra.Command {
-	var harnessName, providers string
+	var harnessName, providers, workDir string
 	var spinloopPath spinloopPathFlag
 	var route routeOptions
 	c := &cobra.Command{
@@ -52,6 +56,12 @@ func openLaunchCmd(use, short, long string) *cobra.Command {
 			// positional, so the harness still gets its own --help.
 			if fs.Changed("help") {
 				return c.Help()
+			}
+			// Checked before anything is applied, so a mistyped directory
+			// leaves the harness config as it was.
+			dir, err := launchWorkDir(workDir)
+			if err != nil {
+				return err
 			}
 
 			h, _, err := harness.Resolve(harnessName)
@@ -102,7 +112,7 @@ func openLaunchCmd(use, short, long string) *cobra.Command {
 					return err
 				}
 			}
-			return launchAgent(h, rest, providers, envDir, cloudResp, sel, spinloopPath.set, choice)
+			return launchAgent(h, rest, dir, providers, envDir, cloudResp, sel, spinloopPath.set, choice)
 		},
 	}
 	fs := c.Flags()
@@ -119,7 +129,32 @@ func openLaunchCmd(use, short, long string) *cobra.Command {
 	fs.StringVar(&route.prefer, "prefer", "", "rank fleet nodes by `idle` or `active` (overrides the fleet file)")
 	fs.BoolVar(&route.noWake, "no-wake", false, "fail rather than starting an engine on an idle fleet node")
 	fs.DurationVar(&route.wakeTimeout, "wake-timeout", 0, "how long to wait for a woken node's engine")
+	fs.StringVarP(&workDir, "working-dir", "w", "", "run the harness in this directory (default: the current directory)")
+	compRegister(c, "working-dir", compDirs)
 	return c
+}
+
+// launchWorkDir returns the absolute form of the --working-dir value, or "" when
+// none was given (the harness then runs in spinloop's own directory). A path that
+// does not exist, or is not a directory, is an error naming it.
+func launchWorkDir(path string) (string, error) {
+	if path == "" {
+		return "", nil
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+	info, err := os.Stat(abs)
+	switch {
+	case os.IsNotExist(err):
+		return "", fmt.Errorf("working directory %s does not exist", path)
+	case err != nil:
+		return "", err
+	case !info.IsDir():
+		return "", fmt.Errorf("working directory %s is not a directory", path)
+	}
+	return abs, nil
 }
 
 // openCmd builds the `open` subcommand of the harness group — the launch a bare
