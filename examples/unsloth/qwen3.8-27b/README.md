@@ -52,18 +52,25 @@ When the model has loaded, Studio prints a banner with the URL and a
 
 ## 2. Point opencode at it
 
-Studio requires that key on every `/v1` request. Export it, then apply the
-Spinloop:
+Studio requires that key on every `/v1` request. It also stores the key
+under `~/.unsloth/studio/auth/` and reuses it on every run, and spinloop reads
+that copy when `UNSLOTH_API_KEY` is unset. So launching the agent needs no
+export:
+
+```sh
+spinloop code examples/unsloth/qwen3.8-27b/Spinloop
+```
+
+The harness config stores a reference to `UNSLOTH_API_KEY`, never the key
+itself, and `spinloop code` starts the agent with the variable set. To run
+opencode yourself instead, export the key from the banner first:
 
 ```sh
 export UNSLOTH_API_KEY=sk-unsloth-…   # from the banner
 spinloop harness apply examples/unsloth/qwen3.8-27b/Spinloop
 ```
 
-The harness config stores a reference to `UNSLOTH_API_KEY`, never the key
-itself. Studio reuses the same key on every run, so you only need to copy it
-once. You can also turn on keyless access in Studio's settings and leave
-`UNSLOTH_API_KEY` unset.
+You can also turn on keyless access in Studio's settings.
 
 ### Check it's up
 

@@ -717,6 +717,8 @@ func TestMtplxProviderKeyHandling(t *testing.T) {
 }
 
 func TestUnslothProviderKeyHandling(t *testing.T) {
+	// No stored Studio key: HOME points at an empty directory.
+	t.Setenv("HOME", t.TempDir())
 	cat, _ := Load()
 	p, ok := cat.Providers["unsloth"]
 	if !ok {

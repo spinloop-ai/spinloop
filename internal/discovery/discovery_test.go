@@ -4,6 +4,8 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"sync/atomic"
 	"testing"
 
@@ -86,6 +88,30 @@ func TestModels_SendsBearerKeyOnlyWhenResolved(t *testing.T) {
 	}
 	if auth != "" {
 		t.Errorf("Authorization = %q, want empty when key is unset", auth)
+	}
+}
+
+// A local server's stored key authenticates the model listing when the key
+// variable is unset. httptest serves on 127.0.0.1, a local endpoint.
+func TestModels_SendsStoredKeyForLocalEndpoint(t *testing.T) {
+	resetCache()
+	var auth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		auth = r.Header.Get("Authorization")
+		_, _ = w.Write([]byte(`{"data":[{"id":"m"}]}`))
+	}))
+	defer srv.Close()
+
+	keyFile := filepath.Join(t.TempDir(), ".key")
+	if err := os.WriteFile(keyFile, []byte("stored\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	p := &catalog.Provider{APIKeyEnv: "TOK", APIKeyFile: keyFile, Options: map[string]any{"baseURL": srv.URL}}
+	if _, err := Models(p, "", noEnv); err != nil {
+		t.Fatal(err)
+	}
+	if auth != "Bearer stored" {
+		t.Errorf("Authorization = %q, want %q", auth, "Bearer stored")
 	}
 }
 
