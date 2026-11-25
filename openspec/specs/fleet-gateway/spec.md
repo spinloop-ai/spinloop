@@ -311,12 +311,15 @@ model to start with, matching the one the request asks for:
   describing a config whose model or served name is the one the request asks
   for.
 - A cloud node names one through its own stats reply, which reads the
-  environment's stored deploy config directly and so carries its model id
-  whether the environment is running or stopped — unlike its status reply,
+  node's stored deploy config directly and so carries its model id
+  whether the node is running or stopped — unlike its status reply,
   which only relays the deploy config while running, and unlike the stats
-  reply itself, which carries no served name. An undeployed cloud node
-  environment's stats read fails outright, having no deploy config to read;
-  it names nothing and is not a candidate.
+  reply itself, which carries no served name. Whether such a node
+  exists at all SHALL be settled by the plane's inventory of deployed
+  nodes rather than inferred from that read failing: a cloud node whose
+  node the plane does not hold names nothing and is not a candidate,
+  and a node whose node the plane does hold stays a candidate even when
+  a particular read of it fails for an unrelated reason.
 
 A node is started with what it names, never with a config invented for the
 request: a daemon node is started with the Spinloop source's config; a cloud node
@@ -329,7 +332,7 @@ cannot serve — SHALL NOT fail the request while other candidates remain.
 A daemon engine started this way SHALL be gated with the key the node's fleet
 entry names, supplied by the gateway: the gateway is the client that starts
 the engine, so the key the client sets is the key the engine takes. A cloud node
-environment's engine is gated by its own key, resolved the same way a request
+node's engine is gated by its own key, resolved the same way a request
 already routed to it resolves one; the gateway does not change it. The wait
 SHALL be bounded by a wake timeout, defaulting to five minutes and
 overridable by `--wake-timeout`; exceeding it SHALL fail the request saying
@@ -341,7 +344,7 @@ When several requests ask for a model nothing is serving at once, the gateway
 SHALL start at most one engine per node and answer every request from it: the
 first request's wait is the wait the rest join, regardless of the node's
 kind. A daemon node's own control API refuses a second concurrent start on
-its own, but a cloud environment's control plane does not, so the gateway
+its own, but a cloud node's control plane does not, so the gateway
 SHALL NOT rely on that alone: two requests racing to wake the same node
 SHALL be coalesced before either reaches the node, not just reconciled after
 one of them answers. A node another request woke first SHALL be used the
@@ -362,21 +365,29 @@ rather than trying to start a node with nothing.
 - **THEN** that node is started with its own config, gated with the key its
   fleet entry names, and the request is answered once the engine answers
 
-#### Scenario: A cold request wakes a deployed cloud environment
+#### Scenario: A cold request wakes a deployed cloud node
 
 - **WHEN** no node is running the model a request names, one cloud node's
   stats reply reports it is deployed to serve it, and waking is allowed for
   it
-- **THEN** that environment's instance is started, its own stored deploy
+- **THEN** that node's instance is started, its own stored deploy
   config decides what it serves, and the request is answered once its engine
   answers
 
 #### Scenario: An undeployed cloud node is not a wake candidate
 
 - **WHEN** the only node whose name could match a request is a cloud node
-  environment with nothing deployed
+  naming a node the plane's inventory does not carry
 - **THEN** it is not started, and the failure says nothing is deployed to
   serve the model, naming the deployment path
+
+#### Scenario: An existing node is a candidate though a read failed
+
+- **WHEN** a cloud node's node is in the plane's inventory as deployed to
+  serve the model a request names, but its stats read failed because the caller's
+  credentials were rejected on that call
+- **THEN** the node is still considered a candidate, and the failure the caller
+  sees is the rejected credential rather than "nothing is deployed to serve it"
 
 #### Scenario: The request is held while the engine loads
 
@@ -401,7 +412,7 @@ rather than trying to start a node with nothing.
 
 - **WHEN** two requests arrive at once for a model nothing is serving, and one
   cloud node's stats reply reports it is deployed to serve it
-- **THEN** that environment's instance is started once, not once per request,
+- **THEN** that node's instance is started once, not once per request,
   and both requests are answered once its engine answers
 
 #### Scenario: A woken engine takes the gateway's key

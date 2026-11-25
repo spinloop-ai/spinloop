@@ -14,6 +14,8 @@ const LAMBDA_ENV = {
   STOP_RETENTION_MINUTES: '60',
   MAX_SEED_MINUTES: '60',
   SEED_STALL_MINUTES: '10',
+  // Undeploy clears a node's schedules through the Scheduler mirror.
+  SCHEDULE_GROUP: 'test-group',
 };
 
 const findManagedInstance = vi.fn();

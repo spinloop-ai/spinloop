@@ -454,9 +454,16 @@ export class LlmStack extends cdk.Stack {
       }),
     );
 
+    // Scheduler group for user-defined start/stop schedules (the schedule
+    // Lambda below fills it in). Created here rather than beside the schedule
+    // Lambda because the stop Lambda's undeploy must clear a node's
+    // schedules too, so both take the group's name from the same construct.
+    const scheduleGroup = new scheduler.CfnScheduleGroup(this, 'ScheduleGroup');
+    const scheduleArnPattern = `arn:${cdk.Aws.PARTITION}:scheduler:${cdk.Aws.REGION}:${cdk.Aws.ACCOUNT_ID}:schedule/${scheduleGroup.ref}/*`;
+
     const stopFn = new nodejs.NodejsFunction(this, 'StopFn', {
       description:
-        'Stops idle environment instances (scheduled sweep) and terminates them after stop retention - or stops/terminates one immediately on request',
+        'Stops idle environment instances (scheduled sweep) and terminates them after stop retention - or stops/terminates/undeploys one immediately on request',
       entry: path.join(__dirname, '..', 'lambda', 'stop', 'index.ts'),
       handler: 'handler',
       runtime: lambda.Runtime.NODEJS_22_X,
@@ -473,6 +480,8 @@ export class LlmStack extends cdk.Stack {
         // The sweep's seed pass, layer three of the termination guarantee.
         MAX_SEED_MINUTES: String(cfg.maxSeedMinutes),
         SEED_STALL_MINUTES: String(cfg.seedStallMinutes),
+        // Undeploy clears the node's schedules from this group.
+        SCHEDULE_GROUP: scheduleGroup.ref,
       },
     });
     stopFn.addToRolePolicy(
@@ -496,6 +505,61 @@ export class LlmStack extends cdk.Stack {
     // The seed pass: reap stalled or over-age seeds and record why.
     stopFn.addToRolePolicy(seedTerminateStatement());
     seedLogStatements().forEach((s) => stopFn.addToRolePolicy(s));
+    // Undeploy: find the node's EIP and security group by env tag
+    // before releasing and deleting them (Describe calls have no resource-
+    // level scoping). Terminate keeps its existing tag-scoped grant.
+    stopFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['ec2:DescribeAddresses', 'ec2:DescribeSecurityGroups'],
+        resources: ['*'],
+      }),
+    );
+    // Release and delete: neither action evaluates ec2:ResourceTag conditions,
+    // so the env-tag scoping is the Lambda's tag-filtered lookup above, and the
+    // grant is pinned to the EC2 resource kinds — never `*`.
+    stopFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['ec2:ReleaseAddress', 'ec2:DeleteSecurityGroup'],
+        resources: [
+          `arn:${cdk.Aws.PARTITION}:ec2:${cdk.Aws.REGION}:${cdk.Aws.ACCOUNT_ID}:elastic-ip/*`,
+          `arn:${cdk.Aws.PARTITION}:ec2:${cdk.Aws.REGION}:${cdk.Aws.ACCOUNT_ID}:security-group/*`,
+        ],
+      }),
+    );
+    // Undeploy deletes exactly the three parameter kinds that name a
+    // node — it cannot remove another path or a stray parameter.
+    stopFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['ssm:DeleteParameter'],
+        resources: [
+          `arn:${cdk.Aws.PARTITION}:ssm:${cdk.Aws.REGION}:${cdk.Aws.ACCOUNT_ID}:parameter/cloud-vm-llm/*/deploy-config`,
+          `arn:${cdk.Aws.PARTITION}:ssm:${cdk.Aws.REGION}:${cdk.Aws.ACCOUNT_ID}:parameter/cloud-vm-llm/*/schedules`,
+          `arn:${cdk.Aws.PARTITION}:ssm:${cdk.Aws.REGION}:${cdk.Aws.ACCOUNT_ID}:parameter/cloud-vm-llm/*/wake-lock`,
+        ],
+      }),
+    );
+    // The node's own API-key secret, under the shared cloud-vm-llm scope.
+    // Delete alone is not enough: the undeploy asks the secret whether it
+    // exists before deleting it, and a denied Describe would abort the
+    // teardown after the instance is already gone.
+    stopFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['secretsmanager:DescribeSecret', 'secretsmanager:DeleteSecret'],
+        resources: [envSecretArn],
+      }),
+    );
+    // Clear the node's schedules from the group — deletion only. The
+    // stop Lambda cannot mint schedules; that stays the schedule Lambda's.
+    stopFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['scheduler:DeleteSchedule'],
+        resources: [scheduleArnPattern],
+      }),
+    );
+    // ListSchedules has no resource-level scoping.
+    stopFn.addToRolePolicy(
+      new iam.PolicyStatement({ actions: ['scheduler:ListSchedules'], resources: ['*'] }),
+    );
 
     // The control plane `spinloop cloud deploy` calls: it creates the named
     // environment's resources (EIP, security group, API key, SSM state) if
@@ -621,6 +685,24 @@ export class LlmStack extends cdk.Stack {
         resources: [envSecretArn],
       }),
     );
+    // Inventory (GET without ?env=): enumerate the plane's nodes by
+    // listing the deploy-config parameters under its own path, and read the
+    // env tag off Elastic IPs and security groups. DescribeInstances rides
+    // the describe grant above; Describe calls have no resource-level scoping.
+    statsFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['ssm:GetParametersByPath'],
+        resources: [
+          `arn:${cdk.Aws.PARTITION}:ssm:${cdk.Aws.REGION}:${cdk.Aws.ACCOUNT_ID}:parameter/cloud-vm-llm/*`,
+        ],
+      }),
+    );
+    statsFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['ec2:DescribeAddresses', 'ec2:DescribeSecurityGroups'],
+        resources: ['*'],
+      }),
+    );
 
     const startUrl = startFn.addFunctionUrl({ authType: lambda.FunctionUrlAuthType.AWS_IAM });
     const stopUrl = stopFn.addFunctionUrl({ authType: lambda.FunctionUrlAuthType.AWS_IAM });
@@ -696,10 +778,10 @@ export class LlmStack extends cdk.Stack {
 
     // Schedules — cron-driven start and stop per environment. The schedule
     // Lambda keeps each environment's list in SSM and mirrors it into
-    // EventBridge Scheduler schedules in this group; Scheduler (not a classic
-    // rule) because it takes an IANA time zone and follows daylight saving.
-    const scheduleGroup = new scheduler.CfnScheduleGroup(this, 'ScheduleGroup');
-    const scheduleArnPattern = `arn:${cdk.Aws.PARTITION}:scheduler:${cdk.Aws.REGION}:${cdk.Aws.ACCOUNT_ID}:schedule/${scheduleGroup.ref}/*`;
+    // EventBridge Scheduler schedules in this group (the group itself, and
+    // its ARN pattern, are created above with the stop Lambda); Scheduler
+    // (not a classic rule) because it takes an IANA time zone and follows
+    // daylight saving.
     // What a schedule runs as: invoke the start or stop Lambda, nothing else.
     const schedulerRole = new iam.Role(this, 'SchedulerRole', {
       description: 'Assumed by EventBridge Scheduler to run scheduled starts and stops',

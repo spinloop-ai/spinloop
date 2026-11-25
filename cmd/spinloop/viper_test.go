@@ -1,9 +1,7 @@
 package main
 
 import (
-	"encoding/json"
-	"os"
-	"path/filepath"
+	"context"
 	"strings"
 	"testing"
 
@@ -61,70 +59,75 @@ func TestViperDefaultSpinloopNamed(t *testing.T) {
 	}
 }
 
-// TestViperCloudEnvPrecedence pins, for every SPINLOOP_CLOUD_* variable, the
-// resolution the CLI's Viper gives: an exported variable beats the same key in
-// the cloud config file, and an unset variable falls through to the file. No
-// control call is made — only the Config the commands would take is asserted.
-func TestViperCloudEnvPrecedence(t *testing.T) {
+// TestViperCloudVariablesFeedThePlaneResolution pins what the CLI's Viper is
+// still asked for: every SPINLOOP_CLOUD_* variable the plane resolution reads
+// reaches it through cliViper rather than the raw process environment, and one
+// variable overrides its own endpoint while the rest stay as the plane stated
+// them. There is no cloud config file for a variable to beat: the plane's own
+// endpoints are what SPINLOOP_CLOUD_* overrides, one at a time.
+func TestViperCloudVariablesFeedThePlaneResolution(t *testing.T) {
 	isolateConfig(t)
-	t.Chdir(t.TempDir()) // no ./Spinloop, so the per-user file is consulted
-	stubAWSEnv(t)
+	t.Chdir(t.TempDir()) // no ./Spinloop, so nothing but the variables speaks
 
-	file := cloud.Config{
-		StartURL:    "https://file.example/start",
-		StopURL:     "https://file.example/stop",
-		DeployURL:   "https://file.example/deploy",
-		StatsURL:    "https://file.example/stats",
-		EnvURL:      "https://file.example/env",
-		UpdateURL:   "https://file.example/update",
-		Region:      "us-east-1",
-		Environment: "default",
-	}
-	path := must1(cloud.EnvConfigPath("default"))
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	data, err := json.Marshal(file)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, data, 0o600); err != nil {
-		t.Fatal(err)
-	}
+	const stated = "https://plane.example"
+	const override = "https://variable.example/wins"
+	stubPlaneEndpoints(t, stated)
 
-	const envValue = "https://env.example/wins"
 	legs := map[string]func(cloud.Config) string{
 		"SPINLOOP_CLOUD_START_URL":    func(c cloud.Config) string { return c.StartURL },
 		"SPINLOOP_CLOUD_STOP_URL":     func(c cloud.Config) string { return c.StopURL },
 		"SPINLOOP_CLOUD_DEPLOY_URL":   func(c cloud.Config) string { return c.DeployURL },
 		"SPINLOOP_CLOUD_STATS_URL":    func(c cloud.Config) string { return c.StatsURL },
 		"SPINLOOP_CLOUD_ENV_URL":      func(c cloud.Config) string { return c.EnvURL },
+		"SPINLOOP_CLOUD_SEED_URL":     func(c cloud.Config) string { return c.SeedURL },
 		"SPINLOOP_CLOUD_UPDATE_URL":   func(c cloud.Config) string { return c.UpdateURL },
 		"SPINLOOP_CLOUD_SCHEDULE_URL": func(c cloud.Config) string { return c.ScheduleURL },
-		"SPINLOOP_CLOUD_REGION":       func(c cloud.Config) string { return c.Region },
 	}
 
-	// Unset variables fall through to the file.
-	cfg, err := resolveCloudConfig("default", "")
+	for name, get := range legs {
+		t.Run(name, func(t *testing.T) {
+			// A value only cliViper holds, never the process environment: a
+			// resolver reading os.Getenv directly would resolve the plane's
+			// endpoint and fail here.
+			key := strings.ToLower(strings.TrimPrefix(name, "SPINLOOP_"))
+			cliViper.Set(key, override)
+			// viper.Set cannot be undone — even setting "" keeps shadowing the
+			// environment — so the test leaves the instance rebuilt rather than
+			// emptied. Every command rebuilds cliViper through resolve() when
+			// it runs; a test that pokes overrides directly owes the suite the
+			// same wipe, or the next test resolves half its endpoints.
+			t.Cleanup(func() { cliViper = newCLIViper() })
+
+			cfg, err := resolveCloudConfig(context.Background(), "dev", "")
+			if err != nil {
+				t.Fatalf("%s set: %v", name, err)
+			}
+			if got := get(cfg); got != override {
+				t.Errorf("%s set: resolved %q, want %q", name, got, override)
+			}
+			// The variables it does not name stay as the plane said them.
+			if name != "SPINLOOP_CLOUD_START_URL" && cfg.StartURL != stated {
+				t.Errorf("%s set: StartURL = %q, want the plane's %q", name, cfg.StartURL, stated)
+			}
+		})
+	}
+}
+
+// The region is half of a plane's identity, so it is read the same way: through
+// the CLI's Viper, and a stated region is the plane resolved.
+func TestViperCloudRegionResolvesThePlane(t *testing.T) {
+	isolateConfig(t)
+	t.Chdir(t.TempDir())
+	stubPlaneEndpoints(t, "https://plane.example")
+
+	cliViper.Set("cloud_region", "eu-west-2")
+	t.Cleanup(func() { cliViper = newCLIViper() })
+
+	cfg, err := resolveCloudConfig(context.Background(), "dev", "")
 	if err != nil {
-		t.Fatalf("resolveCloudConfig: %v", err)
+		t.Fatal(err)
 	}
-	for name, get := range legs {
-		if got := get(cfg); got != get(file) {
-			t.Errorf("%s unset: resolved %q, want the file's %q", name, got, get(file))
-		}
-	}
-
-	// Each exported variable wins over the file, one at a time.
-	for name, get := range legs {
-		t.Setenv(name, envValue)
-		cfg, err := resolveCloudConfig("default", "")
-		if err != nil {
-			t.Fatalf("%s set: %v", name, err)
-		}
-		if got := get(cfg); got != envValue {
-			t.Errorf("%s set: resolved %q, want %q", name, got, envValue)
-		}
-		t.Setenv(name, "")
+	if cfg.Region != "eu-west-2" {
+		t.Errorf("region = %q, want the one Viper holds", cfg.Region)
 	}
 }

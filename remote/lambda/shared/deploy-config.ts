@@ -149,13 +149,23 @@ export interface DeployConfig {
    */
   spinloopVersion: string;
   /**
-   * The EC2 instance type the environment's instances launch as. Optional;
+   * The EC2 instance type the node's instances launch as. Optional;
    * absent/undefined means launch as the control plane's default type. A
    * property of the deployment — stored here and read back on the next fresh
    * launch, so a re-wake of a stopped instance keeps the type it launched
    * with (EC2 cannot resize an existing instance).
    */
   instanceType?: string;
+  /**
+   * Who last ran a deploy, and when, as an ISO-8601 time. Stamped by the
+   * deploy Lambda from the authenticated identity its request arrived under —
+   * never taken from the request body — and replaced on every redeploy. Pure
+   * metadata: it never reaches the engine, and a config written before it
+   * existed simply has neither.
+   */
+  deployedBy?: string;
+  /** See `deployedBy` — the time of that deploy. */
+  deployedAt?: string;
 }
 
 /**
@@ -211,7 +221,20 @@ export function parseDeployConfig(raw: string | undefined): DeployConfig {
     companions: parseCompanions(obj.companions),
     spinloopVersion: parseSpinloopVersion(obj.spinloopVersion),
     instanceType,
+    deployedBy: parseOwnershipStamp(obj.deployedBy),
+    deployedAt: parseOwnershipStamp(obj.deployedAt),
   };
+}
+
+/**
+ * Read one ownership stamp (`deployedBy` / `deployedAt`) through. These record
+ * who wrote the config and when — metadata a wake never depends on — so a
+ * non-string (a hand-edited parameter) is dropped rather than throwing: the
+ * config must still boot the box it describes. They are never required, so a
+ * stored config from before the stamps existed parses unchanged.
+ */
+function parseOwnershipStamp(raw: unknown): string | undefined {
+  return typeof raw === 'string' && raw !== '' ? raw : undefined;
 }
 
 /**

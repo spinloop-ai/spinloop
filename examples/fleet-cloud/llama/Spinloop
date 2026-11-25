@@ -1,4 +1,4 @@
-# What the "llama" environment serves. Found by fleet deploy through the
+# What the "llama" node serves. Found by fleet deploy through the
 # subdirectory convention — this file sits at llama/Spinloop, matching the
 # node's own name in ../fleet.yaml, so no `file` field is needed there.
 PROVIDER llamacpp

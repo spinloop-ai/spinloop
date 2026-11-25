@@ -41,7 +41,7 @@ func TestClientLogsReadsTheTailByDefault(t *testing.T) {
 	srv, query := stubLogsDaemon(t, "serving\n", true)
 	cfg := fleetFor(t, srv, "")
 	entry, _ := cfg.Node("box")
-	node, err := cfg.NewNode(entry)
+	node, err := cfg.NewNode(context.Background(), entry)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +64,7 @@ func TestClientLogsSendsTheCursorAndLimit(t *testing.T) {
 	srv, query := stubLogsDaemon(t, "", true)
 	cfg := fleetFor(t, srv, "")
 	entry, _ := cfg.Node("box")
-	node, err := cfg.NewNode(entry)
+	node, err := cfg.NewNode(context.Background(), entry)
 	if err != nil {
 		t.Fatal(err)
 	}

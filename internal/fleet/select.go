@@ -406,7 +406,7 @@ func (c *Config) EngineBaseURL(n NodeConfig, status daemon.StatusResponse) (stri
 	host, port, path := n.Host, 0, ""
 	if ep := status.Engine; ep != nil {
 		port, path = ep.Port, ep.Path
-		// A node that reports its engine's host — a cloud environment, whose
+		// A node that reports its engine's host — a cloud node, whose
 		// control plane knows the instance's published address — is reached
 		// there, in place of the host the fleet file supplies.
 		if ep.Host != "" {

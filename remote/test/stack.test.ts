@@ -83,9 +83,9 @@ describe('environments (pure helpers)', () => {
     expect(environmentFrom(undefined, 'staging')).toBe('staging');
     expect(environmentFrom({ env: 'prod' }, 'staging')).toBe('prod'); // query wins
     // Defaults are a CLI affordance; the AWS API is explicit.
-    expect(() => environmentFrom(undefined)).toThrow(/missing environment/);
-    expect(() => environmentFrom({})).toThrow(/missing environment/);
-    expect(() => environmentFrom({ env: 'a/b' })).toThrow(/invalid environment/);
+    expect(() => environmentFrom(undefined)).toThrow(/missing node/);
+    expect(() => environmentFrom({})).toThrow(/missing node/);
+    expect(() => environmentFrom({ env: 'a/b' })).toThrow(/invalid node/);
   });
 
   it('derives per-environment resource names', () => {
@@ -357,8 +357,10 @@ describe('LlmStack (control plane)', () => {
 
   it('gives the schedule Lambda its group, role and target functions, and scopes its Scheduler writes to the group', () => {
     const fns = template.findResources('AWS::Lambda::Function') as Record<string, any>;
+    // SCHEDULE_GROUP alone does not identify it — the stop Lambda's undeploy
+    // is given the same group — so match on the role and target ARNs it alone has.
     const schedule = Object.values(fns).find((f) =>
-      f.Properties.Environment?.Variables?.SCHEDULE_GROUP !== undefined,
+      f.Properties.Environment?.Variables?.SCHEDULER_ROLE_ARN !== undefined,
     );
     expect(schedule).toBeDefined();
     const vars = Object.keys(schedule.Properties.Environment.Variables).sort();
@@ -484,7 +486,74 @@ describe('LlmStack (control plane)', () => {
     expect(JSON.stringify(terminate!.Condition)).toContain('cloud-vm-llm');
   });
 
-  it('lets only the start and schedule Lambdas delete SSM parameters, each only its own', () => {
+  it('grants the stop Lambda the undeploy teardown, each action in its narrowest scope', () => {
+    const policies = template.findResources('AWS::IAM::Policy') as Record<string, any>;
+    const stopPolicy = Object.values(policies).find((p) =>
+      String(p.Properties.PolicyName).startsWith('StopFnServiceRoleDefaultPolicy'),
+    );
+    expect(stopPolicy).toBeDefined();
+    const statements = stopPolicy!.Properties.PolicyDocument.Statement as Statement[];
+    const actions = statements.flatMap((s) => [s.Action].flat());
+    for (const action of [
+      'ec2:ReleaseAddress',
+      'ec2:DeleteSecurityGroup',
+      'ec2:DescribeAddresses',
+      'ec2:DescribeSecurityGroups',
+      'secretsmanager:DescribeSecret',
+      'secretsmanager:DeleteSecret',
+      'scheduler:DeleteSchedule',
+      'scheduler:ListSchedules',
+    ]) {
+      expect(actions).toContain(action);
+    }
+    // Release and delete are pinned to the EIP and security-group resource
+    // kinds — never `*` — since these actions evaluate no tag conditions.
+    const release = statements.find((s) => [s.Action].flat().includes('ec2:ReleaseAddress'));
+    expect(JSON.stringify(release!.Resource)).toContain(':elastic-ip/*');
+    expect(JSON.stringify(release!.Resource)).toContain(':security-group/*');
+    // Key deletion inside the per-environment cloud-vm-llm scope.
+    const secret = statements.find((s) => [s.Action].flat().includes('secretsmanager:DeleteSecret'));
+    expect(JSON.stringify(secret!.Resource)).toContain('secret:cloud-vm-llm/*');
+    // Schedules: deletion inside the Scheduler group only — the stop Lambda
+    // cannot mint schedules; that stays the schedule Lambda's.
+    const sched = statements.find((s) => [s.Action].flat().includes('scheduler:DeleteSchedule'));
+    expect(JSON.stringify(sched!.Resource)).toContain(':schedule/');
+    expect(actions).not.toContain('scheduler:CreateSchedule');
+    expect(actions).not.toContain('scheduler:UpdateSchedule');
+    // And it is told which group to clear.
+    const fns = template.findResources('AWS::Lambda::Function') as Record<string, any>;
+    const stop = Object.values(fns).find((f) =>
+      String(f.Properties.Description).includes('stop retention'),
+    );
+    expect(stop!.Properties.Environment.Variables.SCHEDULE_GROUP).toBeDefined();
+  });
+
+  it('gives the stats Lambda the inventory reads, scoped to the plane path', () => {
+    const policies = template.findResources('AWS::IAM::Policy') as Record<string, any>;
+    const statsPolicy = Object.values(policies).find((p) =>
+      String(p.Properties.PolicyName).startsWith('StatsFnServiceRoleDefaultPolicy'),
+    );
+    expect(statsPolicy).toBeDefined();
+    const statements = statsPolicy!.Properties.PolicyDocument.Statement as Statement[];
+    const actions = statements.flatMap((s) => [s.Action].flat());
+    expect(actions).toContain('ssm:GetParametersByPath');
+    expect(actions).toContain('ec2:DescribeAddresses');
+    expect(actions).toContain('ec2:DescribeSecurityGroups');
+    expect(actions).toContain('ec2:DescribeInstances');
+    // The path listing covers the plane's own SSM prefix only — the grant
+    // ends in `/star`, so a sibling stack whose path merely starts with the
+    // same words stays outside it — and the path read is read-only: inventory
+    // never writes state.
+    const byPath = statements.find((s) =>
+      [s.Action].flat().includes('ssm:GetParametersByPath'),
+    );
+    const byPathResource = JSON.stringify(byPath!.Resource);
+    expect(byPathResource).toContain('parameter/cloud-vm-llm/*');
+    expect(byPathResource).not.toContain('parameter/cloud-vm-llm*');
+    expect([byPath!.Action].flat()).toEqual(['ssm:GetParametersByPath']);
+  });
+
+  it('lets the start, schedule and stop Lambdas delete SSM parameters, each only its own', () => {
     const policies = template.findResources('AWS::IAM::Policy') as Record<string, any>;
     const fns = template.findResources('AWS::Lambda::Function') as Record<string, any>;
     const deleters = Object.values(policies).filter((p) =>
@@ -492,11 +561,12 @@ describe('LlmStack (control plane)', () => {
         [s.Action].flat().includes('ssm:DeleteParameter'),
       ),
     );
-    expect(deleters).toHaveLength(2);
+    expect(deleters).toHaveLength(3);
 
     // What each may delete, keyed by the Lambda the role belongs to. The Lambdas
     // are told apart by settings only they are given: the AMI settings for the
-    // start Lambda, the schedule group for the schedule Lambda.
+    // start Lambda, the idle-sweep settings for the stop Lambda, and — checked
+    // only then — the schedule group for the schedule Lambda (stop shares it).
     const deletable: Record<string, string> = {};
     for (const policy of deleters) {
       const statements = (policy.Properties.PolicyDocument.Statement as Statement[]).filter((s) =>
@@ -508,15 +578,27 @@ describe('LlmStack (control plane)', () => {
       const roleId = (policy.Properties.Roles as { Ref: string }[])[0].Ref;
       const owner = Object.values(fns).find((f) => f.Properties.Role['Fn::GetAtt'][0] === roleId);
       const vars = owner?.Properties.Environment.Variables ?? {};
-      const who = vars.AMI_ROLE_TAG_KEY ? 'start' : vars.SCHEDULE_GROUP ? 'schedule' : 'other';
+      const who = vars.AMI_ROLE_TAG_KEY
+        ? 'start'
+        : vars.IDLE_THRESHOLD_MINUTES
+          ? 'stop'
+          : vars.SCHEDULE_GROUP
+            ? 'schedule'
+            : 'other';
       deletable[who] = resources;
     }
 
-    expect(Object.keys(deletable).sort()).toEqual(['schedule', 'start']);
+    expect(Object.keys(deletable).sort()).toEqual(['schedule', 'start', 'stop']);
     expect(deletable.start).toContain('parameter/cloud-vm-llm/*/wake-lock');
     expect(deletable.start).not.toContain('schedules');
     expect(deletable.schedule).toContain('parameter/cloud-vm-llm/*/schedules');
     expect(deletable.schedule).not.toContain('wake-lock');
+    // Undeploy: the three naming kinds of one environment, each via a per-env
+    // path — never a whole-path wildcard that could reach another plane's state.
+    expect(deletable.stop).toContain('parameter/cloud-vm-llm/*/deploy-config');
+    expect(deletable.stop).toContain('parameter/cloud-vm-llm/*/schedules');
+    expect(deletable.stop).toContain('parameter/cloud-vm-llm/*/wake-lock');
+    expect(deletable.stop).not.toContain('"*"');
   });
 
   it('passes the AMI role tag, weights bucket and subnet list to the start Lambda', () => {

@@ -30,7 +30,7 @@ func runLogs(target fleetTarget, q fleet.LogQuery, follow bool, limit int, forma
 		return err
 	}
 
-	cfg, err := resolveFleetTarget(target)
+	cfg, err := resolveFleetTarget(context.Background(), target)
 	if err != nil {
 		return err
 	}

@@ -151,17 +151,20 @@ func TestQueriedLogsCall(t *testing.T) {
 	}
 }
 
-// A cloud environment's queried read reaches its log store with the window
+// A cloud node's queried read reaches its log store with the window
 // the caller named. The store is CloudWatch, reached through the AWS SDK
 // rather than the control plane's HTTP endpoints, so this substitutes the
 // FetchLogsFn variable rather than an httptest server.
 func TestCloudNodeLogsMatching(t *testing.T) {
-	registerStatsEnv(t, "prod", "http://unused.invalid")
-	cfg, err := ForEnvironment("prod")
+	// The log store is CloudWatch, reached through the AWS SDK rather than the
+	// plane's HTTP endpoints, so this test never uses the plane's URLs — it
+	// only needs the plane to hold the name.
+	stubPlane(t, nil, "prod")
+	cfg, err := ForCloudNode(context.Background(), "prod")
 	if err != nil {
 		t.Fatal(err)
 	}
-	node, err := cfg.NewNode(cfg.Nodes[0])
+	node, err := cfg.NewNode(context.Background(), cfg.Nodes[0])
 	if err != nil {
 		t.Fatal(err)
 	}

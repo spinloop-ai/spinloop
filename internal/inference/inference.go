@@ -1,6 +1,6 @@
 // Package inference holds the vocabulary for what an inference engine should
 // serve, shared by every kind of node that runs one: a machine supervised by
-// `spinloop daemon`, and a cloud environment driven through its control plane.
+// `spinloop daemon`, and a cloud node driven through its control plane.
 //
 // It is deliberately a leaf — standard library only — so a node kind can be
 // described without depending on how any other kind is reached. What is
@@ -34,7 +34,7 @@ type DeployConfig struct {
 	// Empty means the boot installs the latest published release. Omitted
 	// when empty, so an unpinned deploy sends exactly what it always did.
 	SpinloopVersion string `json:"spinloopVersion,omitempty"`
-	// InstanceType is the EC2 instance type the environment's instances launch
+	// InstanceType is the EC2 instance type the node's instances launch
 	// as. Empty means launch as the control plane's default type. It is a
 	// property of the deployment, stored in the deploy config and read back on
 	// the next fresh launch — a re-wake of a stopped instance keeps the type it

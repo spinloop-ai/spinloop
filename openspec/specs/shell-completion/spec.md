@@ -55,8 +55,13 @@ long and short forms, its subcommands where it has them, and context-aware
 values — provider names from the resolved catalogue
 (honouring a `--providers` override already on the line), harness names,
 registered alias names where a Spinloop path is accepted, directories (and
-only directories) for the launch commands' `--working-dir`/`-w`, and the
-supported shells for `completion`. The catalogue no longer enumerates models, so
+only directories) for the launch commands' `--working-dir`/`-w`, the node names
+of the fleet file in force followed by the resolved plane's nodes where a
+`--node` value is accepted, and the supported shells for `completion`. A
+context-aware source that cannot be read — a catalogue that will not load, a
+plane that cannot be resolved or reached — SHALL offer nothing for that slot
+rather than erroring, so completion stays useful when the network is not. The
+catalogue no longer enumerates models, so
 `--model`/`-m` has no static candidate source; it SHALL still consume its value
 so a following flag completes normally. For a command with subcommands, the
 first positional slot SHALL offer those subcommands and any later slot SHALL fall
@@ -134,3 +139,18 @@ command's arity SHALL offer nothing.
 - **WHEN** the user completes `spinloop code -w ../project <TAB>`
 - **THEN** registered alias names and paths are offered, because the flag's
   value is consumed and the Spinloop slot is still open
+
+#### Scenario: --node offers the fleet's nodes, then the plane's nodes
+
+- **WHEN** the user completes `spinloop fleet status --node <TAB>` beside a
+  `fleet.yaml` naming `gpu-box`, with the resolved plane also holding `qwen-prod`
+- **THEN** `gpu-box` and the plane's node names are offered, with no file
+  paths
+
+#### Scenario: An unreachable plane offers nothing and errors nowhere
+
+- **WHEN** the user completes `spinloop cloud status --node <TAB>` with
+  credentials for an account that holds no control-plane stack
+- **THEN** no node names are offered, no file paths are offered, and
+  completion exits without an error
+

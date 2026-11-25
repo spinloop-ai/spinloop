@@ -95,7 +95,7 @@ func TestNodeCallsSucceed(t *testing.T) {
 	srv := stubDaemon(t, "", "idle")
 	cfg := fleetFor(t, srv, "")
 	entry, _ := cfg.Node("box")
-	node, err := cfg.NewNode(entry)
+	node, err := cfg.NewNode(context.Background(), entry)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -185,7 +185,7 @@ func TestOutcomeFailedOnDaemonRefusal(t *testing.T) {
 	srv := stubDaemon(t, "", "running") // already running -> start 409s
 	cfg := fleetFor(t, srv, "")
 	entry, _ := cfg.Node("box")
-	node, err := cfg.NewNode(entry)
+	node, err := cfg.NewNode(context.Background(), entry)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -272,24 +272,47 @@ func TestResultCarriesTheStatusAndTheVerdict(t *testing.T) {
 	}
 }
 
-// NewNode for a remote entry loads the registered environment's config, and
-// whatever is missing is a per-node error the way every other missing thing
-// is: no config directory to find it in, or the environment never registered.
-func TestNewNodeForAUnregisteredCloudEnvironment(t *testing.T) {
-	cfg := &Config{}
-	t.Setenv("SPINLOOP_CONFIG_DIR", "")
-	t.Setenv("XDG_CONFIG_HOME", "")
-	t.Setenv("HOME", "")
-	if _, err := cfg.NewNode(NodeConfig{Name: "env", Kind: KindCloud}); err == nil {
-		t.Error("a remote entry with no config directory should fail")
-	}
-	// With a registry to look in, an unregistered environment fails the node,
-	// not the fleet: the name never has to be env-shaped for that, a path-like
-	// one simply finds nothing.
-	t.Setenv("SPINLOOP_CONFIG_DIR", t.TempDir())
-	for _, name := range []string{"env", "a/b"} {
-		if _, err := cfg.NewNode(NodeConfig{Name: name, Kind: KindCloud}); err == nil {
-			t.Errorf("unregistered environment %q built a node", name)
+// A cloud node whose cloud node the plane does not hold is a per-node error
+// the way every other missing thing is, and the failure names the plane the
+// name was looked for on: on a shared plane, a missing node is usually the
+// wrong account or region rather than a deleted one. A name that could never be
+// a node's fails for that reason instead.
+func TestNewNodeForACloudNodeThePlaneDoesNotHold(t *testing.T) {
+	t.Run("the plane holds no such node", func(t *testing.T) {
+		stubPlaneEmpty(t)
+		cfg := &Config{}
+		_, err := cfg.NewNode(context.Background(), NodeConfig{Name: "env", Kind: KindCloud})
+		if err == nil {
+			t.Fatal("want an error")
 		}
-	}
+		for _, want := range []string{"env", "us-east-1", "spinloop cloud deploy --node env"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("error %q does not mention %q", err, want)
+			}
+		}
+	})
+
+	t.Run("the name could never be one", func(t *testing.T) {
+		stubPlane(t, nil, "env")
+		cfg := &Config{}
+		for _, name := range []string{"a/b", "prod.json"} {
+			if _, err := cfg.NewNode(context.Background(), NodeConfig{Name: name, Kind: KindCloud}); err == nil {
+				t.Errorf("%q built a node", name)
+			} else if !strings.Contains(err.Error(), "plain identifier") {
+				t.Errorf("error for %q = %q, want it to name the shape", name, err)
+			}
+		}
+	})
+
+	t.Run("the plane cannot be read", func(t *testing.T) {
+		stubPlaneUnresolvable(t)
+		cfg := &Config{}
+		_, err := cfg.NewNode(context.Background(), NodeConfig{Name: "env", Kind: KindCloud})
+		if err == nil {
+			t.Fatal("want an error")
+		}
+		if strings.Contains(err.Error(), "no cloud node") {
+			t.Errorf("error %q reports an empty plane rather than an unreadable one", err)
+		}
+	})
 }

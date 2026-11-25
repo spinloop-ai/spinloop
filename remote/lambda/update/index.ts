@@ -65,7 +65,7 @@ async function setKeep(
   ]);
   if (!instance) {
     return jsonResponse(404, {
-      error: `no running instance for environment ${JSON.stringify(env)}`,
+      error: `no running instance for node ${JSON.stringify(env)}`,
     });
   }
 

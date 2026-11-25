@@ -1,14 +1,14 @@
 # A mixed fleet: a machine running `spinloop daemon` and two `spinloop cloud`
-# environments, observed side by side. The same command reaches every node,
+# nodes, observed side by side. The same command reaches every node,
 # whatever kind it is.
 #
 #   spinloop status, or spinloop metrics -w
 #
 # A daemon node names the machine (host) and the variable holding its bearer
-# token (tokenEnv). A cloud node names its environment — its node name *is* the
-# env. The token and the control URLs stay out of this file — in the .env and
-# in each environment's cloud.json — so it names machines and environments,
-# never secrets or accounts.
+# token (tokenEnv). A cloud node names its node on the plane — its name *is*
+# the node's name there. The token and the control endpoints stay out of this
+# file — in the .env and resolved from the control plane — so it names
+# machines and cloud nodes, never secrets or accounts.
 #
 # None of the three nodes below declares a `file` field: each one's own name
 # is already a subdirectory beside this file (gpu-box/Spinloop, qwen/Spinloop,
@@ -21,7 +21,7 @@ nodes:
     port: 4242
     tokenEnv: GPU_BOX_TOKEN
 
-  # Two cloud environments, driven through their control plane.
+  # Two cloud nodes, driven through their control plane.
   - name: qwen
     kind: cloud
 

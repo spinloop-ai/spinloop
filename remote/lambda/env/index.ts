@@ -72,14 +72,14 @@ export async function handler(event: LambdaFunctionURLEvent): Promise<LambdaFunc
     const eip = await findEnvEip(env);
     if (!eip) {
       return jsonResponse(500, {
-        error: 'environment has no Elastic IP allocated',
+        error: 'node has no Elastic IP allocated',
       });
     }
 
     const apiKey = await readEnvApiKey(env);
     if (!apiKey) {
       return jsonResponse(500, {
-        error: 'environment has no API key',
+        error: 'node has no API key',
       });
     }
 
@@ -94,7 +94,7 @@ export async function handler(event: LambdaFunctionURLEvent): Promise<LambdaFunc
   } catch (err) {
     console.log(JSON.stringify({ environment: env, error: errorName(err) }));
     return jsonResponse(500, {
-      error: `failed to retrieve endpoint environment: ${errorName(err)}`,
+      error: `failed to retrieve endpoint node: ${errorName(err)}`,
     });
   }
 }

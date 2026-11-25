@@ -196,6 +196,7 @@ describe('DAEMON_STATUS_CMD', () => {
 const LAMBDA_ENV = {
   TAG_KEY: 'cloud-vm-llm:managed',
   TAG_VALUE: 'true',
+  ENGINE_PORT: '8000',
 };
 
 const findManagedInstance = vi.fn();

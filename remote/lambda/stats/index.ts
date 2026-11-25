@@ -2,12 +2,13 @@ import type { LambdaFunctionURLEvent, LambdaFunctionURLResult } from 'aws-lambda
 import {
   errorName,
   findManagedInstance,
+  findParameter,
   type InstanceInfo,
   readDeployConfig,
   requireEnv,
   runShellCommand,
 } from '../shared/aws';
-import { type DeployConfig } from '../shared/deploy-config';
+import { type DeployConfig, parseDeployConfig } from '../shared/deploy-config';
 import {
   DAEMON_METRICS_CMD,
   DAEMON_STATUS_CMD,
@@ -15,15 +16,20 @@ import {
   parseDaemonStatus,
 } from '../shared/daemon';
 import {
+  baseUrlFor,
   deployConfigParam,
   ENV_TAG_KEY,
   environmentFrom,
+  findEnvEip,
+  listEnvDeployConfigs,
+  taggedEnvNames,
 } from '../shared/environments';
 import { jsonResponse } from '../shared/http';
 import { type StatsResult } from '../shared/stats';
 
 const TAG_KEY = requireEnv('TAG_KEY');
 const TAG_VALUE = requireEnv('TAG_VALUE');
+const PORT = Number(requireEnv('ENGINE_PORT'));
 
 /** Narrow instance discovery to one environment's instance. */
 function envFilter(env: string) {
@@ -54,8 +60,16 @@ function retainUntilIfActive(instance: InstanceInfo | null): string | undefined 
  * RAM) comes from the on-instance spinloop daemon's /v1/metrics, fetched with
  * one SSM curl; the daemon's version rides along from /v1/status in a
  * parallel second. Collection itself lives in spinloop's internal/metrics.
+ *
+ * Without an `env` query parameter the same URL answers the plane's
+ * inventory instead — every node it holds — because an inventory is a
+ * question about the plane, not about one endpoint. Older CLIs always send
+ * `env`, so their behaviour is unchanged.
  */
 export async function handler(event: LambdaFunctionURLEvent): Promise<LambdaFunctionURLResult> {
+  if (event.queryStringParameters?.env === undefined) {
+    return inventory();
+  }
   let env: string;
   try {
     env = environmentFrom(event.queryStringParameters);
@@ -169,4 +183,120 @@ async function readDaemonVersion(instanceId: string): Promise<string | undefined
     console.log(JSON.stringify({ phase: 'daemon-version', error: errorName(err) }));
     return undefined;
   }
+}
+
+/** One node in the inventory reply. Unknown facts are empty strings; `partial` marks a node the plane could name but not fully read. */
+interface InventoryEntry {
+  node: string;
+  deployedBy: string;
+  deployedAt: string;
+  runner: string;
+  modelId: string;
+  servedName: string;
+  baseUrl: string;
+  state: string;
+  instanceType: string;
+  instanceId: string;
+  partial: boolean;
+}
+
+/**
+ * `GET {statsUrl}` with no `env`: every node this plane holds. The
+ * names are the union of the deploy-config parameters under `/cloud-vm-llm/`
+ * and the `cloud-vm-llm:env` tag values on Elastic IPs, security groups and
+ * instances — a node with a config but no instance is still listed,
+ * and one tagged but never deployed cannot go unmentioned. Each
+ * per-node read is best-effort: one failure marks that entry partial
+ * and is noted in `errors`, never failing the listing. A plane with nothing
+ * answers `{"nodes":[]}`.
+ */
+async function inventory(): Promise<LambdaFunctionURLResult> {
+  const errors: string[] = [];
+  const names = new Set<string>();
+  const storedConfigs = new Map<string, string>();
+  try {
+    for (const [env, raw] of await listEnvDeployConfigs()) {
+      names.add(env);
+      storedConfigs.set(env, raw);
+    }
+  } catch (err) {
+    errors.push(`deploy-configs: ${errorName(err)}`);
+  }
+  try {
+    for (const env of await taggedEnvNames()) {
+      names.add(env);
+    }
+  } catch (err) {
+    errors.push(`node tags: ${errorName(err)}`);
+  }
+
+  // The per-node reads are independent, and this Lambda answers a listing a
+  // fan-out waits on: ask every node at once rather than paying two-plus
+  // EC2 round-trips in series per node. The entries come back in name order
+  // regardless, and each node's own notes are appended beside its entry so
+  // the error list stays as deterministic as the serial version's was.
+  const namesSorted = [...names].sort();
+  const assembled = await Promise.all(
+    namesSorted.map((env) => inventoryEntry(env, storedConfigs.get(env))),
+  );
+  const nodes: InventoryEntry[] = [];
+  for (const { entry, notes } of assembled) {
+    nodes.push(entry);
+    errors.push(...notes);
+  }
+  return jsonResponse(200, { nodes, ...(errors.length > 0 ? { errors } : {}) });
+}
+
+/** Assemble one inventory entry. Never throws: a failed read marks the entry partial and is returned among the entry's own notes instead. */
+async function inventoryEntry(
+  env: string,
+  storedConfig: string | undefined,
+): Promise<{ entry: InventoryEntry; notes: string[] }> {
+  const errors: string[] = [];
+  let partial = false;
+  let config: DeployConfig | null = null;
+  try {
+    // Reuse the value the enumeration read when it has one; a node
+    // known only from a tag that has no parameter was never deployed, which
+    // is a fact, not a read failure.
+    const raw = storedConfig ?? (await findParameter(deployConfigParam(env)));
+    if (raw !== null) {
+      config = parseDeployConfig(raw);
+    }
+  } catch (err) {
+    partial = true;
+    errors.push(`${env}: deploy-config ${errorName(err)}`);
+  }
+  let publicIp = '';
+  try {
+    publicIp = (await findEnvEip(env))?.publicIp ?? '';
+  } catch (err) {
+    partial = true;
+    errors.push(`${env}: elastic IP ${errorName(err)}`);
+  }
+  let instance: InstanceInfo | null = null;
+  try {
+    instance = await findManagedInstance(TAG_KEY, TAG_VALUE, envFilter(env));
+  } catch (err) {
+    partial = true;
+    errors.push(`${env}: instance lookup ${errorName(err)}`);
+  }
+  return {
+    entry: {
+      node: env,
+      deployedBy: config?.deployedBy ?? '',
+      deployedAt: config?.deployedAt ?? '',
+      runner: config?.runner ?? '',
+      modelId: config?.modelId ?? '',
+      servedName: config?.servedModelName ?? '',
+      baseUrl: publicIp ? baseUrlFor(publicIp, PORT) : '',
+      // No instance is the stopped plane-state; the inventory is about what the
+      // control plane holds, not what EC2 happens to be carrying right now.
+      state: instance?.state ?? 'stopped',
+      instanceType: instance?.instanceType ?? '',
+      instanceId: instance?.instanceId ?? '',
+      partial,
+    },
+    notes: errors,
+  };
 }

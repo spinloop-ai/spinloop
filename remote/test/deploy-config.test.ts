@@ -119,6 +119,40 @@ describe('parseDeployConfig', () => {
   });
 });
 
+describe('parseDeployConfig ownership stamps', () => {
+  it('round-trips deployedBy and deployedAt', () => {
+    const stamped = {
+      ...LLAMACPP,
+      deployedBy: 'arn:aws:sts::0:assumed-role/deployer/pete',
+      deployedAt: '2026-11-23T09:00:00.000Z',
+    };
+    expect(parseDeployConfig(JSON.stringify(stamped))).toEqual(stamped);
+  });
+
+  it('is undefined when absent, so a config written before the stamps existed parses unchanged', () => {
+    const cfg = parseDeployConfig(JSON.stringify(VLLM));
+    expect(cfg.deployedBy).toBeUndefined();
+    expect(cfg.deployedAt).toBeUndefined();
+  });
+
+  it('drops a non-string stamp rather than refusing to boot the box it describes', () => {
+    // The stamps are metadata a wake never depends on; a hand-edited value
+    // must not turn into an instance that will not start.
+    const cfg = parseDeployConfig(JSON.stringify({ ...VLLM, deployedBy: 7, deployedAt: {} }));
+    expect(cfg.deployedBy).toBeUndefined();
+    expect(cfg.deployedAt).toBeUndefined();
+  });
+
+  it('survives the write-then-read path with the stamps (stringify on write, parse on read)', () => {
+    const written: DeployConfig = {
+      ...LLAMACPP,
+      deployedBy: 'arn:aws:iam::0:user/pete',
+      deployedAt: '2026-11-23T09:00:00.000Z',
+    };
+    expect(parseDeployConfig(JSON.stringify(written))).toEqual(written);
+  });
+});
+
 describe('parseDeployConfig companions', () => {
   it('defaults to none, so a config written before companions existed parses', () => {
     const { companions, ...preCompanions } = LLAMACPP;

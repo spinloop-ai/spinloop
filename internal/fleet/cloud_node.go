@@ -16,14 +16,14 @@ import (
 )
 
 // cloudNode is one member of the fleet as seen through a remote, scale-to-zero
-// environment: a `cloud.Config` reached over its cloud control plane rather than a
+// cloud node: a `cloud.Config` reached over its cloud control plane rather than a
 // machine's daemon. It answers the same operations a local node answers, so the same
 // fan-out and rendering pass over both kinds — which is the whole point of routing a
-// cloud environment through the node contract.
+// cloud node through the node contract.
 //
 // The control-plane state (EC2) and a daemon's engine state are different
 // vocabularies. We do not translate one into the other: the status carries the
-// control-plane state as the control plane reports it. A cloud environment's
+// control-plane state as the control plane reports it. A cloud node's
 // "running" is the instance state, not a claim about the engine.
 type cloudNode struct {
 	name string
@@ -40,21 +40,21 @@ type cloudNode struct {
 	// goroutines, so they are not left bare.
 	mu sync.Mutex
 	// instance is what the replies so far have said about the instance this
-	// environment runs on, and uptime how long it has been running. They are
+	// node runs on, and uptime how long it has been running. They are
 	// what Cost and Instance answer from, so neither costs a call of its own:
 	// the replies that carried them have already been paid for.
 	instance Instance
 	uptime   int
 }
 
-// NewCloudNode builds the live node for a named cloud environment. The config
+// NewCloudNode builds the live node for a named cloud node. The config
 // must be complete enough to send a signed control call — start, stop and region —
 // so a config that cannot be resolved is a configuration error against this node
 // rather than a call that fails part-way through.
 func NewCloudNode(name string, cfg cloud.Config) (Node, error) {
 	if cfg.StartURL == "" || cfg.StopURL == "" || cfg.Region == "" {
 		return nil, fmt.Errorf(
-			"cloud environment %q is not fully configured: start_url, stop_url and region are all required",
+			"cloud node %q is not fully configured: start_url, stop_url and region are all required",
 			name)
 	}
 	return &cloudNode{name: name, cfg: cfg, logs: cloud.NewFollowCursor(cloud.FollowOverlap)}, nil
@@ -72,8 +72,8 @@ func (n *cloudNode) Status(ctx context.Context) (daemon.StatusResponse, error) {
 	n.instance.RetainUntil = resp.RetainUntil
 	n.mu.Unlock()
 	// The release is not in this reply — the stats one carries it, read from
-	// the daemon on the box — so a running environment is asked for it, as the
-	// environment-only status command asked. A stopped one has no daemon to
+	// the daemon on the box — so a running node is asked for it, as the
+	// cloud-only status command asked. A stopped one has no daemon to
 	// answer, and a failure to reach it leaves the version empty rather than
 	// failing a status that otherwise succeeded.
 	if resp.State == "running" || resp.State == "ready" {
@@ -105,7 +105,7 @@ func (n *cloudNode) Metrics(ctx context.Context) (metrics.Stats, error) {
 	return statsFromCloud(*resp), nil
 }
 
-// Cost prices the session this environment has been running, from the instance
+// Cost prices the session this node has been running, from the instance
 // type it launched as and the region it launched in. Both come from the last
 // metrics reading, so a caller that has already taken one pays only for the
 // price lookup.
@@ -128,8 +128,8 @@ func (n *cloudNode) Cost(ctx context.Context) (Cost, error) {
 }
 
 // Instance is what the replies so far have said about the instance this
-// environment runs on. Empty fields are ones no reply carried — a stopped
-// environment has no instance id, and a control plane that could not reach the
+// node runs on. Empty fields are ones no reply carried — a stopped
+// node has no instance id, and a control plane that could not reach the
 // daemon reports no version.
 func (n *cloudNode) Instance() Instance {
 	n.mu.Lock()
@@ -137,7 +137,7 @@ func (n *cloudNode) Instance() Instance {
 	return n.instance
 }
 
-// LogsMatching reads this environment's log store, narrowed by what the caller
+// LogsMatching reads this node's log store, narrowed by what the caller
 // asked for. Unlike Logs it is a query rather than a cursor: the caller states
 // the window it wants, so nothing is retained between calls.
 func (n *cloudNode) LogsMatching(ctx context.Context, q LogQuery) (daemon.LogsResponse, error) {
@@ -150,10 +150,10 @@ func (n *cloudNode) LogsMatching(ctx context.Context, q LogQuery) (daemon.LogsRe
 		limit = cloudEngineTail
 	}
 	rq := cloud.LogQuery{
-		Environment: n.cfg.Environment,
-		Source:      source,
-		Limit:       limit,
-		Instance:    q.Instance,
+		Node:     n.cfg.Node,
+		Source:   source,
+		Limit:    limit,
+		Instance: q.Instance,
 	}
 	if q.Since > 0 {
 		rq.Start = time.Now().Add(-q.Since)
@@ -190,22 +190,21 @@ func (n *cloudNode) StartWithProgress(ctx context.Context, report func(StartPhas
 	return statusFromCloud(*resp), nil
 }
 
-// StartWith is how a router wakes a node to serve something. A remote
-// environment's engine is not configured by a start: what it serves and the
+// StartWith is how a router wakes a node to serve something. A cloud
+// node's engine is not configured by a start: what it serves and the
 // key that gates it are fixed by `spinloop cloud deploy`, a heavier flow
 // (provisioning, weight seeding, ingress) that a node start must not
 // conflate — so dc and engineKey are ignored, and this boots the instance
 // exactly as Start does.
 //
-// An undeployed environment is not checked for here: a status read cannot
-// tell a stopped-but-deployed environment from an undeployed one — the
-// control plane only relays what an environment serves on its status reply
-// while it is running — so that check has to happen where deployment is
-// actually confirmed, by reading the environment's deploy config directly
-// (its stats reply, in the gateway's own candidate matching) before a
-// candidate ever reaches this call. A caller that skips that matching and
-// hands an undeployed environment straight to StartWith gets the boot
-// call's own answer instead, whatever that turns out to be.
+// Whether the node exists at all is settled by the plane's inventory,
+// where a fleet's membership is built (see Config.NewNode) and where the
+// gateway chooses a candidate — not by a status read, which cannot tell a
+// stopped-but-deployed node from an undeployed one, since the control
+// plane only relays what a node serves while it is running. A caller
+// that skips that check and hands the plane a node it does not hold
+// straight to StartWith gets the boot call's own answer instead, whatever that
+// turns out to be.
 func (n *cloudNode) StartWith(ctx context.Context, dc *inference.DeployConfig, engineKey string) (daemon.StatusResponse, error) {
 	_ = dc
 	_ = engineKey
@@ -220,7 +219,7 @@ func (n *cloudNode) Stop(ctx context.Context) (daemon.StatusResponse, error) {
 	return statusFromCloud(*resp), nil
 }
 
-// Keep pins this environment's instance so the idle sweep does not terminate it
+// Keep pins this node's instance so the idle sweep does not terminate it
 // before now plus d. The deadline is computed here and passed as an absolute
 // time, the way the CLI computes it; a keep is what keeps the instance, not
 // what the engine is doing, so the call needs no engine or deploy context. If
@@ -260,10 +259,10 @@ func (n *cloudNode) Logs(ctx context.Context, offset int64, limit int) (daemon.L
 	}
 	start := n.logs.Start()
 	res, err := FetchLogsFn(ctx, n.cfg, cloud.LogQuery{
-		Environment: n.cfg.Environment,
-		Source:      cloud.LogSourceEngine,
-		Limit:       cloudEngineTail,
-		Start:       start,
+		Node:   n.cfg.Node,
+		Source: cloud.LogSourceEngine,
+		Limit:  cloudEngineTail,
+		Start:  start,
 	})
 	if err != nil {
 		return daemon.LogsResponse{}, err
@@ -283,11 +282,11 @@ func (n *cloudNode) Logs(ctx context.Context, offset int64, limit int) (daemon.L
 // here. The serving fields are empty when the daemon reports none: an engine that
 // is not running one, or a daemon the control plane could not reach.
 //
-// A running environment's reply also names where its engine answers — the
+// A running node's reply also names where its engine answers — the
 // instance's published address, which a daemon on the instance cannot know for
 // itself but the control plane can. It is carried as the engine's host, so
 // routing resolves a cloud node's address the way it resolves any node's.
-// Absent (a stopped or undeployed environment reports none) means no engine
+// Absent (a stopped or undeployed node reports none) means no engine
 // address, exactly as the parts would be.
 //
 // Healthy is the control plane's own readiness reading — the same health
@@ -329,7 +328,7 @@ func statusFromCloud(resp cloud.Response) daemon.StatusResponse {
 // statsFromCloud maps the stats Lambda's reply onto the shared stats shape. The
 // per-stat fields already alias the metrics types the collector produces, so the
 // mapping is a field-for-field copy. The reply's version and instance facts are
-// deliberately not among them: they describe a cloud environment and nothing
+// deliberately not among them: they describe a cloud node and nothing
 // else, so putting them on the shape every node answers with would leave a
 // field every daemon reports empty. Metrics retains them on the node instead,
 // where Cost and Version answer from them.

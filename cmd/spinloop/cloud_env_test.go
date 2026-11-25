@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/spinloop-ai/spinloop/internal/cloud"
 	"github.com/spinloop-ai/spinloop/internal/spinloop"
 )
 
@@ -98,15 +97,16 @@ func hitRecorder(name string, hit chan<- string) http.HandlerFunc {
 	}
 }
 
-// A .env beside the Spinloop reaches a control command: its SPINLOOP_CLOUD_STOP_URL
-// override wins over the cloud.json value, so the .env server is the one hit.
+// A .env beside the Spinloop reaches a control command: with nothing in the
+// process environment naming a plane, the .env's SPINLOOP_CLOUD_* values are
+// what the resolution reads, and the .env server is the one hit. (What the
+// environment does state still wins — .env fills gaps, it never shadows;
+// TestApplySpinloopEnv_Precedence pins that rule where it lives.)
 func TestCloudStop_RespectsDotEnv(t *testing.T) {
 	isolateConfig(t)
 	stubAWSEnv(t)
 
 	hit := make(chan string, 1)
-	fromConfig := httptest.NewServer(hitRecorder("cloud.json", hit))
-	defer fromConfig.Close()
 	fromDotEnv := httptest.NewServer(hitRecorder("dotenv", hit))
 	defer fromDotEnv.Close()
 
@@ -114,13 +114,15 @@ func TestCloudStop_RespectsDotEnv(t *testing.T) {
 	if err := os.WriteFile("Spinloop", []byte("PROVIDER openai-compatible\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := cloud.SaveEnvironment("testenv", cloud.Config{StartURL: fromConfig.URL, StopURL: fromConfig.URL, Region: "eu-west-1"}); err != nil {
+	// The plane this machine would resolve is the .env's: it states the whole
+	// plane, as a deployment's directory has always stated its endpoints.
+	dotenv := "SPINLOOP_CLOUD_START_URL=" + fromDotEnv.URL + "\n" +
+		"SPINLOOP_CLOUD_STOP_URL=" + fromDotEnv.URL + "\n" +
+		"SPINLOOP_CLOUD_REGION=us-east-1\n"
+	if err := os.WriteFile(".env", []byte(dotenv), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(".env", []byte("SPINLOOP_CLOUD_STOP_URL="+fromDotEnv.URL+"\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	unsetEnvOnCleanup(t, "SPINLOOP_CLOUD_STOP_URL")
+	unsetEnvOnCleanup(t, "SPINLOOP_CLOUD_START_URL", "SPINLOOP_CLOUD_STOP_URL", "SPINLOOP_CLOUD_REGION")
 
 	// An explicit Spinloop path, exercising resolveCloudConfig's explicit-arg branch.
 	if err := cmdCloudStop([]string{"Spinloop", "--node", "testenv"}); err != nil {
@@ -129,7 +131,7 @@ func TestCloudStop_RespectsDotEnv(t *testing.T) {
 	select {
 	case name := <-hit:
 		if name != "dotenv" {
-			t.Errorf("stop reached the %q server, want the .env override to win", name)
+			t.Errorf("stop reached the %q server, want the .env to have named the plane", name)
 		}
 	default:
 		t.Error("no server was reached")
@@ -154,10 +156,8 @@ func TestCloudStop_EnvKeywordOverridesDotEnv(t *testing.T) {
 	if err := os.WriteFile("Spinloop", []byte(spinloopBody), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	// The environment still supplies the required StartURL; StopURL is overridden.
-	if err := cloud.SaveEnvironment("testenv", cloud.Config{StartURL: fromDotEnv.URL, StopURL: fromDotEnv.URL, Region: "eu-west-1"}); err != nil {
-		t.Fatal(err)
-	}
+	// The plane still supplies the required StartURL; StopURL is overridden.
+	stubPlaneEndpoints(t, fromDotEnv.URL)
 	if err := os.WriteFile(".env", []byte("SPINLOOP_CLOUD_STOP_URL="+fromDotEnv.URL+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}

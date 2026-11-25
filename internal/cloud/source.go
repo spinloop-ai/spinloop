@@ -51,7 +51,7 @@ func ResolveRef(version, override string) string {
 
 // SourceRoot is the parent of the ref-keyed CDK source caches,
 // <configHome>/cdk. It is named cdk/ to avoid confusion with the clouds/
-// environment registry.
+// node registry.
 func SourceRoot() (string, error) {
 	home, err := ConfigHome()
 	if err != nil {

@@ -93,10 +93,10 @@ func openLaunchCmd(use, short, long string) *cobra.Command {
 			} else if route.node != "" && route.fleetFile() == "" {
 				// No Spinloop was applied, and no fleet is in force, so
 				// --node names where the model is served from: configure the
-				// harness from what is actually deployed to that registered
-				// environment instead of doing nothing with the flag.
+				// harness from what is actually deployed to that
+				// cloud node instead of doing nothing with the flag.
 				var err error
-				sel, envDir, cloudResp, choice, err = applyFromEnvironment(providers, h, route)
+				sel, envDir, cloudResp, choice, err = applyFromCloudNode(providers, h, route)
 				if err != nil {
 					return err
 				}
@@ -123,7 +123,7 @@ func openLaunchCmd(use, short, long string) *cobra.Command {
 	// path readSpinloop resolves as SPINLOOP_ALIAS > ./Spinloop.
 	fs.Lookup("spinloop").NoOptDefVal = "true"
 	fs.StringVar(&providers, "providers", "", "path to a providers.yaml override")
-	fs.StringVarP(&route.node, "node", "n", "", "route to this node: with a fleet in force, pin the launch to that fleet node; otherwise, launch against this registered environment (its name keys the provider, its API key is fetched and injected)")
+	fs.StringVarP(&route.node, "node", "n", "", "route to this node: with a fleet in force, pin the launch to that fleet node (its name keys the provider, its API key is fetched and injected), or a cloud node on the control plane when no fleet holds the name")
 	compRegister(c, "node", compNodes)
 	fs.StringVarP(&route.fleetPath, "fleet", "f", "", "route through this fleet file (default: ./fleet.yaml, when the Spinloop is not named)")
 	fs.StringVar(&route.prefer, "prefer", "", "rank fleet nodes by `idle` or `active` (overrides the fleet file)")

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/spinloop-ai/spinloop/internal/cloud"
@@ -56,8 +55,8 @@ type ProgressStarter interface {
 }
 
 // Keeper is an optional node capability: a node whose instance can be pinned so
-// the idle sweep does not terminate it before a stated deadline. Only remote
-// environments have it — the retention tag lives on a cloud instance — so a
+// the idle sweep does not terminate it before a stated deadline. Only cloud
+// nodes have it — the retention tag lives on a cloud instance — so a
 // local daemon node does not implement it. A caller that can offer a keep
 // (the dashboard) asserts for it and hides the key when it is absent.
 //
@@ -70,7 +69,7 @@ type Keeper interface {
 }
 
 // Coster is an optional node capability: a node that can price the time it has
-// been running. Only a cloud environment can — the price comes from the
+// been running. Only a cloud node can — the price comes from the
 // instance type it launched as and the region it launched in, neither of which
 // a machine someone already owns has an answer for — so a daemon node does not
 // implement it. A caller offering a cost (metrics --cost) asserts for it and
@@ -101,7 +100,7 @@ func (c Cost) Reported() bool { return c.PerHour > 0 }
 
 // SourceLogger is an optional node capability: a node whose log is a store that
 // can be queried — by which log to read, how far back, and which instance
-// produced it. Only a cloud environment has one; a daemon's log is a byte
+// produced it. Only a cloud node has one; a daemon's log is a byte
 // offset into one file on one machine, where none of the three narrows
 // anything. A caller offering those flags asserts for it and reads the node
 // through Logs when it is absent.
@@ -126,9 +125,9 @@ type LogQuery struct {
 
 // InstanceReporter is an optional node capability: a node running on an
 // instance it can describe. A daemon node runs on a machine its operator
-// already knows about and does not implement it; a cloud environment reports
+// already knows about and does not implement it; a cloud node reports
 // the instance it launched, the release on it, the address it answers at and
-// how long it is retained — the facts the environment-only commands used to
+// how long it is retained — the facts the cloud-only commands used to
 // render and the shared engine reply has no room for.
 //
 // The values come from the replies the node has already received, so asking
@@ -154,8 +153,8 @@ type Instance struct {
 }
 
 // Node is one member of the fleet. Only daemonNode implements it today; the
-// interface exists so a remote-environment kind (an `spinloop cloud`
-// environment read through its stats Lambda, which already yields
+// interface exists so a cloud kind (an `spinloop cloud` node read through its
+// stats Lambda, which already yields
 // metrics.Stats) can be added without reworking the fan-out or the renderers.
 type Node interface {
 	// Name is the node's name from the fleet file.
@@ -207,14 +206,27 @@ func (n *daemonNode) Logs(ctx context.Context, offset int64, limit int) (daemon.
 // NewNode builds the live Node for one fleet-file entry. A daemon node resolves
 // its bearer token here — a reference that resolves to nothing fails before any
 // call is attempted, naming the variable rather than surfacing later as a 401.
-// A cloud node loads its registered environment's control config; a missing
-// environment fails the same way, as a per-node error the fan-out renders as a
-// row rather than a blanked view.
-func (c *Config) NewNode(entry NodeConfig) (Node, error) {
+// A cloud node resolves the control plane the caller's credentials and region
+// point at, and the plane's inventory says whether its cloud node is deployed
+// there: a node the plane does not hold fails as a per-node
+// configuration error naming the plane it was looked for on, which the fan-out
+// renders as one row rather than blanking the view.
+func (c *Config) NewNode(ctx context.Context, entry NodeConfig) (Node, error) {
 	if entry.Kind == KindCloud {
-		// The node's name is the registered environment's key, and every
-		// environment resolves the one way: by name, from the registry.
-		cfg, err := cloud.LoadEnvironment(entry.Name, os.Getenv)
+		// The node's name is the cloud node's key, and every cloud node
+		// resolves the one way: by name, on the plane this machine's
+		// credentials reach — whoever deployed it, from whatever machine. A
+		// name that could never be one fails for that reason rather than as a
+		// name the plane happens not to hold.
+		if !cloud.IsNodeName(entry.Name) {
+			return nil, cloud.NotNodeName(entry.Name)
+		}
+		if _, found, err := c.planeNode(ctx, entry.Name); err != nil {
+			return nil, err
+		} else if !found {
+			return nil, c.notDeployedError(entry.Name, c.planeRegion(ctx))
+		}
+		cfg, err := c.planeConfig(ctx, entry.Name)
 		if err != nil {
 			return nil, err
 		}

@@ -272,7 +272,7 @@ func aliasFor(t *testing.T, name, model string) string {
 // TestCode_SameLaunchAsHarnessOpen pins that `code` is a shortcut for `harness
 // open`, not a second launch: for the same arguments, both spellings reach the
 // harness with identical args — whether nothing is applied, a Spinloop is
-// applied first, or the launch is configured from a registered environment.
+// applied first, or the launch is configured from a cloud node on the plane.
 func TestCode_SameLaunchAsHarnessOpen(t *testing.T) {
 	isolateConfig(t)
 	stubAWSEnv(t)
@@ -284,13 +284,13 @@ func TestCode_SameLaunchAsHarnessOpen(t *testing.T) {
 	mustWrite(t, spath, "PROVIDER llamacpp\nMODEL mixtral\n")
 	t.Setenv("SPINLOOP_ALIAS", "q3")
 
-	// A registered environment, for the --node case: a bare --node configures the
-	// harness from what the environment reports as deployed.
+	// A cloud node on the plane, for the --node case: a bare --node configures
+	// the harness from what the node reports as deployed.
 	env := deployedEnvServer(t)
 	defer env.Close()
-	registerEnv(t, "dev-1", cloud.Config{
+	registerNode(t, "dev-1", cloud.Config{
 		StartURL: env.URL, StopURL: env.URL, EnvURL: env.URL,
-		BaseURL: "http://198.51.100.1:8000/v1", Region: "eu-west-1", Environment: "dev-1",
+		BaseURL: "http://198.51.100.1:8000/v1", Region: "eu-west-1", Node: "dev-1",
 	})
 
 	cases := [][]string{
@@ -300,7 +300,7 @@ func TestCode_SameLaunchAsHarnessOpen(t *testing.T) {
 		{"q3", "run"},              // a leading alias is applied, then the rest forwards
 		{"-O", "run"},              // a valueless -O applies the SPINLOOP_ALIAS Spinloop
 		{"-O=" + spath, "run"},     // -O applies the Spinloop at an explicit path
-		{"--node", "dev-1", "run"}, // --node configures from the environment
+		{"--node", "dev-1", "run"}, // --node configures from the cloud node
 	}
 	for _, args := range cases {
 		openForwarded, _ := launchedArgs(t, args)

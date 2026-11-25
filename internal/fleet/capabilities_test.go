@@ -2,52 +2,29 @@ package fleet
 
 import (
 	"context"
-	"fmt"
 	"net/http"
-	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"testing"
 	"time"
 )
 
-// countingStatsServer answers every call with body and counts the calls, so a
-// test can assert that reading a retained fact costs none.
-func countingStatsServer(t *testing.T, body string, calls *int) string {
+// countingPlane is a control plane that answers every node-named read
+// with one body and counts the reads, so a test can assert that reading a
+// retained fact costs none. The plane's own inventory read never reaches the
+// counter: the stub answers that one itself.
+func countingPlane(t *testing.T, body string, env string, calls *int) {
 	t.Helper()
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	stubPlane(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		*calls++
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(body))
-	}))
-	t.Cleanup(srv.Close)
-	return srv.URL
-}
-
-// registerStatsEnv registers an environment whose stats call is the given URL,
-// which registerCloudEnv does not set — the capabilities answer from a stats
-// reading, so a test of them needs one.
-func registerStatsEnv(t *testing.T, name, url string) {
-	t.Helper()
-	home := t.TempDir()
-	t.Setenv("SPINLOOP_CONFIG_DIR", home)
-	dir := filepath.Join(home, "clouds", name)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	body := fmt.Sprintf(
-		`{"start_url":%q,"stop_url":%q,"stats_url":%q,"region":"us-east-1","environment":%q}`,
-		url, url, url, name)
-	if err := os.WriteFile(filepath.Join(dir, "cloud.json"), []byte(body), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	}), env)
 }
 
 // A daemon node implements none of the three: its kind has no answer for any
 // of them, so it does not pretend to.
 func TestDaemonNodeImplementsNoCloudCapability(t *testing.T) {
 	cfg := &Config{Nodes: []NodeConfig{{Name: "box", Host: "127.0.0.1", Port: 1}}}
-	node, err := cfg.NewNode(cfg.Nodes[0])
+	node, err := cfg.NewNode(context.Background(), cfg.Nodes[0])
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,14 +42,12 @@ func TestDaemonNodeImplementsNoCloudCapability(t *testing.T) {
 // A cloud node implements all three, so a caller reaches them by assertion
 // rather than by asking what kind it is.
 func TestCloudNodeImplementsTheCloudCapabilities(t *testing.T) {
-	stubAWSCreds(t)
-	up := cloudControlServer(t, `{"state":"running"}`, http.StatusOK)
-	registerCloudEnv(t, "prod", up.URL, up.URL)
-	cfg, err := ForEnvironment("prod")
+	stubPlane(t, controlAnswers(`{"state":"running"}`, http.StatusOK), "prod")
+	cfg, err := ForCloudNode(context.Background(), "prod")
 	if err != nil {
 		t.Fatal(err)
 	}
-	node, err := cfg.NewNode(cfg.Nodes[0])
+	node, err := cfg.NewNode(context.Background(), cfg.Nodes[0])
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,15 +64,15 @@ func TestCloudNodeImplementsTheCloudCapabilities(t *testing.T) {
 
 // The instance facts come from the reading already taken, not a second call.
 func TestCloudNodeInstanceComesFromTheMetricsReading(t *testing.T) {
-	stubAWSCreds(t)
 	calls := 0
-	srv := countingStatsServer(t, `{"state":"running","version":"1.40.0","instanceId":"i-0abc","instanceType":"g6e.xlarge","uptimeSeconds":7200}`, &calls)
-	registerStatsEnv(t, "prod", srv)
-	cfg, err := ForEnvironment("prod")
+	countingPlane(t,
+		`{"state":"running","version":"1.40.0","instanceId":"i-0abc","instanceType":"g6e.xlarge","uptimeSeconds":7200}`,
+		"prod", &calls)
+	cfg, err := ForCloudNode(context.Background(), "prod")
 	if err != nil {
 		t.Fatal(err)
 	}
-	node, err := cfg.NewNode(cfg.Nodes[0])
+	node, err := cfg.NewNode(context.Background(), cfg.Nodes[0])
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,14 +97,12 @@ func TestCloudNodeInstanceComesFromTheMetricsReading(t *testing.T) {
 // A node with nothing to price reports no cost rather than a zero one: "$0.00"
 // claims it cost nothing, which is a different statement.
 func TestCloudNodeCostIsUnreportedWithoutAReading(t *testing.T) {
-	stubAWSCreds(t)
-	up := cloudControlServer(t, `{"state":"stopped"}`, http.StatusOK)
-	registerCloudEnv(t, "prod", up.URL, up.URL)
-	cfg, err := ForEnvironment("prod")
+	stubPlane(t, controlAnswers(`{"state":"stopped"}`, http.StatusOK), "prod")
+	cfg, err := ForCloudNode(context.Background(), "prod")
 	if err != nil {
 		t.Fatal(err)
 	}
-	node, err := cfg.NewNode(cfg.Nodes[0])
+	node, err := cfg.NewNode(context.Background(), cfg.Nodes[0])
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -165,7 +138,7 @@ func TestLogQueryDefaults(t *testing.T) {
 		t.Errorf("the zero LogQuery narrows nothing, got %+v", q)
 	}
 	q = LogQuery{Source: "boot", Since: time.Hour, Instance: "i-1", Limit: 10}
-	if q.Source != "boot" || q.Since != time.Hour || q.Instance != "i-1" || q.Limit != 10 {
+	if q.Source != "boot" || q.Limit != 10 || q.Since != time.Hour || q.Instance != "i-1" {
 		t.Errorf("LogQuery does not carry what it was given: %+v", q)
 	}
 }

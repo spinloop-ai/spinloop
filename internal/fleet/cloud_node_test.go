@@ -50,7 +50,7 @@ func cloudControlServer(t *testing.T, body string, statusCode int) *httptest.Ser
 	return srv
 }
 
-// Fleet operations on cloud environments go through the same signed control
+// Fleet operations on cloud nodes go through the same signed control
 // calls as `spinloop cloud`, so they inherit the stored control-plane
 // credential: here the only credential the process can resolve is the one
 // stored for the region (the ambient chain is empty), and the status call
@@ -159,7 +159,7 @@ func TestStatsFromCloud(t *testing.T) {
 	if got.RetainUntil != "2026-01-02T04:00:00Z" {
 		t.Errorf("retainUntil not carried over: %q", got.RetainUntil)
 	}
-	// An environment with no live retention carries nothing: the field is
+	// A node with no live retention carries nothing: the field is
 	// absent, not a zero time a formatter would have to special-case.
 	if got := statsFromCloud(cloud.StatsResponse{State: "running"}); got.RetainUntil != "" {
 		t.Errorf("no retention should map to an empty retainUntil, got %q", got.RetainUntil)
@@ -232,7 +232,7 @@ func TestCloudNodeLogsSharesTheFollowCursorWithCloudLogsCommand(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 	t.Setenv("AWS_ENDPOINT_URL_CLOUDWATCH_LOGS", srv.URL)
-	cfg := cloud.Config{StartURL: "http://x", StopURL: "http://x", Environment: "env-1", Region: "us-east-1"}
+	cfg := cloud.Config{StartURL: "http://x", StopURL: "http://x", Node: "env-1", Region: "us-east-1"}
 	node, err := NewCloudNode("env", cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -270,11 +270,11 @@ func TestCloudNodeLogsSharesTheFollowCursorWithCloudLogsCommand(t *testing.T) {
 	}
 }
 
-// StartWith boots a deployed-but-stopped environment exactly as Start does,
-// ignoring the config and key it is handed: what a cloud environment
+// StartWith boots a deployed-but-stopped node exactly as Start does,
+// ignoring the config and key it is handed: what a cloud node
 // serves, and the key that gates it, are fixed by `spinloop cloud deploy`,
 // not by a wake call.
-func TestCloudNodeStartWithBootsADeployedEnvironment(t *testing.T) {
+func TestCloudNodeStartWithBootsADeployedNode(t *testing.T) {
 	stubAWSCreds(t)
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
@@ -294,16 +294,16 @@ func TestCloudNodeStartWithBootsADeployedEnvironment(t *testing.T) {
 	status, err := node.StartWith(context.Background(),
 		&inference.DeployConfig{Runner: "llamacpp", ModelID: "org/other"}, "some-key")
 	if err != nil {
-		t.Fatalf("StartWith should boot a deployed environment: %v", err)
+		t.Fatalf("StartWith should boot a deployed node: %v", err)
 	}
 	if status.State != "ready" {
 		t.Errorf("status = %+v, want ready", status)
 	}
 }
 
-// StartWith does not itself tell a deployed environment from an undeployed
+// StartWith does not itself tell a deployed node from an undeployed
 // one by reading status: the control plane's status reply carries no deploy
-// facts for a stopped environment either way (only a running one's does), so
+// facts for a stopped node either way (only a running one's does), so
 // a status read cannot distinguish them. That check belongs to the caller —
 // the gateway's own candidate matching confirms deployment from a stats read
 // before a candidate is ever chosen — so StartWith just boots, whatever a
@@ -403,7 +403,7 @@ func TestCloudNodeKeepFallsBackToTheRequestedDeadline(t *testing.T) {
 	}
 }
 
-// A keep on an environment whose config has no update URL is a configuration
+// A keep on a node whose config has no update URL is a configuration
 // error before any call, naming the fix — it is not a call that fails part-way.
 func TestCloudNodeKeepWithoutAnUpdateURL(t *testing.T) {
 	stubAWSCreds(t)
@@ -467,9 +467,9 @@ func TestStatusFromCloudMapsHealthyOntoReady(t *testing.T) {
 	}
 }
 
-// statusFromCloud carries a running environment's engine address — the
+// statusFromCloud carries a running node's engine address — the
 // control plane's published base url — as the engine's host, so routing can
-// reach it the way it reaches any node. A stopped or undeployed environment
+// reach it the way it reaches any node. A stopped or undeployed node
 // reports none, so its status carries no engine address.
 func TestStatusFromCloudCarriesTheEngineAddress(t *testing.T) {
 	got := statusFromCloud(cloud.Response{
@@ -477,14 +477,14 @@ func TestStatusFromCloudCarriesTheEngineAddress(t *testing.T) {
 		BaseURL: "http://1.2.3.4:8000/v1",
 	})
 	if got.Engine == nil {
-		t.Fatal("a running environment's engine address was not carried")
+		t.Fatal("a running node's engine address was not carried")
 	}
 	if got.Engine.Host != "1.2.3.4" || got.Engine.Port != 8000 || got.Engine.Path != "/v1" {
 		t.Errorf("engine endpoint = %+v, want host 1.2.3.4 port 8000 path /v1", got.Engine)
 	}
-	// No base url — a stopped or undeployed environment — means no address.
+	// No base url — a stopped or undeployed node — means no address.
 	if got := statusFromCloud(cloud.Response{State: "stopped"}); got.Engine != nil {
-		t.Errorf("a stopped environment should carry no engine address: %+v", got.Engine)
+		t.Errorf("a stopped node should carry no engine address: %+v", got.Engine)
 	}
 }
 
@@ -544,13 +544,13 @@ func TestCloudNodeMetricsWithoutStatsURL(t *testing.T) {
 	}
 }
 
-// A node for an environment with no name cannot be pointed at a log stream, so a
-// log read fails before it touches CloudWatch.
-func TestCloudNodeLogsWithoutAnEnvironmentFails(t *testing.T) {
+// A node whose config names no cloud node cannot be pointed at a log stream,
+// so a log read fails before it touches CloudWatch.
+func TestCloudNodeLogsWithoutANodeNameFails(t *testing.T) {
 	node, _ := NewCloudNode("env", cloud.Config{StartURL: "http://x", StopURL: "http://x", Region: "r"})
 	_, err := node.Logs(context.Background(), daemon.TailLog, 100)
-	if err == nil || !strings.Contains(err.Error(), "environment") {
-		t.Errorf("a log read for an environment with no name should fail, got %v", err)
+	if err == nil || !strings.Contains(err.Error(), "names no node") {
+		t.Errorf("a log read for a config naming no node should fail, got %v", err)
 	}
 }
 
@@ -569,7 +569,7 @@ func TestCloudNodeRejectedCallIsAOutcomeNotAFailure(t *testing.T) {
 	}
 }
 
-// A mixed set — a local daemon node and a cloud environment — is observed
+// A mixed set — a local daemon node and a cloud node — is observed
 // through the one fan-out, in order, and one failing member does not stop the
 // rest.
 func TestFanOutNodesOverAMixedSet(t *testing.T) {
@@ -578,7 +578,7 @@ func TestFanOutNodesOverAMixedSet(t *testing.T) {
 	up := stubDaemon(t, "", "running")
 	cfg := fleetFor(t, up, "")
 	entry, _ := cfg.Node("box")
-	dnode, err := cfg.NewNode(entry)
+	dnode, err := cfg.NewNode(context.Background(), entry)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -834,7 +834,7 @@ func TestCloudNodeLogsErrorsSurface(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 	t.Setenv("AWS_ENDPOINT_URL_CLOUDWATCH_LOGS", srv.URL)
-	cfg := cloud.Config{StartURL: "http://x", StopURL: "http://x", Environment: "env-1", Region: "us-east-1"}
+	cfg := cloud.Config{StartURL: "http://x", StopURL: "http://x", Node: "env-1", Region: "us-east-1"}
 	node, err := NewCloudNode("env", cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -854,7 +854,7 @@ func TestCloudNodeLogsEmptyTailIsMissingNotFailure(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 	t.Setenv("AWS_ENDPOINT_URL_CLOUDWATCH_LOGS", srv.URL)
-	cfg := cloud.Config{StartURL: "http://x", StopURL: "http://x", Environment: "env-1", Region: "us-east-1"}
+	cfg := cloud.Config{StartURL: "http://x", StopURL: "http://x", Node: "env-1", Region: "us-east-1"}
 	node, err := NewCloudNode("env", cfg)
 	if err != nil {
 		t.Fatal(err)

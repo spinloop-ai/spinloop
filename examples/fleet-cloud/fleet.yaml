@@ -1,17 +1,17 @@
-# A fleet of `spinloop cloud` environments, observed like machines.
+# A fleet of `spinloop cloud` nodes, observed like machines.
 #
-#   spinloop status                # one row per environment: state and what it serves
+#   spinloop status                # one row per node: state and what it serves
 #   spinloop metrics -w    # a live dashboard
-#   spinloop fleet deploy --all  # create both environments from this file
+#   spinloop fleet deploy --all  # create both nodes from this file
 #
-# Each node's `name` is the registered environment it drives — one per
+# Each node's `name` is the node it drives on the plane — one per
 # `spinloop cloud deploy`, or per `spinloop fleet deploy` — and what you type
-# at `fleet start <node>`. `kind: cloud` marks it as a cloud environment
+# at `fleet start <node>`. `kind: cloud` marks it as a cloud node
 # rather than a host. No bearer tokens here: the control plane signs each
-# call, and the environment's URLs live in its cloud.json, not in this file.
-# So, like every fleet file, this one names environments, never an account.
+# call, and the node's endpoints resolve from the plane, not this file.
+# So, like every fleet file, this one names nodes, never an account.
 #
-# `fleet deploy` needs to know what each environment serves — the same thing
+# `fleet deploy` needs to know what each node serves — the same thing
 # `spinloop cloud deploy <file>` needs, just resolved from the node rather
 # than typed on the command line. Neither node here declares a `file` field:
 # each one's own name is a subdirectory beside this file (qwen/Spinloop,
@@ -24,7 +24,7 @@
 nodes:
   - name: qwen
     kind: cloud
-    instance-type: g6e.2xlarge   # EC2 type this environment launches as (default: the control plane's)
+    instance-type: g6e.2xlarge   # EC2 type this node launches as (default: the control plane's)
 
   - name: llama
     kind: cloud

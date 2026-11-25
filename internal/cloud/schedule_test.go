@@ -30,7 +30,7 @@ func TestSetSchedules(t *testing.T) {
 	stubAWSEnv(t)
 	server, got, body := scheduleServer(t, http.StatusOK,
 		`{"environment":"dev","schedules":[{"action":"start","cron":"0 8 * * 1-5","timezone":"Europe/London"}],"next":{"start":"2026-10-06T07:00:00.000Z","stop":""}}`)
-	cfg := Config{StartURL: server.URL, StopURL: server.URL, ScheduleURL: server.URL, Region: "eu-west-1", Environment: "dev"}
+	cfg := Config{StartURL: server.URL, StopURL: server.URL, ScheduleURL: server.URL, Region: "eu-west-1", Node: "dev"}
 
 	list, err := SetSchedules(context.Background(), cfg, []Schedule{
 		{Action: "start", Cron: "0 8 * * 1-5", Timezone: "Europe/London"},
@@ -42,7 +42,7 @@ func TestSetSchedules(t *testing.T) {
 		t.Errorf("set should PUT, got %s", got.Method)
 	}
 	if got.URL.Query().Get("env") != "dev" {
-		t.Errorf("set should carry the environment, got %q", got.URL.RawQuery)
+		t.Errorf("set should carry the node's name, got %q", got.URL.RawQuery)
 	}
 	var sent struct {
 		Schedules []Schedule `json:"schedules"`
@@ -61,7 +61,7 @@ func TestSetSchedules(t *testing.T) {
 func TestSetSchedules_NilSendsAnEmptyList(t *testing.T) {
 	stubAWSEnv(t)
 	server, _, body := scheduleServer(t, http.StatusOK, `{"environment":"dev","schedules":[],"next":{}}`)
-	cfg := Config{ScheduleURL: server.URL, Region: "eu-west-1", Environment: "dev"}
+	cfg := Config{ScheduleURL: server.URL, Region: "eu-west-1", Node: "dev"}
 	if _, err := SetSchedules(context.Background(), cfg, nil); err != nil {
 		t.Fatal(err)
 	}
@@ -73,7 +73,7 @@ func TestSetSchedules_NilSendsAnEmptyList(t *testing.T) {
 func TestGetSchedules(t *testing.T) {
 	stubAWSEnv(t)
 	server, got, _ := scheduleServer(t, http.StatusOK, `{"environment":"dev","schedules":[],"next":{"start":"","stop":""}}`)
-	cfg := Config{ScheduleURL: server.URL, Region: "eu-west-1", Environment: "dev"}
+	cfg := Config{ScheduleURL: server.URL, Region: "eu-west-1", Node: "dev"}
 	list, err := GetSchedules(context.Background(), cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -89,7 +89,7 @@ func TestGetSchedules(t *testing.T) {
 func TestClearSchedules(t *testing.T) {
 	stubAWSEnv(t)
 	server, got, _ := scheduleServer(t, http.StatusOK, `{"environment":"dev","schedules":[],"next":{}}`)
-	cfg := Config{ScheduleURL: server.URL, Region: "eu-west-1", Environment: "dev"}
+	cfg := Config{ScheduleURL: server.URL, Region: "eu-west-1", Node: "dev"}
 	if _, err := ClearSchedules(context.Background(), cfg); err != nil {
 		t.Fatal(err)
 	}
@@ -117,7 +117,7 @@ func TestSchedules_RejectionCarriesTheReplysDetail(t *testing.T) {
 	stubAWSEnv(t)
 	server, _, _ := scheduleServer(t, http.StatusBadRequest,
 		`{"error":"invalid cron expression \"nope\": expected five fields"}`)
-	cfg := Config{ScheduleURL: server.URL, Region: "eu-west-1", Environment: "dev"}
+	cfg := Config{ScheduleURL: server.URL, Region: "eu-west-1", Node: "dev"}
 	_, err := SetSchedules(context.Background(), cfg, []Schedule{{Action: "start", Cron: "nope"}})
 	if err == nil || !strings.Contains(err.Error(), "HTTP 400") || !strings.Contains(err.Error(), "expected five fields") {
 		t.Errorf("expected the reply's detail, got %v", err)
@@ -127,7 +127,7 @@ func TestSchedules_RejectionCarriesTheReplysDetail(t *testing.T) {
 func TestSchedules_ForbiddenSaysWhatToCheck(t *testing.T) {
 	stubAWSEnv(t)
 	server, _, _ := scheduleServer(t, http.StatusForbidden, `{"Message":"forbidden"}`)
-	cfg := Config{ScheduleURL: server.URL, Region: "eu-west-1", Environment: "dev"}
+	cfg := Config{ScheduleURL: server.URL, Region: "eu-west-1", Node: "dev"}
 	_, err := GetSchedules(context.Background(), cfg)
 	if err == nil || !strings.Contains(err.Error(), "lambda:InvokeFunctionUrl") {
 		t.Errorf("expected the permission hint, got %v", err)
@@ -137,7 +137,7 @@ func TestSchedules_ForbiddenSaysWhatToCheck(t *testing.T) {
 func TestSchedules_UnreadableReply(t *testing.T) {
 	stubAWSEnv(t)
 	server, _, _ := scheduleServer(t, http.StatusOK, `not json`)
-	cfg := Config{ScheduleURL: server.URL, Region: "eu-west-1", Environment: "dev"}
+	cfg := Config{ScheduleURL: server.URL, Region: "eu-west-1", Node: "dev"}
 	if _, err := GetSchedules(context.Background(), cfg); err == nil || !strings.Contains(err.Error(), "unreadable") {
 		t.Errorf("expected an unreadable-reply error, got %v", err)
 	}

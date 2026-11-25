@@ -26,10 +26,10 @@ import (
 var dashboardRefreshInterval = 5 * time.Second
 
 // dashboardCloudRefreshInterval is the cadence for kind: cloud
-// environments instead. Each of their statuses is a signed call through the
+// nodes instead. Each of their statuses is a signed call through the
 // cloud control plane — a Lambda invocation, not a socket on the
 // sideboard — so the board refreshes the local machines on the tick and the
-// cloud environments on this slower deadline. Variable, for the same reason.
+// cloud nodes on this slower deadline. Variable, for the same reason.
 var dashboardCloudRefreshInterval = 60 * time.Second
 
 // dashEntry is one fleet-file entry and what it resolved to. Node is nil
@@ -63,7 +63,7 @@ type dashAction struct {
 
 // dashModel is the program's state: the board, the selection, and the in-
 // flight things — a refresh round per node group (local machines, cloud
-// environments), a stop's confirmation, a start or stop per node.
+// nodes), a stop's confirmation, a start or stop per node.
 type dashModel struct {
 	fleetPath string
 	entries   []dashEntry
@@ -429,9 +429,9 @@ func (m *dashModel) startRounds() []tea.Cmd {
 
 // dashNodeInterval is how often one node is read: the short interval while an
 // action is in flight on it, and its kind's own cadence otherwise. The reasons
-// a cloud environment is read once a minute — each read is a signed call
-// through the control plane, and an idle environment's state changes on the
-// scale of minutes — hold for an environment nobody is touching and hold for
+// a cloud node is read once a minute — each read is a signed call
+// through the control plane, and an idle node's state changes on the
+// scale of minutes — hold for a node nobody is touching and hold for
 // neither one the operator has just started.
 func dashNodeInterval(kind string, a dashAction) time.Duration {
 	if a.verb == "" && kind == fleet.KindCloud {
@@ -444,7 +444,7 @@ func dashNodeInterval(kind string, a dashAction) time.Duration {
 // is the board's own tick interval is due on every tick — the tick is its
 // cadence, and comparing a deadline against it would skip a round to the
 // tick's own jitter and halve the rate. Only a node read less often than the
-// tick carries a deadline that can defer it, which is a cloud environment with
+// tick carries a deadline that can defer it, which is a cloud node with
 // nothing in flight on it.
 func (m *dashModel) isDue(i int, now time.Time) bool {
 	if dashNodeInterval(m.entries[i].kind, m.actions[i]) <= dashboardRefreshInterval {
@@ -474,7 +474,7 @@ func (m *dashModel) scheduleRead(i int, at time.Time) {
 }
 
 // refreshCloudGroup starts one round over the due nodes of one group of live
-// nodes — the local daemon machines (cloud false) or the cloud environments
+// nodes — the local daemon machines (cloud false) or the cloud nodes
 // (cloud true) — and returns the round's command, or nil when nothing in the
 // group is due or a round is already in flight there. Starting the round
 // spends each read node's deadline: each moves to one of its own intervals
@@ -625,7 +625,7 @@ func (m *dashModel) beginAction(verb string) tea.Cmd {
 // It reuses beginAction's scaffolding — one action per node, the tile's
 // spinner, the short read interval for the duration of the call — but the call
 // itself is a keep, not a start or stop: the node must be a Keeper (a cloud
-// environment), and the call returns the deadline it set rather than an engine
+// node), and the call returns the deadline it set rather than an engine
 // state. A node that is not a Keeper, or that already has an action in flight,
 // is driven by nothing, and its reason lands on the status line.
 func (m *dashModel) beginKeep(d time.Duration) tea.Cmd {
@@ -643,7 +643,7 @@ func (m *dashModel) beginKeep(d time.Duration) tea.Cmd {
 	}
 	keeper, ok := e.node.(fleet.Keeper)
 	if !ok {
-		m.statusLine = e.name + ": keep needs a cloud environment"
+		m.statusLine = e.name + ": keep needs a cloud node"
 		return nil
 	}
 	spin := !m.actionInFlight()
@@ -784,7 +784,7 @@ func (m dashModel) nodeRunning() bool {
 }
 
 // keepOffered reports whether the keep key would do anything for the node under
-// the cursor: the node must support a keep (a cloud environment) and have
+// the cursor: the node must support a keep (a cloud node) and have
 // nothing in flight. A local daemon node has no retention tag to set, and a
 // node already acting takes no second action. The footer uses this to include
 // the keep hint only where it would drive something, the same way canAbort

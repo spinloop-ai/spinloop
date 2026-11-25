@@ -11,7 +11,7 @@ import (
 )
 
 // defaultBakeRunners is what `spinloop cloud bake` bakes when no runners are
-// named, and the full accepted set — the two engines an environment can run.
+// named, and the full accepted set — the two engines a node can run.
 var defaultBakeRunners = []string{"llamacpp", "vllm"}
 
 // isBakeRunner reports whether r is a runner bake accepts.
@@ -55,7 +55,7 @@ func cloudBakeCmd() *cobra.Command {
 	)
 	c := &cobra.Command{
 		Use:   "bake [runner...]",
-		Short: "bake the runner AMIs an environment runs from",
+		Short: "bake the runner AMIs a node runs from",
 		Long: `starts an AMI bake for each named runner (llamacpp and vllm when
 none are named) and waits until the AMI(s) are available (~20-40 min). It
 drives the same CDK project bootstrap deploys, deploys nothing — the control
@@ -74,7 +74,7 @@ queued, reporting how to check on them.`,
 	fs.BoolVar(&noWait, "no-wait", false, "return as soon as the bakes are queued, rather than waiting for the AMI(s)")
 	fs.StringVar(&ref, "ref", "", "git ref of remote/ to download (default: matches this binary)")
 	fs.StringVar(&dir, "dir", "", "where to find the downloaded remote/ sources")
-	fs.StringVar(&region, "region", "", "AWS region of the control plane (default: AWS_REGION or us-east-1)")
+	fs.StringVar(&region, "region", "", "AWS region of the control plane (default: SPINLOOP_CLOUD_REGION, then the region your AWS credentials configure)")
 	fs.StringVar(&pkgMgr, "package-manager", "", "package manager to use: pnpm or npm (default: auto-detect, preferring pnpm)")
 	compRegister(c, "dir", compFiles)
 	return c

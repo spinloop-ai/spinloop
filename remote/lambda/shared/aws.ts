@@ -14,8 +14,10 @@ import {
 } from '@aws-sdk/client-ec2';
 import {
   DescribeInstanceInformationCommand,
+  DeleteParameterCommand,
   GetCommandInvocationCommand,
   GetParameterCommand,
+  GetParametersByPathCommand,
   PutParameterCommand,
   SSMClient,
   SendCommandCommand,
@@ -107,6 +109,57 @@ export async function getParameterValue(name: string): Promise<string> {
     throw new Error(`SSM parameter ${name} has no value`);
   }
   return value;
+}
+
+/** A parameter's value, or null when there is no parameter. */
+export async function findParameter(name: string): Promise<string | null> {
+  try {
+    const result = await ssm.send(new GetParameterCommand({ Name: name }));
+    return result.Parameter?.Value ?? '';
+  } catch (err) {
+    if (errorName(err) === 'ParameterNotFound') {
+      return null;
+    }
+    throw err;
+  }
+}
+
+/**
+ * Delete a parameter. True when it was there, false when there was nothing
+ * to delete — a resource that is already gone is not an undeploy failure.
+ */
+export async function deleteParameterIfPresent(name: string): Promise<boolean> {
+  try {
+    await ssm.send(new DeleteParameterCommand({ Name: name }));
+    return true;
+  } catch (err) {
+    if (errorName(err) === 'ParameterNotFound') {
+      return false;
+    }
+    throw err;
+  }
+}
+
+/**
+ * Every parameter under an SSM path, across all pages. GetParametersByPath is
+ * the only way to ask SSM "what exists under here"; the stats Lambda uses it
+ * to enumerate the plane's nodes from the deploy-configs it holds.
+ */
+export async function listParametersUnder(path: string): Promise<Array<{ name: string; value: string }>> {
+  const found: Array<{ name: string; value: string }> = [];
+  let token: string | undefined;
+  do {
+    const page = await ssm.send(
+      new GetParametersByPathCommand({ Path: path, Recursive: true, NextToken: token }),
+    );
+    for (const p of page.Parameters ?? []) {
+      if (p.Name !== undefined && p.Value !== undefined) {
+        found.push({ name: p.Name, value: p.Value });
+      }
+    }
+    token = page.NextToken;
+  } while (token);
+  return found;
 }
 
 /** Describe a specific instance by id (used to poll a just-launched one). */

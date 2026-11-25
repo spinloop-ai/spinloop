@@ -441,7 +441,7 @@ func TestDashTileStoppedByteStable(t *testing.T) {
 	if got := dashTestTile("idle", r, false, dashAction{}); got != want {
 		t.Errorf("stopped tile mismatch:\n%q\nwant:\n%q", got, want)
 	}
-	// A cloud environment with no instance at all reports undeployed and
+	// A cloud node with no instance at all reports undeployed and
 	// keeps its deployment: the serving line rides on the same shape, and
 	// the dot is the faded one, not the green of a serving node.
 	u := fleet.NodeResult{
@@ -1411,7 +1411,7 @@ func TestDashModelRefreshOrdersReadingsByTheirTime(t *testing.T) {
 	}
 }
 
-// A kind: cloud environment refreshes on its own slower deadline: the round
+// A kind: cloud node refreshes on its own slower deadline: the round
 // starts only when that time comes, starting it spends the deadline, and the
 // manual refresh brings it forward whatever the deadline says.
 func TestDashModelCloudCadence(t *testing.T) {
@@ -2255,11 +2255,11 @@ func TestFleetDashboardRefusesPipedOutput(t *testing.T) {
 func TestDashModelForFleetFile(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
-	if _, err := dashModelFor(fleetTarget{}); err == nil {
+	if _, err := dashModelFor(context.Background(), fleetTarget{}); err == nil {
 		t.Fatal("missing fleet file did not fail")
 	}
 	writeFleetFile(t, "nodes:\n  - name: ok\n    host: 127.0.0.1\n    port: 4242\n  - name: broken\n    host: 127.0.0.1\n    port: 1\n    tokenEnv: NO_SUCH_SPINLOOP_VAR\n")
-	m, err := dashModelFor(fleetTarget{})
+	m, err := dashModelFor(context.Background(), fleetTarget{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2721,7 +2721,7 @@ func TestDashFooterNamesOnlyTheKeysTheNodeTakes(t *testing.T) {
 			"esc back   f follow   w wrap",
 		},
 		{
-			"a stopped cloud environment",
+			"a stopped cloud node",
 			dashModel{
 				entries: []dashEntry{{name: "env", kind: fleet.KindCloud, node: kept}},
 				results: []fleet.NodeResult{read("stopped")},
@@ -2731,7 +2731,7 @@ func TestDashFooterNamesOnlyTheKeysTheNodeTakes(t *testing.T) {
 			"esc back   s start   k keep   f follow   w wrap",
 		},
 		{
-			"a running cloud environment",
+			"a running cloud node",
 			dashModel{
 				entries: []dashEntry{{name: "env", kind: fleet.KindCloud, node: kept}},
 				results: []fleet.NodeResult{read("running")},

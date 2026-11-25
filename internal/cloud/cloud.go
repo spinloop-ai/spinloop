@@ -33,130 +33,50 @@ import (
 // model into VRAM, which takes minutes.
 var httpClient = &http.Client{Timeout: 10 * time.Minute}
 
-// Config holds the connection details for the cloud instance's control
-// Lambdas: deploying remote/ prints it as the SpinloopRemoteConfig output, ready
-// to paste into the config file.
+// Config holds the connection details for one cloud node on one control
+// plane: the plane's endpoints and region, resolved from its stack outputs (or
+// stated outright by SPINLOOP_CLOUD_*), plus the node's own name and
+// address. It is an in-memory value only — nothing writes it, because every
+// field is something the plane already records.
 type Config struct {
 	StartURL  string `json:"start_url"`
 	StopURL   string `json:"stop_url"`
 	DeployURL string `json:"deploy_url"`
 	StatsURL  string `json:"stats_url"`
 	// EnvURL is the Lambda that returns environment variables for a running
-	// endpoint without starting it. Optional — configs predating the env Lambda
-	// still work for start/stop/deploy.
+	// endpoint without starting it. Optional — a plane deployed before the env
+	// Lambda existed lacks the output, and only the env subcommand names it.
 	EnvURL string `json:"env_url"`
 	// SeedURL is the Lambda that starts, reports on, lists and stops model
-	// weight seeds. Optional in the same way as EnvURL: a config written before
-	// the seed Lambda existed keeps working for every other subcommand, and
-	// only the seed subcommand names the value to add.
+	// weight seeds. Optional in the same way as EnvURL.
 	SeedURL string `json:"seed_url"`
 	// UpdateURL is the Lambda for arbitrary post-provision instance commands
-	// (currently: set-keep). Optional — configs predating the update Lambda
-	// still work for start/stop/deploy; Keep will fail with a clear message.
+	// (currently: set-keep). Optional in the same way.
 	UpdateURL string `json:"update_url"`
-	// ScheduleURL is the Lambda that sets, reads and clears an environment's
-	// start/stop schedules. Optional in the same way as UpdateURL: a config
-	// written before it existed keeps working for every other subcommand, and
-	// the schedule subcommands fail naming the fix.
+	// ScheduleURL is the Lambda that sets, reads and clears a node's
+	// start/stop schedules. Optional in the same way.
 	ScheduleURL string `json:"schedule_url"`
 	Region      string `json:"region"`
-	// BaseURL is the endpoint's own address (the environment's stable Elastic
-	// IP). It belongs to the deployment rather than to the Spinloop, so it is
-	// written here and `apply` reads it back for a Spinloop that states no
-	// BASEURL. Like DeployURL it is optional: the control calls do not need it —
-	// start and status report the address themselves — so configs without it
-	// still work.
+	// BaseURL is the endpoint's own address (the node's Elastic IP), as
+	// the plane reports it rather than as this machine last saw it: the control
+	// calls carry it, and the inventory lists it, so a stopped node's
+	// address is known without starting anything. It belongs to the deployment,
+	// not to the Spinloop, which is why `apply` reads it from here for a
+	// Spinloop that states no BASEURL.
 	BaseURL string `json:"base_url"`
-	// Environment names which environment's instance the shared lifecycle
-	// Lambdas act on. The control URLs are shared across environments, so this
+	// Node names which cloud node's instance the shared lifecycle
+	// Lambdas act on. The control URLs are shared across nodes, so this
 	// travels with every control call; the Lambdas reject a call without one.
-	Environment string `json:"environment"`
-}
-
-// LoadEnvironment reads a named environment's configuration: the cloud.json
-// in its registry directory, with the SPINLOOP_CLOUD_* overrides applied on
-// top. It is the only way an environment is resolved — there is no path
-// outside the registry, and no name that resolves by a different rule.
-//
-// A name with no file is not a failure on its own: the overrides may carry a
-// complete configuration, which is how the cloud commands run on a machine
-// with nothing on disk. In that case the name is the environment identifier
-// the control calls carry, since a configuration assembled from variables has
-// no file to take one from. Where the overrides are incomplete too,
-// finishConfig fails naming the registry path to create.
-func LoadEnvironment(name string, getenv func(string) string) (Config, error) {
-	path, err := EnvConfigPath(name)
-	if err != nil {
-		return Config{}, err
-	}
-	var cfg Config
-	data, err := os.ReadFile(path)
-	switch {
-	case err == nil:
-		if err := json.Unmarshal(data, &cfg); err != nil {
-			return Config{}, fmt.Errorf("parsing %s: %w", path, err)
-		}
-	case os.IsNotExist(err):
-		// No file: the overrides may still configure it, and the name is what
-		// tells the shared Lambdas which instance they are acting on.
-		cfg.Environment = name
-	default:
-		return Config{}, err
-	}
-	return finishConfig(cfg, getenv, path)
-}
-
-// finishConfig applies env overrides and validates. source names the config
-// file for error messages.
-func finishConfig(cfg Config, getenv func(string) string, source string) (Config, error) {
-	if v := getenv("SPINLOOP_CLOUD_START_URL"); v != "" {
-		cfg.StartURL = v
-	}
-	if v := getenv("SPINLOOP_CLOUD_STOP_URL"); v != "" {
-		cfg.StopURL = v
-	}
-	if v := getenv("SPINLOOP_CLOUD_DEPLOY_URL"); v != "" {
-		cfg.DeployURL = v
-	}
-	if v := getenv("SPINLOOP_CLOUD_STATS_URL"); v != "" {
-		cfg.StatsURL = v
-	}
-	if v := getenv("SPINLOOP_CLOUD_ENV_URL"); v != "" {
-		cfg.EnvURL = v
-	}
-	if v := getenv("SPINLOOP_CLOUD_SEED_URL"); v != "" {
-		cfg.SeedURL = v
-	}
-	if v := getenv("SPINLOOP_CLOUD_UPDATE_URL"); v != "" {
-		cfg.UpdateURL = v
-	}
-	if v := getenv("SPINLOOP_CLOUD_SCHEDULE_URL"); v != "" {
-		cfg.ScheduleURL = v
-	}
-	if v := getenv("SPINLOOP_CLOUD_REGION"); v != "" {
-		cfg.Region = v
-	}
-	if cfg.StartURL == "" || cfg.StopURL == "" {
-		return Config{}, fmt.Errorf(
-			"cloud is not configured: paste the SpinloopRemoteConfig output of the remote/ deployment into %s",
-			source)
-	}
-	if cfg.Region == "" {
-		cfg.Region = getenv("AWS_REGION")
-	}
-	if cfg.Region == "" {
-		cfg.Region = regionFromURL(cfg.StartURL)
-	}
-	if cfg.Region == "" {
-		return Config{}, fmt.Errorf(
-			"cannot determine the AWS region: set \"region\" in %s or SPINLOOP_CLOUD_REGION",
-			source)
-	}
-	return cfg, nil
+	// It is the node's name on the resolved plane — a plain identifier,
+	// and the only thing that identifies it. On the way out it travels as the
+	// `env` query parameter; the parameter name itself is legacy.
+	Node string
 }
 
 // regionFromURL extracts the region from a Lambda Function URL host
-// (<id>.lambda-url.<region>.on.aws).
+// (<id>.lambda-url.<region>.on.aws). It is how a plane stated entirely by
+// SPINLOOP_CLOUD_* variables can be signed for without the caller also naming
+// the region its endpoints happen to live in.
 func regionFromURL(rawURL string) string {
 	u, err := url.Parse(rawURL)
 	if err != nil {
@@ -173,12 +93,14 @@ func regionFromURL(rawURL string) string {
 
 // Response is the control Lambdas' JSON reply.
 type Response struct {
-	StatusCode        int    `json:"-"`
-	State             string `json:"state"`
-	Healthy           *bool  `json:"healthy"`
-	BaseURL           string `json:"base_url"`
-	APIKey            string `json:"api_key"`
-	Environment       string `json:"environment"`
+	StatusCode int    `json:"-"`
+	State      string `json:"state"`
+	Healthy    *bool  `json:"healthy"`
+	BaseURL    string `json:"base_url"`
+	APIKey     string `json:"api_key"`
+	// Node names the cloud node the reply is about. The wire key stays
+	// `environment`: already-deployed planes answer with it.
+	Node              string `json:"environment"`
 	Message           string `json:"message"`
 	RetryAfterSeconds int    `json:"retry_after_seconds"`
 	// The on-instance daemon's activity record, relayed by the status branch of
@@ -190,7 +112,7 @@ type Response struct {
 	LastActiveAt string `json:"lastActiveAt"`
 	IdleSeconds  int    `json:"idleSeconds"`
 	// Deploy-specific fields. Runner, ModelID and ServedName are also relayed
-	// by the status reply, which reads them from the environment's deploy
+	// by the status reply, which reads them from the node's deploy
 	// config — the same source the stats reply reads.
 	Deployed bool `json:"deployed"`
 	Seeding  bool `json:"seeding"`
@@ -200,14 +122,14 @@ type Response struct {
 	SeedID string `json:"seedId"`
 	// ServedName is the name the engine answers to beside the model id — the
 	// served name the deploy gave it — relayed by the status reply from the
-	// environment's deploy config, so a caller may know the engine by either
+	// node's deploy config, so a caller may know the engine by either
 	// name.
 	ServedName    string `json:"servedName"`
 	Runner        string `json:"runner"`
 	ModelID       string `json:"modelId"`
 	ContextSize   int    `json:"contextSize"`
 	WeightsPrefix string `json:"weightsPrefix"`
-	// APIKeyAction is what the deploy did to the environment's key secret,
+	// APIKeyAction is what the deploy did to the node's key secret,
 	// present only when the deploy supplied a key: "created" (a new secret)
 	// or "rotated" (an existing secret set to a new value, invalidating the
 	// old key). It carries the action, never the value — a deploy never
@@ -217,7 +139,21 @@ type Response struct {
 	// Retain-Until tag is present (set-keep or start --keep). camelCase to
 	// match the Lambda's JSON.
 	RetainUntil string `json:"retainUntil"`
-	Error       string `json:"error"`
+	// Released lists what an undeploy released, by kind — instance, address,
+	// security group, secret, schedules, deploy config. Undeploy-reply-only,
+	// like the deploy fields above; under a dry run it names what would go.
+	Released []string `json:"released"`
+	// Undeployed names the node an undeploy released. The undeploy reply is
+	// new, so it names the node under the new word — `node` — where the
+	// already-deployed replies still say `environment` (Node above).
+	// Undeploy-reply-only, like Released.
+	Undeployed string `json:"node"`
+	// DryRun is the plane's own confirmation that the undeploy it just
+	// answered released nothing. A pointer because absence is meaningful: a
+	// reply without it predates the flag, and the request is then the only
+	// evidence. Undeploy-reply-only.
+	DryRun *bool  `json:"dryRun"`
+	Error  string `json:"error"`
 }
 
 // instanceTypePattern is the shape of an EC2 instance type: a lowercase family
@@ -235,19 +171,19 @@ func IsInstanceType(value string) bool {
 	return instanceTypePattern.MatchString(value)
 }
 
-// Deploy creates (or updates) cfg.Environment on the control plane and sets
+// Deploy creates (or updates) cfg.Node on the control plane and sets
 // what its next wake will serve. The Lambda validates the config, provisions
-// the environment's own resources if absent, seeds the weights into S3 if they
+// the node's own resources if absent, seeds the weights into S3 if they
 // are absent, and stores the config; deploying does not start the instance.
-// allowedCidr scopes who may reach this environment's instance; it is required
+// allowedCidr scopes who may reach this node's instance; it is required
 // the first time and optional afterwards (empty leaves ingress alone).
 // reseed asks the control plane to fetch the weights even when they are
 // already in S3. Both are properties of this request, not of what the
-// environment serves, so they ride beside each other rather than on
+// node serves, so they ride beside each other rather than on
 // DeployConfig — which is persisted verbatim, and would re-seed on every wake
 // that read it back.
 //
-// apiKey is an externally provided key to store as the environment's key,
+// apiKey is an externally provided key to store as the node's key,
 // riding the same way: a property of this request, never persisted, and
 // omitted entirely when empty, so a control plane that predates it sees the
 // body it always saw. The reply's APIKeyAction says what happened to the
@@ -451,7 +387,7 @@ func Pause(ctx context.Context, cfg Config, force bool) (*Response, error) {
 
 // Restart stops the instance in the pause manner — without terminating it, so
 // the boot disk and its weights survive, the re-wake is fast, and the
-// environment's address does not change — and then wakes it up, reusing
+// node's address does not change — and then wakes it up, reusing
 // Start's retry and deadline behaviour until the model serves again. force
 // marks the stop as forced: the engine is not asked to shut down first. When
 // the wake fails after the stop takes effect, the error says the instance is
@@ -488,7 +424,7 @@ func pauseURL(stopURL string, force bool) string {
 	return u.String()
 }
 
-// Keep sets the Retain-Until tag on the environment's instance, preventing the
+// Keep sets the Retain-Until tag on the node's instance, preventing the
 // idle sweep from terminating it before the stated deadline. A manual stop or
 // pause still takes effect: the tag guards against accidental death. The CLI
 // computes the deadline from a duration and passes the absolute time here.
@@ -536,21 +472,68 @@ func Env(ctx context.Context, cfg Config) (*Response, error) {
 
 // call signs and sends one request. body is nil for the bodyless calls
 // (start/stop/status); deploy passes JSON, which must be hashed into the
-// signature rather than sent unsigned. The environment travels as a query
-// parameter on every call — the Lambdas are shared across environments and
-// require it.
+// signature rather than sent unsigned. The node's name travels as the `env`
+// query parameter on every call — the Lambdas are shared across nodes and
+// require it; the parameter name itself is legacy.
 func call(ctx context.Context, cfg Config, method, rawURL string, body []byte) (*Response, error) {
-	if cfg.Environment != "" {
+	return callOnce(ctx, cfg, method, rawURL, body)
+}
+
+// sendPlane is send with the plane's one repair built in: when the attempt
+// failed the way a moved or re-bootstrapped plane fails — the host cannot be
+// reached, or the authorizer rejects the credential because it belonged to
+// the plane that used to be — the plane is resolved once more and the request
+// is sent once against the answer. Every verb that reaches the plane goes
+// through here, so the repair is the rule rather than per-verb luck: a
+// long-lived process (a dashboard, the gateway) heals at its first failed
+// call instead of staying wrong until it is restarted. Any ordinary failure
+// is returned as it came.
+func sendPlane(
+	ctx context.Context, cfg Config, method, rawURL string, body []byte,
+) (int, []byte, error) {
+	status, respBody, err := send(ctx, cfg, method, rawURL, body)
+	stale := stalePlane(err) ||
+		(err == nil && status == http.StatusForbidden && expiredCredsMarker(string(respBody)))
+	if !stale {
+		return status, respBody, err
+	}
+	next, changed := refreshPlane(ctx, cfg, os.Getenv)
+	if !changed {
+		return status, respBody, err
+	}
+	called, ok := swapEndpoint(cfg, next, rawURL)
+	if !ok {
+		return status, respBody, err
+	}
+	return send(ctx, next, method, called, body)
+}
+
+// summary is everything a reply carries about why it failed, for the one
+// question revalidate asks: did the caller's credential get rejected?
+func (r *Response) summary() string {
+	if r == nil {
+		return ""
+	}
+	return r.Error + " " + r.Message
+}
+
+// callOnce signs and sends one request, with no revalidation behind it. body is
+// nil for the bodyless calls (start/stop/status); deploy passes JSON, which
+// must be hashed into the signature rather than sent unsigned. The node's name
+// travels as the `env` query parameter on every call — the Lambdas are shared
+// across nodes and require it; the parameter name itself is legacy.
+func callOnce(ctx context.Context, cfg Config, method, rawURL string, body []byte) (*Response, error) {
+	if cfg.Node != "" {
 		u, err := url.Parse(rawURL)
 		if err != nil {
 			return nil, err
 		}
 		q := u.Query()
-		q.Set("env", cfg.Environment)
+		q.Set("env", cfg.Node)
 		u.RawQuery = q.Encode()
 		rawURL = u.String()
 	}
-	status, respBody, err := send(ctx, cfg, method, rawURL, body)
+	status, respBody, err := sendPlane(ctx, cfg, method, rawURL, body)
 	if err != nil {
 		return nil, err
 	}
@@ -569,7 +552,7 @@ func call(ctx context.Context, cfg Config, method, rawURL string, body []byte) (
 // send signs and performs one request, returning the status and raw body. It
 // is the transport half of call, split out because the seed Lambda's replies
 // have their own shapes: seeds are account-wide, so they share the signing but
-// not the Response struct or the environment query parameter.
+// not the Response struct or the `env` query parameter.
 func send(
 	ctx context.Context, cfg Config, method, rawURL string, body []byte,
 ) (int, []byte, error) {
@@ -736,16 +719,18 @@ type StatsResponse struct {
 	// Message carries a rejection reason on a non-success reply — including the
 	// authorizer's own text on a 403 — so an expired-credential rejection can be
 	// classified even though the stats fields are empty.
-	Message      string `json:"message"`
-	Environment  string `json:"environment"`
+	Message string `json:"message"`
+	// Node names the cloud node the reply is about. The wire key stays
+	// `environment`: already-deployed planes answer with it.
+	Node         string `json:"environment"`
 	State        string `json:"state"`
 	InstanceID   string `json:"instanceId"`
 	InstanceType string `json:"instanceType"`
 	Runner       string `json:"runner"`
 	ModelID      string `json:"modelId"`
 	// ServedName is the name the engine answers to beside the model id,
-	// relayed from the environment's deploy config — the same field the
-	// status reply's Response.ServedName carries, so a stopped environment's
+	// relayed from the node's deploy config — the same field the
+	// status reply's Response.ServedName carries, so a stopped node's
 	// wakeable name matches what it reported while running.
 	ServedName    string      `json:"servedName"`
 	UptimeSeconds int         `json:"uptimeSeconds"`
@@ -820,42 +805,28 @@ func Stats(ctx context.Context, cfg Config) (*StatsResponse, error) {
 // stats-specific response shape.
 func callStats(ctx context.Context, cfg Config) (*StatsResponse, error) {
 	rawURL := cfg.StatsURL
-	if cfg.Environment != "" {
+	if cfg.Node != "" {
 		u, err := url.Parse(rawURL)
 		if err != nil {
 			return nil, err
 		}
 		q := u.Query()
-		q.Set("env", cfg.Environment)
+		q.Set("env", cfg.Node)
 		u.RawQuery = q.Encode()
 		rawURL = u.String()
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	status, respBody, err := sendPlane(ctx, cfg, http.MethodGet, rawURL, nil)
 	if err != nil {
 		return nil, err
 	}
-	body := []byte{}
-	if err := sign(ctx, req, cfg.Region, body); err != nil {
-		return nil, err
-	}
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if err != nil {
-		return nil, err
-	}
-	checkControlPlaneVersion(resp.Header)
-	out := &StatsResponse{StatusCode: resp.StatusCode}
+	out := &StatsResponse{StatusCode: status}
 	if err := json.Unmarshal(respBody, out); err != nil {
 		hint := ""
-		if resp.StatusCode == http.StatusForbidden {
+		if status == http.StatusForbidden {
 			hint = forbiddenHint(cfg.Region, string(respBody))
 		}
 		return nil, fmt.Errorf("stats returned HTTP %d%s: %s",
-			resp.StatusCode, hint, truncate(string(respBody), 200))
+			status, hint, truncate(string(respBody), 200))
 	}
 	return out, nil
 }

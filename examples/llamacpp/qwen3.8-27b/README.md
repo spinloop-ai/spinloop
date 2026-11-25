@@ -208,20 +208,21 @@ This deploys the shared control plane — the AMI-baking pipelines for
 roles and VPC. It needs Node 22, `pnpm` or `npm`, AWS credentials, and GPU
 vCPU quota in the target region. It creates no instance and no Elastic IP.
 
-### Deploy this Spinloop as an environment
+### Deploy this Spinloop as a node
 
 ```sh
 spinloop cloud deploy --node qwen3.8-27b    # from this directory
 spinloop cloud deploy --node qwen3.8-27b --dry-run   # see what would be sent first
 ```
 
-The `--node` name is the environment `spinloop cloud` creates and registers.
+The `--node` name is the node `spinloop cloud` creates on the control
+plane — shared by every machine with credentials for it.
 
 `deploy` reads `PROVIDER`, `ALIAS`, `CONTEXT` and `PRESET` from the Spinloop — the
 same values [`spinloop serve`](../../../docs/commands/serve.md) uses locally —
-provisions the environment's Elastic IP, API key, ingress rule (defaulting to
-your own public IP) and state, and registers it at
-`~/.config/spinloop/clouds/qwen3.8-27b/cloud.json`. If the shared bucket
+provisions the node's Elastic IP, API key, ingress rule (defaulting to
+your own public IP) and state, and records the node on the control
+plane. If the shared bucket
 doesn't have these weights cached yet, deploy fetches them in the background
 (15–20 minutes) — wait for that before your first `start`.
 
@@ -243,7 +244,7 @@ raise `CONTEXT`/`ctx-size` in the Spinloop and preset together (up to the
 model's native 262144) before your next `deploy`.
 
 See [`spinloop cloud`](../../../docs/commands/cloud.md) for `logs`, `metrics`,
-and how to name and switch between multiple deployed environments.
+and how to name and switch between multiple deployed cloud nodes.
 
 ## Vision input (optional)
 

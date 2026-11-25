@@ -374,7 +374,7 @@ func dashReadingAge(r fleet.NodeResult, now time.Time, staleAfter time.Duration)
 // that answered with nothing serving is not serving, a faded dot rather than
 // the green of a node that is up and serving — idle, the daemon with nothing
 // started; stopped, a daemon engine that was stopped; undeployed, a cloud
-// environment with no instance at all; anything else, including a running
+// cloud node with no instance at all; anything else, including a running
 // engine the daemon reports no readiness for at all (an older daemon, or a
 // runner with no known health check), is healthy, so this degrades to the
 // pre-readiness behaviour rather than showing a tier the daemon cannot
@@ -461,9 +461,9 @@ func dashTileReportBody(w io.Writer, m metrics.Stats, resources bool, gauge bool
 	if line := dashTileServingLine(m); line != "" {
 		fmt.Fprintln(w, line)
 	}
-	// The active figure and, for a kept cloud environment, the relative keep
+	// The active figure and, for a kept cloud node, the relative keep
 	// after it — one line, from the same read, whatever the engine's state. A
-	// read without either — a local node, an unkept or lapsed environment —
+	// read without either — a local node, an unkept or lapsed node —
 	// draws nothing.
 	renderActiveIndented(w, m.LastActiveAt, m.IdleSeconds, m.RetainUntil, now, statLabelWidth(m.GPUs, m.History))
 	if resources {

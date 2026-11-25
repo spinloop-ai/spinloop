@@ -1,5 +1,6 @@
 // `spinloop dashboard`: the interactive board over whatever the target names —
-// a fleet, or a single registered environment, which opens as a board of one.
+// a fleet, or a single cloud node on the control plane, which opens as a
+// board of one.
 // The model and the renderers live in dashboard_model.go and
 // dashboard_render.go, and the program in fleet_dashboard.go; this is the
 // command.
@@ -18,16 +19,16 @@ func dashboardCmd() *cobra.Command {
 		Long: `An interactive live view of the target: a tile per node, each drawing
 what the gauge format of fleet metrics prints — state, what it serves, the
 resource gauges, the token counters — repainted on an interval. A single
-registered environment (--node) opens as a board of one.
+single cloud node on the plane (--node) opens as a board of one.
 
 The view is read-only apart from four keys: s starts the selected node, k
-keeps a cloud environment for a duration you type — it asks how long,
+keeps a cloud node for a duration you type — it asks how long,
 pre-filled with 4h, and reports the deadline the control plane set when the
 keep is done — a abandons a start still in flight on it (the wait ends, the
 node is free again — a wake the cloud is carrying goes on), x stops it after
 a confirmation. The arrow keys move the selection, r forces a refresh, q or
 Ctrl+C leaves. The keep key shows only for a node that can be kept — a cloud
-environment — and a kept environment's tile and detail view carry its
+cloud node — and a kept node's tile and detail view carry its
 deadline beside the last-active line, whatever the engine's state.
 
 A node that cannot be reached is still a tile, showing why, and a node whose

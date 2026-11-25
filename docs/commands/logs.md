@@ -1,12 +1,12 @@
 # spinloop logs
 
 What every engine you run has said — through whatever the node answers with, a
-daemon's log file or a cloud environment's log store.
+daemon's log file or a cloud node's log store.
 
 ```sh
 spinloop logs                         # every node in this directory's fleet.yaml
 spinloop logs studio                  # just that node
-spinloop logs --node prod              # one registered environment, no file needed
+spinloop logs --node prod              # one cloud node, no file needed
 spinloop logs -f                      # follow
 spinloop logs --node prod --source boot --since 30m
 ```
@@ -21,7 +21,7 @@ that node's own log.
 
 | | target |
 | --- | --- |
-| `--node <name>` (`-n`) | that node of the fleet in force; with no fleet named, a registered environment when none holds the name |
+| `--node <name>` (`-n`) | that node of the fleet in force; with no fleet named, a cloud node on the control plane when none holds the name |
 | `--fleet <path>` | that fleet file |
 | neither | the `fleet.yaml` in the working directory |
 
@@ -32,12 +32,12 @@ command line.
 ## Which flags apply to which nodes
 
 A daemon's log is one file on one machine, read from a byte offset. A cloud
-environment's is a store that can be queried. The three query flags apply to
+node's is a store that can be queried. The three query flags apply to
 the nodes that have one and leave the rest read as they would be without them —
 so `--source boot` against a fleet of daemons returns their output rather than
 nothing.
 
-| flag | cloud environment | daemon node |
+| flag | cloud node | daemon node |
 | --- | --- | --- |
 | `--source engine\|boot\|all` | selects which log | — |
 | `--since <duration>` | bounds how far back (default 1h) | — |

@@ -8,7 +8,7 @@ import (
 	"net/url"
 )
 
-// Schedule is one cron-driven start or stop of an environment, as the
+// Schedule is one cron-driven start or stop of a node, as the
 // schedule Lambda stores it.
 type Schedule struct {
 	// Action is "start" or "stop".
@@ -19,18 +19,20 @@ type Schedule struct {
 	Timezone string `json:"timezone"`
 }
 
-// ScheduleList is the schedule Lambda's reply: the environment's schedules
+// ScheduleList is the schedule Lambda's reply: the node's schedules
 // and when each action next fires (RFC 3339, empty when there is none).
 type ScheduleList struct {
-	Environment string     `json:"environment"`
-	Schedules   []Schedule `json:"schedules"`
-	Next        struct {
+	// Node names the node the schedules belong to. The wire key stays
+	// `environment`: already-deployed planes answer with it.
+	Node      string     `json:"environment"`
+	Schedules []Schedule `json:"schedules"`
+	Next      struct {
 		Start string `json:"start"`
 		Stop  string `json:"stop"`
 	} `json:"next"`
 }
 
-// SetSchedules replaces the environment's schedules with the list given. The
+// SetSchedules replaces the node's schedules with the list given. The
 // control plane validates every expression and zone before it changes
 // anything, so a rejected list leaves the earlier schedules in place.
 func SetSchedules(ctx context.Context, cfg Config, schedules []Schedule) (*ScheduleList, error) {
@@ -44,18 +46,18 @@ func SetSchedules(ctx context.Context, cfg Config, schedules []Schedule) (*Sched
 	return scheduleCall(ctx, cfg, http.MethodPut, body)
 }
 
-// GetSchedules returns the environment's schedules and their next runs.
+// GetSchedules returns the node's schedules and their next runs.
 func GetSchedules(ctx context.Context, cfg Config) (*ScheduleList, error) {
 	return scheduleCall(ctx, cfg, http.MethodGet, nil)
 }
 
-// ClearSchedules removes every schedule of the environment.
+// ClearSchedules removes every schedule of the node.
 func ClearSchedules(ctx context.Context, cfg Config) (*ScheduleList, error) {
 	return scheduleCall(ctx, cfg, http.MethodDelete, nil)
 }
 
 // scheduleCall sends one request to the schedule Lambda. It has its own reply
-// shape, so it uses send rather than call, and adds the environment itself.
+// shape, so it uses send rather than call, and adds the node's name itself.
 func scheduleCall(ctx context.Context, cfg Config, method string, body []byte) (*ScheduleList, error) {
 	if cfg.ScheduleURL == "" {
 		return nil, fmt.Errorf(
@@ -65,12 +67,12 @@ func scheduleCall(ctx context.Context, cfg Config, method string, body []byte) (
 	if err != nil {
 		return nil, err
 	}
-	if cfg.Environment != "" {
+	if cfg.Node != "" {
 		q := u.Query()
-		q.Set("env", cfg.Environment)
+		q.Set("env", cfg.Node)
 		u.RawQuery = q.Encode()
 	}
-	status, respBody, err := send(ctx, cfg, method, u.String(), body)
+	status, respBody, err := sendPlane(ctx, cfg, method, u.String(), body)
 	if err != nil {
 		return nil, err
 	}

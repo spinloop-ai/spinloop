@@ -5,7 +5,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 
@@ -13,7 +12,7 @@ import (
 )
 
 // scheduleFixture serves the schedule Lambda's reply and registers a default
-// environment whose schedule URL points at it. It returns what the last
+// cloud node whose schedule URL points at it. It returns what the last
 // request carried.
 type scheduleRequest struct {
 	method string
@@ -34,17 +33,9 @@ func scheduleFixture(t *testing.T, status int, reply string) *scheduleRequest {
 		_, _ = w.Write([]byte(reply))
 	}))
 	t.Cleanup(server.Close)
-	writeCloudConfig(t, server.URL)
-	path := must1(cloud.EnvConfigPath("default"))
-	var cfg cloud.Config
-	if err := json.Unmarshal(must1(os.ReadFile(path)), &cfg); err != nil {
-		t.Fatal(err)
-	}
-	cfg.ScheduleURL = server.URL
-	cfg.Environment = "default"
-	if err := os.WriteFile(path, must1(json.Marshal(cfg)), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	// The plane this machine resolves: every endpoint, the schedule Lambda
+	// included, is the test server.
+	stubPlaneEndpoints(t, server.URL)
 	return got
 }
 
@@ -185,21 +176,33 @@ func TestCloudSchedule_ControlPlaneRejectionIsTheError(t *testing.T) {
 	}
 }
 
+// A plane deployed before the schedules Lambda exists is a plane that states no
+// schedule endpoint: the command that needs one says which control-plane
+// version introduced it and how to catch up, rather than calling a URL that
+// does not exist.
 func TestCloudSchedule_OlderControlPlaneNamesTheFix(t *testing.T) {
 	isolateConfig(t)
 	stubAWSEnv(t)
-	writeCloudConfig(t, "https://start.example/")
+	// The pre-schedules plane: its lifecycle is stated, and nothing more —
+	// a complete set no longer demands more than start and stop, so the
+	// plane resolves without AWS and simply has no schedule endpoint.
+	t.Setenv("SPINLOOP_CLOUD_START_URL", "https://start.example/")
+	t.Setenv("SPINLOOP_CLOUD_STOP_URL", "https://stop.example/")
+	t.Setenv("SPINLOOP_CLOUD_REGION", "us-east-1")
+	cloud.ForgetPlanes()
+	t.Cleanup(cloud.ForgetPlanes)
+
 	err := cmdCloudSchedule([]string{"show", "--node", "default"})
 	if err == nil || !strings.Contains(err.Error(), "spinloop cloud bootstrap") {
 		t.Errorf("expected an error naming bootstrap, got %v", err)
 	}
 }
 
-func TestCloudSchedule_NeedsAnEnvironment(t *testing.T) {
+func TestCloudSchedule_NeedsACloudNode(t *testing.T) {
 	isolateConfig(t)
 	err := cmdCloudSchedule([]string{"show"})
 	if err == nil || !strings.Contains(err.Error(), "--node") {
-		t.Errorf("expected the no-environment error, got %v", err)
+		t.Errorf("expected the no-cloud-node error, got %v", err)
 	}
 }
 
@@ -213,11 +216,11 @@ func TestCloudSchedule_ClearAndShowReportControlPlaneFailures(t *testing.T) {
 	}
 }
 
-func TestCloudSchedule_SetFailsWithoutAnEnvironmentBeforeSendingAnything(t *testing.T) {
+func TestCloudSchedule_SetFailsWithoutACloudNodeBeforeSendingAnything(t *testing.T) {
 	isolateConfig(t)
 	err := cmdCloudSchedule([]string{"set", "--start", "0 8 * * *"})
-	if err == nil || !strings.Contains(err.Error(), "no environment named") {
-		t.Errorf("expected the no-environment error, got %v", err)
+	if err == nil || !strings.Contains(err.Error(), "no cloud node named") {
+		t.Errorf("expected the no-cloud-node error, got %v", err)
 	}
 }
 

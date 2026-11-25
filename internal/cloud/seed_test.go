@@ -85,19 +85,19 @@ func TestSeedStart_OmitsEmptyOptionalFields(t *testing.T) {
 	}
 }
 
-func TestSeedStart_SendsNoEnvironment(t *testing.T) {
+func TestSeedStart_SendsNoNode(t *testing.T) {
 	stubAWSEnv(t)
 	server, got := newSeedServer(t, 200, `{"seedId":"vllm--org-m","started":true}`)
 
-	// Seeds are account-wide: one model seeded once serves every environment,
-	// so an environment on the config must not leak onto a seed call.
+	// Seeds are account-wide: one model seeded once serves every cloud node,
+	// so a node on the config must not leak onto a seed call.
 	cfg := seedCfg(server.URL)
-	cfg.Environment = "prod"
+	cfg.Node = "prod"
 	if _, err := SeedStart(context.Background(), cfg, SeedRequest{Runner: "vllm", ModelID: "org/m"}); err != nil {
 		t.Fatal(err)
 	}
 	if _, present := got.Query["env"]; present {
-		t.Errorf("a seed call must not carry an environment, got %+v", got.Query)
+		t.Errorf("a seed call must not carry a node, got %+v", got.Query)
 	}
 }
 
@@ -289,39 +289,6 @@ func TestFirstNonEmpty(t *testing.T) {
 	}
 }
 
-// The seed URL travels with the rest of the config, including its override.
-func TestConfig_CarriesTheSeedURL(t *testing.T) {
-	isolateConfig(t)
-	writeConfig(t, Config{
-		StartURL: "http://start", StopURL: "http://stop",
-		SeedURL: "http://seed", Region: "eu-west-1",
-	})
-	cfg, err := LoadEnvironment("default", func(string) string { return "" })
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cfg.SeedURL != "http://seed" {
-		t.Errorf("SeedURL = %q, want it read from the config file", cfg.SeedURL)
-	}
-}
-
-func TestConfig_SeedURLOverride(t *testing.T) {
-	isolateConfig(t)
-	writeConfig(t, Config{StartURL: "http://start", StopURL: "http://stop", Region: "eu-west-1"})
-	cfg, err := LoadEnvironment("default", func(k string) string {
-		if k == "SPINLOOP_CLOUD_SEED_URL" {
-			return "http://override"
-		}
-		return ""
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cfg.SeedURL != "http://override" {
-		t.Errorf("SeedURL = %q, want the override", cfg.SeedURL)
-	}
-}
-
 // The regression this guards: SeedUrl was added as a stack output and to
 // Config, but the discovery that maps outputs onto Config did not read it — so
 // `spinloop cloud seed` reported "no seed_url configured" against every real
@@ -380,19 +347,5 @@ func TestControlPlaneFromOutputs_RejectsAStackMissingTheControlURLs(t *testing.T
 	_, err := controlPlaneFromOutputs("cloud-vm-llm", map[string]string{"StartUrl": "http://start"})
 	if err == nil || !strings.Contains(err.Error(), "missing its control-URL outputs") {
 		t.Errorf("want a missing-outputs error, got %v", err)
-	}
-}
-
-// A config predating the seed Lambda must not stop the other subcommands
-// working — the seed URL is optional exactly as env_url is.
-func TestConfig_LoadsWithoutASeedURL(t *testing.T) {
-	isolateConfig(t)
-	writeConfig(t, Config{StartURL: "http://start", StopURL: "http://stop", Region: "eu-west-1"})
-	cfg, err := LoadEnvironment("default", func(string) string { return "" })
-	if err != nil {
-		t.Fatalf("a config without seed_url must still load: %v", err)
-	}
-	if cfg.SeedURL != "" {
-		t.Errorf("SeedURL = %q, want empty", cfg.SeedURL)
 	}
 }

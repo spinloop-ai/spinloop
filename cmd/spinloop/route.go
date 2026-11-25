@@ -29,7 +29,7 @@ type routeOptions struct {
 	// node is the one name the launch gives for the node its agent talks to,
 	// from --node/-n. With a fleet in force it pins the selection to that
 	// fleet's node of the name; with no fleet in force the same name is a
-	// registered environment — a fleet of one — to apply against.
+	// cloud node on the control plane — a fleet of one — to apply against.
 	node string
 	// prefer overrides the fleet file's activity preference.
 	prefer string
@@ -62,7 +62,7 @@ func (o routeOptions) fleetFile() string {
 // does not route, which is every launch that names no fleet.
 //
 // A Spinloop that pins a BASEURL is not routed: the pinned address is the
-// explicit answer that already wins over an environment, and it wins here
+// explicit answer that already wins over a cloud node, and it wins here
 // the same way. Saying so matters — silently selecting a node whose address
 // is then discarded would be a puzzle rather than a behaviour.
 func routeThroughFleet(sel spinloop.Selection, spinloopPath string, opts routeOptions) (*fleet.Choice, error) {

@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+### Added
+- feat(cloud): `spinloop cloud undeploy --node <name>` takes a node apart entirely — instance, address, key, schedules and deploy config — with `--dry-run` and explicit consent
+- feat(cloud): the control plane is the record of what is deployed: `cloud ls` reads its inventory, listing every node with who deployed it and when
+
+### Changed
+- **breaking(fleet)**: cloud nodes — what were called environments — are no longer registered per machine. Nothing about them is read from or written to `~/.config/spinloop/clouds/` — that directory may be deleted. Which nodes exist comes from the control plane your credentials resolve, so a colleague's deployment is visible and drivable from any machine. `--node` is required everywhere, including `deploy`, and there is no `default` node to fall back to — a `Spinloop`'s `ENV` lines still set environment variables as before. `-n` is short for `--node` on `cloud deploy` and `fleet deploy` too — `--dry-run` keeps its long form there.
+- refactor(cloud): a redeploy over an existing node now requires `--allowed-cidr` beside `--overwrite`, so a shared node's ingress is never silently rewritten
+
 
 ## [1.51.0] - 2026-11-25
 ### Added

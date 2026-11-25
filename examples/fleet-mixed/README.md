@@ -2,7 +2,7 @@
 
 One `fleet.yaml`, one set of commands, two kinds of node: machines running
 `spinloop daemon` and [`spinloop cloud`](../../docs/commands/cloud.md)
-environments. The same fan-out reaches every node, so the fleet reads as a
+nodes. The same fan-out reaches every node, so the fleet reads as a
 single table.
 
 ## How to run
@@ -27,7 +27,7 @@ by whoever starts it — see the next section.
 Every node here finds its Spinloop through the subdirectory convention —
 [`gpu-box/Spinloop`](gpu-box/Spinloop) for the machine,
 [`qwen/Spinloop`](qwen/Spinloop) and [`llama/Spinloop`](llama/Spinloop) for
-the two environments — so none of them declares a `file` field in
+the two cloud nodes — so none of them declares a `file` field in
 `fleet.yaml`. A registered `spinloop alias` named after a node would resolve
 the same way, and win over the subdirectory; an explicit `file` field can
 point anywhere else again, which is what
@@ -37,10 +37,10 @@ the full resolution order.
 
 ```sh
 spinloop fleet start gpu-box   # tell the daemon what to run, and start it
-spinloop fleet deploy --all    # create both environments from this file
+spinloop fleet deploy --all    # create both cloud nodes from this file
 ```
 
-Creating the environments this way is the same as running `spinloop cloud
+Creating the cloud nodes this way is the same as running `spinloop cloud
 deploy --node <name>` once per node in this file, from the directory holding
 that node's `Spinloop` — see [`spinloop
 cloud`](../../docs/commands/cloud.md) — just one command for both.
@@ -48,19 +48,19 @@ cloud`](../../docs/commands/cloud.md) — just one command for both.
 ### 3. Observe the whole fleet
 
 ```sh
-spinloop status        # one row per node: the machine and the environments
+spinloop status        # one row per node: the machine and the cloud nodes
 spinloop metrics -w    # a live dashboard
-spinloop fleet start qwen    # wake a sleeping environment from zero
+spinloop fleet start qwen    # wake a sleeping cloud node from zero
 spinloop fleet stop gpu-box  # stop the machine's engine
 ```
 
 Every node renders as the same kind of row: a daemon that is down shows
-`unreachable`, an environment that is not deployed yet shows `config-error`,
+`unreachable`, a cloud node that is not deployed yet shows `config-error`,
 and the rest of the fleet still shows.
 
 ## See also
 
 - [`examples/fleet`](../fleet/README.md) — a fleet of daemons only
-- [`examples/fleet-cloud`](../fleet-cloud/README.md) — a fleet of cloud environments only
+- [`examples/fleet-cloud`](../fleet-cloud/README.md) — a fleet of cloud nodes only
 - [`spinloop fleet`](../../docs/commands/fleet.md) — the commands over these nodes
 - [The fleet file](../../docs/fleet-file.md) — the file's format, node kinds, and routing

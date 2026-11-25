@@ -467,34 +467,41 @@ section SHALL behave exactly as it does today.
 - **WHEN** a fleet file declares no `concurrency` section
 - **THEN** nothing about the file's behaviour changes
 
-### Requirement: A registered environment is a fleet of one
+### Requirement: A cloud node is a fleet of one
 
-A `--node <name>` target SHALL be a fleet holding exactly one node: a cloud
-node named by the flag, whose registered configuration is the one
-`clouds/<name>/cloud.json` holds. It SHALL be driven, observed and rendered
-exactly as the same node listed in a fleet file is, so a command's output for
-one environment does not depend on how that environment was named.
+A node named by `--node` — a cloud node the resolved plane holds
+under that name — SHALL be a fleet holding exactly one node: a cloud node named
+by the flag. It SHALL be driven, observed and rendered exactly as the same node
+listed in a fleet file is, so a command's output for one node does not
+depend on how that node was named, or on who deployed it.
 
-Such a fleet has no file on disk. It SHALL therefore carry none of the
+Such a fleet has no file of its own. It SHALL therefore carry none of the
 settings a fleet file supplies — no activity preference, no wake policy, no
 gateway, no concurrency limits, no fleet-wide key reference — and SHALL take
 each of those as its default. Where a command reports which fleet it acted
-on, it SHALL name the environment rather than a path.
+on, it SHALL name the node and the plane it was resolved on rather than
+a path.
 
 A token reference SHALL NOT be resolved for such a fleet: a cloud node is
 reached through its control plane with the operator's own credentials, and
-there is no file for an adjacent `.env` to sit beside. An environment whose
+there is no file for an adjacent `.env` to sit beside. A node whose
 credentials are missing or expired SHALL fail as it does on any other path.
 
-#### Scenario: One environment renders as one node
+#### Scenario: One cloud node renders as one node
 
 - **WHEN** `spinloop fleet status --node prod` runs
 - **THEN** the output is the one-row status table a single-node fleet file
-  produces for the same environment
+  produces for the same node
 
-#### Scenario: An environment that cannot be reached is a row
+#### Scenario: A node deployed elsewhere is a fleet of one
 
-- **WHEN** `spinloop fleet status --node prod` runs and the environment cannot
+- **WHEN** `spinloop fleet status --node prod` runs on a machine that never
+  deployed `prod`, with credentials for the plane that holds it
+- **THEN** the command drives that node, resolving it from the plane
+
+#### Scenario: A node that cannot be reached is a row
+
+- **WHEN** `spinloop fleet status --node prod` runs and the node cannot
   be reached
 - **THEN** the row reports why, and the command still succeeds, exactly as an
   unreachable node in a fleet file does
@@ -515,7 +522,8 @@ credentials are missing or expired SHALL fail as it does on any other path.
 ### Requirement: Resolution of fleet and node targets
 Every command that acts on a fleet — the `spinloop fleet` group, and the
 top-level verbs that read one — SHALL resolve the fleet the same way, from the
-flags given: `--node <name>` names a single registered cloud environment,
+flags given: `--node <name>` names a single cloud node on the plane the
+caller's credentials and region resolve,
 `--fleet <path>` names a fleet file, and with neither the fleet file is
 `./fleet.yaml` in the working directory. One rule serves every such command, so
 a target means the same thing wherever it is given.
@@ -536,23 +544,23 @@ selection to that fleet's node (see the `fleet-routing` specification).
 
 Beside a `fleet.yaml` discovered in the working directory — not named by a
 flag — a `--node` that is a node of that fleet SHALL narrow the command to
-that node alone; a name the fleet does not hold SHALL resolve as a registered
-environment when one answers it, and fail naming the fleet and its known nodes
-when nothing does. On the drive commands (`fleet start`, `fleet stop`) that
-narrowing alone SHALL select the node: `-n <name>` stands in for the positional
-node name rather than the command demanding it again.
+that node alone; a name the fleet does not hold SHALL resolve as a node
+on the resolved plane when the plane holds it, and fail naming the fleet and
+its known nodes when nothing does. On the drive commands (`fleet start`,
+`fleet stop`) that narrowing alone SHALL select the node: `-n <name>` stands in
+for the positional node name rather than the command demanding it again.
 
-`--node` SHALL name a registered environment, which is a plain identifier and
-never a path. A value that is not a plain identifier, and a name with no
-registered configuration, SHALL each fail saying so and how to create the
-environment, before any node is contacted.
+`--node` SHALL name a node, which is a plain identifier and never a
+path. A value that is not a plain identifier SHALL fail before anything is
+contacted; a name no resolved plane holds SHALL fail naming the plane it was
+looked for on and how to create the node there.
 
 `--fleet` SHALL carry a `-f` short form on every `spinloop fleet` subcommand
 except `fleet logs`, where `-f` is the short form of `--follow`; on `fleet
 logs` the fleet file SHALL be named by the long form `--fleet` only. `--node`
-SHALL carry the `-n` short form everywhere it appears except `fleet deploy`
-and `cloud deploy`, where `-n` is the short form of `--dry-run`; on those two
-the node SHALL be named by the long form `--node` only.
+SHALL carry the `-n` short form everywhere it appears, including `fleet
+deploy` and `cloud deploy`, where `--dry-run` SHALL have no short form so
+that `-n` means one thing across the whole surface.
 
 #### Scenario: Default resolution
 
@@ -570,17 +578,17 @@ the node SHALL be named by the long form `--node` only.
 #### Scenario: A discovered fleet without the node falls back to the registry
 
 - **WHEN** `spinloop status --node prod` runs in a directory whose
-  `fleet.yaml` holds no node named `prod` and a registered environment named
-  `prod` exists
-- **THEN** the command acts on that environment's fleet of one
+  `fleet.yaml` holds no node named `prod` and the resolved plane holds a
+  node named `prod`
+- **THEN** the command acts on that node's fleet of one
 
 #### Scenario: A name nothing answers names the fleet it was checked against
 
 - **WHEN** `spinloop status --node ghost` runs in a directory whose
-  `fleet.yaml` holds no node named `ghost` and no environment named `ghost`
-  is registered
+  `fleet.yaml` holds no node named `ghost` and no node named `ghost`
+  is deployed on the resolved plane
 - **THEN** the failure names `ghost`, the `fleet.yaml` it was not found in,
-  and the fleet's known node names
+  the fleet's known node names, and the plane it was not found on
 
 #### Scenario: A drive command takes -n as the node name
 
@@ -611,18 +619,19 @@ the node SHALL be named by the long form `--node` only.
   path
 - **THEN** it fails, naming the expected path
 
-#### Scenario: A named environment is the target
+#### Scenario: A named node is the target
 
 - **WHEN** `spinloop fleet status --node prod` runs, passing no `--fleet`
-- **THEN** the command acts on the registered environment `prod` alone —
+- **THEN** the command acts on the node `prod` on the resolved plane
+  alone —
   whether or not a `fleet.yaml` is present, so long as no discovered fleet
   holds a node of that name, which would answer first
 
-#### Scenario: A named environment needs no fleet file
+#### Scenario: A named node needs no fleet file
 
 - **WHEN** `spinloop fleet dashboard --node prod` runs in a directory holding
   no `fleet.yaml`
-- **THEN** the view opens on that one environment, and the absent file is not
+- **THEN** the view opens on that one node, and the absent file is not
   an error
 
 #### Scenario: A node of a named fleet narrows it
@@ -635,11 +644,11 @@ the node SHALL be named by the long form `--node` only.
 #### Scenario: A name a named fleet lacks is not resolved elsewhere
 
 - **WHEN** `spinloop fleet status --node prod --fleet ./cluster.yaml` runs,
-  `cluster.yaml` holds no node named `prod`, and a registered environment
-  named `prod` exists
+  `cluster.yaml` holds no node named `prod`, and the resolved plane holds a
+  node named `prod`
 - **THEN** it fails naming `prod`, `cluster.yaml` and its known node names,
-  contacts nothing, and does not fall back to the registered environment —
-  only a discovered `fleet.yaml` answers to the registry
+  contacts nothing, and does not fall back to the plane's node —
+  only a discovered `fleet.yaml` answers to the plane
 
 #### Scenario: The directory's fleet file is read for a node, not ignored
 
@@ -649,17 +658,17 @@ the node SHALL be named by the long form `--node` only.
   `prod` alone, because beside a discovered fleet the one name answers one
   node of it, and only a flag states a conflict
 
-#### Scenario: An unregistered environment is reported
+#### Scenario: A node the plane lacks is reported
 
-- **WHEN** `spinloop fleet status --node nope` runs and no configuration is
-  registered under that name
-- **THEN** it fails saying the environment is not registered and how to
-  create it, and contacts nothing
+- **WHEN** `spinloop fleet status --node nope` runs and no node of that
+  name is deployed on the resolved plane
+- **THEN** it fails saying the plane holds no such node, naming where it
+  looked and how to create it, and contacts nothing
 
-#### Scenario: A path is not an environment name
+#### Scenario: A path is not a node name
 
 - **WHEN** `spinloop fleet status --node ./cloud.json` runs
-- **THEN** it fails saying an environment name is a plain identifier with no
+- **THEN** it fails saying a node name is a plain identifier with no
   path
 
 #### Scenario: No target at all names every way to give one
@@ -676,3 +685,36 @@ the node SHALL be named by the long form `--node` only.
 - **THEN** it fails as above rather than reporting that engine: a local engine
   is read through the command that runs it, or by naming the machine in a fleet
   file
+
+### Requirement: The fleet file is the membership allowlist
+
+A cloud node on the plane SHALL be a member of a fleet only where that
+fleet's file names it. The plane's inventory SHALL decide whether a named
+node exists, never which nodes belong to a fleet: a node
+deployed on the plane that the file does not name SHALL NOT be observed, routed
+to, woken, or given work by any command acting on that fleet. Because the plane
+is shared, the file — not what a caller happens to have permission to see — is
+what states this project's inference, and it SHALL therefore be safe to commit:
+naming a member SHALL need only the node's name.
+
+#### Scenario: An unlisted plane node is not a member
+
+- **WHEN** a fleet file names two cloud nodes and the plane holds five
+  nodes
+- **THEN** `spinloop fleet status` reports the two, and the gateway serves and
+  wakes only those two
+
+#### Scenario: A colleague's experiment is never routed to
+
+- **WHEN** a request arrives at a gateway for a model only an unlisted plane
+  node is deployed to serve
+- **THEN** that node is neither woken nor routed to, and the request fails
+  naming the fleet's own nodes
+
+#### Scenario: Naming a member needs only its name
+
+- **WHEN** an operator adds `name: qwen-prod` with `kind: cloud` to a fleet file
+  and commits it
+- **THEN** every operator with credentials for the plane gets that member from the
+  same file, with no address, account or identifier committed and nothing to
+  register first
