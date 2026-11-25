@@ -32,7 +32,7 @@ in, and contact nothing.
 
 #### Scenario: No local record is read or required
 
-- **WHEN** a cloud command runs on a machine that has never deployed an
+- **WHEN** a cloud command runs on a machine that has never deployed a
   node and holds no cloud configuration of its own
 - **THEN** the command resolves the plane and works, writing nothing
 

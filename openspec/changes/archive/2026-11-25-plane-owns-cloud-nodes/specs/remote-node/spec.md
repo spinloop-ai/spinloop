@@ -42,7 +42,7 @@ path, rather than attempted: starting one would mean choosing what to serve and
 paying for provisioning and weights, a heavier decision a node start must not
 make on a caller's behalf.
 
-#### Scenario: A cloud environment answers status like a node
+#### Scenario: A cloud node answers status like any node
 
 - **WHEN** a cloud node is asked for its status as a member of a node set
 - **THEN** it returns a status carrying the endpoint's state, what its engine is
@@ -58,7 +58,7 @@ make on a caller's behalf.
 - **THEN** its status still carries the model it is serving, so a router can
   match a request to it before the first request has landed
 
-#### Scenario: A cloud environment answers metrics like a node
+#### Scenario: A cloud node answers metrics like any node
 
 - **WHEN** a running cloud node is asked for its metrics as a member of a
   node set
@@ -72,7 +72,7 @@ make on a caller's behalf.
 - **THEN** the node is reported with a failure outcome and the reason, and
   it does not abort or blank the rest of the node set
 
-#### Scenario: A deployed cloud environment is started
+#### Scenario: A deployed cloud node is started
 
 - **WHEN** a node-level start is requested for a stopped cloud node whose
   stored deploy config already describes what to serve
@@ -80,7 +80,7 @@ make on a caller's behalf.
   local node's start does, and the node serves what its own stored config
   names, not any config the start call carried
 
-#### Scenario: Waking a cloud environment is refused
+#### Scenario: Waking a cloud node is refused
 
 - **WHEN** a node-level start is requested for a cloud node with no
   deploy config stored on the plane
@@ -127,16 +127,16 @@ launch. A `kind: cloud` node naming no `instance-type` SHALL deploy a
 node that launches as the control plane's default, unchanged from before
 the field existed.
 
-#### Scenario: A fleet file lists a cloud environment as a node
+#### Scenario: A fleet file lists a cloud node
 
 - **WHEN** a fleet file lists a node of kind `cloud` whose name is a node
   on the resolved plane
 - **THEN** the fan-out builds it as a cloud node and observes it as one row,
   alongside any daemon nodes in the same file
 
-#### Scenario: A fleet file lists a cloud node without its environment
+#### Scenario: A fleet file lists a cloud node the plane lacks
 
-- **WHEN** a fleet file lists a node of kind `cloud` whose name is not an
+- **WHEN** a fleet file lists a node of kind `cloud` whose name is not a
   node on the resolved plane
 - **THEN** that node is reported with a configuration error naming the
   node and the plane it was looked for on, and the rest of the fleet is

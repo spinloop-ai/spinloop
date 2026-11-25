@@ -26,7 +26,7 @@ reached through its control plane with the operator's own credentials, and
 there is no file for an adjacent `.env` to sit beside. A node whose
 credentials are missing or expired SHALL fail as it does on any other path.
 
-#### Scenario: One environment renders as one node
+#### Scenario: One cloud node renders as one node
 
 - **WHEN** `spinloop fleet status --node prod` runs
 - **THEN** the output is the one-row status table a single-node fleet file
@@ -38,7 +38,7 @@ credentials are missing or expired SHALL fail as it does on any other path.
   deployed `prod`, with credentials for the plane that holds it
 - **THEN** the command drives that node, resolving it from the plane
 
-#### Scenario: An environment that cannot be reached is a row
+#### Scenario: A node that cannot be reached is a row
 
 - **WHEN** `spinloop fleet status --node prod` runs and the node cannot
   be reached
@@ -118,7 +118,7 @@ that `-n` means one thing across the whole surface.
 #### Scenario: A discovered fleet without the node falls back to the registry
 
 - **WHEN** `spinloop status --node prod` runs in a directory whose
-  `fleet.yaml` holds no node named `prod` and the resolved plane holds an
+  `fleet.yaml` holds no node named `prod` and the resolved plane holds a
   node named `prod`
 - **THEN** the command acts on that node's fleet of one
 
@@ -159,7 +159,7 @@ that `-n` means one thing across the whole surface.
   path
 - **THEN** it fails, naming the expected path
 
-#### Scenario: A named environment is the target
+#### Scenario: A named node is the target
 
 - **WHEN** `spinloop fleet status --node prod` runs, passing no `--fleet`
 - **THEN** the command acts on the node `prod` on the resolved plane
@@ -167,7 +167,7 @@ that `-n` means one thing across the whole surface.
   whether or not a `fleet.yaml` is present, so long as no discovered fleet
   holds a node of that name, which would answer first
 
-#### Scenario: A named environment needs no fleet file
+#### Scenario: A named node needs no fleet file
 
 - **WHEN** `spinloop fleet dashboard --node prod` runs in a directory holding
   no `fleet.yaml`
@@ -184,7 +184,7 @@ that `-n` means one thing across the whole surface.
 #### Scenario: A name a named fleet lacks is not resolved elsewhere
 
 - **WHEN** `spinloop fleet status --node prod --fleet ./cluster.yaml` runs,
-  `cluster.yaml` holds no node named `prod`, and the resolved plane holds an
+  `cluster.yaml` holds no node named `prod`, and the resolved plane holds a
   node named `prod`
 - **THEN** it fails naming `prod`, `cluster.yaml` and its known node names,
   contacts nothing, and does not fall back to the plane's node —
@@ -198,14 +198,14 @@ that `-n` means one thing across the whole surface.
   `prod` alone, because beside a discovered fleet the one name answers one
   node of it, and only a flag states a conflict
 
-#### Scenario: An unregistered environment is reported
+#### Scenario: A node the plane lacks is reported
 
 - **WHEN** `spinloop fleet status --node nope` runs and no node of that
   name is deployed on the resolved plane
 - **THEN** it fails saying the plane holds no such node, naming where it
   looked and how to create it, and contacts nothing
 
-#### Scenario: A path is not an environment name
+#### Scenario: A path is not a node name
 
 - **WHEN** `spinloop fleet status --node ./cloud.json` runs
 - **THEN** it fails saying a node name is a plain identifier with no

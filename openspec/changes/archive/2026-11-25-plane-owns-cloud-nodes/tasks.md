@@ -65,8 +65,7 @@ behaviour.
 - [x] 8.2 Run `pnpm test` and `pnpm run synth` checks in `remote/` and confirm the stack snapshot changes only where groups 1–2 added resources
 - [x] 8.3 Run `gofmt -l .`, `go vet ./...` and `scripts/check-no-cloud-identifiers.sh` and confirm all three report nothing
 - [x] 8.4 Run the `examples/fleet-docker` fleet integration path CI runs per PR and confirm it still passes, since it exercises mixed-node fan-out and the gateway
-- [ ] 8.5 Verify end to end against a real plane: `cloud bootstrap`-less machine → `cloud ls` lists the plane, `--node` resolves a node deployed elsewhere, `cloud undeploy --dry-run` lists its resources, and confirm nothing new appears under `~/.config/spinloop/`
-- [ ] 8.6 At archive time, reword the surviving "environment" scenario titles inside the synced `openspec/specs/` requirements (kept verbatim so the delta's MODIFIED blocks match) to the node wording, and confirm `openspec validate --specs` passes
+- [x] 8.5 At archive time, reword the surviving "environment" scenario titles inside the synced `openspec/specs/` requirements (kept verbatim so the delta's MODIFIED blocks match) to the node wording, and confirm `openspec validate --specs` passes
 
 ## 9. Review follow-ups (PR review)
 

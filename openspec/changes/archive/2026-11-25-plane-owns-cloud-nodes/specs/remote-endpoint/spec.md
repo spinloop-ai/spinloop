@@ -50,7 +50,7 @@ Node variables SHALL override individual values, and the region SHALL
 fall back to the standard AWS region variables. A plane that cannot be resolved
 SHALL fail naming where it looked.
 
-#### Scenario: The flag selects the environment
+#### Scenario: The flag selects the node
 
 - **WHEN** the user runs `spinloop cloud status --node qwen3.6-27b-prod`
 - **THEN** the control URLs come from the resolved plane and the node is
@@ -87,7 +87,7 @@ SHALL fail naming where it looked.
 
 #### Scenario: An instance is never stopped without being named
 
-- **WHEN** the user runs `spinloop cloud stop` with no `--node`, with an
+- **WHEN** the user runs `spinloop cloud stop` with no `--node`, with a
   node named `default` deployed on the plane
 - **THEN** nothing is stopped: the command fails naming the flag, and `default`
   is not assumed

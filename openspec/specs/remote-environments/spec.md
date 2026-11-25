@@ -1,123 +1,98 @@
-# Cloud Environments Specification
+# Cloud Nodes Specification
 
 ## Purpose
 
-Define the per-user registry of named cloud environments: how a command's
-`--env` value selects a deployment's control config by name, where that config
-lives, how environments are listed, and the storage rules that keep per-user,
-per-instance deployment state out of committed Spinloops.
+Define how cloud nodes are named and resolved on the control plane: the
+shape a node name must have, how a `--node` value resolves to a node on
+the plane the caller's credentials reach, how the plane's nodes are
+listed, and how a node keys a harness provider. The plane — not any
+machine's local state — is the record of what is deployed.
 
 ## Requirements
 
-### Requirement: Named environment registry
+### Requirement: Node name validity
 
-A cloud environment SHALL be a directory under the per-user config,
-`${XDG_CONFIG_HOME:-~/.config}/spinloop/clouds/<name>/`, whose canonical file is
-`cloud.json` — the control URLs, region, base URL, and the environment
-identifier of one deployed instance. Because the lifecycle Lambda URLs are shared
-across environments, the identifier is what selects this environment's instance;
-the `cloud` client SHALL send it with each control request. The directory form
-SHALL be used so that other per-environment state may live alongside `cloud.json`
-later, and so that distinct environments never share a file. The registry SHALL
-hold as many environments as the user has instances.
+A node name SHALL be a plain name, not a path: it SHALL NOT contain a
+path separator, and it SHALL satisfy the shape the control plane accepts for a
+node name. A `--node` value that is not a plain identifier SHALL be
+rejected saying a node name is a plain identifier.
 
-#### Scenario: An environment is a directory holding cloud.json
-
-- **WHEN** an environment named `qwen3.6-27b-prod` is registered
-- **THEN** its configuration is `~/.config/spinloop/clouds/qwen3.6-27b-prod/cloud.json`
-
-#### Scenario: Two environments do not collide
-
-- **WHEN** two environments `a` and `b` both exist
-- **THEN** each has its own `~/.config/spinloop/clouds/<name>/` directory and
-  neither overwrites the other
-
-#### Scenario: The identifier selects the instance
-
-- **WHEN** two environments share the same lifecycle Lambda URLs and a control
-  command runs for one of them
-- **THEN** the environment identifier in its `cloud.json` is sent so the shared
-  Lambda acts on that environment's instance
-
-#### Scenario: A control call without an environment is rejected
-
-- **WHEN** a control request reaches a lifecycle Lambda naming no environment
-- **THEN** it is rejected with an error saying how to name one, rather than a
-  default being silently assumed — defaults are a CLI affordance, not part of
-  the control API
-
-### Requirement: Environment name validity
-
-An environment name SHALL be a plain name, not a path: it SHALL NOT contain a
-path separator. A `--node` value that is not a plain identifier SHALL be
-rejected saying an environment name is a plain identifier.
+Because a name identifies one node on the plane the caller's credentials
+resolve, the same name on two planes SHALL be two nodes, and the same
+name on one plane SHALL be one node however many people use it.
 
 #### Scenario: A path-like value is not a name
 
 - **WHEN** a command is given `--node ./cloud.json` (or any value containing a
   path separator)
-- **THEN** it fails saying an environment name is a plain identifier, rather
-  than reading a file
+- **THEN** it fails saying a node name is a plain identifier, rather
+  than reading a file or querying a plane
 
-### Requirement: Listing environments
+#### Scenario: A name the control plane would refuse is refused early
 
-`spinloop cloud ls` SHALL print every registered environment with its base URL
-and region, and SHALL mark an environment whose `cloud.json` is missing or
-unreadable rather than failing. With no environments registered it SHALL say so
-plainly rather than printing nothing.
+- **WHEN** a command is given a name the control plane would reject
+- **THEN** it fails before contacting the plane, naming the shape a name must
+  have
 
-#### Scenario: Listing shows each environment
+#### Scenario: The same name on two planes is two nodes
 
-- **WHEN** two environments are registered and the user runs `spinloop cloud ls`
-- **THEN** both are listed with their base URL and region
+- **WHEN** two operators each run `--node dev` with credentials for different
+  accounts
+- **THEN** each acts on the `dev` deployed in their own account
+
+### Requirement: Listing nodes
+
+`spinloop cloud ls` SHALL print every node deployed on the resolved
+plane with its deployer, what it serves, its address and its state, rather than
+what this machine has recorded. With no nodes on the plane it SHALL say
+so plainly rather than printing nothing. Where the plane cannot be resolved or
+reached it SHALL fail naming where it looked rather than printing a partial
+list.
+
+#### Scenario: Listing shows each node
+
+- **WHEN** two nodes are deployed on the plane and the user runs
+  `spinloop cloud ls`
+- **THEN** both are listed with their deployer, what they serve, their address
+  and their state
+
+#### Scenario: A node deployed elsewhere is listed
+
+- **WHEN** a node deployed by another operator is on the plane and the
+  user runs `spinloop cloud ls`
+- **THEN** it is listed like any other, credited to its deployer
 
 #### Scenario: A missing configuration is marked, not fatal
 
-- **WHEN** an environment directory exists without a readable `cloud.json` and
-  the user runs `spinloop cloud ls`
-- **THEN** that environment is listed with a missing/unreadable marker and the
-  command still succeeds
+- **WHEN** a node is deployed but the plane cannot report its state or
+  address — its instance was terminated mid-read, or its daemon is unreachable
+- **THEN** that node is listed with a marker where the readings are
+  missing, and the command still succeeds
 
-#### Scenario: No environments registered
+#### Scenario: No nodes on the plane
 
-- **WHEN** the registry is empty and the user runs `spinloop cloud ls`
+- **WHEN** the plane holds no nodes and the user runs `spinloop cloud ls`
 - **THEN** the command says there are none, rather than printing empty output
 
-### Requirement: Environment storage and isolation
+#### Scenario: An unreadable plane is not an empty one
 
-Environment state SHALL live only under the per-user config directory, never in
-a Spinloop, so Spinloops stay portable and committable — a Spinloop carries no
-reference to a cloud environment at all, not even a name. Each environment's
-`cloud.json` SHALL be written with owner-only permissions, since it holds a
-deployment's URLs and address. Because state is per-user and keyed by name, two
-users sharing a repo SHALL each drive their own instance under the same name
-without either seeing the other's URLs.
+- **WHEN** `spinloop cloud ls` runs where the plane cannot be reached
+- **THEN** the command fails naming where it looked, and prints no list
 
-#### Scenario: The Spinloop carries no environment reference
-
-- **WHEN** a Spinloop used for a cloud deployment is committed to a shared
-  repo
-- **THEN** it contains no environment name, deployment URL, or address; the
-  environment is named only at deploy time and at the commands' invocations
-
-#### Scenario: Owner-only configuration
-
-- **WHEN** an environment's `cloud.json` is written
-- **THEN** it is created with owner-only permissions
-
-### Requirement: An environment names the harness provider
+### Requirement: A node names the harness provider
 
 When a Spinloop is applied with an `--node <name>` flag, the harness provider
-SHALL be keyed on the environment name rather than the `PROVIDER` value, and
-the default model SHALL read as `<environment>/<model>`. The `PROVIDER` entry
-SHALL still supply the engine configuration (its options, API-key environment
-variable, and base URL). The flag SHALL name a registered environment: a value
-with no registered configuration SHALL fail saying the environment is not
-registered and that `spinloop cloud deploy --node <name>` creates it. A
-Spinloop's own `BASEURL` SHALL still supply the applied base URL, as it does
-when a fleet is named; the environment then provides the name and the key, not
-the address. Unapplying with the same `--node` flag SHALL remove the provider
-that apply wrote.
+SHALL be keyed on the node name rather than the `PROVIDER` value, and
+the default model SHALL read as `<node>/<model>`. The `PROVIDER` entry
+SHALL still supply the engine configuration (its options, API-key node
+variable, and base URL). The flag SHALL name a node deployed on the
+resolved plane: a value with no such node SHALL fail saying the plane
+holds no node of that name and that `spinloop cloud deploy --node <name>`
+creates one. A Spinloop's own `BASEURL` SHALL still supply the applied base
+URL, as it does when a fleet is named; where the Spinloop states none, the base
+URL SHALL be the node's own address as the plane reports it, without
+starting the node. Unapplying with the same `--node` flag SHALL remove
+the provider that apply wrote.
 
 #### Scenario: The flag becomes the provider name
 
@@ -129,18 +104,24 @@ that apply wrote.
 #### Scenario: A pinned BASEURL supplies the address
 
 - **WHEN** a Spinloop stating a `BASEURL` is applied with `--node dev-1` whose
-  registered configuration names a different base URL
+  node answers at a different address
 - **THEN** the provider is keyed `dev-1` and configured with the Spinloop's
   `BASEURL`
 
-#### Scenario: An unregistered environment is reported
+#### Scenario: No BASEURL takes the node's address from the plane
 
-- **WHEN** a Spinloop is applied with `--node missing` and no environment
-  `missing` is registered
-- **THEN** the command fails saying the environment is not registered and that
+- **WHEN** a Spinloop stating no `BASEURL` is applied with `--node dev-1`
+- **THEN** the provider is configured with the address the plane reports for
+  `dev-1`, and the node is not started to learn it
+
+#### Scenario: A node the plane lacks is reported
+
+- **WHEN** a Spinloop is applied with `--node missing` and the plane holds no
+  node `missing`
+- **THEN** the command fails saying the plane holds no such node and that
   `spinloop cloud deploy --node missing` creates it
 
-#### Scenario: Unapply removes the environment-named provider
+#### Scenario: Unapply removes the node-named provider
 
 - **WHEN** a Spinloop is applied with `--node dev-1` and then unapplied with
   `--node dev-1`
@@ -180,44 +161,45 @@ base URL are unchanged from the existing cloud-naming behaviour.
   Spinloop is applied with `--node dev-2`
 - **THEN** the harness provider's display name is `dev-2`
 
-### Requirement: Every environment resolves by name
+### Requirement: A node resolves by name on the plane
 
-An environment SHALL be resolved from its name and nothing else: the
-configuration at `clouds/<name>/cloud.json` in the per-user registry. No name
-SHALL resolve by a different rule from any other, and no path outside the
-registry SHALL be consulted, so a command that resolves an environment never
-special-cases the name it was given.
+A node SHALL be resolved by its name and nothing else: the node
+of that name on the plane the caller's credentials and region resolve. No name
+SHALL resolve by a different rule from any other, and no local file SHALL be
+consulted for any name, so a command that resolves a node never
+special-cases the name it was given and never depends on what this machine has
+deployed.
 
-Where a named environment has no registered file, a complete set of
-`SPINLOOP_CLOUD_*` overrides SHALL configure it, so the cloud commands can
-run with nothing on disk. In that case the **name given** SHALL be the
-environment identifier sent with each control call — the identifier the shared
-lifecycle Lambdas use to tell one instance from another, which a configuration
-assembled from variables alone has no other source for.
+Where the caller's variables supply a complete set of control endpoints, those
+SHALL be the plane, so the cloud commands work in a place with no
+CloudFormation-visible stack. In that case the **name given** SHALL be the
+node identifier sent with each control call — the identifier the shared
+lifecycle endpoints use to tell one instance from another.
 
-#### Scenario: A named environment reads its own file
+#### Scenario: A named node is found on the plane
 
-- **WHEN** a command runs with `--node prod` and `clouds/prod/cloud.json`
-  exists
-- **THEN** its configuration is read from that file
+- **WHEN** a command runs with `--node prod` and the resolved plane holds a
+  node `prod`
+- **THEN** the command drives that node, whether or not this machine ever
+  deployed it
 
-#### Scenario: A file at the superseded path is not read
+#### Scenario: Nothing local is consulted
 
-- **WHEN** a command runs with `--node default`, no
-  `clouds/default/cloud.json` exists, and a file exists at the path the
-  registry superseded
-- **THEN** the command does not use that file's contents: no path outside the
-  registry is consulted for any name
+- **WHEN** a command runs with `--node prod` and a file for a node
+  `prod` exists under the configuration directory from an earlier version
+- **THEN** the command uses the plane's answer and does not read that file
 
-#### Scenario: Overrides configure a named environment with no file
+#### Scenario: Overrides configure a plane with no stack
 
-- **WHEN** a command runs with `--node ci`, no `clouds/ci/cloud.json` exists,
-  and the `SPINLOOP_CLOUD_*` variables supply a complete configuration
+- **WHEN** a command runs with `--node ci`, no control-plane stack is visible,
+  and the `SPINLOOP_CLOUD_*` variables supply a complete set of control
+  endpoints
 - **THEN** the command works, and the control calls carry `ci` as the
-  environment identifier
+  node identifier
 
-#### Scenario: Nothing anywhere fails naming the registry
+#### Scenario: A node the plane does not hold fails naming the plane
 
-- **WHEN** no configuration can be assembled for the named environment
-- **THEN** the failure says the environment is not registered and how to
-  create it
+- **WHEN** no node of the given name is deployed on the plane that
+  resolves
+- **THEN** the failure says the plane holds no such node, names the
+  account and region resolved, and says which command creates one

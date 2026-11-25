@@ -33,13 +33,13 @@ shell evaluates.
 - **THEN** the command fails saying the plane holds no such node and
   naming the deploy command that would create one
 
-#### Scenario: env names the environment with the flag
+#### Scenario: env names the node with the flag
 
 - **WHEN** the user runs `spinloop cloud env --node dev-2`
 - **THEN** the command resolves the plane from its credentials and region, reads
   the node `dev-2` there, and reports on that node's endpoint
 
-#### Scenario: env falls back to the default environment
+#### Scenario: env does not fall back to a default node
 
 - **WHEN** the user runs `spinloop cloud env` with no `--node` flag and the plane
   holds a node named `default`

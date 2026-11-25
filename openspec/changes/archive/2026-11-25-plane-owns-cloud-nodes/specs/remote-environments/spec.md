@@ -90,7 +90,7 @@ so plainly rather than printing nothing. Where the plane cannot be resolved or
 reached it SHALL fail naming where it looked rather than printing a partial
 list.
 
-#### Scenario: Listing shows each environment
+#### Scenario: Listing shows each node
 
 - **WHEN** two nodes are deployed on the plane and the user runs
   `spinloop cloud ls`
@@ -110,7 +110,7 @@ list.
 - **THEN** that node is listed with a marker where the readings are
   missing, and the command still succeeds
 
-#### Scenario: No environments registered
+#### Scenario: No nodes on the plane
 
 - **WHEN** the plane holds no nodes and the user runs `spinloop cloud ls`
 - **THEN** the command says there are none, rather than printing empty output
@@ -155,14 +155,14 @@ the provider that apply wrote.
 - **THEN** the provider is configured with the address the plane reports for
   `dev-1`, and the node is not started to learn it
 
-#### Scenario: An unregistered environment is reported
+#### Scenario: A node the plane lacks is reported
 
 - **WHEN** a Spinloop is applied with `--node missing` and the plane holds no
   node `missing`
 - **THEN** the command fails saying the plane holds no such node and that
   `spinloop cloud deploy --node missing` creates it
 
-#### Scenario: Unapply removes the environment-named provider
+#### Scenario: Unapply removes the node-named provider
 
 - **WHEN** a Spinloop is applied with `--node dev-1` and then unapplied with
   `--node dev-1`
@@ -187,7 +187,7 @@ lifecycle endpoints use to tell one instance from another.
 
 #### Scenario: A named node is found on the plane
 
-- **WHEN** a command runs with `--node prod` and the resolved plane holds an
+- **WHEN** a command runs with `--node prod` and the resolved plane holds a
   node `prod`
 - **THEN** the command drives that node, whether or not this machine ever
   deployed it

@@ -72,7 +72,7 @@ rather than trying to start a node with nothing.
 - **THEN** that node is started with its own config, gated with the key its
   fleet entry names, and the request is answered once the engine answers
 
-#### Scenario: A cold request wakes a deployed cloud environment
+#### Scenario: A cold request wakes a deployed cloud node
 
 - **WHEN** no node is running the model a request names, one cloud node's
   stats reply reports it is deployed to serve it, and waking is allowed for

@@ -74,7 +74,7 @@ alone.
   with no explicit CIDR
 - **THEN** the node's ingress is the caller's public IP as a `/32`
 
-#### Scenario: Ingress is per environment
+#### Scenario: Ingress is per node
 
 - **WHEN** two nodes are deployed with different CIDRs
 - **THEN** each instance admits only its own CIDR
@@ -105,7 +105,7 @@ holds, deploy SHALL proceed without a warning and without requiring
 `--overwrite`. Where the plane's answer admits it could not read part of its
 record, deploy SHALL refuse rather than treat the gap as a free name.
 
-#### Scenario: An existing environment warns
+#### Scenario: An existing node warns
 
 - **WHEN** deploy targets a node already deployed on the plane by
   another operator
@@ -118,7 +118,7 @@ record, deploy SHALL refuse rather than treat the gap as a free name.
   node
 - **THEN** it aborts telling the user to pass `--overwrite`
 
-#### Scenario: A fresh environment needs no override
+#### Scenario: A fresh node needs no override
 
 - **WHEN** deploy targets a node the plane neither holds nor has running
 - **THEN** it proceeds without an overwrite warning

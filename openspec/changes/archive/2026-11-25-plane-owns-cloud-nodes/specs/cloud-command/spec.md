@@ -28,7 +28,7 @@ NOT read a `clouds/<name>/cloud.json` left behind by an earlier version.
 - **THEN** nothing beneath the configuration directory names `staging`, and
   `spinloop cloud ls` lists it from the plane
 
-#### Scenario: Old environment is not found
+#### Scenario: Old registration is not found
 
 - **WHEN** `remotes/staging/remote.json` or `clouds/staging/cloud.json` exists
   from an earlier version, and the plane holds no node `staging`
@@ -71,7 +71,7 @@ dashboard SHALL label such nodes `cloud`.
 #### Scenario: New kind parses
 
 - **WHEN** a fleet file declares a node with `kind: cloud`
-- **THEN** it is loaded as a cloud node node, keyed by its name on the
+- **THEN** it is loaded as a cloud node, keyed by its name on the
   resolved plane
 
 #### Scenario: Old kind is rejected
